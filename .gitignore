@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Runtime
+pids/
+*.pid
+*.seed
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Docker volumes (local only)
+postgres_data/
+redis_data/
+
+# Uploads (don't commit user files)
+apps/backend/uploads/*
+!apps/backend/uploads/.gitkeep
+
+# Prisma
+apps/backend/prisma/migrations/*/migration_lock.toml

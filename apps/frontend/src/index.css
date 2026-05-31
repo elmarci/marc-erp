@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── MARC Branding: Verde + Negro ── */
+    --background: 0 0% 98%;
+    --foreground: 0 0% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 8%;
+    --primary: 128 58% 38%;           /* Verde MARC */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 128 15% 93%;
+    --secondary-foreground: 0 0% 15%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 128 15% 90%;
+    --accent-foreground: 128 58% 28%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 128 58% 38%;
+    --radius: 0.5rem;
+    --success: 128 58% 38%;           /* Verde MARC = éxito */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 48%;
+    --warning-foreground: 0 0% 100%;
+    --info: 210 80% 52%;
+    --info-foreground: 0 0% 100%;
+    --pos-bg: 128 8% 95%;
+    --pos-cart: 0 0% 100%;
+    --pos-product: 0 0% 100%;
+  }
+
+  .dark {
+    /* ── MARC Dark: Negro profundo + Verde ── */
+    --background: 0 0% 7%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 128 58% 45%;           /* Verde MARC más brillante en dark */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 128 20% 15%;
+    --accent-foreground: 128 58% 55%;
+    --destructive: 0 62.8% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 128 58% 45%;
+    --success: 128 58% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 8%;
+    --info: 210 80% 60%;
+    --info-foreground: 0 0% 100%;
+    --pos-bg: 0 0% 6%;
+    --pos-cart: 0 0% 9%;
+    --pos-product: 0 0% 11%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /* Scrollbar personalizado */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+
+@layer utilities {
+  /* Pantalla POS - altura completa sin overflow */
+  .pos-screen {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  /* Animación de entrada para items del carrito */
+  .cart-item-enter {
+    animation: cart-item-enter 0.15s ease-out;
+  }
+
+  @keyframes cart-item-enter {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* Highlight de búsqueda de barcode */
+  .barcode-flash {
+    animation: barcode-flash 0.3s ease-out;
+  }
+
+  @keyframes barcode-flash {
+    0% { background-color: hsl(var(--success) / 0.2); }
+    100% { background-color: transparent; }
+  }
+
+  /* Print styles */
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+
+    .print-only {
+      display: block !important;
+    }
+
+    body {
+      print-color-adjust: exact;
+    }
+  }
+
+  /* Focus visible para accesibilidad */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+}
