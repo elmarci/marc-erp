@@ -210,22 +210,26 @@ export class SalesService {
           },
         });
 
-        // Actualizar alerta de stock (sin upsert para evitar dependencia de índice compuesto)
-        const alertType = newStock === 0 ? 'OUT_OF_STOCK' : newStock <= product.minStock ? 'LOW_STOCK' : null;
-        if (alertType) {
-          const existing = await tx.stockAlert.findFirst({
-            where: { productId: item.productId, alertType },
-          });
-          if (existing) {
-            await tx.stockAlert.update({
-              where: { id: existing.id },
-              data: { isActive: true, resolvedAt: null },
+        // Actualizar alerta de stock (non-blocking — no debe interrumpir la venta)
+        try {
+          const alertType = newStock === 0 ? 'OUT_OF_STOCK' : newStock <= product.minStock ? 'LOW_STOCK' : null;
+          if (alertType) {
+            const existing = await tx.stockAlert.findFirst({
+              where: { productId: item.productId, alertType },
             });
-          } else {
-            await tx.stockAlert.create({
-              data: { productId: item.productId, alertType, threshold: product.minStock, isActive: true },
-            });
+            if (existing) {
+              await tx.stockAlert.update({
+                where: { id: existing.id },
+                data: { isActive: true, resolvedAt: null },
+              });
+            } else {
+              await tx.stockAlert.create({
+                data: { productId: item.productId, alertType, threshold: product.minStock, isActive: true },
+              });
+            }
           }
+        } catch (alertErr) {
+          logger.warn({ err: alertErr, productId: item.productId }, 'Stock alert update failed (non-critical)');
         }
       }
 

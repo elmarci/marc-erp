@@ -75,14 +75,15 @@ export function errorHandler(
     }
   }
 
-  logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
+  logger.error({ err, errMsg: err.message, errName: err.name, path: req.path, method: req.method }, 'Unhandled error');
 
   res.status(500).json({
     success: false,
     error: {
       code: 'INTERNAL_ERROR',
       message: 'Error interno del servidor. Por favor intente de nuevo.',
-      ...(env.NODE_ENV === 'development' ? { detail: err.message, stack: err.stack } : {}),
+      detail: err.message, // temporal para debug
+      name: err.name,
     },
   });
 }
