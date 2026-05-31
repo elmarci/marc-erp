@@ -23,11 +23,10 @@ ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
-# ─── Production (nginx) ──────────────────────────────────────────────────────
-FROM nginx:alpine AS production
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY start.sh /start.sh
-RUN sed -i 's/\r$//' /start.sh && chmod +x /start.sh
-EXPOSE 80
-CMD ["/start.sh"]
+# ─── Production (serve) ──────────────────────────────────────────────────────
+FROM node:20-alpine AS production
+WORKDIR /app
+RUN npm install -g serve
+COPY --from=builder /app/dist ./dist
+EXPOSE 3000
+CMD ["sh", "-c", "serve -s dist -l ${PORT:-3000}"]
