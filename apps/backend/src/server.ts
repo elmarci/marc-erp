@@ -149,10 +149,11 @@ async function bootstrap() {
     await connectDatabase();
     await connectRedis();
 
-    httpServer.listen(env.BACKEND_PORT, () => {
-      logger.info(`🚀 ERP Minimarket API corriendo en puerto ${env.BACKEND_PORT}`);
-      logger.info(`📖 Documentación: http://localhost:${env.BACKEND_PORT}/api/v1/docs`);
-      logger.info(`❤️  Health: http://localhost:${env.BACKEND_PORT}/health`);
+    const PORT = Number(process.env.PORT) || env.BACKEND_PORT;
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      logger.info(`🚀 ERP Minimarket API corriendo en puerto ${PORT}`);
+      logger.info(`📖 Documentación: http://localhost:${PORT}/api/v1/docs`);
+      logger.info(`❤️  Health: http://localhost:${PORT}/health`);
     });
   } catch (err) {
     logger.error({ err }, 'Failed to start server');
