@@ -21,6 +21,7 @@ export interface ReceiptData {
   cashierName: string;
   customerName?: string | null;
   documentType: string;
+  notes?: string | null;
   items: ReceiptItem[];
   subtotal: number;
   discountAmount: number;
@@ -104,6 +105,11 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             {data.customerName && (
               <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Cliente:</span><span>{data.customerName}</span>
+              </div>
+            )}
+            {data.notes?.startsWith('Pedido web') && (
+              <div className="row" style={{ display: 'flex', justifyContent: 'space-between', color: '#166534', fontWeight: 'bold' }}>
+                <span>Canal:</span><span>🌐 Venta Online</span>
               </div>
             )}
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />

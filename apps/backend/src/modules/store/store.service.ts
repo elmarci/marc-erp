@@ -1,6 +1,7 @@
 import { prisma } from '../../database/client';
 import { NotFoundError } from '../../utils/errors';
 import { io } from '../../server';
+import { redis } from '../../config/redis';
 
 export class StoreService {
 
@@ -302,7 +303,10 @@ export class StoreService {
         status: 'CONFIRMED', paymentStatus: order.paymentStatus,
       });
 
-      return { order: updated, saleId: sale.id, saleNumber: sale.saleNumber };
+      const result = { order: updated, saleId: sale.id, saleNumber: sale.saleNumber };
+      // Invalidate dashboard cache so it reflects the new web sale
+      await redis.del('reports:dashboard').catch(() => {});
+      return result;
     });
   }
 

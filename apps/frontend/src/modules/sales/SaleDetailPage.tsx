@@ -23,7 +23,7 @@ export function SaleDetailPage() {
       const res = await api.get<{ data: unknown }>(`/sales/${id}`);
       return res.data.data as {
         id: string; saleNumber: string; totalAmount: number; subtotal: number; taxAmount: number;
-        discountAmount: number; status: string; createdAt: string; documentType: string;
+        discountAmount: number; status: string; createdAt: string; documentType: string; notes: string | null;
         cashier: { firstName: string; lastName: string };
         customer: { firstName: string; lastName: string } | null;
         items: Array<{ id: string; productName: string; quantity: number; unitPrice: number; subtotal: number }>;
@@ -145,6 +145,7 @@ export function SaleDetailPage() {
             cashierName: `${sale.cashier.firstName} ${sale.cashier.lastName}`,
             customerName: sale.customer ? `${sale.customer.firstName} ${sale.customer.lastName}` : null,
             documentType: sale.documentType,
+            notes: sale.notes,
             items: sale.items.map(i => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice, subtotal: i.subtotal })),
             subtotal: sale.subtotal,
             discountAmount: sale.discountAmount,

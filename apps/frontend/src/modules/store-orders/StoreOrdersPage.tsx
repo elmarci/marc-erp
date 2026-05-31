@@ -37,10 +37,34 @@ const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CAS
 const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵' }
 
 // Sound notification using Web Audio API
-function playNotificationSound() {
+// AudioContext must be created/resumed after user gesture
+let audioCtx: AudioContext | null = null
+
+function getAudioCtx(): AudioContext | null {
   try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
-    const times = [0, 0.15, 0.3]
+    if (!audioCtx) {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      audioCtx = new AC()
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume()
+    return audioCtx
+  } catch { return null }
+}
+
+// Call on first user interaction to unlock audio
+function unlockAudio() {
+  getAudioCtx()
+  document.removeEventListener('click', unlockAudio)
+  document.removeEventListener('keydown', unlockAudio)
+}
+document.addEventListener('click', unlockAudio, { once: true })
+document.addEventListener('keydown', unlockAudio, { once: true })
+
+function playNotificationSound() {
+  const ctx = getAudioCtx()
+  if (!ctx) return
+  try {
+    const times = [0, 0.18, 0.36]
     times.forEach(t => {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
@@ -48,10 +72,10 @@ function playNotificationSound() {
       gain.connect(ctx.destination)
       osc.frequency.value = 880
       osc.type = 'sine'
-      gain.gain.setValueAtTime(0.3, ctx.currentTime + t)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.12)
+      gain.gain.setValueAtTime(0.4, ctx.currentTime + t)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.15)
       osc.start(ctx.currentTime + t)
-      osc.stop(ctx.currentTime + t + 0.12)
+      osc.stop(ctx.currentTime + t + 0.15)
     })
   } catch { /* ignore */ }
 }
@@ -167,7 +191,8 @@ export function StoreOrdersPage() {
 
   // WebSocket + sound notification
   useEffect(() => {
-    const API_URL = import.meta.env['VITE_API_URL']?.replace('/api/v1', '') ?? 'http://localhost:3001'
+    const base = (import.meta.env['VITE_API_URL'] as string | undefined) ?? 'http://localhost:3001/api/v1'
+    const API_URL = base.replace('/api/v1', '')
     const socket = io(API_URL, { transports: ['websocket', 'polling'] })
 
     socket.on('store:new-order', (order: { orderNumber: string; customerName: string; total: number; paymentMethod: string }) => {
@@ -328,11 +353,10 @@ export function StoreOrdersPage() {
 
                         {/* View sale */}
                         {order.saleId && (
-                          <Button size="sm" variant="ghost" asChild>
-                            <a href={`/sales/${order.saleId}`} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="mr-1.5 h-3.5 w-3.5" />Ver venta
-                            </a>
-                          </Button>
+                          <a href={`/sales/${order.saleId}`}
+                            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-muted">
+                            <ExternalLink className="h-3.5 w-3.5" />Ver venta
+                          </a>
                         )}
 
                         {/* Cancel */}
