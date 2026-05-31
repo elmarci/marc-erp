@@ -28,11 +28,9 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 bg-black/95 backdrop-blur border-b border-white/10">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center gap-4">
-        <Link to="/" className="flex items-center gap-2 shrink-0">
-          <div className="h-8 w-8 bg-black border-2 border-green-400 rounded-lg flex items-center justify-center">
-            <span className="text-green-400 font-black text-sm">M</span>
-          </div>
-          <span className="font-black text-white tracking-widest text-sm hidden sm:block">TIENDA MARC</span>
+        <Link to="/" className="flex items-center shrink-0">
+          <img src="/logo-icon.png" alt="MARC" className="h-9 w-auto object-contain sm:hidden" />
+          <img src="/logo.png" alt="TIENDA MARC" className="h-9 w-auto object-contain hidden sm:block" />
         </Link>
 
         <form onSubmit={handleSearch} className="flex-1 max-w-xl">

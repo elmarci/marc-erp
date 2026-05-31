@@ -66,20 +66,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       <div className={cn('flex h-16 items-center border-b px-4', collapsed ? 'justify-center' : 'justify-between')}>
         {!collapsed && (
           <div className="flex items-center gap-2.5">
-            {/* Logo MARC */}
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-black shrink-0">
-              <span className="text-sm font-black tracking-tight" style={{ color: '#4ade80' }}>M</span>
-            </div>
-            <div>
-              <p className="text-base font-black tracking-widest leading-none text-foreground">MARC</p>
-              <p className="text-[10px] text-muted-foreground tracking-wider uppercase">Sistema ERP</p>
-            </div>
+            <img src="/logo-light.png" alt="MARC" className="h-9 w-auto object-contain" />
           </div>
         )}
         {collapsed && (
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-black shrink-0">
-            <span className="text-sm font-black tracking-tight" style={{ color: '#4ade80' }}>M</span>
-          </div>
+          <img src="/logo-light.png" alt="MARC" className="h-8 w-8 object-contain" />
         )}
         <Button
           variant="ghost"
