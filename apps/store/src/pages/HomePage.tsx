@@ -40,7 +40,7 @@ export function HomePage() {
         </div>
         <div className="relative max-w-7xl mx-auto px-4 py-16 sm:py-24">
           <div className="max-w-2xl">
-            <img src="/logo.png" alt="TIENDA MARC" className="h-16 w-auto object-contain mb-6" />
+            <img src="/logo-dark.png" alt="TIENDA MARC" className="h-20 w-auto object-contain mb-6" />
             <div className="inline-flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-full px-4 py-1.5 mb-6">
               <Zap className="h-3.5 w-3.5 text-green-400" />
               <span className="text-green-400 text-sm font-medium">Delivery y recojo en tienda</span>
@@ -152,7 +152,7 @@ export function HomePage() {
         <div className="max-w-7xl mx-auto px-4 py-10 grid sm:grid-cols-3 gap-8 text-sm text-white/40">
           <div>
             <div className="mb-3">
-              <img src="/logo.png" alt="TIENDA MARC" className="h-8 w-auto object-contain" />
+              <img src="/logo-dark.png" alt="TIENDA MARC" className="h-8 w-auto object-contain" />
             </div>
             <p>Tu minimarket de confianza en Pachacamac.</p>
           </div>

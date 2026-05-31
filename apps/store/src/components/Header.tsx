@@ -30,7 +30,7 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center gap-4">
         <Link to="/" className="flex items-center shrink-0">
           <img src="/logo-icon.png" alt="MARC" className="h-9 w-auto object-contain sm:hidden" />
-          <img src="/logo.png" alt="TIENDA MARC" className="h-9 w-auto object-contain hidden sm:block" />
+          <img src="/logo-dark.png" alt="TIENDA MARC" className="h-9 w-auto object-contain hidden sm:block" />
         </Link>
 
         <form onSubmit={handleSearch} className="flex-1 max-w-xl">

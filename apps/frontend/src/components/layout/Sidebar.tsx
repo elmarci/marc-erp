@@ -65,9 +65,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       {/* Logo */}
       <div className={cn('flex h-16 items-center border-b px-4', collapsed ? 'justify-center' : 'justify-between')}>
         {!collapsed && (
-          <div className="flex items-center gap-2.5">
-            <img src="/logo-light.png" alt="MARC" className="h-9 w-auto object-contain" />
-          </div>
+          <img src="/logo-light.png" alt="MARC" className="h-10 w-auto max-w-[140px] object-contain" />
         )}
         {collapsed && (
           <img src="/logo-light.png" alt="MARC" className="h-8 w-8 object-contain" />
