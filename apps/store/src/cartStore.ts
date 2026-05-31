@@ -16,8 +16,6 @@ interface CartStore {
   clearCart: () => void
   openCart: () => void
   closeCart: () => void
-  total: number
-  count: number
 }
 
 export const useCartStore = create<CartStore>()(
@@ -47,10 +45,14 @@ export const useCartStore = create<CartStore>()(
       clearCart: () => set({ items: [] }),
       openCart: () => set({ isOpen: true }),
       closeCart: () => set({ isOpen: false }),
-
-      get total() { return get().items.reduce((s, i) => s + i.product.salePrice * i.quantity, 0) },
-      get count() { return get().items.reduce((s, i) => s + i.quantity, 0) },
     }),
     { name: 'marc-cart', partialize: (s) => ({ items: s.items }) }
   )
 )
+
+// Selectors — use these in components
+export const cartTotal = (items: CartItem[]) =>
+  items.reduce((s, i) => s + i.product.salePrice * i.quantity, 0)
+
+export const cartCount = (items: CartItem[]) =>
+  items.reduce((s, i) => s + i.quantity, 0)
