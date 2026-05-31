@@ -20,7 +20,7 @@ function OfferCard({ offer }: { offer: Offer }) {
     addItem({
       id: product.id,
       name: product.name,
-      salePrice: product.salePrice,
+      salePrice: Number(product.salePrice),
       currentStock: 99,
       imageUrl: product.imageUrl,
       barcode: null,
@@ -86,7 +86,7 @@ function OfferCard({ offer }: { offer: Offer }) {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm line-clamp-1">{product.name}</p>
-                  <p className="text-green-400 font-bold text-sm">S/ {product.salePrice.toFixed(2)}</p>
+                  <p className="text-green-400 font-bold text-sm">S/ {Number(product.salePrice).toFixed(2)}</p>
                 </div>
                 <button
                   onClick={() => handleAdd(product)}
