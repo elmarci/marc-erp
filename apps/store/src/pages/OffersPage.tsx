@@ -53,7 +53,7 @@ function OfferCard({ offer }: { offer: Offer }) {
     `Precio paquete`
 
   return (
-    <div className="bg-gradient-to-br from-white to-zinc-950 border border-gray-200 hover:border-green-500/30 rounded-2xl overflow-hidden transition-all group">
+    <div className="bg-gradient-to-br from-white to-white border border-gray-200 hover:border-green-500/30 rounded-2xl overflow-hidden transition-all group">
       {/* Header */}
       <div className="relative bg-gradient-to-r from-green-500/20 to-green-900/10 p-5 border-b border-gray-100">
         {offer.storeImage && (
@@ -89,7 +89,7 @@ function OfferCard({ offer }: { offer: Offer }) {
           <p className="text-xs text-gray-400 uppercase tracking-wider mb-3 font-semibold">Productos en oferta</p>
           <div className="space-y-2">
             {offer.products.map(({ product }) => (
-              <div key={product.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 hover:bg-white/8 transition-colors">
+              <div key={product.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 hover:bg-gray-50 transition-colors">
                 {product.imageUrl ? (
                   <img src={product.imageUrl} alt={product.name}
                     className="h-12 w-12 rounded-lg object-cover shrink-0 bg-gray-100" />

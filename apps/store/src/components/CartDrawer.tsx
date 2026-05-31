@@ -26,7 +26,7 @@ export function CartDrawer() {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-white/40 backdrop-blur-sm" onClick={closeCart} />
+      <div className="fixed inset-0 z-50 bg-gray-50 backdrop-blur-sm" onClick={closeCart} />
       <div className="fixed right-0 top-0 z-50 h-full w-full max-w-md bg-gray-50 border-l border-gray-200 flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-gray-200">
