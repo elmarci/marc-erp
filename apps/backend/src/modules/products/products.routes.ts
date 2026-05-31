@@ -25,6 +25,8 @@ const createSchema = z.object({
   currentStock: z.number().int().min(0).default(0),
   trackExpiry: z.boolean().default(false),
   trackBatch: z.boolean().default(false),
+  isBulk: z.boolean().default(false),
+  bulkUnit: z.string().optional(),
   imageUrl: z.string().url().optional(),
 });
 

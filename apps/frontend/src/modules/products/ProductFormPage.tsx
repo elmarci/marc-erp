@@ -52,7 +52,11 @@ export function ProductFormPage() {
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    values: product as FormData | undefined,
+    values: product ? {
+      ...product,
+      isBulk: (product as unknown as { isBulk?: boolean }).isBulk ?? false,
+      bulkUnit: (product as unknown as { bulkUnit?: string }).bulkUnit ?? '',
+    } as FormData : undefined,
   });
 
   const mutation = useMutation({
