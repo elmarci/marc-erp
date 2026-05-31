@@ -18,7 +18,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; emoji: strin
 const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo' }
 
 export function TrackOrderPage() {
-  const { customer, setCustomer, logout } = useAuthStore()
+  const { customer, setAuth, logout } = useAuthStore()
   const [phone, setPhone] = useState(customer?.phone ?? '')
   const [name, setName] = useState(customer?.name ?? '')
   const [step, setStep] = useState<'identify' | 'orders'>(customer ? 'orders' : 'identify')
@@ -35,7 +35,7 @@ export function TrackOrderPage() {
   const handleIdentify = () => {
     if (!phone.trim() || phone.length < 9) return
     if (!name.trim()) return
-    setCustomer({ phone: phone.trim(), name: name.trim() })
+    setAuth({ id: '', name: name.trim(), phone: phone.trim(), email: null }, '')
     setStep('orders')
   }
 

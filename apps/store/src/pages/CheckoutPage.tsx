@@ -14,7 +14,7 @@ const DISTRICTS = ['Pachacamac', 'Villa María del Triunfo', 'San Juan de Mirafl
 export function CheckoutPage() {
   const items = useCartStore(s => s.items)
   const clearCart = useCartStore(s => s.clearCart)
-  const { customer, setCustomer, isLoggedIn } = useAuthStore()
+  const { customer, setAuth, isLoggedIn } = useAuthStore()
   const navigate = useNavigate()
   const total = cartTotal(items)
   const [step, setStep] = useState<Step>(1)
@@ -45,7 +45,8 @@ export function CheckoutPage() {
     }),
     onSuccess: (res) => {
       // Save customer profile for next time
-      setCustomer({ name: form.customerName, phone: form.customerPhone, email: form.customerEmail || undefined })
+      // Save as guest profile (no token for guests)
+      if (!isLoggedIn) setAuth({ id: '', name: form.customerName, phone: form.customerPhone, email: form.customerEmail || null }, '')
       clearCart()
       navigate(`/pedido/${res.data.data.orderNumber}`)
     },

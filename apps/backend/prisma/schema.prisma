@@ -1002,6 +1002,7 @@ model StoreOrder {
   paymentProof  String?  @map("payment_proof")
   saleId        String?  @map("sale_id")
   storeCustomerId String? @map("store_customer_id")
+  storeCustomer   StoreCustomer? @relation(fields: [storeCustomerId], references: [id])
   subtotal      Decimal  @db.Decimal(12, 2)
   deliveryCost  Decimal  @default(0) @db.Decimal(12, 2) @map("delivery_cost")
   total         Decimal  @db.Decimal(12, 2)
