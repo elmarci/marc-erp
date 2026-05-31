@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShoppingBag, CheckCircle, XCircle, Clock, Truck, Package, Receipt, ExternalLink } from 'lucide-react'
+import { ShoppingBag, CheckCircle, XCircle, Clock, Truck, Package, Receipt, ExternalLink, Bell, BellOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -36,48 +36,47 @@ const NEXT_STATUS: Record<string, string> = {
 const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo' }
 const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵' }
 
-// Sound notification using Web Audio API
-// AudioContext must be created/resumed after user gesture
+// Notification system - requires explicit user activation
+let audioUnlocked = false
 let audioCtx: AudioContext | null = null
 
-function getAudioCtx(): AudioContext | null {
+function beep() {
+  if (!audioUnlocked || !audioCtx) return
   try {
-    if (!audioCtx) {
-      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      audioCtx = new AC()
-    }
     if (audioCtx.state === 'suspended') audioCtx.resume()
-    return audioCtx
-  } catch { return null }
-}
-
-// Call on first user interaction to unlock audio
-function unlockAudio() {
-  getAudioCtx()
-  document.removeEventListener('click', unlockAudio)
-  document.removeEventListener('keydown', unlockAudio)
-}
-document.addEventListener('click', unlockAudio, { once: true })
-document.addEventListener('keydown', unlockAudio, { once: true })
-
-function playNotificationSound() {
-  const ctx = getAudioCtx()
-  if (!ctx) return
-  try {
-    const times = [0, 0.18, 0.36]
+    const times = [0, 0.2, 0.4]
     times.forEach(t => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.frequency.value = 880
-      osc.type = 'sine'
-      gain.gain.setValueAtTime(0.4, ctx.currentTime + t)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.15)
-      osc.start(ctx.currentTime + t)
-      osc.stop(ctx.currentTime + t + 0.15)
+      const osc = audioCtx!.createOscillator()
+      const gain = audioCtx!.createGain()
+      osc.connect(gain); gain.connect(audioCtx!.destination)
+      osc.frequency.value = 880; osc.type = 'sine'
+      gain.gain.setValueAtTime(0.5, audioCtx!.currentTime + t)
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx!.currentTime + t + 0.15)
+      osc.start(audioCtx!.currentTime + t)
+      osc.stop(audioCtx!.currentTime + t + 0.15)
     })
   } catch { /* ignore */ }
+}
+
+function activateNotifications(): boolean {
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    audioCtx = new AC()
+    audioUnlocked = true
+    // Test beep
+    beep()
+    // Request browser notifications
+    if ('Notification' in window && Notification.permission !== 'granted') {
+      Notification.requestPermission()
+    }
+    return true
+  } catch { return false }
+}
+
+function showBrowserNotif(title: string, body: string) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '/favicon.ico', requireInteraction: true })
+  }
 }
 
 // Browser notification
@@ -180,6 +179,17 @@ export function StoreOrdersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [confirmingOrder, setConfirmingOrder] = useState<StoreOrder | null>(null)
+  const [notifEnabled, setNotifEnabled] = useState(false)
+
+  const handleActivateNotifications = () => {
+    const ok = activateNotifications()
+    if (ok) {
+      setNotifEnabled(true)
+      toast.success('🔔 Notificaciones activadas. Recibirás sonido y alertas con cada pedido.')
+    } else {
+      toast.error('No se pudo activar. Intenta desde un navegador moderno.')
+    }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['store-orders', statusFilter, page],
@@ -197,8 +207,8 @@ export function StoreOrdersPage() {
 
     socket.on('store:new-order', (order: { orderNumber: string; customerName: string; total: number; paymentMethod: string }) => {
       queryClient.invalidateQueries({ queryKey: ['store-orders'] })
-      playNotificationSound()
-      showBrowserNotification(
+      if (audioUnlocked) beep()
+      showBrowserNotif(
         '🛒 Nuevo pedido online',
         `${order.orderNumber} — ${order.customerName} — S/ ${order.total.toFixed(2)} — ${PAYMENT_LABELS[order.paymentMethod]}`
       )
@@ -207,11 +217,6 @@ export function StoreOrdersPage() {
         { duration: 10000, action: { label: 'Ver', onClick: () => { setStatusFilter('PENDING'); setPage(1) } } }
       )
     })
-
-    // Request notification permission on mount
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
 
     return () => { socket.disconnect() }
   }, [queryClient])
@@ -240,7 +245,29 @@ export function StoreOrdersPage() {
           </h1>
           <p className="text-sm text-muted-foreground">Pedidos de la tienda online · Confirmar genera venta y descuenta stock</p>
         </div>
+        {!notifEnabled ? (
+          <Button onClick={handleActivateNotifications} variant="outline" className="gap-2 border-amber-500 text-amber-500 hover:bg-amber-500/10">
+            <BellOff className="h-4 w-4" />Activar notificaciones
+          </Button>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-success">
+            <Bell className="h-4 w-4" />Notificaciones activas
+          </div>
+        )}
       </div>
+
+      {!notifEnabled && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-center gap-3">
+          <Bell className="h-5 w-5 text-amber-500 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-amber-500">Activa las notificaciones para no perderte ningún pedido</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Recibirás sonido y alerta del sistema operativo aunque tengas otra pestaña abierta</p>
+          </div>
+          <Button size="sm" onClick={handleActivateNotifications} className="shrink-0 bg-amber-500 hover:bg-amber-400 text-black ml-auto">
+            Activar ahora
+          </Button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
