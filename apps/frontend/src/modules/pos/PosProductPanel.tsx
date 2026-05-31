@@ -102,7 +102,7 @@ function BulkModal({ product, onConfirm, onClose }: {
 /* ─── Offers panel ────────────────────────────────────────────────────────── */
 interface Offer {
   id: string; name: string; type: string; value: number;
-  storeBadge: string | null;
+  isActive: boolean; storeBadge: string | null;
   products: Array<{ product: { id: string; name: string; salePrice: number; barcode: string | null; currentStock: number; imageUrl: string | null; isBulk: boolean; bulkUnit: string | null; category: { name: string } } }>;
 }
 
