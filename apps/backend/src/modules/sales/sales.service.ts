@@ -19,7 +19,7 @@ interface SalePaymentInput {
   cardLast4?: string;
 }
 
-interface CreateSaleInput {
+export interface CreateSaleInput {
   cashSessionId: string;
   cashierId: string;
   customerId?: string;
@@ -32,14 +32,14 @@ interface CreateSaleInput {
   notes?: string;
 }
 
-interface ReturnSaleInput {
+export interface ReturnSaleInput {
   reason: string;
   refundMethod: PaymentMethod;
   items: { saleItemId: string; quantity: number }[];
   notes?: string;
 }
 
-interface ListSalesQuery {
+export interface ListSalesQuery {
   page: number;
   limit: number;
   cashSessionId?: string;
@@ -389,7 +389,7 @@ export class SalesService {
     }
 
     let totalRefund = 0;
-    const returnItems = [];
+    const returnItems: { saleItemId: string; quantity: number; refundAmount: number; productId: string }[] = [];
 
     for (const retInput of input.items) {
       const saleItem = sale.items.find((i) => i.id === retInput.saleItemId);

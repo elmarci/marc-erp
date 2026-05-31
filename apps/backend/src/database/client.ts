@@ -22,11 +22,13 @@ if (process.env.NODE_ENV === 'development') {
   globalForPrisma.prisma = prisma;
 }
 
-prisma.$on('error', (e) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(prisma as any).$on('error', (e: any) => {
   logger.error({ err: e }, 'Database error');
 });
 
-prisma.$on('warn', (e) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(prisma as any).$on('warn', (e: any) => {
   logger.warn({ msg: e.message }, 'Database warning');
 });
 

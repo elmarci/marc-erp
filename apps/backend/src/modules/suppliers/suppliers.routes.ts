@@ -39,7 +39,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 
 router.post('/', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = supplierSchema.parse(req.body);
+    const data = supplierSchema.parse(req.body) as Parameters<typeof suppliersService.create>[0];
     const supplier = await suppliersService.create(data);
     res.status(201).json({ success: true, data: supplier });
   } catch (err) { next(err); }

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { ProductStatus, UnitOfMeasure } from '@prisma/client';
-import { productsService } from './products.service';
+import { productsService, CreateProductInput, SearchProductsQuery } from './products.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 
 const router = Router();
@@ -44,7 +44,7 @@ router.use(authenticate);
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const query = searchSchema.parse(req.query);
+    const query = searchSchema.parse(req.query) as SearchProductsQuery;
     const result = await productsService.search(query);
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
@@ -73,7 +73,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 
 router.post('/', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const input = createSchema.parse(req.body);
+    const input = createSchema.parse(req.body) as CreateProductInput;
     const product = await productsService.create(input);
     res.status(201).json({ success: true, data: product });
   } catch (err) { next(err); }

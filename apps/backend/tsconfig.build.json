@@ -1,13 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "strict": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noImplicitReturns": false,
-    "noImplicitAny": false,
-    "strictNullChecks": false,
-    "strictFunctionTypes": false
-  },
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "src/database/seeds"]
 }

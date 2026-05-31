@@ -49,7 +49,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       type: z.enum(['REGULAR', 'WHOLESALE', 'VIP', 'CREDIT']).default('REGULAR'),
       creditLimit: z.number().min(0).default(0),
     });
-    const data = schema.parse(req.body);
+    const data = schema.parse(req.body) as Parameters<typeof prisma.customer.create>[0]['data'];
     const customer = await prisma.customer.create({ data });
     res.status(201).json({ success: true, data: customer });
   } catch (err) { next(err); }

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { UserRole, UserStatus } from '@prisma/client';
-import { usersService } from './users.service';
+import { usersService, CreateUserInput, ListUsersQuery } from './users.service';
 import { authenticate, authorize } from '../../middleware/auth';
 
 const router = Router();
@@ -41,7 +41,7 @@ router.use(authenticate);
 
 router.get('/', authorize('SUPER_ADMIN', 'ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const query = listQuerySchema.parse(req.query);
+    const query = listQuerySchema.parse(req.query) as ListUsersQuery;
     const result = await usersService.list(query);
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
@@ -49,7 +49,7 @@ router.get('/', authorize('SUPER_ADMIN', 'ADMIN'), async (req: Request, res: Res
 
 router.post('/', authorize('SUPER_ADMIN', 'ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const input = createUserSchema.parse(req.body);
+    const input = createUserSchema.parse(req.body) as CreateUserInput;
     const user = await usersService.create(input);
     res.status(201).json({ success: true, data: user });
   } catch (err) { next(err); }

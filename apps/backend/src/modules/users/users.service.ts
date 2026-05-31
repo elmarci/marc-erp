@@ -8,7 +8,7 @@ import {
   BusinessError,
 } from '../../utils/errors';
 
-interface CreateUserInput {
+export interface CreateUserInput {
   email: string;
   username: string;
   firstName: string;
@@ -28,7 +28,7 @@ interface UpdateUserInput {
   pin?: string;
 }
 
-interface ListUsersQuery {
+export interface ListUsersQuery {
   page: number;
   limit: number;
   search?: string;

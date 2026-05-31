@@ -40,7 +40,7 @@ router.post('/', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Respo
       })).min(1),
     }).parse(req.body);
 
-    const order = await purchasesService.createOrder(req.user!.sub, data);
+    const order = await purchasesService.createOrder(req.user!.sub, data as Parameters<typeof purchasesService.createOrder>[1]);
     res.status(201).json({ success: true, data: order });
   } catch (err) { next(err); }
 });
@@ -72,7 +72,7 @@ router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, 
       notes: z.string().optional(),
     }).parse(req.body);
 
-    const receipt = await purchasesService.receiveOrder(req.params.id, req.user!.sub, items, notes);
+    const receipt = await purchasesService.receiveOrder(req.params.id, req.user!.sub, items as Parameters<typeof purchasesService.receiveOrder>[2], notes);
     res.status(201).json({ success: true, data: receipt });
   } catch (err) { next(err); }
 });

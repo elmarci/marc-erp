@@ -63,7 +63,7 @@ router.post('/adjustments', authorizeMinRole('WAREHOUSE'), async (req: Request, 
         physicalQuantity: z.coerce.number().min(0),
       })).min(1),
     }).parse(req.body);
-    const adj = await inventoryService.createAdjustment(req.user!.sub, reason, notes, items);
+    const adj = await inventoryService.createAdjustment(req.user!.sub, reason, notes, items as { productId: string; physicalQuantity: number }[]);
     res.status(201).json({ success: true, data: adj });
   } catch (err) { next(err); }
 });

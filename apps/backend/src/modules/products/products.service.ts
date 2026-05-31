@@ -3,7 +3,7 @@ import { prisma } from '../../database/client';
 import { redis, CACHE_TTL } from '../../config/redis';
 import { NotFoundError, ConflictError, BusinessError } from '../../utils/errors';
 
-interface CreateProductInput {
+export interface CreateProductInput {
   name: string;
   description?: string;
   barcode?: string;
@@ -29,7 +29,7 @@ interface UpdateProductInput extends Partial<CreateProductInput> {
   status?: ProductStatus;
 }
 
-interface SearchProductsQuery {
+export interface SearchProductsQuery {
   q?: string;
   categoryId?: string;
   supplierId?: string;

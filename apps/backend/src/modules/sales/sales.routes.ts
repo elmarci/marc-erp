@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { PaymentMethod, DocumentType } from '@prisma/client';
-import { salesService } from './sales.service';
+import { salesService, CreateSaleInput, ReturnSaleInput, ListSalesQuery } from './sales.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 
 const router = Router();
@@ -58,7 +58,7 @@ router.use(authenticate);
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const query = listSchema.parse(req.query);
+    const query = listSchema.parse(req.query) as ListSalesQuery;
     const result = await salesService.list(query);
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
@@ -66,7 +66,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const input = createSaleSchema.parse(req.body);
+    const input = createSaleSchema.parse(req.body) as Omit<CreateSaleInput, 'cashierId'>;
     const sale = await salesService.create({ ...input, cashierId: req.user!.sub });
     res.status(201).json({ success: true, data: sale });
   } catch (err) { next(err); }
@@ -89,7 +89,7 @@ router.post('/:id/void', authorizeMinRole('SUPERVISOR'), async (req: Request, re
 
 router.post('/:id/return', authorizeMinRole('CASHIER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const input = returnSchema.parse(req.body);
+    const input = returnSchema.parse(req.body) as ReturnSaleInput;
     const ret = await salesService.processReturn(req.params.id, input, req.user!.sub);
     res.status(201).json({ success: true, data: ret });
   } catch (err) { next(err); }
