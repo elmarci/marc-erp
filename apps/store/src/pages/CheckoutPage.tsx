@@ -30,7 +30,15 @@ export function CheckoutPage() {
 
   const mutation = useMutation({
     mutationFn: () => storeApi.createOrder({
-      ...form,
+      customerName: form.customerName,
+      customerPhone: form.customerPhone,
+      customerEmail: form.customerEmail || undefined,
+      deliveryType: form.deliveryType,
+      address: form.address || undefined,
+      district: form.district || undefined,
+      reference: form.reference || undefined,
+      notes: form.notes || undefined,
+      paymentMethod: form.paymentMethod,
       items: items.map(i => ({ productId: i.product.id, quantity: i.quantity })),
     }),
     onSuccess: (res) => { clearCart(); navigate(`/pedido/${res.data.data.orderNumber}`) },
