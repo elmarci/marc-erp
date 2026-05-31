@@ -45,8 +45,9 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
     staleTime: Infinity,
   });
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedSearch = useCallback(
-    debounce((q: string) => setSearch(q), 300),
+    debounce((q: unknown) => setSearch(q as string), 300),
     [],
   );
 

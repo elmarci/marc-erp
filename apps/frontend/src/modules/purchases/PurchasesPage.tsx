@@ -422,7 +422,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
             {canApprove && <Button size="sm" variant="outline" onClick={() => approveMutation.mutate()} loading={approveMutation.isPending}>
               <CheckCircle className="mr-1 h-3.5 w-3.5 text-success" />Aprobar
             </Button>}
-            {canReceive && <Button size="sm" variant="outline" onClick={() => setExpanded(true) || setShowReceive(true)}>
+            {canReceive && <Button size="sm" variant="outline" onClick={() => { setExpanded(true); setShowReceive(true); }}>
               <Truck className="mr-1 h-3.5 w-3.5" />Recibir
             </Button>}
             {canCancel && <Button size="sm" variant="ghost" onClick={() => cancelMutation.mutate()} loading={cancelMutation.isPending}>
