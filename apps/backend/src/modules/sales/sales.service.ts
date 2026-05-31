@@ -240,7 +240,7 @@ export class SalesService {
     logger.info({ saleId: sale.id, total: totalAmount, cashierId: input.cashierId }, 'Sale completed');
     await redis.del('reports:dashboard').catch(() => {});
     // Notificar en tiempo real: venta creada
-    io.emit('erp:sale-created', { cashSessionId: input.cashSessionId });
+    try { io?.emit('erp:sale-created', { cashSessionId: input.cashSessionId }); } catch { /* ignore */ }
     return sale;
   }
 

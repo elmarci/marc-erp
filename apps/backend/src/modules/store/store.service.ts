@@ -137,14 +137,13 @@ export class StoreService {
     });
 
     // Notificar en tiempo real al ERP
-    io.emit('store:new-order', {
-      id: order.id,
-      orderNumber: order.orderNumber,
-      customerName: order.customerName,
-      total: Number(order.total),
-      paymentMethod: order.paymentMethod,
-      deliveryType: order.deliveryType,
-    });
+    try {
+      io?.emit('store:new-order', {
+        id: order.id, orderNumber: order.orderNumber,
+        customerName: order.customerName, total: Number(order.total),
+        paymentMethod: order.paymentMethod, deliveryType: order.deliveryType,
+      });
+    } catch { /* ignore */ }
 
     return order;
   }
@@ -299,9 +298,7 @@ export class StoreService {
       });
 
       // Notify customer
-      io.emit(`store:order-updated:${order.orderNumber}`, {
-        status: 'CONFIRMED', paymentStatus: order.paymentStatus,
-      });
+      try { io?.emit(`store:order-updated:${order.orderNumber}`, { status: 'CONFIRMED', paymentStatus: order.paymentStatus }); } catch { /* ignore */ }
 
       const result = { order: updated, saleId: sale.id, saleNumber: sale.saleNumber };
       // Invalidate dashboard cache so it reflects the new web sale
@@ -318,7 +315,7 @@ export class StoreService {
     });
 
     // Notificar al cliente en tiempo real
-    io.emit(`store:order-updated:${order.orderNumber}`, {
+    try { io?.emit(`store:order-updated:${order.orderNumber}`, {
       status: order.status,
       paymentStatus: order.paymentStatus,
     });

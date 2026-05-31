@@ -24,7 +24,7 @@ export class CashService {
         user: { select: { firstName: true, lastName: true } },
       },
     });
-    io.emit('erp:cash-updated');
+    try { io?.emit('erp:cash-updated'); } catch { /* ignore */ }
     return session;
   }
 
@@ -71,7 +71,7 @@ export class CashService {
         movements: true,
       },
     });
-    io.emit('erp:cash-updated');
+    try { io?.emit('erp:cash-updated'); } catch { /* ignore */ }
     return closed;
   }
 
