@@ -1,6 +1,6 @@
 import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
-import { io } from '../../server';
+import { emitEvent } from '../../config/socket';
 
 export class CashService {
   async openSession(cashRegisterId: string, userId: string, openingAmount: number, notes?: string) {
@@ -24,7 +24,7 @@ export class CashService {
         user: { select: { firstName: true, lastName: true } },
       },
     });
-    try { io?.emit('erp:cash-updated'); } catch { /* ignore */ }
+    emitEvent('erp:cash-updated');
     return session;
   }
 
@@ -71,7 +71,7 @@ export class CashService {
         movements: true,
       },
     });
-    try { io?.emit('erp:cash-updated'); } catch { /* ignore */ }
+    emitEvent('erp:cash-updated');
     return closed;
   }
 

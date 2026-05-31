@@ -1,6 +1,6 @@
 import { prisma } from '../../database/client';
 import { NotFoundError } from '../../utils/errors';
-import { io } from '../../server';
+import { emitEvent } from '../../config/socket';
 import { redis } from '../../config/redis';
 
 export class StoreService {
@@ -136,14 +136,11 @@ export class StoreService {
       include: { items: true },
     });
 
-    // Notificar en tiempo real al ERP
-    try {
-      io?.emit('store:new-order', {
-        id: order.id, orderNumber: order.orderNumber,
-        customerName: order.customerName, total: Number(order.total),
-        paymentMethod: order.paymentMethod, deliveryType: order.deliveryType,
-      });
-    } catch { /* ignore */ }
+    emitEvent('store:new-order', {
+      id: order.id, orderNumber: order.orderNumber,
+      customerName: order.customerName, total: Number(order.total),
+      paymentMethod: order.paymentMethod, deliveryType: order.deliveryType,
+    });
 
     return order;
   }
@@ -298,7 +295,7 @@ export class StoreService {
       });
 
       // Notify customer
-      try { io?.emit(`store:order-updated:${order.orderNumber}`, { status: 'CONFIRMED', paymentStatus: order.paymentStatus }); } catch { /* ignore */ }
+      emitEvent(`store:order-updated:${order.orderNumber}`, { status: 'CONFIRMED', paymentStatus: order.paymentStatus });
 
       const result = { order: updated, saleId: sale.id, saleNumber: sale.saleNumber };
       // Invalidate dashboard cache so it reflects the new web sale
@@ -315,12 +312,10 @@ export class StoreService {
     });
 
     // Notificar al cliente en tiempo real
-    try {
-      io?.emit(`store:order-updated:${order.orderNumber}`, {
-        status: order.status,
-        paymentStatus: order.paymentStatus,
-      });
-    } catch { /* ignore */ }
+    emitEvent(`store:order-updated:${order.orderNumber}`, {
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+    });
 
     return order;
   }

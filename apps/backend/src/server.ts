@@ -9,6 +9,7 @@ import { Server as SocketServer } from 'socket.io';
 import morgan from 'morgan';
 
 import { env } from './config/env';
+import { setIo } from './config/socket';
 import { logger } from './config/logger';
 import { connectDatabase, disconnectDatabase } from './database/client';
 import { connectRedis, redis } from './config/redis';
@@ -38,6 +39,7 @@ export const io = new SocketServer(httpServer, {
   cors: { origin: env.CORS_ORIGIN, methods: ['GET', 'POST'] },
   transports: ['websocket', 'polling'],
 });
+setIo(io); // Register in singleton to avoid circular imports in services
 
 // ─── Middleware de seguridad ─────────────────────────────────────────────────
 app.set('trust proxy', 1);
