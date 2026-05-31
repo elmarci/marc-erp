@@ -68,7 +68,7 @@ export function CatalogPage() {
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-marc/30" />
                 <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Buscar productos..."
-                  className="w-full bg-bg border border-[--border] rounded-full pl-9 pr-4 py-2 text-sm text-marc focus:outline-none focus:border-orange transition-colors" />
+                  className="w-full bg-bg border border-[--border] rounded-full pl-9 pr-4 py-2 text-sm text-marc focus:outline-none focus:border-primary transition-colors" />
                 {search && (
                   <button type="button" onClick={() => { setSearch(''); setSearchParams(prev => { prev.delete('search'); return prev }); setPage(1) }}
                     className="absolute right-3 top-2.5 text-marc/30 hover:text-marc/60">
@@ -79,11 +79,11 @@ export function CatalogPage() {
             </form>
             <div className="flex items-center gap-1 bg-bg border border-[--border] rounded-full px-2">
               <button onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-full transition-colors ${viewMode === 'grid' ? 'bg-orange text-white' : 'text-marc/40 hover:text-marc'}`}>
+                className={`p-1.5 rounded-full transition-colors ${viewMode === 'grid' ? 'bg-primary text-white' : 'text-marc/40 hover:text-marc'}`}>
                 <Grid2X2 className="h-4 w-4" />
               </button>
               <button onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-full transition-colors ${viewMode === 'list' ? 'bg-orange text-white' : 'text-marc/40 hover:text-marc'}`}>
+                className={`p-1.5 rounded-full transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'text-marc/40 hover:text-marc'}`}>
                 <List className="h-4 w-4" />
               </button>
             </div>
@@ -93,14 +93,14 @@ export function CatalogPage() {
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
             <button onClick={() => handleCategory('')}
               className={`shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
-                !categoryId ? 'bg-orange text-white shadow-orange' : 'bg-bg border border-[--border] text-marc/60 hover:border-orange/40'
+                !categoryId ? 'bg-primary text-white shadow-green' : 'bg-bg border border-[--border] text-marc/60 hover:border-primary/40'
               }`}>
               🛒 Todos
             </button>
             {categories.map(cat => (
               <button key={cat.id} onClick={() => handleCategory(cat.id)}
                 className={`shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
-                  categoryId === cat.id ? 'bg-orange text-white shadow-orange' : 'bg-bg border border-[--border] text-marc/60 hover:border-orange/40'
+                  categoryId === cat.id ? 'bg-primary text-white shadow-green' : 'bg-bg border border-[--border] text-marc/60 hover:border-primary/40'
                 }`}>
                 {CATEGORY_ICONS[cat.name] ?? '📦'} {cat.name}
               </button>
@@ -162,13 +162,13 @@ export function CatalogPage() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-orange font-semibold">{product.category.name}</p>
+                  <p className="text-xs text-primary font-semibold">{product.category.name}</p>
                   <p className="font-semibold text-marc line-clamp-2 text-sm">{product.name}</p>
                   {product.description && <p className="text-xs text-marc/40 line-clamp-1 mt-0.5">{product.description}</p>}
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-lg font-black text-marc">S/ {Number(product.salePrice).toFixed(2)}</p>
-                  <p className={`text-xs mt-0.5 ${product.currentStock <= 5 ? 'text-orange' : 'text-green-dark'}`}>
+                  <p className={`text-xs mt-0.5 ${product.currentStock <= 5 ? 'text-primary' : 'text-green-dark'}`}>
                     {product.currentStock <= 0 ? 'Sin stock' : product.currentStock <= 5 ? `${product.currentStock} disp.` : '✓ En stock'}
                   </p>
                 </div>
@@ -181,12 +181,12 @@ export function CatalogPage() {
         {pagination && pagination.totalPages > 1 && (
           <div className="flex justify-center gap-3 mt-10">
             <button onClick={() => setPage(p => p - 1)} disabled={page === 1}
-              className="px-6 py-2.5 bg-white border border-[--border] hover:border-orange/40 disabled:opacity-30 rounded-full text-sm font-medium text-marc/60 transition-colors">
+              className="px-6 py-2.5 bg-white border border-[--border] hover:border-primary/40 disabled:opacity-30 rounded-full text-sm font-medium text-marc/60 transition-colors">
               ← Anterior
             </button>
             <span className="flex items-center px-4 text-sm text-marc/40">Pág. {page} / {pagination.totalPages}</span>
             <button onClick={() => setPage(p => p + 1)} disabled={page === pagination.totalPages}
-              className="px-6 py-2.5 bg-orange hover:bg-orange-dark disabled:opacity-30 text-white font-bold rounded-full text-sm transition-colors shadow-orange">
+              className="px-6 py-2.5 bg-primary hover:bg-primary-dark disabled:opacity-30 text-white font-bold rounded-full text-sm transition-colors shadow-green">
               Siguiente →
             </button>
           </div>

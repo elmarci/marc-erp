@@ -34,9 +34,9 @@ export function HomePage() {
   return (
     <main className="bg-bg min-h-screen">
       {/* Hero */}
-      <section className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #FFF8F0 0%, #FAFAF8 60%, #FFF0E8 100%)' }}>
+      <section className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #F8FFF9 0%, #FFFFFF 50%, #E8FBF0 100%)' }}>
         <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-orange rounded-full blur-3xl translate-x-1/2 -translate-y-1/2" />
+          <div className="absolute top-0 right-0 w-96 h-96 bg-primary rounded-full blur-3xl translate-x-1/2 -translate-y-1/2" />
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-green rounded-full blur-3xl -translate-x-1/2 translate-y-1/2" />
         </div>
 
@@ -45,14 +45,14 @@ export function HomePage() {
             {/* Logo */}
             <img src="/logo-light.png" alt="TIENDA MARC" className="h-14 w-auto object-contain mb-6" />
 
-            <div className="inline-flex items-center gap-2 bg-orange/10 border border-orange/20 rounded-full px-4 py-1.5 mb-5">
-              <Zap className="h-3.5 w-3.5 text-orange" />
-              <span className="text-orange text-sm font-semibold">Delivery y recojo en tienda · Pachacamac</span>
+            <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 mb-5">
+              <Zap className="h-3.5 w-3.5 text-primary" />
+              <span className="text-primary text-sm font-semibold">Delivery y recojo en tienda · Pachacamac</span>
             </div>
 
             <h1 className="text-4xl sm:text-5xl font-black text-marc leading-tight mb-4">
               Tu minimarket<br />
-              <span className="text-orange">a un clic</span> 🛒
+              <span className="text-primary">a un clic</span> 🛒
             </h1>
             <p className="text-marc/60 text-base mb-8">
               Compra online y recibe en tu puerta o recoge en nuestra tienda.
@@ -60,7 +60,7 @@ export function HomePage() {
 
             <div className="flex flex-wrap gap-3">
               <Link to="/catalogo"
-                className="bg-orange hover:bg-orange-dark text-white font-bold px-8 py-3.5 rounded-full transition-colors shadow-orange text-sm">
+                className="bg-primary hover:bg-primary-dark text-white font-bold px-8 py-3.5 rounded-full transition-colors shadow-green text-sm">
                 Ver productos
               </Link>
               <a href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer"
@@ -73,11 +73,11 @@ export function HomePage() {
         </div>
 
         {/* Features strip */}
-        <div className="border-t border-orange/10 bg-white/60">
+        <div className="border-t border-primary/10 bg-white/60">
           <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap gap-x-8 gap-y-2 text-sm text-marc/60">
-            <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-orange" />{STORE_ADDRESS}</div>
-            <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-orange" />Lun–Dom 7:00 AM – 10:00 PM</div>
-            <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-orange" />930 555 831</div>
+            <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-primary" />{STORE_ADDRESS}</div>
+            <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-primary" />Lun–Dom 7:00 AM – 10:00 PM</div>
+            <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-primary" />930 555 831</div>
           </div>
         </div>
       </section>
@@ -86,7 +86,7 @@ export function HomePage() {
       <section className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-3 gap-3 sm:gap-6">
           {[
-            { icon: Truck, title: 'Delivery rápido', desc: 'A tu puerta', color: 'text-orange', bg: 'bg-orange-pale' },
+            { icon: Truck, title: 'Delivery rápido', desc: 'A tu puerta', color: 'text-primary', bg: 'bg-primary-pale' },
             { icon: ShoppingBag, title: 'Recojo gratis', desc: 'En tienda', color: 'text-green-dark', bg: 'bg-green-pale' },
             { icon: Star, title: 'Productos frescos', desc: 'Calidad garantizada', color: 'text-yellow-600', bg: 'bg-yellow-50' },
           ].map(b => (
@@ -104,19 +104,19 @@ export function HomePage() {
         <section className="max-w-7xl mx-auto px-4 py-4 pb-8">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-xl font-black text-marc flex items-center gap-2">
-              <Tag className="h-5 w-5 text-orange" />Ofertas especiales 🔥
+              <Tag className="h-5 w-5 text-primary" />Ofertas especiales 🔥
             </h2>
-            <Link to="/ofertas" className="text-orange hover:text-orange-dark text-sm font-semibold flex items-center gap-1">
+            <Link to="/ofertas" className="text-primary hover:text-primary-dark text-sm font-semibold flex items-center gap-1">
               Ver todas <ChevronRight className="h-4 w-4" />
             </Link>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {offers.map(offer => (
               <Link key={offer.id} to="/ofertas"
-                className="relative bg-gradient-to-br from-orange to-orange-dark rounded-2xl p-5 overflow-hidden hover:shadow-orange transition-all group text-white">
+                className="relative bg-gradient-to-br from-primary to-primary-dark rounded-2xl p-5 overflow-hidden hover:shadow-green transition-all group text-white">
                 <div className="absolute top-3 right-3">
                   {offer.storeBadge && (
-                    <span className="bg-white text-orange text-xs font-black px-3 py-1 rounded-full">{offer.storeBadge}</span>
+                    <span className="bg-white text-primary text-xs font-black px-3 py-1 rounded-full">{offer.storeBadge}</span>
                   )}
                 </div>
                 <h3 className="font-black text-lg mb-1">{offer.name}</h3>
@@ -141,13 +141,13 @@ export function HomePage() {
           <h2 className="text-xl font-black text-marc mb-5">Explora por categoría</h2>
           <div className="flex gap-3 overflow-x-auto pb-2">
             <Link to="/catalogo"
-              className="shrink-0 flex flex-col items-center gap-2 bg-orange text-white rounded-2xl px-5 py-3 text-sm font-bold transition-colors hover:bg-orange-dark">
+              className="shrink-0 flex flex-col items-center gap-2 bg-primary text-white rounded-2xl px-5 py-3 text-sm font-bold transition-colors hover:bg-primary-dark">
               <span className="text-2xl">🛒</span>
               <span>Todo</span>
             </Link>
             {categories.map(cat => (
               <Link key={cat.id} to={`/catalogo?categoryId=${cat.id}`}
-                className="shrink-0 flex flex-col items-center gap-2 bg-white hover:bg-cream border border-[--border] hover:border-orange/30 rounded-2xl px-5 py-3 text-sm font-medium text-marc/70 hover:text-orange transition-all shadow-card whitespace-nowrap">
+                className="shrink-0 flex flex-col items-center gap-2 bg-white hover:bg-cream border border-[--border] hover:border-primary/30 rounded-2xl px-5 py-3 text-sm font-medium text-marc/70 hover:text-primary transition-all shadow-card whitespace-nowrap">
                 <span className="text-2xl">{CATEGORY_ICONS[cat.name] ?? '📦'}</span>
                 <span>{cat.name}</span>
                 <span className="text-[11px] text-marc/30">{cat._count.products}</span>
@@ -161,7 +161,7 @@ export function HomePage() {
       <section className="max-w-7xl mx-auto px-4 py-4 pb-16">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl font-black text-marc">Productos destacados</h2>
-          <Link to="/catalogo" className="text-orange hover:text-orange-dark text-sm font-semibold flex items-center gap-1">
+          <Link to="/catalogo" className="text-primary hover:text-primary-dark text-sm font-semibold flex items-center gap-1">
             Ver todos <ChevronRight className="h-4 w-4" />
           </Link>
         </div>

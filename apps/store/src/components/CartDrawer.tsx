@@ -29,7 +29,7 @@ export function CartDrawer() {
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-[--border]">
           <h2 className="text-lg font-bold text-marc flex items-center gap-2">
-            <ShoppingBag className="h-5 w-5 text-orange" />
+            <ShoppingBag className="h-5 w-5 text-primary" />
             Tu carrito
             {items.length > 0 && <span className="text-sm text-marc/40 font-normal">({items.length} productos)</span>}
           </h2>
@@ -42,11 +42,11 @@ export function CartDrawer() {
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-marc/30">
-              <div className="h-20 w-20 bg-orange-pale rounded-full flex items-center justify-center">
-                <ShoppingBag className="h-10 w-10 text-orange/30" />
+              <div className="h-20 w-20 bg-primary-pale rounded-full flex items-center justify-center">
+                <ShoppingBag className="h-10 w-10 text-primary/30" />
               </div>
               <p className="text-lg font-semibold">Tu carrito está vacío</p>
-              <button onClick={closeCart} className="text-orange hover:text-orange-dark text-sm font-medium transition-colors">
+              <button onClick={closeCart} className="text-primary hover:text-primary-dark text-sm font-medium transition-colors">
                 Explorar productos →
               </button>
             </div>
@@ -62,16 +62,16 @@ export function CartDrawer() {
               )}
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm text-marc line-clamp-2 leading-tight">{item.product.name}</p>
-                <p className="text-orange font-bold text-sm mt-0.5">S/ {item.product.salePrice.toFixed(2)}</p>
+                <p className="text-primary font-bold text-sm mt-0.5">S/ {item.product.salePrice.toFixed(2)}</p>
                 <div className="flex items-center justify-between mt-2">
                   <div className="flex items-center gap-2">
                     <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                      className="h-7 w-7 bg-white border border-[--border] rounded-full flex items-center justify-center hover:border-orange transition-colors">
+                      className="h-7 w-7 bg-white border border-[--border] rounded-full flex items-center justify-center hover:border-primary transition-colors">
                       <Minus className="h-3 w-3 text-marc/60" />
                     </button>
                     <span className="w-5 text-center text-sm font-bold text-marc">{item.quantity}</span>
                     <button onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                      className="h-7 w-7 bg-orange rounded-full flex items-center justify-center hover:bg-orange-dark transition-colors">
+                      className="h-7 w-7 bg-primary rounded-full flex items-center justify-center hover:bg-primary-dark transition-colors">
                       <Plus className="h-3 w-3 text-white" />
                     </button>
                   </div>
@@ -103,11 +103,11 @@ export function CartDrawer() {
 
             <div className="flex justify-between text-xl font-black text-marc border-t border-[--border] pt-3">
               <span>TOTAL</span>
-              <span className="text-orange">S/ {total.toFixed(2)}</span>
+              <span className="text-primary">S/ {total.toFixed(2)}</span>
             </div>
 
             <button onClick={() => { closeCart(); navigate('/checkout') }}
-              className="w-full bg-orange hover:bg-orange-dark text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors shadow-orange text-base">
+              className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors shadow-green text-base">
               Hacer pedido <ArrowRight className="h-5 w-5" />
             </button>
 

@@ -77,7 +77,7 @@ export function ProductCard({ product, offer }: { product: Product; offer?: { di
               </span>
             )}
             {lowStock && (
-              <span className="bg-orange text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
+              <span className="bg-primary text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
                 ¡Últimas {product.currentStock}!
               </span>
             )}
@@ -100,7 +100,7 @@ export function ProductCard({ product, offer }: { product: Product; offer?: { di
 
           {/* Qty badge */}
           {qty > 0 && (
-            <div className="absolute top-2 right-2 h-6 w-6 bg-orange text-white text-xs font-black rounded-full flex items-center justify-center shadow">
+            <div className="absolute top-2 right-2 h-6 w-6 bg-primary text-white text-xs font-black rounded-full flex items-center justify-center shadow">
               {qty}
             </div>
           )}
@@ -108,7 +108,7 @@ export function ProductCard({ product, offer }: { product: Product; offer?: { di
 
         {/* Info */}
         <div className="p-3">
-          <p className="text-[11px] text-orange font-semibold uppercase tracking-wide mb-0.5">{product.category.name}</p>
+          <p className="text-[11px] text-primary font-semibold uppercase tracking-wide mb-0.5">{product.category.name}</p>
           <p className="text-sm font-semibold text-marc line-clamp-2 leading-tight mb-2">{product.name}</p>
 
           <div className="flex items-center justify-between gap-2">
@@ -125,17 +125,17 @@ export function ProductCard({ product, offer }: { product: Product; offer?: { di
             {qty > 0 ? (
               <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                 <button onClick={() => updateQuantity(product.id, qty - 1)}
-                  className="h-7 w-7 bg-orange/10 hover:bg-orange/20 rounded-full flex items-center justify-center transition-colors">
-                  <Minus className="h-3 w-3 text-orange" />
+                  className="h-7 w-7 bg-primary/10 hover:bg-primary/20 rounded-full flex items-center justify-center transition-colors">
+                  <Minus className="h-3 w-3 text-primary" />
                 </button>
                 <span className="w-5 text-center text-sm font-bold text-marc">{qty}</span>
                 <button onClick={() => addItem(product)}
-                  className="h-7 w-7 bg-orange hover:bg-orange-dark rounded-full flex items-center justify-center transition-colors">
+                  className="h-7 w-7 bg-primary hover:bg-primary-dark rounded-full flex items-center justify-center transition-colors">
                   <Plus className="h-3 w-3 text-white" />
                 </button>
               </div>
             ) : (
-              <div className="h-9 w-9 bg-orange hover:bg-orange-dark text-white rounded-full flex items-center justify-center transition-colors pointer-events-none group-hover:shadow-orange">
+              <div className="h-9 w-9 bg-primary hover:bg-primary-dark text-white rounded-full flex items-center justify-center transition-colors pointer-events-none group-hover:shadow-green">
                 <ShoppingCart className="h-4 w-4" />
               </div>
             )}
@@ -155,7 +155,7 @@ export function ProductCard({ product, offer }: { product: Product; offer?: { di
               </div>
             )}
             <div className="p-5">
-              <p className="text-xs text-orange font-semibold uppercase tracking-wide mb-1">{product.category.name}</p>
+              <p className="text-xs text-primary font-semibold uppercase tracking-wide mb-1">{product.category.name}</p>
               <h3 className="text-lg font-bold text-marc mb-2">{product.name}</h3>
               {product.description && <p className="text-sm text-marc/60 mb-3">{product.description}</p>}
               <div className="flex items-center justify-between mb-4">
@@ -165,7 +165,7 @@ export function ProductCard({ product, offer }: { product: Product; offer?: { di
                 </div>
                 <p className={`text-sm font-medium px-3 py-1 rounded-full ${
                   outOfStock ? 'bg-red-50 text-red-500' :
-                  lowStock ? 'bg-orange-pale text-orange' :
+                  lowStock ? 'bg-primary-pale text-primary' :
                   'bg-green-pale text-green-dark'
                 }`}>
                   {outOfStock ? 'Agotado' : lowStock ? `${product.currentStock} disponibles` : '✓ En stock'}
@@ -179,7 +179,7 @@ export function ProductCard({ product, offer }: { product: Product; offer?: { di
                 <button
                   disabled={outOfStock}
                   onClick={() => { handleAdd(); setShowQuickView(false) }}
-                  className="flex-1 py-3 bg-orange hover:bg-orange-dark disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-orange">
+                  className="flex-1 py-3 bg-primary hover:bg-primary-dark disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-green">
                   <ShoppingCart className="h-4 w-4" />Agregar
                 </button>
               </div>

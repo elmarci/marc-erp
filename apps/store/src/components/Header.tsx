@@ -45,17 +45,17 @@ export function Header() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-marc/30" />
               <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="¿Qué estás buscando?"
-                className="w-full bg-bg border border-[--border] rounded-full pl-9 pr-4 py-2 text-sm text-marc placeholder-marc/40 focus:outline-none focus:border-orange transition-colors" />
+                className="w-full bg-bg border border-[--border] rounded-full pl-9 pr-4 py-2 text-sm text-marc placeholder-marc/40 focus:outline-none focus:border-primary transition-colors" />
             </div>
           </form>
 
           {/* Actions */}
           <div className="flex items-center gap-1 shrink-0">
             {/* Offers */}
-            <Link to="/ofertas" className="hidden sm:flex items-center gap-1.5 text-sm font-medium text-marc/60 hover:text-orange transition-colors px-3 py-2 relative">
+            <Link to="/ofertas" className="hidden sm:flex items-center gap-1.5 text-sm font-medium text-marc/60 hover:text-primary transition-colors px-3 py-2 relative">
               <Tag className="h-4 w-4" />Ofertas
               {offersCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-orange text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-primary text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                   {offersCount}
                 </span>
               )}
@@ -66,8 +66,8 @@ export function Header() {
               <div className="relative">
                 <button onClick={() => setShowUserMenu(!showUserMenu)}
                   className="hidden sm:flex items-center gap-1.5 text-sm font-medium text-marc/70 hover:text-marc transition-colors px-3 py-2">
-                  <div className="h-7 w-7 bg-orange/10 rounded-full flex items-center justify-center">
-                    <User className="h-4 w-4 text-orange" />
+                  <div className="h-7 w-7 bg-primary/10 rounded-full flex items-center justify-center">
+                    <User className="h-4 w-4 text-primary" />
                   </div>
                   <span>{customer.name.split(' ')[0]}</span>
                   <ChevronDown className="h-3 w-3" />
@@ -99,7 +99,7 @@ export function Header() {
 
             {/* Cart */}
             <button onClick={openCart}
-              className="relative flex items-center gap-2 bg-orange hover:bg-orange-dark text-white font-bold rounded-full px-4 py-2 text-sm transition-colors shadow-orange">
+              className="relative flex items-center gap-2 bg-primary hover:bg-primary-dark text-white font-bold rounded-full px-4 py-2 text-sm transition-colors shadow-green">
               <ShoppingCart className="h-4 w-4" />
               <span className="hidden sm:inline">Carrito</span>
               {count > 0 && (

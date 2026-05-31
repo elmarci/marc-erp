@@ -4,25 +4,22 @@
 
 @layer base {
   :root {
-    --orange: #FF6B2C;
-    --orange-dark: #E55520;
-    --orange-light: #FF8F5E;
-    --orange-pale: #FFF0E8;
-    --green: #2ECC71;
-    --green-dark: #27AE60;
-    --green-pale: #E8FBF0;
-    --cream: #FFF8F0;
-    --bg: #FAFAF8;
-    --text: #1A1A1A;
-    --text-soft: #555555;
-    --text-muted: #888888;
-    --border: #E8E4DF;
-    --card: #FFFFFF;
+    --primary:       #2ECC71;   /* MARC green */
+    --primary-dark:  #27AE60;
+    --primary-light: #4CD787;
+    --primary-pale:  #E8FBF0;
+    --black:         #1A1A1A;   /* MARC black */
+    --white:         #FFFFFF;
+    --bg:            #F8FFF9;   /* blanco con toque verde */
+    --card:          #FFFFFF;
+    --border:        #D6F0E0;   /* borde verde suave */
+    --muted:         #6B6B6B;
+    --muted-light:   #A0A0A0;
   }
 
   body {
     background-color: var(--bg);
-    color: var(--text);
+    color: var(--black);
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
@@ -30,7 +27,7 @@
   * { box-sizing: border-box; }
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #D4CFC9; border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb { background: #C0E4CC; border-radius: 9999px; }
 }
 
 @layer utilities {
@@ -47,25 +44,15 @@
     overflow: hidden;
   }
 
-  /* Fly to cart animation */
-  @keyframes fly-to-cart {
-    0% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(0.5) translateY(-30px); opacity: 0.8; }
-    100% { transform: scale(0) translateY(-60px) translateX(100px); opacity: 0; }
-  }
-  .fly-animation { animation: fly-to-cart 0.5s ease-in forwards; }
-
-  /* Slide up */
   @keyframes slide-up {
     from { transform: translateY(20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+    to   { transform: translateY(0);    opacity: 1; }
   }
-  .slide-up { animation: slide-up 0.3s ease-out; }
+  .slide-up { animation: slide-up 0.25s ease-out; }
 
-  /* Fade in */
   @keyframes fade-in {
     from { opacity: 0; }
-    to { opacity: 1; }
+    to   { opacity: 1; }
   }
   .fade-in { animation: fade-in 0.2s ease-out; }
 }
