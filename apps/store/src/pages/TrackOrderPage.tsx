@@ -47,23 +47,23 @@ export function TrackOrderPage() {
             <User className="h-8 w-8 text-green-400" />
           </div>
           <h1 className="text-2xl font-black mb-2">Mis pedidos</h1>
-          <p className="text-white/50 text-sm">Ingresa tu teléfono y nombre para ver tus pedidos</p>
+          <p className="text-gray-900/50 text-sm">Ingresa tu teléfono y nombre para ver tus pedidos</p>
         </div>
 
-        <div className="bg-zinc-900 rounded-2xl p-6 border border-white/5 space-y-4">
+        <div className="bg-white rounded-2xl p-6 border border-gray-100 space-y-4">
           <div>
-            <label className="block text-sm text-white/60 mb-2">Nombre</label>
+            <label className="block text-sm text-gray-900/60 mb-2">Nombre</label>
             <input value={name} onChange={e => setName(e.target.value)}
               placeholder="Tu nombre"
-              className="w-full bg-white/5 border border-white/10 focus:border-green-400 rounded-xl px-4 py-3 text-sm outline-none transition-colors" />
+              className="w-full bg-gray-50 border border-gray-200 focus:border-green-400 rounded-xl px-4 py-3 text-sm outline-none transition-colors" />
           </div>
           <div>
-            <label className="block text-sm text-white/60 mb-2">Número de WhatsApp</label>
+            <label className="block text-sm text-gray-900/60 mb-2">Número de WhatsApp</label>
             <div className="relative">
-              <span className="absolute left-4 top-3.5 text-sm text-white/40">+51</span>
+              <span className="absolute left-4 top-3.5 text-sm text-gray-400">+51</span>
               <input value={phone} onChange={e => setPhone(e.target.value)}
                 placeholder="987 654 321" type="tel"
-                className="w-full bg-white/5 border border-white/10 focus:border-green-400 rounded-xl pl-12 pr-4 py-3 text-sm outline-none transition-colors" />
+                className="w-full bg-gray-50 border border-gray-200 focus:border-green-400 rounded-xl pl-12 pr-4 py-3 text-sm outline-none transition-colors" />
             </div>
           </div>
           <button onClick={handleIdentify}
@@ -82,10 +82,10 @@ export function TrackOrderPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-black">Hola, {customer.name}! 👋</h1>
-          <p className="text-white/40 text-sm mt-1">{customer.phone} · {orders.length} pedido(s)</p>
+          <p className="text-gray-400 text-sm mt-1">{customer.phone} · {orders.length} pedido(s)</p>
         </div>
         <button onClick={() => { logout(); setStep('identify') }}
-          className="flex items-center gap-2 text-white/30 hover:text-white text-sm transition-colors px-3 py-2 rounded-xl hover:bg-white/5">
+          className="flex items-center gap-2 text-gray-400 hover:text-gray-900 text-sm transition-colors px-3 py-2 rounded-xl hover:bg-gray-50">
           <LogOut className="h-4 w-4" />Salir
         </button>
       </div>
@@ -93,14 +93,14 @@ export function TrackOrderPage() {
       {isLoading && (
         <div className="text-center py-12">
           <div className="h-8 w-8 border-2 border-green-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-white/30 text-sm">Cargando pedidos...</p>
+          <p className="text-gray-400 text-sm">Cargando pedidos...</p>
         </div>
       )}
 
       {!isLoading && orders.length === 0 && (
         <div className="text-center py-16">
-          <Package className="h-16 w-16 mx-auto mb-4 text-white/10" />
-          <p className="text-white/40 mb-6">No tienes pedidos aún</p>
+          <Package className="h-16 w-16 mx-auto mb-4 text-gray-900/10" />
+          <p className="text-gray-400 mb-6">No tienes pedidos aún</p>
           <Link to="/" className="bg-green-500 text-black font-bold px-6 py-3 rounded-full text-sm">
             Hacer mi primer pedido
           </Link>
@@ -112,19 +112,19 @@ export function TrackOrderPage() {
           const status = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.PENDING
           return (
             <Link key={order.id} to={`/pedido/${order.orderNumber}`}
-              className="block bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-white/10 rounded-2xl p-5 transition-all group">
+              className="block bg-white hover:bg-gray-100 border border-gray-100 hover:border-gray-200 rounded-2xl p-5 transition-all group">
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <p className="font-black text-lg">{order.orderNumber}</p>
-                  <p className="text-xs text-white/30 mt-0.5">{new Date(order.createdAt).toLocaleString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{new Date(order.createdAt).toLocaleString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-sm font-bold ${status.color}`}>{status.emoji} {status.label}</span>
-                  <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/50 transition-colors" />
+                  <ChevronRight className="h-4 w-4 text-gray-900/20 group-hover:text-gray-900/50 transition-colors" />
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <div className="text-sm text-white/40">
+                <div className="text-sm text-gray-400">
                   <span>{order.items.length} producto(s)</span>
                   <span className="mx-2">·</span>
                   <span>{order.deliveryType === 'DELIVERY' ? '🚚 Delivery' : '🏪 Recojo'}</span>
