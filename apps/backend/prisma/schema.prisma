@@ -503,7 +503,6 @@ model StockAlert {
 
   product Product @relation(fields: [productId], references: [id])
 
-  @@unique([productId, alertType])
   @@index([productId])
   @@index([isActive])
   @@map("stock_alerts")
