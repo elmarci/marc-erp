@@ -112,12 +112,31 @@ router.post('/:id/payments', async (req: Request, res: Response, next: NextFunct
     }
 
     const payAmount = Math.min(amount, Number(customer.currentBalance));
-    const updated = await prisma.customer.update({
-      where: { id: req.params.id },
-      data: { currentBalance: { decrement: payAmount } },
-    });
+
+    const [updated] = await prisma.$transaction([
+      prisma.customer.update({
+        where: { id: req.params.id },
+        data: { currentBalance: { decrement: payAmount } },
+      }),
+      prisma.customerDebtPayment.create({
+        data: { customerId: req.params.id, amount: payAmount, method, notes },
+      }),
+    ]);
 
     res.json({ success: true, data: { paid: payAmount, remaining: Number(updated.currentBalance), customer: updated } });
+  } catch (err) { next(err); }
+});
+
+router.get('/:id/debt-payments', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customer = await prisma.customer.findFirst({ where: { id: req.params.id, deletedAt: null } });
+    if (!customer) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Cliente no encontrado.' } }); return; }
+
+    const payments = await prisma.customerDebtPayment.findMany({
+      where: { customerId: req.params.id },
+      orderBy: { paidAt: 'desc' },
+    });
+    res.json({ success: true, data: payments });
   } catch (err) { next(err); }
 });
 

@@ -136,7 +136,15 @@ export function PosPage() {
           quantity: i.quantity,
           unitPrice: i.unitPrice,
         })),
-        payments,
+        // Cap each payment at the remaining balance — never store more than the sale total
+        payments: (() => {
+          let remaining = total;
+          return payments.map(p => {
+            const amount = Math.min(p.amount, remaining);
+            remaining = Math.max(0, remaining - amount);
+            return { ...p, amount };
+          }).filter(p => p.amount > 0);
+        })(),
         discountAmount,
         isCredit,
         notes,

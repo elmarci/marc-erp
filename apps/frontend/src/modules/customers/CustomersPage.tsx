@@ -271,6 +271,7 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
   const queryClient = useQueryClient();
   const [salesPage, setSalesPage] = useState(1);
   const [showPayment, setShowPayment] = useState(false);
+  const [activeTab, setActiveTab] = useState<'sales' | 'debt'>('sales');
 
   const { data: salesData } = useQuery({
     queryKey: ['customer-sales', customer.id, salesPage],
@@ -281,6 +282,21 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
       return res.data;
     },
   });
+
+  const { data: debtPayments } = useQuery({
+    queryKey: ['customer-debt-payments', customer.id],
+    queryFn: async () => {
+      const res = await api.get<{ data: Array<{ id: string; amount: number; method: string; notes: string | null; paidAt: string }> }>(`/customers/${customer.id}/debt-payments`);
+      return res.data.data;
+    },
+    enabled: activeTab === 'debt',
+  });
+
+  const PAYMENT_METHOD_LABELS: Record<string, string> = {
+    CASH: 'Efectivo', YAPE: 'Yape', PLIN: 'Plin',
+    TRANSFER: 'Transferencia', DEBIT_CARD: 'T. Débito',
+    CREDIT_CARD: 'T. Crédito', OTHER: 'Otro',
+  };
 
   const hasDebt = Number(customer.currentBalance) > 0;
 
@@ -332,10 +348,21 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
             </div>
           </div>
 
+          {/* Tabs */}
+          <div className="flex gap-1 border-b">
+            {([['sales', `Compras (${salesData?.pagination.total ?? 0})`], ['debt', 'Pagos de deuda']] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setActiveTab(key)}
+                className={cn('px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+                  activeTab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+                {label}
+              </button>
+            ))}
+          </div>
+
           {/* Sales history */}
-          <div>
-            <p className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
-              Historial de compras ({salesData?.pagination.total ?? 0})
+          {activeTab === 'sales' && <div>
+            <p className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide sr-only">
+              Historial de compras
             </p>
             {!salesData || salesData.data.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground py-6">Sin compras registradas</p>
@@ -368,7 +395,29 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
                 )}
               </>
             )}
-          </div>
+          </div>}
+
+          {/* Debt payments history */}
+          {activeTab === 'debt' && (
+            <div>
+              {!debtPayments || debtPayments.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground py-6">Sin pagos de deuda registrados</p>
+              ) : (
+                <div className="divide-y border rounded-lg">
+                  {debtPayments.map(p => (
+                    <div key={p.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                      <div>
+                        <p className="font-medium">{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</p>
+                        <p className="text-xs text-muted-foreground">{formatDateTime(p.paidAt)}</p>
+                        {p.notes && <p className="text-xs text-muted-foreground italic">{p.notes}</p>}
+                      </div>
+                      <p className="font-bold text-success">{formatCurrency(p.amount)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

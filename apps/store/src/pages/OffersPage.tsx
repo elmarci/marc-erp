@@ -16,18 +16,32 @@ const TYPE_LABELS: Record<string, string> = {
 function OfferCard({ offer }: { offer: Offer }) {
   const { addItem, openCart } = useCartStore()
 
-  const handleAdd = (product: Offer['products'][0]['product']) => {
+  const handleAdd = (product: Offer['products'][0]['product'], offer: Offer) => {
+    // Apply discount to price
+    let finalPrice = Number(product.salePrice)
+    if (offer.type === 'PERCENTAGE_DISCOUNT') {
+      finalPrice = finalPrice * (1 - offer.value / 100)
+    } else if (offer.type === 'FIXED_DISCOUNT') {
+      finalPrice = Math.max(0, finalPrice - offer.value)
+    }
+    finalPrice = Math.round(finalPrice * 100) / 100
+
     addItem({
       id: product.id,
-      name: product.name,
-      salePrice: Number(product.salePrice),
+      name: offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'FIXED_DISCOUNT'
+        ? `${product.name} (${offer.storeBadge ?? 'Oferta'})`
+        : product.name,
+      salePrice: finalPrice,
       currentStock: 99,
       imageUrl: product.imageUrl,
       barcode: null,
       description: null,
       category: { id: '', name: '' },
     })
-    toast.success(`${product.name} agregado`, {
+    toast.success(`${product.name} agregado con descuento`, {
+      description: finalPrice < Number(product.salePrice)
+        ? `Precio original S/ ${Number(product.salePrice).toFixed(2)} → S/ ${finalPrice.toFixed(2)}`
+        : undefined,
       action: { label: 'Ver carrito', onClick: openCart },
     })
   }
@@ -86,10 +100,21 @@ function OfferCard({ offer }: { offer: Offer }) {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm line-clamp-1">{product.name}</p>
-                  <p className="text-green-400 font-bold text-sm">S/ {Number(product.salePrice).toFixed(2)}</p>
+                  <div className="flex items-center gap-2">
+                    {(offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'FIXED_DISCOUNT') && (
+                      <span className="text-white/30 line-through text-xs">S/ {Number(product.salePrice).toFixed(2)}</span>
+                    )}
+                    <p className="text-green-400 font-bold text-sm">
+                      S/ {offer.type === 'PERCENTAGE_DISCOUNT'
+                        ? (Number(product.salePrice) * (1 - offer.value / 100)).toFixed(2)
+                        : offer.type === 'FIXED_DISCOUNT'
+                          ? Math.max(0, Number(product.salePrice) - offer.value).toFixed(2)
+                          : Number(product.salePrice).toFixed(2)}
+                    </p>
+                  </div>
                 </div>
                 <button
-                  onClick={() => handleAdd(product)}
+                  onClick={() => handleAdd(product, offer)}
                   className="h-9 w-9 bg-green-500 hover:bg-green-400 text-black rounded-full flex items-center justify-center transition-colors shrink-0">
                   <ShoppingCart className="h-4 w-4" />
                 </button>
