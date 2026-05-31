@@ -1,5 +1,6 @@
 import { prisma } from '../../database/client';
 import { NotFoundError } from '../../utils/errors';
+import { io } from '../../server';
 
 export class StoreService {
 
@@ -114,7 +115,7 @@ export class StoreService {
     const count = await prisma.storeOrder.count();
     const orderNumber = `ORD-${String(count + 1).padStart(5, '0')}`;
 
-    return prisma.storeOrder.create({
+    const order = await prisma.storeOrder.create({
       data: {
         orderNumber,
         customerName: data.customerName,
@@ -133,6 +134,18 @@ export class StoreService {
       },
       include: { items: true },
     });
+
+    // Notificar en tiempo real al ERP
+    io.emit('store:new-order', {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      total: Number(order.total),
+      paymentMethod: order.paymentMethod,
+      deliveryType: order.deliveryType,
+    });
+
+    return order;
   }
 
   async getOrdersByPhone(phone: string) {
@@ -172,11 +185,19 @@ export class StoreService {
   }
 
   async updateOrderStatus(id: string, status: string, paymentStatus?: string) {
-    return prisma.storeOrder.update({
+    const order = await prisma.storeOrder.update({
       where: { id },
       data: { status, ...(paymentStatus ? { paymentStatus } : {}) },
       include: { items: true },
     });
+
+    // Notificar al cliente en tiempo real
+    io.emit(`store:order-updated:${order.orderNumber}`, {
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+    });
+
+    return order;
   }
 }
 

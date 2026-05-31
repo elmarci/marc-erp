@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store } from 'lucide-react'
 import { useCartStore, cartTotal } from '../cartStore'
+import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
 import { toast } from 'sonner'
 
@@ -13,12 +14,13 @@ const DISTRICTS = ['Pachacamac', 'Villa María del Triunfo', 'San Juan de Mirafl
 export function CheckoutPage() {
   const items = useCartStore(s => s.items)
   const clearCart = useCartStore(s => s.clearCart)
+  const { customer, setCustomer } = useAuthStore()
   const navigate = useNavigate()
   const total = cartTotal(items)
   const [step, setStep] = useState<Step>(1)
 
   const [form, setForm] = useState({
-    customerName: '', customerPhone: '', customerEmail: '',
+    customerName: customer?.name ?? '', customerPhone: customer?.phone ?? '', customerEmail: customer?.email ?? '',
     deliveryType: '' as 'DELIVERY' | 'PICKUP' | '',
     address: '', district: 'Pachacamac', reference: '',
     paymentMethod: '' as 'YAPE' | 'PLIN' | 'CASH' | '',
@@ -41,7 +43,12 @@ export function CheckoutPage() {
       paymentMethod: form.paymentMethod,
       items: items.map(i => ({ productId: i.product.id, quantity: i.quantity })),
     }),
-    onSuccess: (res) => { clearCart(); navigate(`/pedido/${res.data.data.orderNumber}`) },
+    onSuccess: (res) => {
+      // Save customer profile for next time
+      setCustomer({ name: form.customerName, phone: form.customerPhone, email: form.customerEmail || undefined })
+      clearCart()
+      navigate(`/pedido/${res.data.data.orderNumber}`)
+    },
     onError: () => toast.error('Error al procesar el pedido. Intenta de nuevo.'),
   })
 

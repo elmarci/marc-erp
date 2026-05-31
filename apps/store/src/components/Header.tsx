@@ -1,12 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { ShoppingCart, Search, Package } from 'lucide-react'
 import { useCartStore, cartCount } from '../cartStore'
+import { useAuthStore } from '../authStore'
 import { useState } from 'react'
 
 export function Header() {
   const items = useCartStore(s => s.items)
   const openCart = useCartStore(s => s.openCart)
   const count = cartCount(items)
+  const customer = useAuthStore(s => s.customer)
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
 
@@ -36,7 +38,8 @@ export function Header() {
 
         <div className="flex items-center gap-2 shrink-0">
           <Link to="/mis-pedidos" className="hidden sm:flex items-center gap-1.5 text-sm text-white/60 hover:text-white transition-colors px-3 py-2">
-            <Package className="h-4 w-4" /><span>Mis pedidos</span>
+            <Package className="h-4 w-4" />
+            <span>{customer ? customer.name.split(' ')[0] : 'Mis pedidos'}</span>
           </Link>
           <button onClick={openCart}
             className="relative flex items-center gap-2 bg-green-500 hover:bg-green-400 text-black font-bold rounded-full px-4 py-2 text-sm transition-colors">

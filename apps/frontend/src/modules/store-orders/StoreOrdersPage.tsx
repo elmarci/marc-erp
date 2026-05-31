@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ShoppingBag, CheckCircle, XCircle, Clock, Truck, Package } from 'lucide-react'
 import { toast } from 'sonner'
+import { io } from 'socket.io-client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
@@ -36,6 +37,20 @@ export function StoreOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+
+  // Tiempo real: notificación cuando llega pedido nuevo
+  useEffect(() => {
+    const API_URL = import.meta.env['VITE_API_URL']?.replace('/api/v1', '') ?? 'http://localhost:3001'
+    const socket = io(API_URL, { transports: ['websocket', 'polling'] })
+    socket.on('store:new-order', (order: { orderNumber: string; customerName: string; total: number }) => {
+      queryClient.invalidateQueries({ queryKey: ['store-orders'] })
+      toast.success(`🛒 Nuevo pedido ${order.orderNumber} de ${order.customerName} — S/ ${order.total.toFixed(2)}`, {
+        duration: 8000,
+        action: { label: 'Ver', onClick: () => setStatusFilter('') },
+      })
+    })
+    return () => { socket.disconnect() }
+  }, [queryClient])
 
   const { data, isLoading } = useQuery({
     queryKey: ['store-orders', statusFilter, page],
