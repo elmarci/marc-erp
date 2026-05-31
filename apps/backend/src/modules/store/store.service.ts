@@ -184,6 +184,127 @@ export class StoreService {
     return { data, pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) } };
   }
 
+  /* ── Confirmar pedido → crear Venta en ERP ────────────────────────────── */
+  async confirmOrder(id: string, cashSessionId: string, userId: string) {
+    const order = await prisma.storeOrder.findUnique({
+      where: { id }, include: { items: true },
+    });
+    if (!order) throw new NotFoundError('Pedido');
+    if (order.status !== 'PENDING') throw new Error('Solo se pueden confirmar pedidos pendientes.');
+    if (order.saleId) throw new Error('Este pedido ya tiene una venta asociada.');
+
+    // Verify cash session
+    const session = await prisma.cashSession.findFirst({
+      where: { id: cashSessionId, status: 'OPEN' },
+    });
+    if (!session) throw new Error('No hay una sesión de caja abierta con ese ID.');
+
+    // Map payment method
+    const paymentMethodMap: Record<string, string> = {
+      YAPE: 'YAPE', PLIN: 'PLIN', CASH: 'CASH',
+    };
+    const paymentMethod = paymentMethodMap[order.paymentMethod] ?? 'CASH';
+
+    return prisma.$transaction(async (tx) => {
+      // Fetch products and validate stock
+      const productIds = order.items.map(i => i.productId);
+      const products = await tx.product.findMany({ where: { id: { in: productIds } } });
+      const productMap = new Map(products.map(p => [p.id, p]));
+
+      // Calculate sale totals
+      let subtotal = 0;
+      const saleItems = order.items.map(item => {
+        subtotal += Number(item.subtotal);
+        return {
+          productId: item.productId,
+          productName: item.name,
+          quantity: item.quantity,
+          unitPrice: Number(item.unitPrice),
+          originalPrice: Number(item.unitPrice),
+          discountAmount: 0,
+          discountPercent: 0,
+          subtotal: Number(item.subtotal),
+        };
+      });
+
+      const taxRate = 0.18;
+      const netAmount = subtotal / (1 + taxRate);
+      const taxAmount = subtotal - netAmount;
+
+      // Generate sale number
+      const saleCount = await tx.sale.count();
+      const year = new Date().getFullYear();
+      const month = String(new Date().getMonth() + 1).padStart(2, '0');
+      const saleNumber = `V${year}${month}${String(saleCount + 1).padStart(6, '0')}`;
+
+      // Create the sale
+      const sale = await tx.sale.create({
+        data: {
+          saleNumber,
+          cashSessionId,
+          cashierId: userId,
+          documentType: 'NOTA_VENTA',
+          subtotal: netAmount,
+          taxAmount,
+          totalAmount: subtotal,
+          discountAmount: 0,
+          status: 'COMPLETED',
+          notes: `Pedido web ${order.orderNumber} — ${order.deliveryType === 'DELIVERY' ? 'Delivery' : 'Recojo en tienda'}`,
+          items: {
+            create: saleItems,
+          },
+          payments: {
+            create: [{
+              method: paymentMethod as never,
+              amount: subtotal,
+            }],
+          },
+        },
+      });
+
+      // Decrement stock + inventory movements
+      for (const item of order.items) {
+        const product = productMap.get(item.productId);
+        if (!product) continue;
+        const newStock = product.currentStock - Number(item.quantity);
+
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { currentStock: Math.max(0, newStock) },
+        });
+
+        await tx.inventoryMovement.create({
+          data: {
+            productId: item.productId,
+            type: 'SALE_OUT',
+            quantity: Number(item.quantity),
+            quantityBefore: product.currentStock,
+            quantityAfter: Math.max(0, newStock),
+            unitCost: product.costPrice,
+            referenceType: 'STORE_ORDER',
+            referenceId: order.id,
+            userId,
+            notes: `Pedido web ${order.orderNumber}`,
+          },
+        });
+      }
+
+      // Update store order: CONFIRMED + link to sale
+      const updated = await tx.storeOrder.update({
+        where: { id },
+        data: { status: 'CONFIRMED', saleId: sale.id },
+        include: { items: true },
+      });
+
+      // Notify customer
+      io.emit(`store:order-updated:${order.orderNumber}`, {
+        status: 'CONFIRMED', paymentStatus: order.paymentStatus,
+      });
+
+      return { order: updated, saleId: sale.id, saleNumber: sale.saleNumber };
+    });
+  }
+
   async updateOrderStatus(id: string, status: string, paymentStatus?: string) {
     const order = await prisma.storeOrder.update({
       where: { id },

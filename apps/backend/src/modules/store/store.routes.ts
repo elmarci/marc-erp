@@ -85,6 +85,14 @@ router.get('/admin/orders', authenticate, authorizeMinRole('CASHIER'), async (re
   } catch (err) { next(err); }
 });
 
+router.post('/admin/orders/:id/confirm', authenticate, authorizeMinRole('CASHIER'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { cashSessionId } = z.object({ cashSessionId: z.string().uuid() }).parse(req.body);
+    const result = await storeService.confirmOrder(req.params.id, cashSessionId, req.user!.sub);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 router.patch('/admin/orders/:id/status', authenticate, authorizeMinRole('CASHIER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status, paymentStatus } = z.object({
