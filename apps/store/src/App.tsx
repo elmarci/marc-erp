@@ -6,6 +6,7 @@ import { CatalogPage } from './pages/CatalogPage'
 import { CheckoutPage } from './pages/CheckoutPage'
 import { OrderConfirmPage } from './pages/OrderConfirmPage'
 import { TrackOrderPage } from './pages/TrackOrderPage'
+import { OffersPage } from './pages/OffersPage'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/pedido/:orderNumber" element={<OrderConfirmPage />} />
         <Route path="/mis-pedidos" element={<TrackOrderPage />} />
+        <Route path="/ofertas" element={<OffersPage />} />
       </Routes>
     </div>
   )

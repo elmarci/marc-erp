@@ -1,14 +1,22 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { ShoppingCart, Search, Package } from 'lucide-react'
+import { ShoppingCart, Search, Package, Tag } from 'lucide-react'
 import { useCartStore, cartCount } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { storeApi } from '../api'
 
 export function Header() {
   const items = useCartStore(s => s.items)
   const openCart = useCartStore(s => s.openCart)
   const count = cartCount(items)
   const customer = useAuthStore(s => s.customer)
+  const { data: offersData } = useQuery({
+    queryKey: ['store-offers'],
+    queryFn: () => storeApi.getOffers(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const offersCount = offersData?.data.data.length ?? 0
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
 
@@ -37,6 +45,15 @@ export function Header() {
         </form>
 
         <div className="flex items-center gap-2 shrink-0">
+          <Link to="/ofertas" className="hidden sm:flex items-center gap-1.5 text-sm text-white/60 hover:text-white transition-colors px-3 py-2 relative">
+            <Tag className="h-4 w-4" />
+            <span>Ofertas</span>
+            {offersCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-green-500 text-black text-[10px] font-bold rounded-full flex items-center justify-center">
+                {offersCount}
+              </span>
+            )}
+          </Link>
           <Link to="/mis-pedidos" className="hidden sm:flex items-center gap-1.5 text-sm text-white/60 hover:text-white transition-colors px-3 py-2">
             <Package className="h-4 w-4" />
             <span>{customer ? customer.name.split(' ')[0] : 'Mis pedidos'}</span>
