@@ -315,10 +315,12 @@ export class StoreService {
     });
 
     // Notificar al cliente en tiempo real
-    try { io?.emit(`store:order-updated:${order.orderNumber}`, {
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-    });
+    try {
+      io?.emit(`store:order-updated:${order.orderNumber}`, {
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+      });
+    } catch { /* ignore */ }
 
     return order;
   }
