@@ -243,6 +243,7 @@ export class StoreService {
           saleNumber,
           cashSessionId,
           cashierId: userId,
+          createdById: userId,
           documentType: 'NOTA_VENTA',
           subtotal: netAmount,
           taxAmount,
