@@ -27,6 +27,8 @@ import settingsRoutes from './modules/settings/settings.routes';
 import suppliersRoutes from './modules/suppliers/suppliers.routes';
 import purchasesRoutes from './modules/purchases/purchases.routes';
 import inventoryRoutes from './modules/inventory/inventory.routes';
+import storeRoutes from './modules/store/store.routes';
+import promotionsRoutes from './modules/promotions/promotions.routes';
 
 const app = express();
 const httpServer = createServer(app);
@@ -114,6 +116,8 @@ app.use(`${API_PREFIX}/settings`, settingsRoutes);
 app.use(`${API_PREFIX}/suppliers`, suppliersRoutes);
 app.use(`${API_PREFIX}/purchases`, purchasesRoutes);
 app.use(`${API_PREFIX}/inventory`, inventoryRoutes);
+app.use(`${API_PREFIX}/store`, storeRoutes);
+app.use(`${API_PREFIX}/promotions`, promotionsRoutes);
 
 // ─── Swagger docs ────────────────────────────────────────────────────────────
 if (env.NODE_ENV === 'development') {

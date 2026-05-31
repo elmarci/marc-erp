@@ -13,6 +13,8 @@ import { CustomersPage } from '@/modules/customers/CustomersPage';
 import { PurchasesPage } from '@/modules/purchases/PurchasesPage';
 import { InventoryPage } from '@/modules/inventory/InventoryPage';
 import { ReportsPage } from '@/modules/reports/ReportsPage';
+import { OffersPage } from '@/modules/offers/OffersPage';
+import { StoreOrdersPage } from '@/modules/store-orders/StoreOrdersPage';
 import { CashPage } from '@/modules/cash/CashPage';
 import { UsersPage } from '@/modules/users/UsersPage';
 import { SettingsPage } from '@/modules/settings/SettingsPage';
@@ -67,6 +69,8 @@ export default function App() {
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="cash" element={<CashPage />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="offers" element={<OffersPage />} />
+          <Route path="store-orders" element={<StoreOrdersPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

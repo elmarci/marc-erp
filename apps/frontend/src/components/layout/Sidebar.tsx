@@ -13,6 +13,8 @@ import {
   ShoppingBag,
   UserCheck,
   Boxes,
+  Tag,
+  Store,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -39,6 +41,8 @@ const navItems: NavItem[] = [
   { path: '/purchases', label: 'Compras', icon: ShoppingBag, minRole: 'WAREHOUSE' },
   { path: '/inventory', label: 'Inventario', icon: Boxes, minRole: 'WAREHOUSE' },
   { path: '/cash', label: 'Caja', icon: Wallet },
+  { path: '/store-orders', label: 'Pedidos Online', icon: Store, minRole: 'CASHIER' },
+  { path: '/offers', label: 'Ofertas', icon: Tag, minRole: 'SUPERVISOR' },
   { path: '/reports', label: 'Reportes', icon: TrendingUp, minRole: 'SUPERVISOR' },
   { path: '/users', label: 'Usuarios', icon: Users, minRole: 'ADMIN' },
   { path: '/settings', label: 'Configuración', icon: Settings, minRole: 'ADMIN' },

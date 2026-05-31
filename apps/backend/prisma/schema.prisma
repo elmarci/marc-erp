@@ -879,6 +879,9 @@ model Promotion {
   daysOfWeek      Int[]         @map("days_of_week") // 0=Dom, 1=Lun...
   isActive        Boolean       @default(true) @map("is_active")
   priority        Int           @default(0)
+  showInStore     Boolean       @default(false) @map("show_in_store")
+  storeImage      String?       @map("store_image")
+  storeBadge      String?       @map("store_badge")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -924,4 +927,55 @@ model PromotionApplication {
 
   @@index([saleId])
   @@map("promotion_applications")
+}
+
+// =============================================================================
+// TIENDA ONLINE
+// =============================================================================
+
+model StoreOrder {
+  id            String   @id @default(uuid())
+  orderNumber   String   @unique @map("order_number")
+  customerName  String   @map("customer_name")
+  customerPhone String   @map("customer_phone")
+  customerEmail String?  @map("customer_email")
+  deliveryType  String   @map("delivery_type") // DELIVERY | PICKUP
+  address       String?
+  district      String?
+  reference     String?
+  notes         String?
+  status        String   @default("PENDING")
+  // PENDING | CONFIRMED | PREPARING | READY | DELIVERED | CANCELLED
+  paymentMethod String   @map("payment_method") // YAPE | PLIN | CASH
+  paymentStatus String   @default("PENDING") @map("payment_status")
+  // PENDING | VERIFIED | REJECTED
+  paymentProof  String?  @map("payment_proof")
+  subtotal      Decimal  @db.Decimal(12, 2)
+  deliveryCost  Decimal  @default(0) @db.Decimal(12, 2) @map("delivery_cost")
+  total         Decimal  @db.Decimal(12, 2)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  items StoreOrderItem[]
+
+  @@index([customerPhone])
+  @@index([status])
+  @@index([createdAt])
+  @@map("store_orders")
+}
+
+model StoreOrderItem {
+  id        String  @id @default(uuid())
+  orderId   String  @map("order_id")
+  productId String  @map("product_id")
+  name      String
+  imageUrl  String? @map("image_url")
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2) @map("unit_price")
+  subtotal  Decimal @db.Decimal(10, 2)
+
+  order StoreOrder @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@map("store_order_items")
 }
