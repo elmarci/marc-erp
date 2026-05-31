@@ -33,6 +33,8 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder /app/dist ./dist
 COPY --from=deps /prod_modules ./node_modules
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 COPY --from=builder /app/prisma ./prisma
 COPY package.json ./
 RUN mkdir -p uploads backups && chown -R erp:nodejs uploads backups
@@ -40,4 +42,4 @@ USER erp
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3001/health || exit 1
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "node_modules/.bin/prisma db push --skip-generate && node dist/server.js"]
