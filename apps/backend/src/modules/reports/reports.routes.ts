@@ -5,9 +5,15 @@ import { authenticate, authorizeMinRole } from '../../middleware/auth';
 
 const router = Router();
 
+// Parse dates as Lima time (UTC-5) to avoid timezone mismatch
+const parseLimaDate = (s: string, endOfDay = false) => {
+  const time = endOfDay ? 'T23:59:59' : 'T00:00:00';
+  return new Date(`${s}${time}-05:00`);
+};
+
 const dateRangeSchema = z.object({
-  from: z.coerce.date(),
-  to: z.coerce.date(),
+  from: z.string().transform(s => parseLimaDate(s, false)),
+  to: z.string().transform(s => parseLimaDate(s, true)),
 });
 
 router.use(authenticate);

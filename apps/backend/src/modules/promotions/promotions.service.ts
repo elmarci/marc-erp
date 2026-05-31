@@ -10,7 +10,7 @@ export class PromotionsService {
       prisma.promotion.findMany({
         where,
         include: {
-          products: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+          products: { include: { product: { select: { id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true } } } },
         },
         orderBy: [{ isActive: 'desc' }, { priority: 'desc' }, { createdAt: 'desc' }],
         skip: (filters.page - 1) * filters.limit,
@@ -50,7 +50,7 @@ export class PromotionsService {
         } : undefined,
       },
       include: {
-        products: { include: { product: { select: { id: true, name: true } } } },
+        products: { include: { product: { select: { id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true } } } },
       },
     });
   }
@@ -79,7 +79,7 @@ export class PromotionsService {
       where: { id },
       data: promoData as never,
       include: {
-        products: { include: { product: { select: { id: true, name: true, imageUrl: true } } } },
+        products: { include: { product: { select: { id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true } } } },
       },
     });
   }

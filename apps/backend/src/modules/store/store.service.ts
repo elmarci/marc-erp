@@ -25,7 +25,7 @@ export class StoreService {
         where,
         select: {
           id: true, name: true, barcode: true, salePrice: true,
-          currentStock: true, imageUrl: true, description: true,
+          currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
           category: { select: { id: true, name: true } },
         },
         orderBy: { name: 'asc' },
