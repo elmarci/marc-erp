@@ -3,6 +3,7 @@ import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
 import { logger } from '../../config/logger';
 import { redis } from '../../config/redis';
+import { io } from '../../server';
 
 interface SaleItemInput {
   productId: string;
@@ -237,8 +238,9 @@ export class SalesService {
     });
 
     logger.info({ saleId: sale.id, total: totalAmount, cashierId: input.cashierId }, 'Sale completed');
-    // Invalidar caché del dashboard para que refleje la venta nueva
     await redis.del('reports:dashboard').catch(() => {});
+    // Notificar en tiempo real: venta creada
+    io.emit('erp:sale-created', { cashSessionId: input.cashSessionId });
     return sale;
   }
 

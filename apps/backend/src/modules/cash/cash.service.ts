@@ -1,5 +1,6 @@
 import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
+import { io } from '../../server';
 
 export class CashService {
   async openSession(cashRegisterId: string, userId: string, openingAmount: number, notes?: string) {
@@ -16,18 +17,15 @@ export class CashService {
     });
     if (!cashRegister) throw new NotFoundError('Caja registradora');
 
-    return prisma.cashSession.create({
-      data: {
-        cashRegisterId,
-        userId,
-        openingAmount,
-        notes,
-      },
+    const session = await prisma.cashSession.create({
+      data: { cashRegisterId, userId, openingAmount, notes },
       include: {
         cashRegister: true,
         user: { select: { firstName: true, lastName: true } },
       },
     });
+    io.emit('erp:cash-updated');
+    return session;
   }
 
   async closeSession(sessionId: string, closingAmount: number, notes?: string) {
@@ -63,26 +61,18 @@ export class CashService {
     const expectedAmount = Number(session.openingAmount) + cashSales + deposits - withdrawals;
     const difference = closingAmount - expectedAmount;
 
-    return prisma.cashSession.update({
+    const closed = await prisma.cashSession.update({
       where: { id: sessionId },
-      data: {
-        status: 'CLOSED',
-        closingAmount,
-        expectedAmount,
-        difference,
-        closedAt: new Date(),
-        notes,
-      },
+      data: { status: 'CLOSED', closingAmount, expectedAmount, difference, closedAt: new Date(), notes },
       include: {
         cashRegister: true,
         user: { select: { firstName: true, lastName: true } },
-        sales: {
-          include: { payments: true },
-          orderBy: { createdAt: 'desc' },
-        },
+        sales: { include: { payments: true }, orderBy: { createdAt: 'desc' } },
         movements: true,
       },
     });
+    io.emit('erp:cash-updated');
+    return closed;
   }
 
   async getSession(sessionId: string) {

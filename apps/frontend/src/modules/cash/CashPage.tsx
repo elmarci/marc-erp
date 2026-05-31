@@ -572,6 +572,7 @@ export function CashPage() {
   const { data: registers, isLoading } = useQuery({
     queryKey: ['cash-registers'],
     queryFn: async () => (await api.get<{ data: Array<CashRegister & { sessions: CashSession[] }> }>('/cash/registers')).data.data,
+    refetchInterval: 30000,
   });
 
   const openSessions: CashSession[] = (registers ?? []).flatMap(r =>

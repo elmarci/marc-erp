@@ -3,10 +3,12 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { cn } from '@/lib/utils';
+import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 
 export function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
+  useRealtimeSync(); // Sync global en tiempo real
 
   // El POS usa pantalla completa sin layout estándar
   const isPos = location.pathname === '/pos';
