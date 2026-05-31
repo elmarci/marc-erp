@@ -29,6 +29,7 @@ import suppliersRoutes from './modules/suppliers/suppliers.routes';
 import purchasesRoutes from './modules/purchases/purchases.routes';
 import inventoryRoutes from './modules/inventory/inventory.routes';
 import storeRoutes from './modules/store/store.routes';
+import storeAuthRoutes from './modules/store/store-auth.routes';
 import promotionsRoutes from './modules/promotions/promotions.routes';
 
 const app = express();
@@ -125,6 +126,7 @@ app.use(`${API_PREFIX}/suppliers`, suppliersRoutes);
 app.use(`${API_PREFIX}/purchases`, purchasesRoutes);
 app.use(`${API_PREFIX}/inventory`, inventoryRoutes);
 app.use(`${API_PREFIX}/store`, storeRoutes);
+app.use(`${API_PREFIX}/store/auth`, storeAuthRoutes);
 app.use(`${API_PREFIX}/promotions`, promotionsRoutes);
 
 // ─── Swagger docs ────────────────────────────────────────────────────────────

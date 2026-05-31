@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store } from 'lucide-react'
 import { useCartStore, cartTotal } from '../cartStore'
-import { useAuthStore } from '../authStore'
+import { useAuthStore, type CustomerProfile } from '../authStore'
 import { storeApi } from '../api'
 import { toast } from 'sonner'
 
@@ -14,7 +14,7 @@ const DISTRICTS = ['Pachacamac', 'Villa María del Triunfo', 'San Juan de Mirafl
 export function CheckoutPage() {
   const items = useCartStore(s => s.items)
   const clearCart = useCartStore(s => s.clearCart)
-  const { customer, setCustomer } = useAuthStore()
+  const { customer, setCustomer, isLoggedIn } = useAuthStore()
   const navigate = useNavigate()
   const total = cartTotal(items)
   const [step, setStep] = useState<Step>(1)

@@ -4,6 +4,7 @@ import { Package, Search, ChevronRight, LogOut, User } from 'lucide-react'
 import { storeApi } from '../api'
 import { useAuthStore } from '../authStore'
 import { Link } from 'react-router-dom'
+import { AuthModal } from '../components/AuthModal'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; emoji: string }> = {
   PENDING: { label: 'Pendiente', color: 'text-amber-400', emoji: '⏳' },

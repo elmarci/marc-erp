@@ -3,14 +3,34 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --orange: #FF6B2C;
+    --orange-dark: #E55520;
+    --orange-light: #FF8F5E;
+    --orange-pale: #FFF0E8;
+    --green: #2ECC71;
+    --green-dark: #27AE60;
+    --green-pale: #E8FBF0;
+    --cream: #FFF8F0;
+    --bg: #FAFAF8;
+    --text: #1A1A1A;
+    --text-soft: #555555;
+    --text-muted: #888888;
+    --border: #E8E4DF;
+    --card: #FFFFFF;
+  }
+
   body {
-    @apply bg-black text-white font-sans;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  * { @apply border-white/10; }
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { @apply bg-transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-white/20 rounded-full; }
+
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D4CFC9; border-radius: 9999px; }
 }
 
 @layer utilities {
@@ -20,4 +40,32 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Fly to cart animation */
+  @keyframes fly-to-cart {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(0.5) translateY(-30px); opacity: 0.8; }
+    100% { transform: scale(0) translateY(-60px) translateX(100px); opacity: 0; }
+  }
+  .fly-animation { animation: fly-to-cart 0.5s ease-in forwards; }
+
+  /* Slide up */
+  @keyframes slide-up {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .slide-up { animation: slide-up 0.3s ease-out; }
+
+  /* Fade in */
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .fade-in { animation: fade-in 0.2s ease-out; }
 }
