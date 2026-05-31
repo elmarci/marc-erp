@@ -22,6 +22,8 @@ export interface CreateProductInput {
   currentStock?: number;
   trackExpiry?: boolean;
   trackBatch?: boolean;
+  isBulk?: boolean;
+  bulkUnit?: string;
   imageUrl?: string;
 }
 
@@ -207,6 +209,8 @@ export class ProductsService {
         maxStock: input.maxStock,
         trackExpiry: input.trackExpiry,
         trackBatch: input.trackBatch,
+        isBulk: input.isBulk,
+        bulkUnit: input.bulkUnit,
         imageUrl: input.imageUrl,
         status: input.status,
       },
