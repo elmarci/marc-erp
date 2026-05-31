@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -50,20 +51,28 @@ export function ProductFormPage() {
     enabled: isEdit,
   });
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    values: product ? {
-      ...product,
-      isBulk: (product as unknown as { isBulk?: boolean }).isBulk ?? false,
-      bulkUnit: (product as unknown as { bulkUnit?: string }).bulkUnit ?? '',
-    } as FormData : undefined,
   });
+
+  // Cargar valores del producto incluyendo isBulk/bulkUnit
+  useEffect(() => {
+    if (product) {
+      const p = product as unknown as Record<string, unknown>;
+      reset({
+        ...(product as unknown as FormData),
+        isBulk: Boolean(p['isBulk']),
+        bulkUnit: (p['bulkUnit'] as string) ?? '',
+      });
+    }
+  }, [product, reset]);
 
   const mutation = useMutation({
     mutationFn: (data: FormData) =>
       isEdit ? api.patch(`/products/${id}`, data) : api.post('/products', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product', id] });
       toast.success(isEdit ? 'Producto actualizado.' : 'Producto creado.');
       navigate('/products');
     },
