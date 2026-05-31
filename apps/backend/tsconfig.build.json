@@ -4,5 +4,5 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "src/database/seeds"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }
