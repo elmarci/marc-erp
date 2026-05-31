@@ -126,20 +126,17 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             ))}
 
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
-            <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Subtotal:</span><span>{formatCurrency(data.subtotal)}</span>
-            </div>
             {Number(data.discountAmount) > 0 && (
               <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Descuento:</span><span>-{formatCurrency(data.discountAmount)}</span>
               </div>
             )}
-            <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>IGV (18%):</span><span>{formatCurrency(data.taxAmount)}</span>
-            </div>
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
             <div className="total-row" style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px' }}>
               <span>TOTAL:</span><span>{formatCurrency(data.totalAmount)}</span>
+            </div>
+            <div className="row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#666', marginTop: '2px' }}>
+              <span>Precios incluyen impuestos</span><span>RTE</span>
             </div>
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
 

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Package, AlertCircle } from 'lucide-react';
+import { Search, Package, AlertCircle, Scale, Tag, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,8 @@ interface Product {
   salePrice: number;
   currentStock: number;
   imageUrl: string | null;
+  isBulk: boolean;
+  bulkUnit: string | null;
   category: { name: string };
 }
 
@@ -30,9 +32,170 @@ interface PosProductPanelProps {
   className?: string;
 }
 
+/* ─── Bulk weight modal ───────────────────────────────────────────────────── */
+function BulkModal({ product, onConfirm, onClose }: {
+  product: Product;
+  onConfirm: (qty: number) => void;
+  onClose: () => void;
+}) {
+  const [qty, setQty] = useState('');
+  const unit = product.bulkUnit ?? 'unidad';
+  const price = Number(product.salePrice);
+  const total = parseFloat(qty) * price;
+
+  const presets = unit === 'kg' || unit === 'g' || unit === 'L'
+    ? [0.25, 0.5, 0.75, 1, 1.5, 2]
+    : [1, 2, 3, 5, 10];
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-4">
+          <div>
+            <h3 className="font-bold flex items-center gap-2">
+              <Scale className="h-4 w-4 text-primary" />
+              {product.name}
+            </h3>
+            <p className="text-xs text-muted-foreground">{formatCurrency(price)} / {unit}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Cantidad ({unit})</label>
+            <Input
+              type="number" min={0.01} step={0.01}
+              value={qty} onChange={e => setQty(e.target.value)}
+              placeholder={`Ej: 0.5 ${unit}`}
+              className="text-xl font-bold text-center" autoFocus
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {presets.map(p => (
+              <button key={p} onClick={() => setQty(String(p))}
+                className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full text-xs font-medium transition-colors">
+                {p} {unit}
+              </button>
+            ))}
+          </div>
+          {qty && parseFloat(qty) > 0 && (
+            <div className="rounded-lg bg-primary/10 p-3 text-center">
+              <p className="text-xs text-muted-foreground">Total a cobrar</p>
+              <p className="text-2xl font-black text-primary">{formatCurrency(total)}</p>
+              <p className="text-xs text-muted-foreground">{qty} {unit} × {formatCurrency(price)}</p>
+            </div>
+          )}
+        </div>
+        <div className="border-t p-4 flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
+          <Button className="flex-1"
+            disabled={!qty || parseFloat(qty) <= 0}
+            onClick={() => { onConfirm(parseFloat(qty)); onClose(); }}>
+            Agregar al carrito
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Offers panel ────────────────────────────────────────────────────────── */
+interface Offer {
+  id: string; name: string; type: string; value: number;
+  storeBadge: string | null;
+  products: Array<{ product: { id: string; name: string; salePrice: number; barcode: string | null; currentStock: number; imageUrl: string | null; isBulk: boolean; bulkUnit: string | null; category: { name: string } } }>;
+}
+
+function OffersPanel({ onClose }: { onClose: () => void }) {
+  const addItem = usePosStore(s => s.addItem);
+
+  const { data } = useQuery({
+    queryKey: ['pos-offers'],
+    queryFn: async () => (await api.get<{ data: Offer[] }>('/promotions?limit=50')).data.data,
+    select: d => d.filter(o => o.isActive),
+  });
+
+  const applyOffer = (offer: Offer, product: Offer['products'][0]['product']) => {
+    let finalPrice = Number(product.salePrice);
+    if (offer.type === 'PERCENTAGE_DISCOUNT') finalPrice = finalPrice * (1 - offer.value / 100);
+    else if (offer.type === 'FIXED_DISCOUNT') finalPrice = Math.max(0, finalPrice - offer.value);
+    finalPrice = Math.round(finalPrice * 100) / 100;
+
+    addItem({
+      productId: product.id,
+      name: `${product.name} (${offer.storeBadge ?? offer.name})`,
+      barcode: product.barcode,
+      quantity: 1,
+      unitPrice: finalPrice,
+      originalPrice: Number(product.salePrice),
+      discountAmount: Number(product.salePrice) - finalPrice,
+      discountPercent: 0,
+      stock: product.currentStock,
+    });
+    toast.success(`${product.name} con oferta agregado — ${formatCurrency(finalPrice)}`);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-card shadow-2xl flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between border-b p-4">
+          <h3 className="font-bold flex items-center gap-2">
+            <Tag className="h-4 w-4 text-primary" />Ofertas activas
+          </h3>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="overflow-y-auto p-4 space-y-4">
+          {!data || data.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No hay ofertas activas</p>
+          ) : data.map(offer => (
+            <div key={offer.id} className="border rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-bold">{offer.name}</p>
+                  <p className="text-xs text-success font-medium">
+                    {offer.type === 'PERCENTAGE_DISCOUNT' ? `${offer.value}% OFF` :
+                     offer.type === 'FIXED_DISCOUNT' ? `S/ ${offer.value} OFF` : 'Precio especial'}
+                  </p>
+                </div>
+                {offer.storeBadge && <Badge variant="success" className="text-xs">{offer.storeBadge}</Badge>}
+              </div>
+              {offer.products.length > 0 && (
+                <div className="space-y-2">
+                  {offer.products.map(({ product }) => {
+                    let finalPrice = Number(product.salePrice);
+                    if (offer.type === 'PERCENTAGE_DISCOUNT') finalPrice = finalPrice * (1 - offer.value / 100);
+                    else if (offer.type === 'FIXED_DISCOUNT') finalPrice = Math.max(0, finalPrice - offer.value);
+                    finalPrice = Math.round(finalPrice * 100) / 100;
+                    return (
+                      <div key={product.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium">{product.name}</p>
+                          <div className="flex gap-2 text-xs">
+                            <span className="line-through text-muted-foreground">{formatCurrency(product.salePrice)}</span>
+                            <span className="text-success font-bold">{formatCurrency(finalPrice)}</span>
+                          </div>
+                        </div>
+                        <Button size="sm" onClick={() => applyOffer(offer, product)}>
+                          Agregar
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelProps) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [bulkProduct, setBulkProduct] = useState<Product | null>(null);
+  const [showOffers, setShowOffers] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const addItem = usePosStore((s) => s.addItem);
 
@@ -68,16 +231,22 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
 
   const products = productsData ?? [];
 
-  const handleAddProduct = (product: Product) => {
+  const handleAddProduct = (product: Product, forceQty?: number) => {
     if (product.currentStock <= 0) {
       toast.error(`"${product.name}" no tiene stock disponible.`);
       return;
     }
+    // Producto a granel — pedir peso/cantidad libre
+    if (product.isBulk && forceQty === undefined) {
+      setBulkProduct(product);
+      return;
+    }
+    const qty = forceQty ?? 1;
     addItem({
       productId: product.id,
-      name: product.name,
+      name: product.isBulk ? `${product.name} (${qty} ${product.bulkUnit ?? 'u'})` : product.name,
       barcode: product.barcode,
-      quantity: 1,
+      quantity: qty,
       unitPrice: Number(product.salePrice),
       originalPrice: Number(product.salePrice),
       discountAmount: 0,
@@ -99,17 +268,23 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
 
   return (
     <div className={cn('flex flex-col bg-pos-product', className)}>
-      {/* Barra de búsqueda */}
-      <div className="border-b p-3">
-        <Input
-          ref={searchInputRef}
-          startIcon={<Search className="h-4 w-4" />}
-          placeholder="Buscar producto o escanear código de barras... (F1)"
-          autoFocus
-          onChange={(e) => debouncedSearch(e.target.value)}
-          onKeyDown={handleSearchKeyDown}
-          className="bg-background"
-        />
+      {/* Barra de búsqueda + botón ofertas */}
+      <div className="border-b p-3 flex gap-2">
+        <div className="flex-1">
+          <Input
+            ref={searchInputRef}
+            startIcon={<Search className="h-4 w-4" />}
+            placeholder="Buscar producto o escanear código... (F1)"
+            autoFocus
+            onChange={(e) => debouncedSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            className="bg-background"
+          />
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setShowOffers(true)}
+          className="shrink-0 gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
+          <Tag className="h-4 w-4" />Ofertas
+        </Button>
       </div>
 
       {/* Filtros de categoría */}
@@ -183,10 +358,18 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                 {/* Nombre */}
                 <p className="line-clamp-2 text-xs font-medium leading-tight">{product.name}</p>
 
-                {/* Precio */}
-                <p className="mt-1 text-sm font-bold text-primary">
-                  {formatCurrency(product.salePrice)}
-                </p>
+                {/* Precio + bulk badge */}
+                <div className="mt-1 flex items-center gap-1">
+                  <p className="text-sm font-bold text-primary">
+                    {formatCurrency(product.salePrice)}
+                    {product.isBulk && <span className="text-[10px] font-normal text-muted-foreground">/{product.bulkUnit ?? 'u'}</span>}
+                  </p>
+                </div>
+                {product.isBulk && (
+                  <div className="absolute left-1 top-1">
+                    <Scale className="h-3 w-3 text-primary/60" />
+                  </div>
+                )}
 
                 {/* Stock badge */}
                 {product.currentStock <= 5 && product.currentStock > 0 && (
@@ -208,13 +391,23 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       {/* Footer con atajos */}
       <div className="border-t px-4 py-2">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{products.length} productos</span>
+          <span>{products.length} productos · <Scale className="inline h-3 w-3" /> = a granel</span>
           <div className="flex items-center gap-2">
             <AlertCircle className="h-3 w-3" />
             <span>Enter en búsqueda para agregar por código</span>
           </div>
         </div>
       </div>
+
+      {/* Modales */}
+      {bulkProduct && (
+        <BulkModal
+          product={bulkProduct}
+          onConfirm={(qty) => handleAddProduct(bulkProduct, qty)}
+          onClose={() => setBulkProduct(null)}
+        />
+      )}
+      {showOffers && <OffersPanel onClose={() => setShowOffers(false)} />}
     </div>
   );
 }

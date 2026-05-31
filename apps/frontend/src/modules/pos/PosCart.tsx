@@ -237,20 +237,18 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
       {/* Totales */}
       <div className="border-t bg-card p-4">
         <div className="space-y-1.5">
-          <div className="flex justify-between text-sm text-muted-foreground">
-            <span>Subtotal</span>
-            <span>{formatCurrency(subtotal)}</span>
-          </div>
           {discountAmount > 0 && (
-            <div className="flex justify-between text-sm text-success">
-              <span>Descuento</span>
-              <span>-{formatCurrency(discountAmount)}</span>
-            </div>
+            <>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Subtotal</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-success">
+                <span>Descuento</span>
+                <span>-{formatCurrency(discountAmount)}</span>
+              </div>
+            </>
           )}
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>IGV (18%)</span>
-            <span>{formatCurrency(taxAmount)}</span>
-          </div>
           <div className="flex justify-between border-t pt-2 text-xl font-bold">
             <span>TOTAL</span>
             <span className="text-primary">{formatCurrency(total)}</span>

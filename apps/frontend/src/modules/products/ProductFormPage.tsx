@@ -21,6 +21,8 @@ const schema = z.object({
   minStock: z.coerce.number().int().min(0).default(0),
   currentStock: z.coerce.number().int().min(0).default(0),
   description: z.string().optional(),
+  isBulk: z.boolean().default(false),
+  bulkUnit: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -48,7 +50,7 @@ export function ProductFormPage() {
     enabled: isEdit,
   });
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     values: product as FormData | undefined,
   });
@@ -119,6 +121,33 @@ export function ProductFormPage() {
                 <Input {...register('currentStock')} type="number" min="0" />
               </div>
             )}
+
+            {/* Producto a granel */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="isBulk" {...register('isBulk')}
+                  className="h-4 w-4 rounded border-input" />
+                <div>
+                  <label htmlFor="isBulk" className="text-sm font-medium cursor-pointer">Producto a granel / peso variable</label>
+                  <p className="text-xs text-muted-foreground">Arroz, azúcar, huevo, aceite a granel, etc. El cajero ingresa el peso/cantidad libremente.</p>
+                </div>
+              </div>
+              {watch('isBulk') && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Unidad de venta</label>
+                  <select {...register('bulkUnit')}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <option value="kg">kg (kilogramo)</option>
+                    <option value="g">g (gramo)</option>
+                    <option value="L">L (litro)</option>
+                    <option value="ml">ml (mililitro)</option>
+                    <option value="unidad">unidad (docena, manojo...)</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">El precio de venta es por esta unidad. Ej: S/ 3.50 / kg</p>
+                </div>
+              )}
+            </div>
+
             <div>
               <label className="mb-1.5 block text-sm font-medium">Descripción</label>
               <textarea {...register('description')} rows={3}

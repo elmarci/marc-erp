@@ -111,12 +111,8 @@ export class SalesService {
     const saleDiscountAmt = input.discountAmount ?? (subtotal * (input.discountPercent ?? 0)) / 100;
     const discountedSubtotal = subtotal - saleDiscountAmt;
 
-    // Calcular IGV
-    const taxAmount = saleItems.reduce((sum, item) => {
-      const itemNet = item.subtotal * (1 - saleDiscountAmt / subtotal);
-      return sum + itemNet - itemNet / (1 + item.taxRate);
-    }, 0);
-
+    // Régimen Simple: sin IGV separado — precio de venta es precio final
+    const taxAmount = 0;
     const totalAmount = discountedSubtotal;
 
     // Verificar que los pagos cubren el total (excepto crédito)
