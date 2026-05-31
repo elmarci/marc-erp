@@ -210,19 +210,22 @@ export class SalesService {
           },
         });
 
-        // Actualizar alerta de stock
-        if (newStock <= product.minStock && newStock > 0) {
-          await tx.stockAlert.upsert({
-            where: { productId_alertType: { productId: item.productId, alertType: 'LOW_STOCK' } } as never,
-            create: { productId: item.productId, alertType: 'LOW_STOCK', threshold: product.minStock },
-            update: { isActive: true, resolvedAt: null },
-          } as never);
-        } else if (newStock === 0) {
-          await tx.stockAlert.upsert({
-            where: { productId_alertType: { productId: item.productId, alertType: 'OUT_OF_STOCK' } } as never,
-            create: { productId: item.productId, alertType: 'OUT_OF_STOCK' },
-            update: { isActive: true, resolvedAt: null },
-          } as never);
+        // Actualizar alerta de stock (sin upsert para evitar dependencia de índice compuesto)
+        const alertType = newStock === 0 ? 'OUT_OF_STOCK' : newStock <= product.minStock ? 'LOW_STOCK' : null;
+        if (alertType) {
+          const existing = await tx.stockAlert.findFirst({
+            where: { productId: item.productId, alertType },
+          });
+          if (existing) {
+            await tx.stockAlert.update({
+              where: { id: existing.id },
+              data: { isActive: true, resolvedAt: null },
+            });
+          } else {
+            await tx.stockAlert.create({
+              data: { productId: item.productId, alertType, threshold: product.minStock, isActive: true },
+            });
+          }
         }
       }
 
