@@ -85,14 +85,15 @@ export function HomePage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {offers.map(offer => (
-              <div key={offer.id} className="relative bg-gradient-to-br from-green-500/20 to-green-900/20 border border-green-500/30 rounded-2xl p-5 overflow-hidden">
+              <Link key={offer.id} to="/ofertas"
+                className="relative bg-gradient-to-br from-green-500/20 to-green-900/20 border border-green-500/30 hover:border-green-400/60 rounded-2xl p-5 overflow-hidden transition-all group">
                 <div className="absolute top-3 right-3">
                   {offer.storeBadge && (
                     <span className="bg-green-500 text-black text-xs font-black px-2.5 py-1 rounded-full">{offer.storeBadge}</span>
                   )}
                 </div>
                 <h3 className="font-bold text-white mb-1">{offer.name}</h3>
-                {offer.description && <p className="text-sm text-white/60 mb-3">{offer.description}</p>}
+                {offer.description && <p className="text-sm text-white/60 mb-2">{offer.description}</p>}
                 <p className="text-green-400 font-bold text-lg">
                   {offer.type === 'PERCENTAGE_DISCOUNT' ? `${offer.value}% OFF` :
                    offer.type === 'FIXED_DISCOUNT' ? `S/ ${offer.value} OFF` :
@@ -101,7 +102,8 @@ export function HomePage() {
                 {offer.endDate && (
                   <p className="text-xs text-white/30 mt-1">Hasta {new Date(offer.endDate).toLocaleDateString('es-PE')}</p>
                 )}
-              </div>
+                <p className="text-xs text-green-400/50 mt-2 group-hover:text-green-400 transition-colors">Ver productos →</p>
+              </Link>
             ))}
           </div>
         </section>

@@ -17,17 +17,30 @@ function OfferCard({ offer }: { offer: Offer }) {
   const { addItem, openCart } = useCartStore()
 
   const handleAdd = (product: Offer['products'][0]['product']) => {
+    const originalPrice = Number(product.salePrice)
+    let finalPrice = originalPrice
+    if (offer.type === 'PERCENTAGE_DISCOUNT') {
+      finalPrice = Math.round(originalPrice * (1 - offer.value / 100) * 100) / 100
+    } else if (offer.type === 'FIXED_DISCOUNT') {
+      finalPrice = Math.max(0, Math.round((originalPrice - offer.value) * 100) / 100)
+    }
+
     addItem({
       id: product.id,
-      name: product.name,
-      salePrice: Number(product.salePrice),
+      name: offer.storeBadge
+        ? `${product.name} (${offer.storeBadge})`
+        : product.name,
+      salePrice: finalPrice,
       currentStock: 99,
       imageUrl: product.imageUrl,
       barcode: null,
       description: null,
       category: { id: '', name: '' },
     })
-    toast.success(`${product.name} agregado`, {
+
+    const savings = originalPrice - finalPrice
+    toast.success(`${product.name} agregado con descuento`, {
+      description: savings > 0 ? `Ahorras S/ ${savings.toFixed(2)}` : undefined,
       action: { label: 'Ver carrito', onClick: openCart },
     })
   }
@@ -86,7 +99,18 @@ function OfferCard({ offer }: { offer: Offer }) {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm line-clamp-1">{product.name}</p>
-                  <p className="text-green-400 font-bold text-sm">S/ {Number(product.salePrice).toFixed(2)}</p>
+                  <div className="flex items-center gap-2">
+                    {(offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'FIXED_DISCOUNT') && (
+                      <span className="text-white/30 line-through text-xs">S/ {Number(product.salePrice).toFixed(2)}</span>
+                    )}
+                    <span className="text-green-400 font-bold text-sm">
+                      S/ {offer.type === 'PERCENTAGE_DISCOUNT'
+                        ? (Number(product.salePrice) * (1 - offer.value / 100)).toFixed(2)
+                        : offer.type === 'FIXED_DISCOUNT'
+                          ? Math.max(0, Number(product.salePrice) - offer.value).toFixed(2)
+                          : Number(product.salePrice).toFixed(2)}
+                    </span>
+                  </div>
                 </div>
                 <button
                   onClick={() => handleAdd(product)}
