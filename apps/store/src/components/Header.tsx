@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom'
 import { ShoppingCart, Search, Package } from 'lucide-react'
-import { useCartStore } from '../cartStore'
+import { useCartStore, cartCount } from '../cartStore'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 export function Header() {
-  const { count, openCart } = useCartStore()
+  const items = useCartStore(s => s.items)
+  const openCart = useCartStore(s => s.openCart)
+  const count = cartCount(items)
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
 

@@ -1,11 +1,17 @@
 import { X, Plus, Minus, ShoppingBag, Trash2 } from 'lucide-react'
-import { useCartStore } from '../cartStore'
+import { useCartStore, cartTotal } from '../cartStore'
 import { useNavigate } from 'react-router-dom'
 
 const WHATSAPP_NUMBER = '51930555831'
 
 export function CartDrawer() {
-  const { items, isOpen, closeCart, removeItem, updateQuantity, total, clearCart } = useCartStore()
+  const items = useCartStore(s => s.items)
+  const isOpen = useCartStore(s => s.isOpen)
+  const closeCart = useCartStore(s => s.closeCart)
+  const removeItem = useCartStore(s => s.removeItem)
+  const updateQuantity = useCartStore(s => s.updateQuantity)
+  const clearCart = useCartStore(s => s.clearCart)
+  const total = cartTotal(items)
   const navigate = useNavigate()
 
   const handleWhatsApp = () => {
