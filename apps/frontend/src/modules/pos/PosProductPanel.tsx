@@ -116,23 +116,41 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
   });
 
   const applyOffer = (offer: Offer, product: Offer['products'][0]['product']) => {
-    let finalPrice = Number(product.salePrice);
-    if (offer.type === 'PERCENTAGE_DISCOUNT') finalPrice = finalPrice * (1 - offer.value / 100);
-    else if (offer.type === 'FIXED_DISCOUNT') finalPrice = Math.max(0, finalPrice - offer.value);
-    finalPrice = Math.round(finalPrice * 100) / 100;
+    const originalPrice = Number(product.salePrice);
+    let finalPrice = originalPrice;
+    let qty = 1;
+    let label = offer.storeBadge ?? offer.name;
+
+    if (offer.type === 'PERCENTAGE_DISCOUNT') {
+      finalPrice = Math.round(originalPrice * (1 - offer.value / 100) * 100) / 100;
+    } else if (offer.type === 'FIXED_DISCOUNT') {
+      finalPrice = Math.max(0, Math.round((originalPrice - offer.value) * 100) / 100);
+    } else if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
+      const paidUnits = (offer as {buyQuantity?:number}).buyQuantity ?? 2;
+      const totalUnits = (offer as {getQuantity?:number}).getQuantity ?? 3;
+      if (offer.type === 'BUNDLE_PRICE') {
+        // precio fijo del paquete
+        finalPrice = Math.round((offer.value / totalUnits) * 100) / 100;
+      } else {
+        finalPrice = Math.round((originalPrice * paidUnits / totalUnits) * 100) / 100;
+      }
+      qty = totalUnits;
+      label = `${offer.storeBadge ?? offer.name} (${totalUnits}×${paidUnits})`;
+    }
 
     addItem({
       productId: product.id,
-      name: `${product.name} (${offer.storeBadge ?? offer.name})`,
+      name: `${product.name} (${label})`,
       barcode: product.barcode,
-      quantity: 1,
+      quantity: qty,
       unitPrice: finalPrice,
-      originalPrice: Number(product.salePrice),
-      discountAmount: Number(product.salePrice) - finalPrice,
+      originalPrice,
+      discountAmount: Math.round((originalPrice - finalPrice) * 100) / 100,
       discountPercent: 0,
       stock: product.currentStock,
     });
-    toast.success(`${product.name} con oferta agregado — ${formatCurrency(finalPrice)}`);
+    const total = formatCurrency(finalPrice * qty);
+    toast.success(`${product.name} con oferta agregado — ${total}`);
   };
 
   return (
@@ -154,7 +172,9 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
                   <p className="font-bold">{offer.name}</p>
                   <p className="text-xs text-success font-medium">
                     {offer.type === 'PERCENTAGE_DISCOUNT' ? `${offer.value}% OFF` :
-                     offer.type === 'FIXED_DISCOUNT' ? `S/ ${offer.value} OFF` : 'Precio especial'}
+                     offer.type === 'FIXED_DISCOUNT' ? `S/ ${offer.value} OFF` :
+                     offer.type === 'BUY_X_GET_Y' ? `Lleva ${(offer as {getQuantity?:number}).getQuantity ?? 3}, paga ${(offer as {buyQuantity?:number}).buyQuantity ?? 2}` :
+                     offer.type === 'BUNDLE_PRICE' ? `Pack a S/ ${offer.value}` : 'Precio especial'}
                   </p>
                 </div>
                 {offer.storeBadge && <Badge variant="success" className="text-xs">{offer.storeBadge}</Badge>}
@@ -162,21 +182,39 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
               {offer.products.length > 0 && (
                 <div className="space-y-2">
                   {offer.products.map(({ product }) => {
-                    let finalPrice = Number(product.salePrice);
-                    if (offer.type === 'PERCENTAGE_DISCOUNT') finalPrice = finalPrice * (1 - offer.value / 100);
-                    else if (offer.type === 'FIXED_DISCOUNT') finalPrice = Math.max(0, finalPrice - offer.value);
-                    finalPrice = Math.round(finalPrice * 100) / 100;
+                    const orig = Number(product.salePrice);
+                    let finalPrice = orig;
+                    let qty = 1;
+                    let priceLabel = '';
+
+                    if (offer.type === 'PERCENTAGE_DISCOUNT') {
+                      finalPrice = Math.round(orig * (1 - offer.value / 100) * 100) / 100;
+                      priceLabel = `c/u con ${offer.value}% OFF`;
+                    } else if (offer.type === 'FIXED_DISCOUNT') {
+                      finalPrice = Math.max(0, Math.round((orig - offer.value) * 100) / 100);
+                      priceLabel = `c/u con S/${offer.value} OFF`;
+                    } else if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
+                      const paidUnits = (offer as {buyQuantity?:number}).buyQuantity ?? 2;
+                      const totalUnits = (offer as {getQuantity?:number}).getQuantity ?? 3;
+                      finalPrice = offer.type === 'BUNDLE_PRICE'
+                        ? Math.round((offer.value / totalUnits) * 100) / 100
+                        : Math.round((orig * paidUnits / totalUnits) * 100) / 100;
+                      qty = totalUnits;
+                      priceLabel = `c/u · agrega ${totalUnits} uds · total ${formatCurrency(finalPrice * totalUnits)}`;
+                    }
+
                     return (
                       <div key={product.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
                         <div>
                           <p className="text-sm font-medium">{product.name}</p>
-                          <div className="flex gap-2 text-xs">
-                            <span className="line-through text-muted-foreground">{formatCurrency(product.salePrice)}</span>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="line-through text-muted-foreground">{formatCurrency(orig)}</span>
                             <span className="text-success font-bold">{formatCurrency(finalPrice)}</span>
+                            {priceLabel && <span className="text-muted-foreground">{priceLabel}</span>}
                           </div>
                         </div>
                         <Button size="sm" onClick={() => applyOffer(offer, product)}>
-                          Agregar
+                          Agregar {qty > 1 ? `(${qty}u)` : ''}
                         </Button>
                       </div>
                     );
