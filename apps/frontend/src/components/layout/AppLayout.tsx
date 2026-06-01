@@ -7,26 +7,20 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 
 export function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
   const location = useLocation();
   useRealtimeSync();
 
-  // Colapsar sidebar automáticamente en tablet (<1024px)
   useEffect(() => {
-    const check = () => {
-      if (window.innerWidth < 1024) {
-        setSidebarCollapsed(true);
-      }
-    };
+    const check = () => setIsTablet(window.innerWidth < 1024);
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Cerrar sidebar móvil al cambiar de ruta
-  useEffect(() => {
-    setMobileSidebarOpen(false);
-  }, [location.pathname]);
+  // Cerrar al cambiar de ruta en móvil
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
   const isPos = location.pathname === '/pos';
   if (isPos) return <Outlet />;
@@ -34,40 +28,41 @@ export function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
 
-      {/* Overlay para móvil cuando el sidebar está abierto */}
-      {mobileSidebarOpen && (
+      {/* Overlay oscuro en móvil/tablet */}
+      {isTablet && mobileOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/50 lg:hidden"
-          onClick={() => setMobileSidebarOpen(false)}
+          className="fixed inset-0 z-20 bg-black/50"
+          onClick={() => setMobileOpen(false)}
         />
       )}
 
-      {/* Sidebar — fijo en desktop, deslizable en móvil/tablet */}
-      <div className={cn(
-        'fixed inset-y-0 left-0 z-30 transition-transform duration-200 lg:translate-x-0',
-        mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+      {/* Sidebar */}
+      <aside className={cn(
+        'fixed inset-y-0 left-0 z-30 transition-transform duration-200',
+        // En tablet: fuera de pantalla cuando cerrado, visible cuando abierto
+        isTablet
+          ? mobileOpen ? 'translate-x-0' : '-translate-x-full'
+          // En desktop: siempre visible, ancho según estado collapsed
+          : 'translate-x-0',
       )}>
         <Sidebar
-          collapsed={sidebarCollapsed && !mobileSidebarOpen}
+          collapsed={isTablet ? false : sidebarCollapsed}
           onToggle={() => {
-            if (window.innerWidth < 1024) {
-              setMobileSidebarOpen(false);
-            } else {
-              setSidebarCollapsed(v => !v);
-            }
+            if (isTablet) setMobileOpen(false);
+            else setSidebarCollapsed(v => !v);
           }}
         />
-      </div>
+      </aside>
 
       {/* Contenido principal */}
       <div className={cn(
         'flex flex-1 flex-col overflow-hidden transition-all duration-200',
-        // En desktop: margen según estado del sidebar
-        sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64',
-        // En móvil/tablet: sin margen (sidebar es overlay)
-        'ml-0',
+        // En desktop: margen según sidebar
+        !isTablet && (sidebarCollapsed ? 'ml-16' : 'ml-64'),
+        // En tablet: siempre ancho completo
+        isTablet && 'ml-0',
       )}>
-        <Header onMenuClick={() => setMobileSidebarOpen(v => !v)} />
+        <Header onMenuClick={() => setMobileOpen(v => !v)} />
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           <Outlet />
         </main>
