@@ -58,34 +58,39 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-30 flex h-full flex-col border-r bg-card transition-all duration-200',
+        'flex h-full flex-col border-r bg-card transition-all duration-200 overflow-hidden',
         collapsed ? 'w-16' : 'w-64',
       )}
     >
       {/* Logo */}
-      <div className={cn('flex h-16 items-center border-b px-4', collapsed ? 'justify-center' : 'justify-between')}>
+      <div className={cn(
+        'flex h-14 items-center border-b px-3 shrink-0',
+        collapsed ? 'justify-center' : 'justify-between',
+      )}>
         {!collapsed && (
-          <img src="/logo-light.png" alt="MARC" className="h-10 w-auto max-w-[140px] object-contain" />
+          <img src="/logo-light.png" alt="MARC" className="h-8 w-auto max-w-[120px] object-contain" />
         )}
         {collapsed && (
-          <img src="/logo-light.png" alt="MARC" className="h-8 w-8 object-contain" />
+          <img src="/logo-light.png" alt="MARC" className="h-7 w-7 object-contain" />
         )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onToggle}
-          className={cn(collapsed && 'hidden')}
-          aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
+        {!collapsed && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onToggle}
+            aria-label="Colapsar menú"
+            className="hidden lg:flex"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
-      {/* Toggle cuando collapsed */}
+      {/* Toggle expand (solo en desktop collapsed) */}
       {collapsed && (
         <button
           onClick={onToggle}
-          className="flex h-8 w-full items-center justify-center border-b hover:bg-accent"
+          className="hidden lg:flex h-8 w-full items-center justify-center border-b hover:bg-accent transition-colors"
           aria-label="Expandir menú"
         >
           <ChevronRight className="h-4 w-4" />
@@ -93,16 +98,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4">
-        <ul className="space-y-1 px-2">
+      <nav className="flex-1 overflow-y-auto scroll-touch py-2">
+        <ul className="space-y-0.5 px-2">
           {visibleItems.map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
                     'hover:bg-accent hover:text-accent-foreground',
+                    // Área táctil mínima 44px
+                    'min-h-[44px]',
                     isActive
                       ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
                       : 'text-muted-foreground',

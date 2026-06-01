@@ -365,9 +365,9 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       {/* Grid de productos */}
       <div className="flex-1 overflow-y-auto p-3">
         {isLoading ? (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {[...Array(12)].map((_, i) => (
-              <div key={i} className="h-28 rounded-lg bg-muted animate-pulse" />
+              <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
             ))}
           </div>
         ) : products.length === 0 ? (
@@ -376,16 +376,18 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
             <p className="text-sm">No se encontraron productos</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          {/* Grid: 3col móvil / 4col tablet landscape / 5col desktop */}
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {products.map((product) => (
               <button
                 key={product.id}
                 onClick={() => handleAddProduct(product)}
                 disabled={product.currentStock <= 0}
                 className={cn(
-                  'relative flex flex-col rounded-lg border p-3 text-left transition-all',
+                  'relative flex flex-col rounded-xl border p-2.5 text-left transition-all',
                   'hover:border-primary hover:shadow-md active:scale-95',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'min-h-[88px]', // área táctil suficiente
                   product.currentStock <= 0
                     ? 'opacity-50 cursor-not-allowed'
                     : 'cursor-pointer bg-pos-product',

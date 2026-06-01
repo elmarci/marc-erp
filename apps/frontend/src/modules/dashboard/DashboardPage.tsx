@@ -126,8 +126,8 @@ export function DashboardPage() {
         </Button>
       </div>
 
-      {/* KPIs */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {/* KPIs — 2 col móvil, 2 col tablet, 4 col desktop */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           title="Ventas de Hoy"
           value={formatCurrency(kpis.todaySales.total)}
@@ -160,8 +160,8 @@ export function DashboardPage() {
         />
       </div>
 
-      {/* Gráfica + Top productos */}
-      <div className="grid gap-6 xl:grid-cols-3">
+      {/* Gráfica + Top productos — apilados en móvil/tablet, lado a lado en desktop */}
+      <div className="grid gap-4 grid-cols-1 xl:grid-cols-3">
         {/* Gráfica de ventas */}
         <Card className="xl:col-span-2">
           <CardHeader>

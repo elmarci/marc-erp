@@ -125,22 +125,22 @@ export function ProductsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="data-table w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="px-4 py-3 text-left font-medium">Producto</th>
-                    <th className="px-4 py-3 text-left font-medium">Categoría</th>
-                    <th className="px-4 py-3 text-right font-medium">Costo</th>
+                    <th className="px-4 py-3 text-left font-medium col-md">Categoría</th>
+                    <th className="px-4 py-3 text-right font-medium col-lg">Costo</th>
                     <th className="px-4 py-3 text-right font-medium">Precio</th>
                     <th className="px-4 py-3 text-right font-medium">Stock</th>
-                    <th className="px-4 py-3 text-center font-medium">Estado</th>
+                    <th className="px-4 py-3 text-center font-medium col-md">Estado</th>
                     <th className="px-4 py-3 text-center font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {products.map((product) => (
                     <tr key={product.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3">
+                      <td data-label="Producto" className="px-4 py-3">
                         <div>
                           <p className="font-medium">{product.name}</p>
                           {product.barcode && (
@@ -151,10 +151,10 @@ export function ProductsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{product.category.name}</td>
-                      <td className="px-4 py-3 text-right">{formatCurrency(product.costPrice)}</td>
-                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(product.salePrice)}</td>
-                      <td className="px-4 py-3 text-right">
+                      <td data-label="Categoría" className="px-4 py-3 text-muted-foreground col-md">{product.category.name}</td>
+                      <td data-label="Costo" className="px-4 py-3 text-right col-lg">{formatCurrency(product.costPrice)}</td>
+                      <td data-label="Precio" className="px-4 py-3 text-right font-semibold">{formatCurrency(product.salePrice)}</td>
+                      <td data-label="Stock" className="px-4 py-3 text-right">
                         <span className={cn(
                           'font-semibold',
                           product.currentStock <= 0 ? 'text-destructive' :
@@ -166,12 +166,12 @@ export function ProductsPage() {
                           <AlertTriangle className="ml-1 inline h-3.5 w-3.5 text-warning" />
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td data-label="Estado" className="px-4 py-3 text-center col-md">
                         <Badge variant={product.status === 'ACTIVE' ? 'success' : 'secondary'}>
                           {product.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td data-label="Acciones" className="px-4 py-3 text-center">
                         {hasMinRole('WAREHOUSE') && (
                           <Link to={`/products/${product.id}/edit`}>
                             <Button variant="ghost" size="icon-sm">

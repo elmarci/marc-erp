@@ -149,4 +149,152 @@
   .focus-ring {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
+
+  /* ── RESPONSIVE UTILITIES ─────────────────────────────────── */
+
+  /* Área táctil mínima WCAG 2.5.5 — todos los interactivos */
+  button, [role="button"], a, .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Excepción: botones dentro de tablas/badges (visualmente pequeños) */
+  .btn-xs { min-height: unset; min-width: unset; }
+
+  /* Eliminar flash azul en touch */
+  * { -webkit-tap-highlight-color: transparent; }
+
+  /* Scroll táctil suave */
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Scroll horizontal sin scrollbar */
+  .scroll-x-hidden {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .scroll-x-hidden::-webkit-scrollbar { display: none; }
+
+  /* Prevenir zoom automático en iOS (inputs < 16px lo causan) */
+  @media (max-width: 767px) {
+    input, select, textarea { font-size: 16px !important; }
+  }
+
+  /* TABLE TO CARDS — patrón responsive para todas las tablas del ERP */
+  @media (max-width: 767px) {
+    .data-table thead { display: none; }
+
+    .data-table tbody tr {
+      display: block;
+      background: white;
+      border: 1px solid hsl(var(--border));
+      border-radius: 12px;
+      margin-bottom: 10px;
+      padding: 10px 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .data-table td {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid hsl(var(--muted));
+      font-size: 13px;
+    }
+    .data-table td:last-child { border-bottom: none; }
+
+    .data-table td::before {
+      content: attr(data-label);
+      font-size: 10px;
+      font-weight: 600;
+      color: hsl(var(--muted-foreground));
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+      margin-right: 12px;
+    }
+
+    .data-table td[data-label="Acciones"] {
+      justify-content: flex-end;
+      padding-top: 8px;
+      border-bottom: none;
+    }
+    .data-table td[data-label="Acciones"]::before { display: none; }
+  }
+
+  /* Columnas opcionales */
+  .col-md { display: none; }
+  .col-lg { display: none; }
+  @media (min-width: 768px)  { .col-md { display: table-cell; } }
+  @media (min-width: 1024px) { .col-lg { display: table-cell; } }
+
+  /* Modales responsive: bottom sheet en móvil, centrado en desktop */
+  .modal-bottom-sheet {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: flex-end; justify-content: center;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+  }
+  @media (min-width: 768px) {
+    .modal-bottom-sheet { align-items: center; }
+  }
+
+  .modal-panel-responsive {
+    width: 100%;
+    border-radius: 20px 20px 0 0;
+    max-height: 92vh; overflow-y: auto;
+    background: white;
+    padding: 20px 20px 32px;
+  }
+  @media (min-width: 768px) {
+    .modal-panel-responsive {
+      border-radius: 20px;
+      max-width: 560px;
+      max-height: 85vh;
+      padding: 28px;
+    }
+  }
+
+  .modal-handle {
+    width: 40px; height: 4px;
+    background: hsl(var(--border));
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+  @media (min-width: 768px) { .modal-handle { display: none; } }
+
+  /* Safe area iOS */
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+  /* ── RESPONSIVE PAGE HEADER ──────────────────────────────── */
+  .page-header-responsive {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  @media (min-width: 640px) {
+    .page-header-responsive {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+  }
+
+  /* ── POS PORTRAIT mode ─────────────────────────────────── */
+  @media (max-width: 900px) and (orientation: portrait) {
+    .pos-desktop-layout { display: none; }
+    .pos-tablet-layout { display: flex; }
+  }
+  @media (min-width: 901px), (orientation: landscape) {
+    .pos-desktop-layout { display: flex; }
+    .pos-tablet-layout { display: none; }
+  }
+
+  /* ── Tablas: scroll horizontal en tablet en vez de cards ── */
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .data-table { min-width: 600px; }
+    .overflow-x-auto { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  }
 }

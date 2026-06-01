@@ -56,36 +56,34 @@ export function SalesPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="data-table w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="px-4 py-3 text-left font-medium">Número</th>
-                    <th className="px-4 py-3 text-left font-medium">Cajero</th>
-                    <th className="px-4 py-3 text-left font-medium">Cliente</th>
-                    <th className="px-4 py-3 text-center font-medium">Ítems</th>
+                    <th className="px-4 py-3 text-left font-medium col-md">Cajero</th>
+                    <th className="px-4 py-3 text-left font-medium col-lg">Cliente</th>
                     <th className="px-4 py-3 text-right font-medium">Total</th>
                     <th className="px-4 py-3 text-center font-medium">Estado</th>
-                    <th className="px-4 py-3 text-left font-medium">Fecha</th>
+                    <th className="px-4 py-3 text-left font-medium col-md">Fecha</th>
                     <th className="px-4 py-3 text-center font-medium"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {(data?.data ?? []).map((sale) => (
                     <tr key={sale.id} className="hover:bg-muted/30">
-                      <td className="px-4 py-3 font-mono text-xs font-medium">{sale.saleNumber}</td>
-                      <td className="px-4 py-3">{sale.cashier.firstName} {sale.cashier.lastName}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
+                      <td data-label="Número" className="px-4 py-3 font-mono text-xs font-medium">{sale.saleNumber}</td>
+                      <td data-label="Cajero" className="px-4 py-3 col-md">{sale.cashier.firstName} {sale.cashier.lastName}</td>
+                      <td data-label="Cliente" className="px-4 py-3 text-muted-foreground col-lg">
                         {sale.customer ? `${sale.customer.firstName} ${sale.customer.lastName}` : '—'}
                       </td>
-                      <td className="px-4 py-3 text-center">{sale._count.items}</td>
-                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(sale.totalAmount)}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td data-label="Total" className="px-4 py-3 text-right font-semibold">{formatCurrency(sale.totalAmount)}</td>
+                      <td data-label="Estado" className="px-4 py-3 text-center">
                         <Badge variant={statusVariant(sale.status) as 'success' | 'destructive' | 'warning'}>
                           {STATUS_LABELS[sale.status] ?? sale.status}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">{formatDateTime(sale.createdAt)}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td data-label="Fecha" className="px-4 py-3 text-muted-foreground text-xs col-md">{formatDateTime(sale.createdAt)}</td>
+                      <td data-label="Acciones" className="px-4 py-3 text-center">
                         <Link to={`/sales/${sale.id}`}>
                           <Button variant="ghost" size="icon-sm"><Eye className="h-4 w-4" /></Button>
                         </Link>

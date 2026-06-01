@@ -42,9 +42,9 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-4 lg:px-6">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card/95 backdrop-blur px-3 lg:px-6 sticky top-0 z-10">
       {/* Botón hamburguesa — solo visible en móvil/tablet */}
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Menú">
+      <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={onMenuClick} aria-label="Menú">
         <Menu className="h-5 w-5" />
       </Button>
       <div className="hidden lg:block" />
