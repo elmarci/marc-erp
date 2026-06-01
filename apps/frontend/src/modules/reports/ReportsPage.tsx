@@ -38,12 +38,22 @@ const PRESETS = [
   { label: '90 días', days: 90 },
 ];
 
+// Obtener fecha en zona horaria de Lima (UTC-5) en formato YYYY-MM-DD
+const limaDateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' });
+function limaDateStr(date: Date): string {
+  return limaDateFmt.format(date); // devuelve 'YYYY-MM-DD' en hora Lima
+}
+
 function getDateRange(days: number) {
-  const to = new Date();
-  const from = new Date();
-  if (days > 0) from.setDate(from.getDate() - days);
-  else from.setHours(0, 0, 0, 0);
-  return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
+  const now = new Date();
+  const to = limaDateStr(now);
+  if (days === 0) {
+    // "Hoy" en Lima
+    return { from: to, to };
+  }
+  const fromDate = new Date(now);
+  fromDate.setDate(fromDate.getDate() - days);
+  return { from: limaDateStr(fromDate), to };
 }
 
 const PAYMENT_LABELS: Record<string, string> = {

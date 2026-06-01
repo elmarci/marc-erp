@@ -12,12 +12,19 @@ export class ReportsService {
     const cached = await redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
 
-    const today = new Date();
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfPrevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const endOfPrevMonth = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59);
+    // Calcular fechas en zona horaria de Lima (UTC-5) para evitar desfase
+    const LIMA_OFFSET_MS = -5 * 60 * 60 * 1000;
+    const nowUTC = new Date();
+    // "Ahora" en Lima: desplazamos para obtener año/mes/día correctos
+    const nowLima = new Date(nowUTC.getTime() + LIMA_OFFSET_MS);
+    const y = nowLima.getUTCFullYear(), m = nowLima.getUTCMonth(), d = nowLima.getUTCDate();
+
+    // Inicio y fin del día Lima expresados en UTC (para comparar con BD)
+    const startOfDay = new Date(Date.UTC(y, m, d, 5, 0, 0, 0));       // Lima 00:00 = UTC 05:00
+    const endOfDay   = new Date(Date.UTC(y, m, d + 1, 4, 59, 59, 999)); // Lima 23:59 = UTC 04:59+1d
+    const startOfMonth     = new Date(Date.UTC(y, m, 1, 5, 0, 0, 0));
+    const startOfPrevMonth = new Date(Date.UTC(y, m - 1, 1, 5, 0, 0, 0));
+    const endOfPrevMonth   = new Date(Date.UTC(y, m, 1, 4, 59, 59, 999));
 
     const [
       todaySales,
@@ -66,16 +73,16 @@ export class ReportsService {
         orderBy: { _sum: { subtotal: 'desc' } },
         take: 10,
       }),
-      // Ventas últimos 7 días (para gráfica)
-      prisma.$queryRaw<{ date: Date; total: number; count: bigint }[]>`
+      // Ventas últimos 7 días (para gráfica) — agrupar por fecha en zona Lima
+      prisma.$queryRaw<{ date: string; total: number; count: bigint }[]>`
         SELECT
-          DATE(created_at) as date,
+          TO_CHAR(created_at AT TIME ZONE 'America/Lima', 'YYYY-MM-DD') as date,
           SUM(total_amount)::float as total,
           COUNT(*)::bigint as count
         FROM sales
         WHERE status = 'COMPLETED'
           AND created_at >= NOW() - INTERVAL '7 days'
-        GROUP BY DATE(created_at)
+        GROUP BY TO_CHAR(created_at AT TIME ZONE 'America/Lima', 'YYYY-MM-DD')
         ORDER BY date ASC
       `,
       // Ventas recientes
@@ -171,10 +178,10 @@ export class ReportsService {
         GROUP BY sp.method
         ORDER BY total DESC
       `,
-      // Por período
+      // Por período — agrupar en zona Lima para evitar desfase UTC
       prisma.$queryRaw<{ period: string; total: number; count: bigint }[]>`
         SELECT
-          TO_CHAR(created_at, ${groupFormat}) as period,
+          TO_CHAR(created_at AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
           SUM(total_amount)::float as total,
           COUNT(*)::bigint as count
         FROM sales
