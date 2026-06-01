@@ -376,7 +376,6 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
             <p className="text-sm">No se encontraron productos</p>
           </div>
         ) : (
-          {/* Grid: 3col móvil / 4col tablet landscape / 5col desktop */}
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {products.map((product) => (
               <button
