@@ -30,6 +30,7 @@ interface Category {
 interface PosProductPanelProps {
   onBarcodeSearch: (barcode: string) => void;
   className?: string;
+  onProductAdded?: () => void;
 }
 
 /* ─── Bulk weight modal ───────────────────────────────────────────────────── */

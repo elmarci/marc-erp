@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { ShoppingCart, Grid3x3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { usePosStore } from '@/stores/posStore';
@@ -175,6 +176,10 @@ export function PosPage() {
     }
   }, []);
 
+  const [posTab, setPosTab] = useState<'products' | 'cart'>('products');
+  const cartItems = usePosStore(s => s.items);
+  const cartCount = cartItems.reduce((s, i) => s + i.quantity, 0);
+
   return (
     <div className="pos-screen flex flex-col bg-pos-bg">
       <PosHeader
@@ -182,18 +187,65 @@ export function PosPage() {
         onOpenSession={() => setShowOpenSession(true)}
       />
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Panel izquierdo: Carrito */}
-        <PosCart
-          onCheckout={() => setShowPayment(true)}
-          className="w-96 shrink-0"
-        />
+      {/* ── DESKTOP: layout horizontal original ── */}
+      <div className="hidden lg:flex flex-1 overflow-hidden">
+        <PosCart onCheckout={() => setShowPayment(true)} className="w-96 shrink-0" />
+        <PosProductPanel onBarcodeSearch={handleBarcodeScanned} className="flex-1" />
+      </div>
 
-        {/* Panel derecho: Productos */}
-        <PosProductPanel
-          onBarcodeSearch={handleBarcodeScanned}
-          className="flex-1"
-        />
+      {/* ── TABLET/MÓVIL: tabs Productos / Carrito ── */}
+      <div className="flex lg:hidden flex-col flex-1 overflow-hidden">
+        {/* Tab bar */}
+        <div className="flex border-b bg-pos-cart shrink-0">
+          <button
+            onClick={() => setPosTab('products')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors border-b-2 ${
+              posTab === 'products' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
+            }`}>
+            <Grid3x3 className="h-4 w-4" />Productos
+          </button>
+          <button
+            onClick={() => setPosTab('cart')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors border-b-2 ${
+              posTab === 'cart' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
+            }`}>
+            <ShoppingCart className="h-4 w-4" />
+            Carrito
+            {cartCount > 0 && (
+              <span className="h-5 w-5 bg-primary text-primary-foreground text-xs font-black rounded-full flex items-center justify-center">
+                {cartCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Contenido del tab */}
+        <div className="flex-1 overflow-hidden">
+          {posTab === 'products' ? (
+            <PosProductPanel
+              onBarcodeSearch={handleBarcodeScanned}
+              className="h-full"
+              onProductAdded={() => {/* opcional: cambiar al carrito */}}
+            />
+          ) : (
+            <PosCart
+              onCheckout={() => setShowPayment(true)}
+              className="h-full"
+            />
+          )}
+        </div>
+
+        {/* Botón flotante "Cobrar" cuando está en productos y hay items */}
+        {posTab === 'products' && cartCount > 0 && (
+          <div className="p-3 border-t bg-pos-cart shrink-0">
+            <button
+              onClick={() => setPosTab('cart')}
+              className="w-full bg-primary text-primary-foreground font-bold py-3 rounded-xl flex items-center justify-center gap-2">
+              <ShoppingCart className="h-4 w-4" />
+              Ver carrito ({cartCount}) — S/ {cartItems.reduce((s, i) => s + i.subtotal, 0).toFixed(2)}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Modal de pago */}
