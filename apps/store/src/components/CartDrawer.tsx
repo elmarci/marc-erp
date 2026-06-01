@@ -70,7 +70,9 @@ export function CartDrawer() {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm line-clamp-2 leading-tight">{item.product.name}</p>
                   <p className="text-white/40 text-xs mt-0.5">
-                    S/ {Number(item.product.salePrice).toFixed(2)} c/u
+                    {item.product.description
+                      ? <span className="text-green-400/70">{item.product.description}</span>
+                      : `S/ ${Number(item.product.salePrice).toFixed(2)} c/u`}
                   </p>
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-1.5">

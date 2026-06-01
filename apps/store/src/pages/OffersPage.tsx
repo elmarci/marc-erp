@@ -32,18 +32,20 @@ function OfferCard({ offer }: { offer: Offer }) {
     if (offer.type === 'BUY_X_GET_Y') {
       // Add as a bundle: totalUnits items at reduced price each
       const { pricePerUnit, totalUnits, paidUnits } = getBuyXGetYPrice(originalPrice, offer)
+      // 1 pack = totalUnits unidades al precio de paidUnits
+      const bundlePrice = Math.round(pricePerUnit * totalUnits * 100) / 100
       addItem({
-        id: product.id,
-        name: `${product.name} (Pack ${totalUnits}x${paidUnits})`,
-        salePrice: pricePerUnit,
+        id: `bundle-${offer.id}-${product.id}`,
+        name: `${product.name} — Pack ${totalUnits}×${paidUnits}`,
+        salePrice: bundlePrice,
         currentStock: 99,
         imageUrl: product.imageUrl,
         barcode: null,
-        description: null,
+        description: `Llevas ${totalUnits}, pagas ${paidUnits}`,
         category: { id: '', name: '' },
-      }, totalUnits)
-      toast.success(`Pack ${totalUnits}x${paidUnits} de ${product.name} agregado`, {
-        description: `${totalUnits} unidades por el precio de ${paidUnits} · S/ ${(pricePerUnit * totalUnits).toFixed(2)}`,
+      }, 1)
+      toast.success(`Pack ${totalUnits}×${paidUnits} de ${product.name} agregado`, {
+        description: `S/ ${bundlePrice.toFixed(2)} — llevas ${totalUnits} unidades, pagas ${paidUnits}`,
         action: { label: 'Ver carrito', onClick: openCart },
       })
       return
