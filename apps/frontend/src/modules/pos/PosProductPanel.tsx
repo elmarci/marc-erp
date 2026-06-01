@@ -138,19 +138,22 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
       label = `${offer.storeBadge ?? offer.name} (${totalUnits}×${paidUnits})`;
     }
 
+    // unitPrice = precio original, discountAmount = descuento por unidad
+    // El posStore calcula: subtotal = (unitPrice - discountAmount) × qty
+    const discountPerUnit = Math.round((originalPrice - finalPrice) * 100) / 100;
     addItem({
       productId: product.id,
       name: `${product.name} (${label})`,
       barcode: product.barcode,
       quantity: qty,
-      unitPrice: finalPrice,
+      unitPrice: originalPrice,      // precio original (sin descuento)
       originalPrice,
-      discountAmount: Math.round((originalPrice - finalPrice) * 100) / 100,
+      discountAmount: discountPerUnit, // descuento por unidad
       discountPercent: 0,
       stock: product.currentStock,
     });
     const total = formatCurrency(finalPrice * qty);
-    toast.success(`${product.name} con oferta agregado — ${total}`);
+    toast.success(`${product.name} con oferta — ${total}`);
   };
 
   return (
