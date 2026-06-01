@@ -16,32 +16,18 @@ const TYPE_LABELS: Record<string, string> = {
 function OfferCard({ offer }: { offer: Offer }) {
   const { addItem, openCart } = useCartStore()
 
-  const handleAdd = (product: Offer['products'][0]['product'], offer: Offer) => {
-    // Apply discount to price
-    let finalPrice = Number(product.salePrice)
-    if (offer.type === 'PERCENTAGE_DISCOUNT') {
-      finalPrice = finalPrice * (1 - offer.value / 100)
-    } else if (offer.type === 'FIXED_DISCOUNT') {
-      finalPrice = Math.max(0, finalPrice - offer.value)
-    }
-    finalPrice = Math.round(finalPrice * 100) / 100
-
+  const handleAdd = (product: Offer['products'][0]['product']) => {
     addItem({
       id: product.id,
-      name: offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'FIXED_DISCOUNT'
-        ? `${product.name} (${offer.storeBadge ?? 'Oferta'})`
-        : product.name,
-      salePrice: finalPrice,
+      name: product.name,
+      salePrice: Number(product.salePrice),
       currentStock: 99,
       imageUrl: product.imageUrl,
       barcode: null,
       description: null,
       category: { id: '', name: '' },
     })
-    toast.success(`${product.name} agregado con descuento`, {
-      description: finalPrice < Number(product.salePrice)
-        ? `Precio original S/ ${Number(product.salePrice).toFixed(2)} → S/ ${finalPrice.toFixed(2)}`
-        : undefined,
+    toast.success(`${product.name} agregado`, {
       action: { label: 'Ver carrito', onClick: openCart },
     })
   }
@@ -53,17 +39,17 @@ function OfferCard({ offer }: { offer: Offer }) {
     `Precio paquete`
 
   return (
-    <div className="bg-gradient-to-br from-white to-white border border-gray-200 hover:border-green-500/30 rounded-2xl overflow-hidden transition-all group">
+    <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-white/10 hover:border-green-500/30 rounded-2xl overflow-hidden transition-all group">
       {/* Header */}
-      <div className="relative bg-gradient-to-r from-green-500/20 to-green-900/10 p-5 border-b border-gray-100">
+      <div className="relative bg-gradient-to-r from-green-500/20 to-green-900/10 p-5 border-b border-white/5">
         {offer.storeImage && (
           <img src={offer.storeImage} alt={offer.name}
             className="absolute inset-0 w-full h-full object-cover opacity-10" />
         )}
         <div className="relative flex items-start justify-between gap-3">
           <div>
-            <h3 className="font-black text-xl text-gray-900">{offer.name}</h3>
-            {offer.description && <p className="text-sm text-gray-900/60 mt-1">{offer.description}</p>}
+            <h3 className="font-black text-xl text-white">{offer.name}</h3>
+            {offer.description && <p className="text-sm text-white/60 mt-1">{offer.description}</p>}
           </div>
           {offer.storeBadge && (
             <span className="shrink-0 bg-green-500 text-black text-xs font-black px-3 py-1.5 rounded-full">
@@ -73,7 +59,7 @@ function OfferCard({ offer }: { offer: Offer }) {
         </div>
         <div className="relative mt-3 flex items-center gap-3">
           <span className="text-2xl font-black text-green-400">{discountText}</span>
-          <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-full">{TYPE_LABELS[offer.type] ?? offer.type}</span>
+          <span className="text-xs text-white/30 bg-white/5 px-2 py-1 rounded-full">{TYPE_LABELS[offer.type] ?? offer.type}</span>
         </div>
         {offer.endDate && (
           <div className="relative mt-2 flex items-center gap-1.5 text-xs text-amber-400">
@@ -86,35 +72,24 @@ function OfferCard({ offer }: { offer: Offer }) {
       {/* Products */}
       {offer.products.length > 0 && (
         <div className="p-4">
-          <p className="text-xs text-gray-400 uppercase tracking-wider mb-3 font-semibold">Productos en oferta</p>
+          <p className="text-xs text-white/40 uppercase tracking-wider mb-3 font-semibold">Productos en oferta</p>
           <div className="space-y-2">
             {offer.products.map(({ product }) => (
-              <div key={product.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 hover:bg-gray-50 transition-colors">
+              <div key={product.id} className="flex items-center gap-3 bg-white/5 rounded-xl p-3 hover:bg-white/8 transition-colors">
                 {product.imageUrl ? (
                   <img src={product.imageUrl} alt={product.name}
-                    className="h-12 w-12 rounded-lg object-cover shrink-0 bg-gray-100" />
+                    className="h-12 w-12 rounded-lg object-cover shrink-0 bg-zinc-800" />
                 ) : (
-                  <div className="h-12 w-12 rounded-lg bg-gray-100 shrink-0 flex items-center justify-center">
-                    <Tag className="h-5 w-5 text-gray-900/20" />
+                  <div className="h-12 w-12 rounded-lg bg-white/10 shrink-0 flex items-center justify-center">
+                    <Tag className="h-5 w-5 text-white/20" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm line-clamp-1">{product.name}</p>
-                  <div className="flex items-center gap-2">
-                    {(offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'FIXED_DISCOUNT') && (
-                      <span className="text-gray-400 line-through text-xs">S/ {Number(product.salePrice).toFixed(2)}</span>
-                    )}
-                    <p className="text-green-400 font-bold text-sm">
-                      S/ {offer.type === 'PERCENTAGE_DISCOUNT'
-                        ? (Number(product.salePrice) * (1 - offer.value / 100)).toFixed(2)
-                        : offer.type === 'FIXED_DISCOUNT'
-                          ? Math.max(0, Number(product.salePrice) - offer.value).toFixed(2)
-                          : Number(product.salePrice).toFixed(2)}
-                    </p>
-                  </div>
+                  <p className="text-green-400 font-bold text-sm">S/ {Number(product.salePrice).toFixed(2)}</p>
                 </div>
                 <button
-                  onClick={() => handleAdd(product, offer)}
+                  onClick={() => handleAdd(product)}
                   className="h-9 w-9 bg-green-500 hover:bg-green-400 text-black rounded-full flex items-center justify-center transition-colors shrink-0">
                   <ShoppingCart className="h-4 w-4" />
                 </button>
@@ -126,7 +101,7 @@ function OfferCard({ offer }: { offer: Offer }) {
 
       {offer.products.length === 0 && (
         <div className="p-4 text-center">
-          <p className="text-sm text-gray-400">Oferta válida en toda la tienda</p>
+          <p className="text-sm text-white/40">Oferta válida en toda la tienda</p>
           <Link to="/catalogo" className="inline-block mt-3 text-green-400 hover:text-green-300 text-sm font-medium transition-colors">
             Ver productos →
           </Link>
@@ -154,23 +129,23 @@ export function OffersPage() {
         </div>
         <div>
           <h1 className="text-2xl font-black">Ofertas especiales</h1>
-          <p className="text-gray-900/50 text-sm">Aprovecha nuestras promociones por tiempo limitado</p>
+          <p className="text-white/50 text-sm">Aprovecha nuestras promociones por tiempo limitado</p>
         </div>
       </div>
 
       {isLoading && (
         <div className="grid sm:grid-cols-2 gap-4">
           {[1, 2].map(i => (
-            <div key={i} className="bg-white rounded-2xl h-48 animate-pulse" />
+            <div key={i} className="bg-zinc-900 rounded-2xl h-48 animate-pulse" />
           ))}
         </div>
       )}
 
       {!isLoading && offers.length === 0 && (
         <div className="text-center py-20">
-          <Tag className="h-16 w-16 mx-auto mb-4 text-gray-900/10" />
-          <p className="text-gray-400 text-lg">No hay ofertas activas en este momento</p>
-          <p className="text-gray-400 text-sm mt-2">Vuelve pronto para ver nuestras promociones</p>
+          <Tag className="h-16 w-16 mx-auto mb-4 text-white/10" />
+          <p className="text-white/40 text-lg">No hay ofertas activas en este momento</p>
+          <p className="text-white/30 text-sm mt-2">Vuelve pronto para ver nuestras promociones</p>
           <Link to="/" className="inline-block mt-6 bg-green-500 hover:bg-green-400 text-black font-bold px-6 py-3 rounded-full text-sm transition-colors">
             Ver productos
           </Link>

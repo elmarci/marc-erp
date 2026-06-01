@@ -48,14 +48,14 @@ export function OrderConfirmPage() {
     <div className="flex items-center justify-center min-h-[60vh]">
       <div className="text-center space-y-3">
         <div className="h-10 w-10 border-2 border-green-400 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-gray-400">Cargando tu pedido...</p>
+        <p className="text-white/40">Cargando tu pedido...</p>
       </div>
     </div>
   )
 
   if (!order) return (
     <div className="text-center py-20">
-      <p className="text-gray-400 mb-4">Pedido no encontrado</p>
+      <p className="text-white/40 mb-4">Pedido no encontrado</p>
       <Link to="/" className="text-green-400">Volver a la tienda</Link>
     </div>
   )
@@ -83,7 +83,7 @@ export function OrderConfirmPage() {
               <span className="absolute -top-1 -right-1 h-5 w-5 bg-green-500 rounded-full animate-ping opacity-75" />
             </div>
             <h1 className="text-2xl font-black mb-1">¡Pedido recibido!</h1>
-            <p className="text-gray-900/50">Número de pedido</p>
+            <p className="text-white/50">Número de pedido</p>
             <p className="text-3xl font-black text-green-400 mt-1">{order.orderNumber}</p>
           </>
         )}
@@ -95,19 +95,19 @@ export function OrderConfirmPage() {
           <h3 className="font-bold text-lg mb-3">
             {PAYMENT_EMOJIS[order.paymentMethod]} Realiza tu pago por {PAYMENT_LABELS[order.paymentMethod]}
           </h3>
-          <div className="bg-gray-100/60 rounded-xl p-4 mb-4">
-            <p className="text-gray-900/50 text-sm mb-1">Monto a pagar:</p>
-            <p className="text-3xl font-black text-gray-900">S/ {Number(order.total).toFixed(2)}</p>
-            <p className="text-gray-900/50 text-sm mt-2">Enviar al número:</p>
+          <div className="bg-black/30 rounded-xl p-4 mb-4">
+            <p className="text-white/50 text-sm mb-1">Monto a pagar:</p>
+            <p className="text-3xl font-black text-white">S/ {Number(order.total).toFixed(2)}</p>
+            <p className="text-white/50 text-sm mt-2">Enviar al número:</p>
             <p className="text-2xl font-black text-green-400">930 555 831</p>
           </div>
           <a href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(whatsappMsg)}`}
             target="_blank" rel="noopener noreferrer"
-            className="flex items-center justify-center gap-3 bg-[#25D366] text-gray-900 font-bold py-4 rounded-xl hover:opacity-90 transition-opacity">
+            className="flex items-center justify-center gap-3 bg-[#25D366] text-white font-bold py-4 rounded-xl hover:opacity-90 transition-opacity">
             <MessageCircle className="h-5 w-5" />
             Enviar comprobante por WhatsApp
           </a>
-          <p className="text-xs text-gray-400 text-center mt-3">
+          <p className="text-xs text-white/30 text-center mt-3">
             Tu pedido se confirmará cuando verifiquemos el pago
           </p>
         </div>
@@ -115,10 +115,10 @@ export function OrderConfirmPage() {
 
       {/* Status timeline */}
       {!isCancelled && (
-        <div className="bg-white rounded-2xl p-5 mb-4 border border-gray-100">
+        <div className="bg-zinc-900 rounded-2xl p-5 mb-4 border border-white/5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold">Estado del pedido</h3>
-            <span className="text-xs text-gray-400 animate-pulse">• actualizando</span>
+            <span className="text-xs text-white/30 animate-pulse">• actualizando</span>
           </div>
           <div className="space-y-0">
             {STATUS_FLOW.map((s, i) => {
@@ -130,21 +130,21 @@ export function OrderConfirmPage() {
                 <div key={s.key} className="flex gap-4">
                   <div className="flex flex-col items-center">
                     <div className={`h-9 w-9 rounded-full flex items-center justify-center transition-all ${
-                      isDone ? 'bg-green-500' : isCurrent ? `${s.bg} ring-4 ring-white/10` : 'bg-gray-50 border border-gray-200'
+                      isDone ? 'bg-green-500' : isCurrent ? `${s.bg} ring-4 ring-white/10` : 'bg-white/5 border border-white/10'
                     }`}>
                       {isDone ? <CheckCircle className="h-5 w-5 text-black" /> :
-                       <StatusIcon className={`h-4 w-4 ${isCurrent ? 'text-black' : 'text-gray-900/20'}`} />}
+                       <StatusIcon className={`h-4 w-4 ${isCurrent ? 'text-black' : 'text-white/20'}`} />}
                     </div>
                     {i < STATUS_FLOW.length - 1 && (
-                      <div className={`w-0.5 h-8 transition-all ${isDone ? 'bg-green-500' : 'bg-gray-100'}`} />
+                      <div className={`w-0.5 h-8 transition-all ${isDone ? 'bg-green-500' : 'bg-white/10'}`} />
                     )}
                   </div>
                   <div className="pb-6 flex-1">
-                    <p className={`font-semibold text-sm ${isCurrent ? s.color : isDone ? 'text-gray-900' : 'text-gray-900/25'}`}>
+                    <p className={`font-semibold text-sm ${isCurrent ? s.color : isDone ? 'text-white' : 'text-white/25'}`}>
                       {s.label}
-                      {isCurrent && <span className="ml-2 text-xs bg-gray-100 px-2 py-0.5 rounded-full">Actual</span>}
+                      {isCurrent && <span className="ml-2 text-xs bg-white/10 px-2 py-0.5 rounded-full">Actual</span>}
                     </p>
-                    {isCurrent && <p className="text-xs text-gray-400 mt-0.5">{s.desc}</p>}
+                    {isCurrent && <p className="text-xs text-white/40 mt-0.5">{s.desc}</p>}
                   </div>
                 </div>
               )
@@ -154,18 +154,18 @@ export function OrderConfirmPage() {
       )}
 
       {/* Order details */}
-      <div className="bg-white rounded-2xl p-5 mb-4 border border-gray-100">
+      <div className="bg-zinc-900 rounded-2xl p-5 mb-4 border border-white/5">
         <h3 className="font-bold mb-4">Detalle del pedido</h3>
         <div className="space-y-2 mb-4">
           {order.items.map(item => (
             <div key={item.id} className="flex justify-between text-sm">
-              <span className="text-gray-900/60">{item.name} <span className="text-gray-400">×{item.quantity}</span></span>
+              <span className="text-white/60">{item.name} <span className="text-white/30">×{item.quantity}</span></span>
               <span className="font-medium">S/ {Number(item.subtotal).toFixed(2)}</span>
             </div>
           ))}
         </div>
-        <div className="border-t border-gray-200 pt-3 space-y-2 text-sm">
-          <div className="flex justify-between text-gray-900/50">
+        <div className="border-t border-white/10 pt-3 space-y-2 text-sm">
+          <div className="flex justify-between text-white/50">
             <span>Subtotal</span><span>S/ {Number(order.subtotal).toFixed(2)}</span>
           </div>
           <div className="flex justify-between font-black text-base">
@@ -174,7 +174,7 @@ export function OrderConfirmPage() {
           </div>
         </div>
 
-        <div className="border-t border-gray-200 mt-3 pt-3 space-y-1.5 text-sm text-gray-400">
+        <div className="border-t border-white/10 mt-3 pt-3 space-y-1.5 text-sm text-white/40">
           <p>👤 {order.customerName} · {order.customerPhone}</p>
           <p>{order.deliveryType === 'DELIVERY' ? `🚚 Delivery${order.address ? ` — ${order.address}, ${order.district}` : ''}` : '🏪 Recojo en tienda — Av. Manchay, Pachacamac'}</p>
           <p>{PAYMENT_EMOJIS[order.paymentMethod]} {PAYMENT_LABELS[order.paymentMethod]} — {order.paymentStatus === 'VERIFIED' ? '✅ Pago verificado' : order.paymentMethod === 'CASH' ? 'Al recibir' : '⏳ Pendiente de verificación'}</p>
@@ -182,10 +182,10 @@ export function OrderConfirmPage() {
       </div>
 
       {/* Contact */}
-      <div className="bg-white rounded-2xl p-5 mb-6 border border-gray-100 flex items-center justify-between">
+      <div className="bg-zinc-900 rounded-2xl p-5 mb-6 border border-white/5 flex items-center justify-between">
         <div>
           <p className="font-semibold text-sm">¿Necesitas ayuda?</p>
-          <p className="text-xs text-gray-400 mt-0.5">Escríbenos por WhatsApp</p>
+          <p className="text-xs text-white/40 mt-0.5">Escríbenos por WhatsApp</p>
         </div>
         <a href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer"
           className="flex items-center gap-2 bg-[#25D366]/10 border border-[#25D366]/30 text-[#25D366] font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-[#25D366]/20 transition-colors">
@@ -194,7 +194,7 @@ export function OrderConfirmPage() {
       </div>
 
       <div className="flex gap-3">
-        <Link to="/" className="flex-1 text-center bg-gray-50 hover:bg-gray-100 border border-gray-200 font-medium py-3.5 rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
+        <Link to="/" className="flex-1 text-center bg-white/5 hover:bg-white/10 border border-white/10 font-medium py-3.5 rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
           Seguir comprando
         </Link>
         <Link to="/mis-pedidos" className="flex-1 text-center bg-green-500 hover:bg-green-400 text-black font-bold py-3.5 rounded-xl transition-colors text-sm flex items-center justify-center gap-2">

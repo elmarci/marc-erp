@@ -1,52 +1,54 @@
-import { ShoppingCart, ShoppingBag, Plus, Minus } from 'lucide-react'
+import { ShoppingCart, ShoppingBag } from 'lucide-react'
 import { useCartStore } from '../cartStore'
 import type { Product } from '../api'
 import { toast } from 'sonner'
 
 export function ProductCard({ product }: { product: Product }) {
-  const { addItem, updateQuantity, items, openCart } = useCartStore()
-  const cartItem = items.find(i => i.product.id === product.id)
-  const qty = cartItem?.quantity ?? 0
-  const outOfStock = product.currentStock <= 0
-  const lowStock = !outOfStock && product.currentStock <= 5
+  const { addItem, openCart } = useCartStore()
 
   const handleAdd = () => {
-    if (outOfStock) return
+    if (product.currentStock <= 0) return
     addItem(product)
-    toast.success(`${product.name} agregado`, { duration:1500, action:{label:'Ver carrito',onClick:openCart} })
+    toast.success(`${product.name} agregado`, {
+      duration: 1500,
+      action: { label: 'Ver carrito', onClick: openCart },
+    })
   }
 
   return (
-    <div
-      onClick={outOfStock ? undefined : handleAdd}
-      className={`bg-white border border-gray-200 rounded-2xl overflow-hidden transition-all duration-150
-        ${outOfStock ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg hover:border-green-300 hover:-translate-y-0.5'}`}>
-
-      <div className="relative bg-gray-50" style={{paddingBottom:'70%'}}>
-        <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-          {product.imageUrl
-            ? <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
-            : <ShoppingBag className="h-10 w-10 text-gray-300" />}
-        </div>
-        {lowStock && <span className="absolute top-2 left-2 bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">Últimas {product.currentStock}</span>}
-        {outOfStock && <div className="absolute inset-0 bg-white/80 flex items-center justify-center"><span className="text-xs font-semibold text-gray-400 bg-gray-100 px-3 py-1 rounded-full">Agotado</span></div>}
-        {qty > 0 && <div className="absolute top-2 right-2 h-6 w-6 bg-green-600 text-white text-xs font-black rounded-full flex items-center justify-center shadow">{qty}</div>}
+    <div className="group bg-zinc-900 hover:bg-zinc-800 border border-white/5 hover:border-green-500/30 rounded-2xl overflow-hidden transition-all duration-200">
+      {/* Image */}
+      <div className="relative aspect-square overflow-hidden bg-zinc-800">
+        {product.imageUrl ? (
+          <img src={product.imageUrl} alt={product.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <ShoppingBag className="h-12 w-12 text-white/10" />
+          </div>
+        )}
+        {product.currentStock <= 5 && product.currentStock > 0 && (
+          <span className="absolute top-2 left-2 bg-amber-500 text-black text-xs font-bold px-2 py-0.5 rounded-full">
+            Últimas {product.currentStock}
+          </span>
+        )}
+        {product.currentStock === 0 && (
+          <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+            <span className="bg-black/80 text-white text-sm font-bold px-3 py-1.5 rounded-full">Agotado</span>
+          </div>
+        )}
       </div>
 
+      {/* Info */}
       <div className="p-3">
-        <p className="text-[10px] text-green-600 font-semibold uppercase tracking-wider mb-0.5">{product.category.name}</p>
-        <p className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug mb-2.5" style={{minHeight:'2.5rem'}}>{product.name}</p>
+        <p className="text-xs text-white/40 mb-0.5">{product.category.name}</p>
+        <p className="font-semibold text-sm line-clamp-2 leading-tight mb-2">{product.name}</p>
         <div className="flex items-center justify-between">
-          <span className="text-base font-black text-gray-900">S/ {Number(product.salePrice).toFixed(2)}</span>
-          {qty > 0 ? (
-            <div className="flex items-center gap-1" onClick={e=>e.stopPropagation()}>
-              <button onClick={()=>updateQuantity(product.id,qty-1)} className="h-7 w-7 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"><Minus className="h-3 w-3 text-gray-700"/></button>
-              <span className="w-5 text-center text-sm font-bold text-gray-900">{qty}</span>
-              <button onClick={()=>addItem(product)} className="h-7 w-7 bg-green-600 hover:bg-green-700 text-white rounded-full flex items-center justify-center transition-colors"><Plus className="h-3 w-3"/></button>
-            </div>
-          ) : (
-            <div className="h-8 w-8 bg-green-600 text-white rounded-full flex items-center justify-center pointer-events-none"><ShoppingCart className="h-4 w-4"/></div>
-          )}
+          <span className="text-green-400 font-bold text-lg">S/ {product.salePrice.toFixed(2)}</span>
+          <button onClick={handleAdd} disabled={product.currentStock === 0}
+            className="h-9 w-9 bg-green-500 hover:bg-green-400 disabled:bg-white/10 disabled:cursor-not-allowed text-black rounded-full flex items-center justify-center transition-colors">
+            <ShoppingCart className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>

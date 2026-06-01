@@ -4,16 +4,6 @@ const BASE_URL = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3001/api/v
 
 export const api = axios.create({ baseURL: BASE_URL, timeout: 15000 })
 
-// Inject customer token if available
-api.interceptors.request.use((config) => {
-  try {
-    const auth = JSON.parse(localStorage.getItem('marc-store-auth') ?? '{}')
-    const token = auth?.state?.token
-    if (token) config.headers['Authorization'] = `Bearer ${token}`
-  } catch { /* ignore */ }
-  return config
-})
-
 export interface Product {
   id: string
   name: string
