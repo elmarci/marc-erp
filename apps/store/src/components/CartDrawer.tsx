@@ -68,22 +68,31 @@ export function CartDrawer() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm line-clamp-2">{item.product.name}</p>
-                  <p className="text-green-400 font-bold text-sm mt-1">S/ {item.product.salePrice.toFixed(2)}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                      className="h-7 w-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
-                      <Minus className="h-3 w-3" />
-                    </button>
-                    <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                      className="h-7 w-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
-                      <Plus className="h-3 w-3" />
-                    </button>
-                    <button onClick={() => removeItem(item.product.id)}
-                      className="ml-auto text-red-400 hover:text-red-300 transition-colors">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                  <p className="font-medium text-sm line-clamp-2 leading-tight">{item.product.name}</p>
+                  <p className="text-white/40 text-xs mt-0.5">
+                    S/ {Number(item.product.salePrice).toFixed(2)} c/u
+                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                        className="h-6 w-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                        <Minus className="h-2.5 w-2.5" />
+                      </button>
+                      <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
+                      <button onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                        className="h-6 w-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+                        <Plus className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-400 font-bold text-sm">
+                        S/ {(Number(item.product.salePrice) * item.quantity).toFixed(2)}
+                      </span>
+                      <button onClick={() => removeItem(item.product.id)}
+                        className="text-red-400/60 hover:text-red-400 transition-colors">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

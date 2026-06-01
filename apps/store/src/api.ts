@@ -40,6 +40,8 @@ export interface Offer {
   description: string | null
   type: string
   value: number
+  buyQuantity: number | null   // para BUY_X_GET_Y
+  getQuantity: number | null   // para BUY_X_GET_Y
   storeBadge: string | null
   storeImage: string | null
   endDate: string | null
