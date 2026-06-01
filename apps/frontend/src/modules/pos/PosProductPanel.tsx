@@ -128,32 +128,40 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
     } else if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
       const paidUnits = (offer as {buyQuantity?:number}).buyQuantity ?? 2;
       const totalUnits = (offer as {getQuantity?:number}).getQuantity ?? 3;
-      if (offer.type === 'BUNDLE_PRICE') {
-        // precio fijo del paquete
-        finalPrice = Math.round((offer.value / totalUnits) * 100) / 100;
-      } else {
-        finalPrice = Math.round((originalPrice * paidUnits / totalUnits) * 100) / 100;
-      }
-      qty = totalUnits;
-      label = `${offer.storeBadge ?? offer.name} (${totalUnits}×${paidUnits})`;
+      // Precio exacto del pack — sin dividir entre unidades para evitar redondeo
+      const packPrice = offer.type === 'BUNDLE_PRICE'
+        ? Number(offer.value)
+        : Math.round(originalPrice * paidUnits * 100) / 100; // 2×5.20 = 10.40 exacto
+      const packLabel = `${offer.storeBadge ?? offer.name} — pack de ${totalUnits}`;
+      addItem({
+        productId: product.id,
+        name: `${product.name} (${packLabel})`,
+        barcode: product.barcode,
+        quantity: 1,          // 1 pack
+        unitPrice: packPrice, // precio exacto del pack
+        originalPrice: Math.round(originalPrice * totalUnits * 100) / 100,
+        discountAmount: 0,
+        discountPercent: 0,
+        stock: product.currentStock,
+      });
+      toast.success(`${packLabel} agregado — ${formatCurrency(packPrice)}`);
+      return;
     }
 
-    // unitPrice = precio original, discountAmount = descuento por unidad
-    // El posStore calcula: subtotal = (unitPrice - discountAmount) × qty
+    // Descuento simple (% o monto fijo): unitPrice = original, discountAmount = descuento
     const discountPerUnit = Math.round((originalPrice - finalPrice) * 100) / 100;
     addItem({
       productId: product.id,
       name: `${product.name} (${label})`,
       barcode: product.barcode,
-      quantity: qty,
-      unitPrice: originalPrice,      // precio original (sin descuento)
+      quantity: 1,
+      unitPrice: originalPrice,
       originalPrice,
-      discountAmount: discountPerUnit, // descuento por unidad
+      discountAmount: discountPerUnit,
       discountPercent: 0,
       stock: product.currentStock,
     });
-    const total = formatCurrency(finalPrice * qty);
-    toast.success(`${product.name} con oferta — ${total}`);
+    toast.success(`${product.name} con oferta — ${formatCurrency(finalPrice)}`);
   };
 
   return (

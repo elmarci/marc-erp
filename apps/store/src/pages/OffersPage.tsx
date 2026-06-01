@@ -31,11 +31,12 @@ function OfferCard({ offer }: { offer: Offer }) {
 
     // Ofertas de tipo pack/bundle (BUY_X_GET_Y o BUNDLE_PRICE)
     if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
-      const { pricePerUnit, totalUnits, paidUnits } = getBuyXGetYPrice(originalPrice, offer)
-      // BUNDLE_PRICE: el valor de la oferta ES el precio del pack directamente
+      const paidUnits = offer.buyQuantity ?? 2
+      const totalUnits = offer.getQuantity ?? 3
+      // Precio exacto: paidUnits × precio unitario — sin dividir entre totalUnits
       const bundlePrice = offer.type === 'BUNDLE_PRICE'
-        ? Number(offer.value)  // precio fijo del paquete definido en el ERP
-        : Math.round(pricePerUnit * totalUnits * 100) / 100
+        ? Number(offer.value)
+        : Math.round(originalPrice * paidUnits * 100) / 100 // 2×5.20=10.40 exacto
 
       const label = offer.storeBadge ?? `Pack ${totalUnits}×${paidUnits}`
 
@@ -46,7 +47,7 @@ function OfferCard({ offer }: { offer: Offer }) {
         currentStock: 99,
         imageUrl: product.imageUrl,
         barcode: null,
-        description: `${label} · S/ ${(originalPrice).toFixed(2)} precio normal`,
+        description: `Llevas ${totalUnits} · precio normal S/ ${(originalPrice * totalUnits).toFixed(2)}`,
         category: { id: '', name: '' },
       }, 1)
       toast.success(`${label} de ${product.name} agregado al carrito`, {
