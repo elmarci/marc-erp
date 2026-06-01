@@ -26,16 +26,10 @@ export const useCartStore = create<CartStore>()(
 
       addItem: (product, qty = 1) => {
         set(s => {
+          // Use full id match (supports bundle IDs like "bundle-offerX-productY")
           const existing = s.items.find(i => i.product.id === product.id)
-          // Bulk products always replace (each add is a new weight entry)
-          if (product.isBulk) {
-            if (existing) {
-              return { items: s.items.map(i => i.product.id === product.id ? { ...i, quantity: i.quantity + qty } : i) }
-            }
-            return { items: [...s.items, { product, quantity: qty }] }
-          }
           if (existing) {
-            return { items: s.items.map(i => i.product.id === product.id ? { ...i, quantity: i.quantity + qty } : i) }
+            return { items: s.items.map(i => i.product.id === product.id ? { ...i, quantity: Math.round((i.quantity + qty) * 100) / 100 } : i) }
           }
           return { items: [...s.items, { product, quantity: qty }] }
         })
