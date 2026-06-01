@@ -4,6 +4,16 @@ const BASE_URL = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3001/api/v
 
 export const api = axios.create({ baseURL: BASE_URL, timeout: 15000 })
 
+// Inject customer JWT token if available
+api.interceptors.request.use((config) => {
+  try {
+    const stored = JSON.parse(localStorage.getItem('marc-customer') ?? '{}')
+    const token = stored?.state?.token
+    if (token) config.headers['Authorization'] = `Bearer ${token}`
+  } catch { /* ignore */ }
+  return config
+})
+
 export interface Product {
   id: string
   name: string
@@ -12,6 +22,8 @@ export interface Product {
   currentStock: number
   imageUrl: string | null
   description: string | null
+  isBulk?: boolean
+  bulkUnit?: string | null
   category: { id: string; name: string }
 }
 

@@ -10,7 +10,7 @@ export interface CartItem {
 interface CartStore {
   items: CartItem[]
   isOpen: boolean
-  addItem: (product: Product) => void
+  addItem: (product: Product, qty?: number) => void
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, qty: number) => void
   clearCart: () => void
@@ -24,13 +24,20 @@ export const useCartStore = create<CartStore>()(
       items: [],
       isOpen: false,
 
-      addItem: (product) => {
+      addItem: (product, qty = 1) => {
         set(s => {
           const existing = s.items.find(i => i.product.id === product.id)
-          if (existing) {
-            return { items: s.items.map(i => i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i) }
+          // Bulk products always replace (each add is a new weight entry)
+          if (product.isBulk) {
+            if (existing) {
+              return { items: s.items.map(i => i.product.id === product.id ? { ...i, quantity: i.quantity + qty } : i) }
+            }
+            return { items: [...s.items, { product, quantity: qty }] }
           }
-          return { items: [...s.items, { product, quantity: 1 }] }
+          if (existing) {
+            return { items: s.items.map(i => i.product.id === product.id ? { ...i, quantity: i.quantity + qty } : i) }
+          }
+          return { items: [...s.items, { product, quantity: qty }] }
         })
       },
 
