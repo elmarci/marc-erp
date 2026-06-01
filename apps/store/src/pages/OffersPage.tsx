@@ -29,43 +29,48 @@ function OfferCard({ offer }: { offer: Offer }) {
   const handleAdd = (product: Offer['products'][0]['product']) => {
     const originalPrice = Number(product.salePrice)
 
-    if (offer.type === 'BUY_X_GET_Y') {
-      // Add as a bundle: totalUnits items at reduced price each
+    // Ofertas de tipo pack/bundle (BUY_X_GET_Y o BUNDLE_PRICE)
+    if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
       const { pricePerUnit, totalUnits, paidUnits } = getBuyXGetYPrice(originalPrice, offer)
-      // 1 pack = totalUnits unidades al precio de paidUnits
-      const bundlePrice = Math.round(pricePerUnit * totalUnits * 100) / 100
+      // BUNDLE_PRICE: el valor de la oferta ES el precio del pack directamente
+      const bundlePrice = offer.type === 'BUNDLE_PRICE'
+        ? Number(offer.value)  // precio fijo del paquete definido en el ERP
+        : Math.round(pricePerUnit * totalUnits * 100) / 100
+
+      const label = offer.storeBadge ?? `Pack ${totalUnits}×${paidUnits}`
+
       addItem({
         id: `bundle-${offer.id}-${product.id}`,
-        name: `${product.name} — Pack ${totalUnits}×${paidUnits}`,
+        name: `${product.name} — ${label}`,
         salePrice: bundlePrice,
         currentStock: 99,
         imageUrl: product.imageUrl,
         barcode: null,
-        description: `Llevas ${totalUnits}, pagas ${paidUnits}`,
+        description: `${label} · S/ ${(originalPrice).toFixed(2)} precio normal`,
         category: { id: '', name: '' },
       }, 1)
-      toast.success(`Pack ${totalUnits}×${paidUnits} de ${product.name} agregado`, {
-        description: `S/ ${bundlePrice.toFixed(2)} — llevas ${totalUnits} unidades, pagas ${paidUnits}`,
+      toast.success(`${label} de ${product.name} agregado al carrito`, {
+        description: `S/ ${bundlePrice.toFixed(2)} total`,
         action: { label: 'Ver carrito', onClick: openCart },
       })
       return
     }
 
+    // Descuento simple (% o monto fijo)
     const finalPrice = getDiscountedPrice(originalPrice, offer)
+    const savings = Math.round((originalPrice - finalPrice) * 100) / 100
     addItem({
       id: product.id,
-      name: offer.storeBadge ? `${product.name} (${offer.storeBadge})` : product.name,
+      name: product.name,
       salePrice: finalPrice,
       currentStock: 99,
       imageUrl: product.imageUrl,
       barcode: null,
-      description: null,
+      description: savings > 0 ? `Descuento: ahorras S/ ${savings.toFixed(2)}` : null,
       category: { id: '', name: '' },
     })
-
-    const savings = originalPrice - finalPrice
     toast.success(`${product.name} agregado con descuento`, {
-      description: savings > 0 ? `Ahorras S/ ${savings.toFixed(2)}` : undefined,
+      description: savings > 0 ? `Precio normal S/ ${originalPrice.toFixed(2)} · Ahorras S/ ${savings.toFixed(2)}` : undefined,
       action: { label: 'Ver carrito', onClick: openCart },
     })
   }
