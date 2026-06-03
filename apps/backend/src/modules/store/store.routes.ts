@@ -47,8 +47,11 @@ router.post('/orders', async (req: Request, res: Response, next: NextFunction) =
       notes: z.string().optional(),
       paymentMethod: z.enum(['YAPE', 'PLIN', 'CASH']),
       items: z.array(z.object({
-        productId: z.string().uuid(),
+        // Acepta UUID normal O IDs de bundle (bundle-offerId-productId)
+        productId: z.string().min(1),
         quantity: z.coerce.number().positive(),
+        unitPrice: z.coerce.number().min(0).optional(),
+        name: z.string().optional(),
       })).min(1),
     }).parse(req.body);
 
