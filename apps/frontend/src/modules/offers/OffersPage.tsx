@@ -251,7 +251,8 @@ export function OffersPage() {
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <Button variant="ghost" size="sm" onClick={() => { setEditOffer(offer); setShowModal(true) }}>Editar</Button>
-                        <Button variant="ghost" size="sm" onClick={() => setViewPerf(viewPerf === offer.id ? null : offer.id)}>
+                        <Button variant="ghost" size="sm" onClick={() => setViewPerf(viewPerf === offer.id ? null : offer.id)}
+                          title="Ver rendimiento">
                           <TrendingUp className="h-4 w-4 text-primary" />
                         </Button>
                         <Button variant="ghost" size="sm" className="text-destructive"
@@ -261,17 +262,16 @@ export function OffersPage() {
                       </div>
                     </td>
                   </tr>
-                  {/* Panel de rendimiento expandible */}
-                  {viewPerf === offer.id && (
-                    <tr key={`${offer.id}-perf`}>
-                      <td colSpan={7} className="bg-muted/20 px-6 py-4">
-                        <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4" />Rendimiento de "{offer.name}"
-                        </p>
-                        <OfferPerformance offer={offer} />
-                      </td>
-                    </tr>
-                  )}
+                ))}
+                {/* Filas de rendimiento — separadas para evitar JSX inválido dentro del map */}
+                {viewPerf && (data ?? []).filter(o => o.id === viewPerf).map(offer => (
+                  <tr key={`${offer.id}-perf`}>
+                    <td colSpan={7} className="bg-muted/20 px-6 py-4">
+                      <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4" />Rendimiento de "{offer.name}"
+                      </p>
+                      <OfferPerformance offer={offer} />
+                    </td>
                   </tr>
                 ))}
                 {(data ?? []).length === 0 && (
