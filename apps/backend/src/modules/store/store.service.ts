@@ -82,12 +82,13 @@ export class StoreService {
     paymentMethod: 'YAPE' | 'PLIN' | 'CASH';
     items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) {
-    // Extraer IDs reales (los bundles de oferta tienen id "bundle-OFFERID-PRODUCTID")
+    // Extraer IDs reales
+    // Bundle format: "bundle-{offerId36chars}-{productId36chars}"
+    // "bundle-" = 7 chars, offerId UUID = 36 chars, "-" = 1 char, productId = rest
+    // Total prefix antes del productId = 7 + 36 + 1 = 44 chars
     const resolvedItems = data.items.map(item => {
       if (item.productId.startsWith('bundle-')) {
-        // formato: bundle-{offerId}-{realProductId}
-        const parts = item.productId.split('-');
-        const realProductId = parts.slice(2).join('-'); // UUID puede tener guiones
+        const realProductId = item.productId.slice(44); // extrae el UUID del producto exactamente
         return { ...item, realProductId };
       }
       return { ...item, realProductId: item.productId };
