@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Tag, Eye, EyeOff, Trash2 } from 'lucide-react'
+import { Plus, X, Tag, Eye, EyeOff, Trash2, TrendingUp, ShoppingCart, DollarSign } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -177,6 +177,7 @@ export function OffersPage() {
   const queryClient = useQueryClient()
   const [showModal, setShowModal] = useState(false)
   const [editOffer, setEditOffer] = useState<Offer | undefined>()
+  const [viewPerf, setViewPerf] = useState<string | null>(null) // offer ID con panel rendimiento abierto
 
   const { data, isLoading } = useQuery({
     queryKey: ['offers'],
@@ -250,12 +251,27 @@ export function OffersPage() {
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <Button variant="ghost" size="sm" onClick={() => { setEditOffer(offer); setShowModal(true) }}>Editar</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setViewPerf(viewPerf === offer.id ? null : offer.id)}>
+                          <TrendingUp className="h-4 w-4 text-primary" />
+                        </Button>
                         <Button variant="ghost" size="sm" className="text-destructive"
                           onClick={() => { if (confirm('¿Eliminar esta oferta?')) deleteMutation.mutate(offer.id) }}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </td>
+                  </tr>
+                  {/* Panel de rendimiento expandible */}
+                  {viewPerf === offer.id && (
+                    <tr key={`${offer.id}-perf`}>
+                      <td colSpan={7} className="bg-muted/20 px-6 py-4">
+                        <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4" />Rendimiento de "{offer.name}"
+                        </p>
+                        <OfferPerformance offer={offer} />
+                      </td>
+                    </tr>
+                  )}
                   </tr>
                 ))}
                 {(data ?? []).length === 0 && (
@@ -271,6 +287,83 @@ export function OffersPage() {
       </Card>
 
       {showModal && <OfferModal offer={editOffer} onClose={() => setShowModal(false)} />}
+    </div>
+  )
+}
+
+/* ─── Panel de Rendimiento de Ofertas ───────────────────────────────────── */
+function OfferPerformance({ offer }: { offer: Offer }) {
+  const { data } = useQuery({
+    queryKey: ['offer-performance', offer.id],
+    queryFn: async () => {
+      // Buscar ventas que incluyan productos de esta oferta en su período
+      const from = offer.startDate.split('T')[0]
+      const to = offer.endDate ? offer.endDate.split('T')[0] : new Date().toISOString().split('T')[0]
+      const productIds = offer.products.map(p => p.product.id)
+      if (!productIds.length) return null
+
+      // Traemos top-products filtrando por fecha de la oferta
+      const res = await api.get<{ data: Array<{ product_id: string; name: string; quantity: number; revenue: number; transactions: number }> }>(
+        `/reports/top-products?from=${from}&to=${to}&limit=100`
+      )
+      const offerProducts = res.data.data.filter(p => productIds.includes(p.product_id))
+      const totalRevenue = offerProducts.reduce((s, p) => s + p.revenue, 0)
+      const totalQty = offerProducts.reduce((s, p) => s + p.quantity, 0)
+      const totalTx = offerProducts.reduce((s, p) => s + p.transactions, 0)
+      return { offerProducts, totalRevenue, totalQty, totalTx, from, to }
+    },
+    enabled: !!offer.products.length,
+  })
+
+  if (!data) return (
+    <div className="text-center py-6 text-muted-foreground text-sm">
+      {!offer.products.length ? 'No hay productos asignados a esta oferta' : 'Cargando rendimiento...'}
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Período: {data.from} → {data.to}
+      </p>
+      {/* KPIs */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { icon: DollarSign, label: 'Ingresos generados', value: formatCurrency(data.totalRevenue), color: 'text-success' },
+          { icon: ShoppingCart, label: 'Unidades vendidas', value: String(Math.round(data.totalQty)), color: 'text-primary' },
+          { icon: TrendingUp, label: 'Transacciones', value: String(data.totalTx), color: 'text-foreground' },
+        ].map(k => (
+          <div key={k.label} className="bg-muted/50 rounded-xl p-3 text-center">
+            <k.icon className={`h-4 w-4 mx-auto mb-1 ${k.color}`} />
+            <p className={`font-bold text-lg ${k.color}`}>{k.value}</p>
+            <p className="text-xs text-muted-foreground">{k.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabla por producto */}
+      {data.offerProducts.length > 0 ? (
+        <table className="w-full text-sm">
+          <thead><tr className="border-b text-left">
+            <th className="py-2 font-medium">Producto</th>
+            <th className="py-2 font-medium text-right">Uds.</th>
+            <th className="py-2 font-medium text-right">Ingresos</th>
+          </tr></thead>
+          <tbody className="divide-y">
+            {data.offerProducts.map(p => (
+              <tr key={p.product_id}>
+                <td className="py-2 font-medium">{p.name}</td>
+                <td className="py-2 text-right">{Math.round(p.quantity)}</td>
+                <td className="py-2 text-right text-success font-medium">{formatCurrency(p.revenue)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="text-center text-sm text-muted-foreground py-4">
+          Sin ventas registradas de los productos de esta oferta en el período
+        </p>
+      )}
     </div>
   )
 }

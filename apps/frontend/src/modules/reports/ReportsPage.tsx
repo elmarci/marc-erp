@@ -327,7 +327,7 @@ function InventoryTab() {
 
 /* ─── Top Products Tab ────────────────────────────────────────────────────── */
 function TopProductsTab() {
-  const [preset, setPreset] = useState(2);
+  const [preset, setPreset] = useState(3); // default: 90 días para ver más datos
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
 

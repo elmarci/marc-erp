@@ -51,10 +51,12 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
   const isComplete = totalPaid >= total - 0.01;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card shadow-2xl animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-lg bg-card shadow-2xl animate-fade-in
+        rounded-t-2xl sm:rounded-2xl
+        flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b p-5">
+        <div className="flex items-center justify-between border-b p-4 sm:p-5 shrink-0">
           <div>
             <h2 className="text-lg font-bold">Cobrar Venta</h2>
             <p className="text-sm text-muted-foreground">
@@ -66,7 +68,8 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
           </Button>
         </div>
 
-        <div className="p-5 space-y-5">
+        {/* Contenido scrollable */}
+        <div className="overflow-y-auto flex-1 p-4 sm:p-5 space-y-4 sm:space-y-5">
           {/* Total */}
           <div className="rounded-xl bg-primary/10 p-4 text-center">
             <p className="text-sm text-muted-foreground">Total a cobrar</p>
@@ -180,10 +183,10 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
           )}
         </div>
 
-        {/* Botón confirmar */}
-        <div className="border-t p-5">
+        {/* Botón confirmar — siempre visible, fuera del scroll */}
+        <div className="border-t p-4 sm:p-5 shrink-0 safe-bottom">
           <Button
-            className="w-full"
+            className="w-full min-h-[54px] text-base"
             size="xl"
             disabled={!isComplete || isProcessing}
             loading={isProcessing}

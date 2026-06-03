@@ -86,7 +86,12 @@ export const storeApi = {
   getOffers: () =>
     api.get<{ data: Offer[] }>('/store/offers'),
 
-  createOrder: (data: unknown) =>
+  createOrder: (data: {
+    customerName: string; customerPhone: string; customerEmail?: string;
+    deliveryType: string; address?: string; district?: string;
+    reference?: string; notes?: string; paymentMethod: string;
+    items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
+  }) =>
     api.post<{ data: StoreOrder }>('/store/orders', data),
 
   getOrder: (orderNumber: string) =>

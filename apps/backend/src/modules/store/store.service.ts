@@ -80,28 +80,44 @@ export class StoreService {
     deliveryType: 'DELIVERY' | 'PICKUP';
     address?: string; district?: string; reference?: string; notes?: string;
     paymentMethod: 'YAPE' | 'PLIN' | 'CASH';
-    items: Array<{ productId: string; quantity: number }>;
+    items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) {
-    // Fetch products
-    const productIds = data.items.map(i => i.productId);
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds }, deletedAt: null, status: 'ACTIVE' },
+    // Extraer IDs reales (los bundles de oferta tienen id "bundle-OFFERID-PRODUCTID")
+    const resolvedItems = data.items.map(item => {
+      if (item.productId.startsWith('bundle-')) {
+        // formato: bundle-{offerId}-{realProductId}
+        const parts = item.productId.split('-');
+        const realProductId = parts.slice(2).join('-'); // UUID puede tener guiones
+        return { ...item, realProductId };
+      }
+      return { ...item, realProductId: item.productId };
     });
 
-    if (products.length !== productIds.length) {
-      throw new NotFoundError('Uno o más productos no están disponibles');
+    const realProductIds = [...new Set(resolvedItems.map(i => i.realProductId))];
+    const products = await prisma.product.findMany({
+      where: { id: { in: realProductIds }, deletedAt: null, status: 'ACTIVE' },
+    });
+
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    // Verificar que todos los productos existen
+    for (const item of resolvedItems) {
+      if (!productMap.has(item.realProductId)) {
+        throw new NotFoundError(`Producto no disponible`);
+      }
     }
 
-    // Calculate totals
+    // Calculate totals — para bundles se usa el unitPrice enviado por el frontend
     let subtotal = 0;
-    const orderItems = data.items.map(item => {
-      const product = products.find(p => p.id === item.productId)!;
-      const unitPrice = Number(product.salePrice);
+    const orderItems = resolvedItems.map(item => {
+      const product = productMap.get(item.realProductId)!;
+      // Si viene unitPrice del frontend (bundle con precio especial), usarlo
+      const unitPrice = item.unitPrice !== undefined ? item.unitPrice : Number(product.salePrice);
       const itemSubtotal = unitPrice * item.quantity;
       subtotal += itemSubtotal;
       return {
-        productId: item.productId,
-        name: product.name,
+        productId: item.realProductId,  // siempre guardar el ID real del producto
+        name: item.name ?? product.name, // nombre con badge de oferta si viene del frontend
         imageUrl: product.imageUrl,
         quantity: item.quantity,
         unitPrice,

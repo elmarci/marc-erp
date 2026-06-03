@@ -43,7 +43,12 @@ export function CheckoutPage() {
       reference: form.reference || undefined,
       notes: form.notes || undefined,
       paymentMethod: form.paymentMethod,
-      items: items.map(i => ({ productId: i.product.id, quantity: i.quantity })),
+      items: items.map(i => ({
+        productId: i.product.id,
+        quantity: i.quantity,
+        unitPrice: Number(i.product.salePrice),  // precio real (incluyendo descuento de oferta)
+        name: i.product.name,                     // nombre con badge si aplica
+      })),
     }),
     onSuccess: (res) => { clearCart(); navigate(`/pedido/${res.data.data.orderNumber}`) },
     onError: () => toast.error('Error al procesar el pedido. Intenta de nuevo.'),
