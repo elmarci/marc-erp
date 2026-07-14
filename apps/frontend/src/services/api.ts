@@ -3,6 +3,9 @@ import { useAuthStore } from '@/stores/authStore';
 
 const BASE_URL = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3001/api/v1';
 
+// Origen del backend sin el prefijo /api/v1 — usado para servir archivos estáticos (ej. /uploads/logo/...)
+export const API_ORIGIN = BASE_URL.replace(/\/api\/v1\/?$/, '');
+
 export const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   timeout: 30000,

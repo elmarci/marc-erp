@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -11,7 +12,7 @@ import morgan from 'morgan';
 import { env } from './config/env';
 import { setIo } from './config/socket';
 import { logger } from './config/logger';
-import { connectDatabase, disconnectDatabase } from './database/client';
+import { connectDatabase, disconnectDatabase, prisma } from './database/client';
 import { connectRedis, redis } from './config/redis';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
@@ -86,6 +87,12 @@ app.use('/api', globalLimiter);
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Cross-Origin-Resource-Policy: helmet aplica 'same-origin' por defecto, lo que
+// bloquea que el frontend (otro origen) cargue estas imágenes (ej. el logo del ticket).
+app.use('/uploads', (_req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(process.cwd(), 'uploads')));
 
 if (env.NODE_ENV !== 'test') {
   app.use(morgan('combined', {
@@ -157,11 +164,24 @@ io.on('connection', (socket) => {
   });
 });
 
+// ─── Defaults de configuración ───────────────────────────────────────────────
+// Crea (sin sobrescribir) settings nuevos que despliegues anteriores no tenían.
+async function ensureDefaultSettings() {
+  const defaults = [
+    { key: 'business_logo_url', value: '', label: 'Logo del Negocio', group: 'business' },
+    { key: 'store_url', value: 'https://shimmering-delight-production-75b7.up.railway.app', label: 'URL Tienda Online', group: 'business' },
+  ];
+  for (const s of defaults) {
+    await prisma.setting.upsert({ where: { key: s.key }, update: {}, create: s });
+  }
+}
+
 // ─── Inicio del servidor ─────────────────────────────────────────────────────
 async function bootstrap() {
   try {
     await connectDatabase();
     await connectRedis();
+    await ensureDefaultSettings();
 
     const PORT = Number(process.env.PORT) || env.BACKEND_PORT;
     httpServer.listen(PORT, '0.0.0.0', () => {

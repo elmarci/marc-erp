@@ -88,7 +88,17 @@ export function ProductFormPage() {
         <h1 className="text-2xl font-bold">{isEdit ? 'Editar Producto' : 'Nuevo Producto'}</h1>
       </div>
 
-      <form onSubmit={handleSubmit((d) => mutation.mutate(d))}>
+      <form
+        onSubmit={handleSubmit((d) => mutation.mutate(d))}
+        onKeyDown={(e) => {
+          // Un lector de código de barras "escribe" el código y envía Enter.
+          // Sin esto, Enter en cualquier campo (ej. código de barras) enviaría
+          // el formulario antes de terminar de editar los demás campos.
+          if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+            e.preventDefault();
+          }
+        }}
+      >
         <Card>
           <CardHeader><CardTitle>Información del Producto</CardTitle></CardHeader>
           <CardContent className="space-y-4">

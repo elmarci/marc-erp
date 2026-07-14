@@ -306,13 +306,16 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && search.trim()) {
-      // Si parece código de barras (solo números, longitud >= 8), buscar por barcode
-      if (/^\d{8,}$/.test(search.trim())) {
-        onBarcodeSearch(search.trim());
-        setSearch('');
-        if (searchInputRef.current) searchInputRef.current.value = '';
-      }
+    if (e.key !== 'Enter') return;
+    // Usar el valor actual del input, no el estado debounced (que puede ir
+    // 300ms atrás y no reflejar el código recién escaneado).
+    const value = e.currentTarget.value.trim();
+    if (!value) return;
+    // Si parece código de barras (solo números, longitud >= 8), agregarlo directo a la venta
+    if (/^\d{8,}$/.test(value)) {
+      onBarcodeSearch(value);
+      setSearch('');
+      e.currentTarget.value = '';
     }
   };
 

@@ -1,7 +1,10 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import QRCode from 'qrcode';
 import { X, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, PAYMENT_METHOD_LABELS } from '@/lib/utils';
+import { api, API_ORIGIN } from '@/services/api';
 
 interface ReceiptItem {
   productName: string;
@@ -36,31 +39,90 @@ interface ReceiptModalProps {
   onClose: () => void;
 }
 
+interface Setting { key: string; value: string }
+
+function useBusinessSettings() {
+  const { data } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => (await api.get<{ data: Setting[] }>('/settings')).data.data,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const get = (key: string, fallback = '') => data?.find((s) => s.key === key)?.value || fallback;
+
+  return {
+    businessName: get('business_name', 'ERP MINIMARKET'),
+    ruc: get('business_ruc'),
+    address: get('business_address'),
+    phone: get('business_phone'),
+    logoUrl: get('business_logo_url'),
+    footer: get('receipt_footer', '¡Gracias por su compra!'),
+    storeUrl: get('store_url'),
+    printerWidthMm: Number(get('printer_width', '80')) || 80,
+  };
+}
+
 export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const s = useBusinessSettings();
+  const logoSrc = s.logoUrl ? (s.logoUrl.startsWith('http') ? s.logoUrl : `${API_ORIGIN}${s.logoUrl}`) : null;
+
+  useEffect(() => {
+    if (!s.storeUrl) { setQrDataUrl(null); return; }
+    QRCode.toDataURL(s.storeUrl, { margin: 0, width: 120 })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(null));
+  }, [s.storeUrl]);
 
   const handlePrint = () => {
     const content = printRef.current?.innerHTML;
     if (!content) return;
-    const win = window.open('', '_blank', 'width=320,height=600');
-    if (!win) return;
-    win.document.write(`
+
+    // Impresión vía iframe oculto: evita la ventana emergente adicional que
+    // exigía confirmar la impresión dos veces, y fija el tamaño de página al
+    // ancho real del rollo térmico (sin desperdiciar hoja A4/carta).
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) { document.body.removeChild(iframe); return; }
+
+    const widthMm = s.printerWidthMm;
+    doc.open();
+    doc.write(`
       <html><head><title>Ticket ${data.saleNumber}</title>
       <style>
+        @page { size: ${widthMm}mm auto; margin: 2mm; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Courier New', monospace; font-size: 12px; width: 280px; padding: 8px; }
+        html, body { width: ${widthMm - 4}mm; }
+        body { font-family: 'Courier New', monospace; font-size: 11px; padding: 0; }
+        img { max-width: 100%; }
         .center { text-align: center; }
         .bold { font-weight: bold; }
         .line { border-top: 1px dashed #000; margin: 4px 0; }
         .row { display: flex; justify-content: space-between; }
-        .total-row { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; }
+        .total-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; }
       </style></head>
       <body>${content}</body></html>
     `);
-    win.document.close();
-    win.focus();
-    win.print();
-    win.close();
+    doc.close();
+
+    const cleanup = () => { if (iframe.parentNode) document.body.removeChild(iframe); };
+    iframe.contentWindow?.addEventListener('afterprint', cleanup);
+    // Respaldo por si el navegador no dispara afterprint (algunos WebViews)
+    setTimeout(cleanup, 5000);
+
+    iframe.onload = () => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    };
   };
 
   const date = new Date(data.createdAt);
@@ -89,8 +151,15 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             ref={printRef}
             className="font-mono text-xs bg-white text-black p-4 rounded border border-dashed space-y-1"
           >
-            <p className="center bold" style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14px' }}>ERP MINIMARKET</p>
-            <p className="center" style={{ textAlign: 'center' }}>RUC: 20000000001</p>
+            {logoSrc && (
+              <div className="center" style={{ textAlign: 'center', marginBottom: '4px' }}>
+                <img src={logoSrc} alt={s.businessName} style={{ maxHeight: '60px', maxWidth: '100%', display: 'inline-block' }} />
+              </div>
+            )}
+            <p className="center bold" style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '14px' }}>{s.businessName}</p>
+            {s.ruc && <p className="center" style={{ textAlign: 'center' }}>RUC: {s.ruc}</p>}
+            {s.address && <p className="center" style={{ textAlign: 'center', fontSize: '10px' }}>{s.address}</p>}
+            {s.phone && <p className="center" style={{ textAlign: 'center', fontSize: '10px' }}>Tel: {s.phone}</p>}
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
             <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>{data.documentType === 'BOLETA' ? 'BOLETA' : data.documentType === 'FACTURA' ? 'FACTURA' : 'TICKET'}</span>
@@ -154,7 +223,18 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             )}
 
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
-            <p className="center" style={{ textAlign: 'center' }}>¡Gracias por su compra!</p>
+            <p className="center" style={{ textAlign: 'center' }}>{s.footer}</p>
+
+            {qrDataUrl && (
+              <>
+                <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
+                <div className="center" style={{ textAlign: 'center', marginTop: '4px' }}>
+                  <img src={qrDataUrl} alt="Visítanos en línea" style={{ display: 'inline-block', width: '90px', height: '90px' }} />
+                  <p style={{ fontSize: '10px', marginTop: '2px' }}>Visítanos en línea</p>
+                  <p style={{ fontSize: '9px', color: '#555' }}>{s.storeUrl.replace(/^https?:\/\//, '')}</p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
