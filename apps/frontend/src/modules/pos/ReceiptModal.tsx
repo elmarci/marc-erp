@@ -55,12 +55,16 @@ function useBusinessSettings() {
     ruc: get('business_ruc'),
     address: get('business_address'),
     phone: get('business_phone'),
-    logoUrl: get('business_logo_url'),
+    // La versión "print" es blanco/negro puro (sin grises) — en térmica sale
+    // nítida. Si el logo se subió antes de tener esta versión, usamos la de color.
+    logoUrl: get('business_logo_print_url') || get('business_logo_url'),
     footer: get('receipt_footer', '¡Gracias por su compra!'),
     storeUrl: get('store_url'),
     printerWidthMm: Number(get('printer_width', '80')) || 80,
   };
 }
+
+const QR_SIZE_PX = 120;
 
 export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
   const printRef = useRef<HTMLDivElement>(null);
@@ -70,7 +74,10 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
 
   useEffect(() => {
     if (!s.storeUrl) { setQrDataUrl(null); return; }
-    QRCode.toDataURL(s.storeUrl, { margin: 0, width: 120 })
+    // Sin margen y en blanco/negro puro (default de la librería) — el tamaño
+    // generado coincide con el tamaño mostrado para no reescalar la imagen
+    // (reescalar introduce suavizado/blur en una impresora térmica monocroma).
+    QRCode.toDataURL(s.storeUrl, { margin: 0, width: QR_SIZE_PX })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(null));
   }, [s.storeUrl]);
@@ -95,22 +102,36 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
     if (!doc) { document.body.removeChild(iframe); return; }
 
     const widthMm = s.printerWidthMm;
+    // Las impresoras térmicas reservan un margen físico no imprimible a cada
+    // lado (ej. la Epson TM-T20 de 80mm solo imprime ~72mm reales). Si el
+    // contenido llena el ancho nominal completo, el driver recorta texto en
+    // ambos bordes. Dejamos ~4mm de colchón por lado y centramos.
+    const printableWidthMm = Math.max(widthMm - 8, 40);
     doc.open();
     doc.write(`
       <html><head><title>Ticket ${data.saleNumber}</title>
       <style>
-        @page { size: ${widthMm}mm auto; margin: 2mm; }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: ${widthMm - 4}mm; }
-        body { font-family: 'Courier New', monospace; font-size: 11px; padding: 0; }
-        img { max-width: 100%; }
+        @page { size: ${widthMm}mm auto; margin: 0; }
+        * {
+          margin: 0; padding: 0; box-sizing: border-box;
+          /* Térmica = blanco/negro puro. Cualquier gris (color, antialiasing
+             de texto/imágenes) se difumina al tratar de simular tonos con
+             puntos — de ahí el efecto "borroso". Todo a negro sólido. */
+          color: #000 !important;
+          -webkit-font-smoothing: none;
+          text-rendering: optimizeSpeed;
+        }
+        html, body { width: ${widthMm}mm; }
+        body { font-family: 'Courier New', monospace; font-size: 11px; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .ticket { width: ${printableWidthMm}mm; margin: 0 auto; }
+        img { max-width: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
         .center { text-align: center; }
         .bold { font-weight: bold; }
         .line { border-top: 1px dashed #000; margin: 4px 0; }
         .row { display: flex; justify-content: space-between; }
         .total-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; }
       </style></head>
-      <body>${content}</body></html>
+      <body><div class="ticket">${content}</div></body></html>
     `);
     doc.close();
 
@@ -229,7 +250,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
               <>
                 <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
                 <div className="center" style={{ textAlign: 'center', marginTop: '4px' }}>
-                  <img src={qrDataUrl} alt="Visítanos en línea" style={{ display: 'inline-block', width: '90px', height: '90px' }} />
+                  <img src={qrDataUrl} alt="Visítanos en línea" style={{ display: 'inline-block', width: `${QR_SIZE_PX}px`, height: `${QR_SIZE_PX}px` }} />
                   <p style={{ fontSize: '10px', marginTop: '2px' }}>Visítanos en línea</p>
                   <p style={{ fontSize: '9px', color: '#555' }}>{s.storeUrl.replace(/^https?:\/\//, '')}</p>
                 </div>

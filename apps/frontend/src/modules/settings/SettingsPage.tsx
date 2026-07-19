@@ -44,7 +44,7 @@ export function SettingsPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const businessSettings = settings?.filter((s) => s.group === 'business' && s.key !== 'business_logo_url') ?? [];
+  const businessSettings = settings?.filter((s) => s.group === 'business' && s.key !== 'business_logo_url' && s.key !== 'business_logo_print_url') ?? [];
   const logoUrl = settings?.find((s) => s.key === 'business_logo_url')?.value;
   const logoSrc = logoUrl ? (logoUrl.startsWith('http') ? logoUrl : `${API_ORIGIN}${logoUrl}`) : null;
 

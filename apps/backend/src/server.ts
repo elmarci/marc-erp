@@ -169,6 +169,7 @@ io.on('connection', (socket) => {
 async function ensureDefaultSettings() {
   const defaults = [
     { key: 'business_logo_url', value: '', label: 'Logo del Negocio', group: 'business' },
+    { key: 'business_logo_print_url', value: '', label: 'Logo del Negocio (impresión)', group: 'business' },
     { key: 'store_url', value: 'https://shimmering-delight-production-75b7.up.railway.app', label: 'URL Tienda Online', group: 'business' },
   ];
   for (const s of defaults) {

@@ -61,18 +61,41 @@ router.post('/logo', authorizeMinRole('ADMIN'), upload.single('logo'), async (re
     const existing = await fs.readdir(LOGO_DIR).catch(() => [] as string[]);
     await Promise.all(existing.map((f) => fs.unlink(path.join(LOGO_DIR, f)).catch(() => undefined)));
 
-    const filename = `${uuidv4()}.png`;
+    const id = uuidv4();
+    const filename = `${id}.png`;
+    const printFilename = `${id}-print.png`;
+
     await sharp(req.file.buffer)
       .resize(400, 200, { fit: 'inside', withoutEnlargement: true })
       .png()
       .toFile(path.join(LOGO_DIR, filename));
 
+    // Versión para el ticket térmico: la impresora es monocroma (blanco/negro
+    // puro), así que un logo a color o en escala de grises sale "borroso"
+    // porque el driver difumina los grises simulando tonos con puntos.
+    // Convertimos a blanco/negro puro (threshold) para que salga nítido.
+    await sharp(req.file.buffer)
+      .resize(400, 200, { fit: 'inside', withoutEnlargement: true })
+      .greyscale()
+      .normalize()
+      .threshold(160)
+      .png()
+      .toFile(path.join(LOGO_DIR, printFilename));
+
     const relativeUrl = `/uploads/logo/${filename}`;
-    const setting = await prisma.setting.upsert({
-      where: { key: 'business_logo_url' },
-      update: { value: relativeUrl },
-      create: { key: 'business_logo_url', value: relativeUrl, label: 'Logo del Negocio', group: 'business' },
-    });
+    const printRelativeUrl = `/uploads/logo/${printFilename}`;
+    const [setting] = await prisma.$transaction([
+      prisma.setting.upsert({
+        where: { key: 'business_logo_url' },
+        update: { value: relativeUrl },
+        create: { key: 'business_logo_url', value: relativeUrl, label: 'Logo del Negocio', group: 'business' },
+      }),
+      prisma.setting.upsert({
+        where: { key: 'business_logo_print_url' },
+        update: { value: printRelativeUrl },
+        create: { key: 'business_logo_print_url', value: printRelativeUrl, label: 'Logo del Negocio (impresión)', group: 'business' },
+      }),
+    ]);
     await redis.del('settings:*');
 
     res.json({ success: true, data: setting });
@@ -84,11 +107,18 @@ router.delete('/logo', authorizeMinRole('ADMIN'), async (_req: Request, res: Res
     const existing = await fs.readdir(LOGO_DIR).catch(() => [] as string[]);
     await Promise.all(existing.map((f) => fs.unlink(path.join(LOGO_DIR, f)).catch(() => undefined)));
 
-    const setting = await prisma.setting.upsert({
-      where: { key: 'business_logo_url' },
-      update: { value: '' },
-      create: { key: 'business_logo_url', value: '', label: 'Logo del Negocio', group: 'business' },
-    });
+    const [setting] = await prisma.$transaction([
+      prisma.setting.upsert({
+        where: { key: 'business_logo_url' },
+        update: { value: '' },
+        create: { key: 'business_logo_url', value: '', label: 'Logo del Negocio', group: 'business' },
+      }),
+      prisma.setting.upsert({
+        where: { key: 'business_logo_print_url' },
+        update: { value: '' },
+        create: { key: 'business_logo_print_url', value: '', label: 'Logo del Negocio (impresión)', group: 'business' },
+      }),
+    ]);
     await redis.del('settings:*');
 
     res.json({ success: true, data: setting });

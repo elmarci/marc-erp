@@ -47,6 +47,7 @@ async function main() {
     { key: 'low_stock_notify', value: 'true', type: 'boolean', group: 'inventory', label: 'Notificar stock bajo' },
     { key: 'printer_width', value: '80', type: 'number', group: 'printer', label: 'Ancho de papel (mm)' },
     { key: 'business_logo_url', value: '', type: 'string', group: 'business', label: 'Logo del Negocio' },
+    { key: 'business_logo_print_url', value: '', type: 'string', group: 'business', label: 'Logo del Negocio (impresión)' },
     { key: 'store_url', value: 'https://shimmering-delight-production-75b7.up.railway.app', type: 'string', group: 'business', label: 'URL Tienda Online' },
   ];
 
