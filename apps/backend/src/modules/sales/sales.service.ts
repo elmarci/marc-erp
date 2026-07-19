@@ -4,6 +4,8 @@ import { NotFoundError, BusinessError } from '../../utils/errors';
 import { logger } from '../../config/logger';
 import { redis } from '../../config/redis';
 import { emitEvent } from '../../config/socket';
+import { getSettingValues } from '../../utils/settings';
+import { couponsService } from '../coupons/coupons.service';
 
 interface SaleItemInput {
   productId: string;
@@ -31,6 +33,7 @@ export interface CreateSaleInput {
   discountPercent?: number;
   isCredit?: boolean;
   notes?: string;
+  couponCode?: string;
 }
 
 export interface ReturnSaleInput {
@@ -109,11 +112,32 @@ export class SalesService {
     });
 
     const saleDiscountAmt = input.discountAmount ?? (subtotal * (input.discountPercent ?? 0)) / 100;
-    const discountedSubtotal = subtotal - saleDiscountAmt;
+
+    // Cupón de descuento (opcional): validar antes de tocar la BD. Se re-valida
+    // dentro de la transacción al canjearlo para evitar una carrera con otra
+    // venta que use el mismo código al mismo tiempo.
+    let coupon: Awaited<ReturnType<typeof couponsService.validate>> | null = null;
+    if (input.couponCode) {
+      if (!input.customerId) {
+        throw new BusinessError('Para canjear un cupón la venta debe tener un cliente asignado.');
+      }
+      coupon = await couponsService.validate(input.couponCode, input.customerId);
+    }
+    const couponDiscountAmt = coupon ? (subtotal * Number(coupon.discountPercent)) / 100 : 0;
+
+    const discountedSubtotal = subtotal - saleDiscountAmt - couponDiscountAmt;
 
     // Régimen Simple: sin IGV separado — precio de venta es precio final
     const taxAmount = 0;
     const totalAmount = discountedSubtotal;
+
+    // Config para generar un cupón nuevo si esta venta supera el mínimo
+    const couponConfig = await getSettingValues([
+      'coupon_min_sale_amount', 'coupon_discount_percent', 'coupon_validity_days',
+    ]);
+    const couponMinSale = Number(couponConfig['coupon_min_sale_amount'] ?? 100);
+    const couponRewardPercent = Number(couponConfig['coupon_discount_percent'] ?? 10);
+    const couponValidityDays = Number(couponConfig['coupon_validity_days'] ?? 30);
 
     // Verificar que los pagos cubren el total (excepto crédito)
     if (!input.isCredit) {
@@ -151,7 +175,7 @@ export class SalesService {
           customerId: input.customerId,
           documentType: input.documentType ?? 'TICKET',
           subtotal: subtotal,
-          discountAmount: saleDiscountAmt,
+          discountAmount: saleDiscountAmt + couponDiscountAmt,
           discountPercent: input.discountPercent ?? 0,
           taxAmount,
           totalAmount,
@@ -237,7 +261,36 @@ export class SalesService {
         });
       }
 
-      return newSale;
+      // Canjear el cupón — condicionado a que siga ACTIVE para evitar que dos
+      // ventas concurrentes lo usen dos veces (carrera).
+      if (coupon) {
+        const redeemed = await tx.coupon.updateMany({
+          where: { id: coupon.id, status: 'ACTIVE' },
+          data: { status: 'REDEEMED', redeemedSaleId: newSale.id, redeemedAt: new Date() },
+        });
+        if (redeemed.count !== 1) {
+          throw new BusinessError('El cupón acaba de ser canjeado en otra venta. Intente sin el cupón.');
+        }
+      }
+
+      // Generar un cupón nuevo si esta venta (con cliente asignado) supera el
+      // monto mínimo configurado — se imprime en el ticket para su próxima compra.
+      let generatedCoupon = null;
+      if (input.customerId && totalAmount >= couponMinSale && couponRewardPercent > 0) {
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + couponValidityDays);
+        generatedCoupon = await tx.coupon.create({
+          data: {
+            code: await couponsService.generateUniqueCode(),
+            discountPercent: couponRewardPercent,
+            customerId: input.customerId,
+            sourceSaleId: newSale.id,
+            expiresAt,
+          },
+        });
+      }
+
+      return { ...newSale, generatedCoupon };
     });
 
     logger.info({ saleId: sale.id, total: totalAmount, cashierId: input.cashierId }, 'Sale completed');
@@ -262,6 +315,8 @@ export class SalesService {
         returns: { include: { items: true } },
         cashSession: { include: { cashRegister: true } },
         documentSeries: true,
+        couponGenerated: true,
+        couponRedeemed: true,
       },
     });
 

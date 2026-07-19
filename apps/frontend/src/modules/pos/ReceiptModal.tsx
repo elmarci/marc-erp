@@ -18,6 +18,12 @@ interface ReceiptPayment {
   amount: number;
 }
 
+interface GeneratedCoupon {
+  code: string;
+  discountPercent: number;
+  expiresAt: string;
+}
+
 export interface ReceiptData {
   saleNumber: string;
   createdAt: string;
@@ -32,6 +38,7 @@ export interface ReceiptData {
   totalAmount: number;
   payments: ReceiptPayment[];
   change?: number;
+  generatedCoupon?: GeneratedCoupon | null;
 }
 
 interface ReceiptModalProps {
@@ -252,6 +259,20 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
 
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
             <p className="center" style={{ textAlign: 'center' }}>{s.footer}</p>
+
+            {data.generatedCoupon && (
+              <>
+                <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
+                <div className="center" style={{ textAlign: 'center', border: '2px dashed #000', padding: '4px', marginTop: '2px' }}>
+                  <p className="bold" style={{ fontWeight: 'bold', fontSize: '12px' }}>¡GANASTE UN CUPÓN!</p>
+                  <p style={{ fontSize: '11px' }}>{data.generatedCoupon.discountPercent}% de descuento en tu próxima compra</p>
+                  <p className="bold" style={{ fontWeight: 'bold', fontSize: '14px', marginTop: '2px' }}>{data.generatedCoupon.code}</p>
+                  <p style={{ fontSize: '9px', color: '#666' }}>
+                    Válido hasta {new Date(data.generatedCoupon.expiresAt).toLocaleDateString('es-PE')}
+                  </p>
+                </div>
+              </>
+            )}
 
             {qrDataUrl && (
               <>

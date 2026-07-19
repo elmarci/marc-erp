@@ -32,6 +32,7 @@ import inventoryRoutes from './modules/inventory/inventory.routes';
 import storeRoutes from './modules/store/store.routes';
 import storeAuthRoutes from './modules/store/store-auth.routes';
 import promotionsRoutes from './modules/promotions/promotions.routes';
+import couponsRoutes from './modules/coupons/coupons.routes';
 
 const app = express();
 const httpServer = createServer(app);
@@ -135,6 +136,7 @@ app.use(`${API_PREFIX}/inventory`, inventoryRoutes);
 app.use(`${API_PREFIX}/store`, storeRoutes);
 app.use(`${API_PREFIX}/store/auth`, storeAuthRoutes);
 app.use(`${API_PREFIX}/promotions`, promotionsRoutes);
+app.use(`${API_PREFIX}/coupons`, couponsRoutes);
 
 // ─── Swagger docs ────────────────────────────────────────────────────────────
 if (env.NODE_ENV === 'development') {
@@ -171,6 +173,9 @@ async function ensureDefaultSettings() {
     { key: 'business_logo_url', value: '', label: 'Logo del Negocio', group: 'business' },
     { key: 'business_logo_print_url', value: '', label: 'Logo del Negocio (impresión)', group: 'business' },
     { key: 'store_url', value: 'https://shimmering-delight-production-75b7.up.railway.app', label: 'URL Tienda Online', group: 'business' },
+    { key: 'coupon_min_sale_amount', value: '100', label: 'Monto mínimo de venta para generar cupón (S/)', group: 'coupons' },
+    { key: 'coupon_discount_percent', value: '10', label: 'Descuento del cupón (%)', group: 'coupons' },
+    { key: 'coupon_validity_days', value: '30', label: 'Vigencia del cupón (días)', group: 'coupons' },
   ];
   for (const s of defaults) {
     await prisma.setting.upsert({ where: { key: s.key }, update: {}, create: s });

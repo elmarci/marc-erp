@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,52 @@ import { formatCurrency, cn } from '@/lib/utils';
 import { api } from '@/services/api';
 
 interface Customer { id: string; firstName: string; lastName: string | null; phone: string | null; taxId: string | null }
+interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
+
+function formatShortDate(iso: string) {
+  return new Date(iso).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
+}
+
+/* ─── Cupón de descuento del cliente asignado ────────────────────────────── */
+function CouponBanner({ customerId }: { customerId: string }) {
+  const { couponCode, setCoupon } = usePosStore();
+
+  const { data: coupons } = useQuery({
+    queryKey: ['customer-coupons', customerId],
+    queryFn: async () => (await api.get<{ data: CustomerCoupon[] }>(`/coupons?customerId=${customerId}`)).data.data,
+  });
+
+  const available = (coupons ?? []).sort((a, b) => a.expiresAt.localeCompare(b.expiresAt))[0];
+
+  if (couponCode) {
+    return (
+      <div className="flex items-center justify-between border-b bg-success/10 px-4 py-2">
+        <span className="text-xs font-medium text-success flex items-center gap-1.5">
+          <Ticket className="h-3.5 w-3.5" />
+          Cupón {couponCode} aplicado (-{usePosStore.getState().couponDiscountPercent}%)
+        </span>
+        <button onClick={() => setCoupon(null, 0)} className="text-muted-foreground hover:text-destructive">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  if (!available) return null;
+
+  return (
+    <div className="flex items-center justify-between border-b bg-amber-500/10 px-4 py-2">
+      <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+        <Ticket className="h-3.5 w-3.5" />
+        Cupón {available.discountPercent}% disponible · vence {formatShortDate(available.expiresAt)}
+      </span>
+      <Button size="sm" variant="outline" className="h-6 text-xs px-2"
+        onClick={() => setCoupon(available.code, available.discountPercent)}>
+        Aplicar
+      </Button>
+    </div>
+  );
+}
 
 function CustomerSearchModal({ onSelect, onClose }: {
   onSelect: (id: string, name: string) => void;
@@ -66,7 +112,7 @@ interface PosCartProps {
 export function PosCart({ onCheckout, className }: PosCartProps) {
   const {
     items, subtotal, discountAmount, taxAmount, total,
-    updateQuantity, removeItem, clearCart, customerName, setCustomer,
+    updateQuantity, removeItem, clearCart, customerId, customerName, setCustomer,
     globalDiscountPercent, setGlobalDiscount,
   } = usePosStore();
 
@@ -126,6 +172,9 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
           </button>
         </div>
       )}
+
+      {/* Cupón de descuento del cliente */}
+      {customerId && items.length > 0 && <CouponBanner customerId={customerId} />}
 
       {/* Lista de items */}
       <div className="flex-1 overflow-y-auto">

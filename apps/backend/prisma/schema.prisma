@@ -638,11 +638,43 @@ model Customer {
   sales       Sale[]
   payments    CustomerPayment[]
   debtPayments CustomerDebtPayment[]
+  coupons     Coupon[]
 
   @@index([taxId])
   @@index([phone])
   @@index([type])
   @@map("customers")
+}
+
+enum CouponStatus {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+}
+
+// Cupón de descuento % generado automáticamente cuando una venta supera un
+// monto configurable (settings: coupon_min_sale_amount / coupon_discount_percent
+// / coupon_validity_days). Se imprime en el ticket y solo lo puede canjear el
+// mismo cliente en una compra futura.
+model Coupon {
+  id             String       @id @default(uuid())
+  code           String       @unique
+  discountPercent Decimal     @db.Decimal(5, 2) @map("discount_percent")
+  customerId     String       @map("customer_id")
+  sourceSaleId   String       @unique @map("source_sale_id")
+  redeemedSaleId String?      @unique @map("redeemed_sale_id")
+  status         CouponStatus @default(ACTIVE)
+  expiresAt      DateTime     @map("expires_at")
+  redeemedAt     DateTime?    @map("redeemed_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  customer     Customer @relation(fields: [customerId], references: [id])
+  sourceSale   Sale     @relation("CouponSourceSale", fields: [sourceSaleId], references: [id])
+  redeemedSale Sale?    @relation("CouponRedeemedSale", fields: [redeemedSaleId], references: [id])
+
+  @@index([customerId])
+  @@index([status])
+  @@map("coupons")
 }
 
 model CustomerPayment {
@@ -760,6 +792,8 @@ model Sale {
   returns        SaleReturn[]
   customerPayments CustomerPayment[]
   promotionApplications PromotionApplication[]
+  couponGenerated  Coupon?          @relation("CouponSourceSale")
+  couponRedeemed   Coupon?          @relation("CouponRedeemedSale")
 
   @@index([cashSessionId])
   @@index([cashierId])

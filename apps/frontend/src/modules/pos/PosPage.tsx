@@ -108,7 +108,14 @@ export function PosPage() {
 
   const handleSaleComplete = useCallback(async () => {
     const { items, payments, cashSessionId: sessionId, customerId, documentType,
-      discountAmount, isCredit, notes, total } = usePosStore.getState();
+      globalDiscountAmount, globalDiscountPercent, couponCode, isCredit, notes, total, subtotal } = usePosStore.getState();
+    // Ojo: el "discountAmount" combinado del store ya incluye el descuento del
+    // cupón (para mostrarlo en pantalla). Al backend le mandamos solo el
+    // descuento manual — el del cupón lo vuelve a calcular él mismo a partir
+    // del código, que es la fuente de verdad (evita duplicar el descuento).
+    const manualDiscountAmount = globalDiscountAmount > 0
+      ? globalDiscountAmount
+      : (subtotal * globalDiscountPercent) / 100;
 
     if (!sessionId) {
       toast.error('No hay sesión de caja activa.');
@@ -146,7 +153,8 @@ export function PosPage() {
             return { ...p, amount };
           }).filter(p => p.amount > 0);
         })(),
-        discountAmount,
+        discountAmount: manualDiscountAmount,
+        couponCode: couponCode ?? undefined,
         isCredit,
         notes,
       });
@@ -165,6 +173,9 @@ export function PosPage() {
         totalAmount: Number(sale.totalAmount ?? total),
         payments: payments.map(p => ({ method: p.method, amount: p.amount })),
         change: Math.max(0, totalPaid - Number(sale.totalAmount ?? total)),
+        generatedCoupon: sale.generatedCoupon
+          ? { code: sale.generatedCoupon.code, discountPercent: Number(sale.generatedCoupon.discountPercent), expiresAt: sale.generatedCoupon.expiresAt }
+          : null,
       });
       toast.success(`Venta ${sale.saleNumber} registrada exitosamente!`, { duration: 3000 });
       usePosStore.getState().clearCart();

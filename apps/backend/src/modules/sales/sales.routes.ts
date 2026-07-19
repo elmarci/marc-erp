@@ -31,6 +31,7 @@ const createSaleSchema = z.object({
   discountPercent: z.number().min(0).max(100).optional(),
   isCredit: z.boolean().optional(),
   notes: z.string().optional(),
+  couponCode: z.string().optional(),
 });
 
 const returnSchema = z.object({

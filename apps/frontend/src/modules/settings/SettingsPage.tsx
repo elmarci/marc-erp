@@ -45,6 +45,7 @@ export function SettingsPage() {
   });
 
   const businessSettings = settings?.filter((s) => s.group === 'business' && s.key !== 'business_logo_url' && s.key !== 'business_logo_print_url') ?? [];
+  const couponSettings = settings?.filter((s) => s.group === 'coupons') ?? [];
   const logoUrl = settings?.find((s) => s.key === 'business_logo_url')?.value;
   const logoSrc = logoUrl ? (logoUrl.startsWith('http') ? logoUrl : `${API_ORIGIN}${logoUrl}`) : null;
 
@@ -99,6 +100,36 @@ export function SettingsPage() {
             <div key={s.key}>
               <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
               <Input
+                defaultValue={s.value}
+                onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
+              />
+            </div>
+          ))}
+          <div className="flex justify-end pt-2">
+            <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
+              disabled={Object.keys(values).length === 0}>
+              <Save className="mr-2 h-4 w-4" />Guardar Cambios
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cupones de Descuento</CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Cuando una venta con cliente asignado supera el monto mínimo, se genera e imprime
+            automáticamente un cupón de descuento % para la próxima compra de ese cliente.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoading ? (
+            <div className="text-center text-muted-foreground py-4">Cargando...</div>
+          ) : couponSettings.map((s) => (
+            <div key={s.key}>
+              <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
+              <Input
+                type="number"
                 defaultValue={s.value}
                 onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
               />

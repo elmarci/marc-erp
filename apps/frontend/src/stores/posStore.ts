@@ -30,6 +30,8 @@ interface PosState {
   documentType: string;
   globalDiscountAmount: number;
   globalDiscountPercent: number;
+  couponCode: string | null;
+  couponDiscountPercent: number;
   isCredit: boolean;
   notes: string;
 
@@ -49,6 +51,7 @@ interface PosState {
   setCustomer: (id: string | null, name: string | null) => void;
   setDocumentType: (type: string) => void;
   setGlobalDiscount: (amount: number, percent: number) => void;
+  setCoupon: (code: string | null, percent: number) => void;
   setIsCredit: (isCredit: boolean) => void;
   setNotes: (notes: string) => void;
   addPayment: (payment: CartPayment) => void;
@@ -61,11 +64,19 @@ function calcItemSubtotal(item: Omit<CartItem, 'subtotal'>): number {
   return Math.max(0, effectivePrice * item.quantity);
 }
 
-function recalcTotals(items: CartItem[], globalDiscountAmount: number, globalDiscountPercent: number, payments: CartPayment[]) {
+function recalcTotals(
+  items: CartItem[],
+  globalDiscountAmount: number,
+  globalDiscountPercent: number,
+  payments: CartPayment[],
+  couponDiscountPercent = 0,
+) {
   const subtotal = items.reduce((sum, i) => sum + i.subtotal, 0);
-  const discountAmount = globalDiscountAmount > 0
+  const manualDiscount = globalDiscountAmount > 0
     ? globalDiscountAmount
     : (subtotal * globalDiscountPercent) / 100;
+  const couponDiscount = (subtotal * couponDiscountPercent) / 100;
+  const discountAmount = manualDiscount + couponDiscount;
   const discountedSubtotal = subtotal - discountAmount;
   // IGV incluido en el precio de venta (precio con IGV)
   const taxAmount = discountedSubtotal - discountedSubtotal / 1.18;
@@ -85,6 +96,8 @@ export const usePosStore = create<PosState>()((set, get) => ({
   documentType: 'TICKET',
   globalDiscountAmount: 0,
   globalDiscountPercent: 0,
+  couponCode: null,
+  couponDiscountPercent: 0,
   isCredit: false,
   notes: '',
   subtotal: 0,
@@ -99,7 +112,7 @@ export const usePosStore = create<PosState>()((set, get) => ({
   },
 
   addItem: (newItem) => {
-    const { items, globalDiscountAmount, globalDiscountPercent, payments } = get();
+    const { items, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent } = get();
     const existing = items.find((i) => i.productId === newItem.productId);
 
     let updatedItems: CartItem[];
@@ -116,14 +129,14 @@ export const usePosStore = create<PosState>()((set, get) => ({
       updatedItems = [...items, item];
     }
 
-    set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments) });
+    set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent) });
   },
 
   updateQuantity: (productId, quantity) => {
-    const { items, globalDiscountAmount, globalDiscountPercent, payments } = get();
+    const { items, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent } = get();
     if (quantity <= 0) {
       const updatedItems = items.filter((i) => i.productId !== productId);
-      set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments) });
+      set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent) });
       return;
     }
     const updatedItems = items.map((i) =>
@@ -131,11 +144,11 @@ export const usePosStore = create<PosState>()((set, get) => ({
         ? { ...i, quantity, subtotal: calcItemSubtotal({ ...i, quantity }) }
         : i,
     );
-    set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments) });
+    set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent) });
   },
 
   updateDiscount: (productId, discountAmount, discountPercent) => {
-    const { items, globalDiscountAmount, globalDiscountPercent, payments } = get();
+    const { items, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent } = get();
     const updatedItems = items.map((i) => {
       if (i.productId !== productId) return i;
       const effDiscount = discountAmount > 0 ? discountAmount : (i.originalPrice * discountPercent) / 100;
@@ -148,22 +161,34 @@ export const usePosStore = create<PosState>()((set, get) => ({
         subtotal: calcItemSubtotal({ ...i, unitPrice, discountAmount: 0, discountPercent: 0 }),
       };
     });
-    set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments) });
+    set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent) });
   },
 
   removeItem: (productId) => {
-    const { items, globalDiscountAmount, globalDiscountPercent, payments } = get();
+    const { items, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent } = get();
     const updatedItems = items.filter((i) => i.productId !== productId);
-    set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments) });
+    set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent) });
   },
 
-  setCustomer: (id, name) => set({ customerId: id, customerName: name }),
+  setCustomer: (id, name) => {
+    const { items, globalDiscountAmount, globalDiscountPercent, payments } = get();
+    // El cupón aplicado queda validado para un cliente específico — si
+    // cambia o se quita el cliente, ese cupón deja de ser válido para esta venta.
+    set({ customerId: id, customerName: name, couponCode: null, couponDiscountPercent: 0,
+      ...recalcTotals(items, globalDiscountAmount, globalDiscountPercent, payments, 0) });
+  },
 
   setDocumentType: (type) => set({ documentType: type }),
 
   setGlobalDiscount: (amount, percent) => {
-    const { items, payments } = get();
-    set({ globalDiscountAmount: amount, globalDiscountPercent: percent, ...recalcTotals(items, amount, percent, payments) });
+    const { items, payments, couponDiscountPercent } = get();
+    set({ globalDiscountAmount: amount, globalDiscountPercent: percent, ...recalcTotals(items, amount, percent, payments, couponDiscountPercent) });
+  },
+
+  setCoupon: (code, percent) => {
+    const { items, globalDiscountAmount, globalDiscountPercent, payments } = get();
+    set({ couponCode: code, couponDiscountPercent: percent,
+      ...recalcTotals(items, globalDiscountAmount, globalDiscountPercent, payments, percent) });
   },
 
   setIsCredit: (isCredit) => set({ isCredit }),
@@ -171,15 +196,15 @@ export const usePosStore = create<PosState>()((set, get) => ({
   setNotes: (notes) => set({ notes }),
 
   addPayment: (payment) => {
-    const { payments, items, globalDiscountAmount, globalDiscountPercent } = get();
+    const { payments, items, globalDiscountAmount, globalDiscountPercent, couponDiscountPercent } = get();
     const updated = [...payments, payment];
-    set({ payments: updated, ...recalcTotals(items, globalDiscountAmount, globalDiscountPercent, updated) });
+    set({ payments: updated, ...recalcTotals(items, globalDiscountAmount, globalDiscountPercent, updated, couponDiscountPercent) });
   },
 
   removePayment: (index) => {
-    const { payments, items, globalDiscountAmount, globalDiscountPercent } = get();
+    const { payments, items, globalDiscountAmount, globalDiscountPercent, couponDiscountPercent } = get();
     const updated = payments.filter((_, i) => i !== index);
-    set({ payments: updated, ...recalcTotals(items, globalDiscountAmount, globalDiscountPercent, updated) });
+    set({ payments: updated, ...recalcTotals(items, globalDiscountAmount, globalDiscountPercent, updated, couponDiscountPercent) });
   },
 
   clearCart: () => {
@@ -191,6 +216,8 @@ export const usePosStore = create<PosState>()((set, get) => ({
       documentType: 'TICKET',
       globalDiscountAmount: 0,
       globalDiscountPercent: 0,
+      couponCode: null,
+      couponDiscountPercent: 0,
       isCredit: false,
       notes: '',
       subtotal: 0,

@@ -49,6 +49,9 @@ async function main() {
     { key: 'business_logo_url', value: '', type: 'string', group: 'business', label: 'Logo del Negocio' },
     { key: 'business_logo_print_url', value: '', type: 'string', group: 'business', label: 'Logo del Negocio (impresión)' },
     { key: 'store_url', value: 'https://shimmering-delight-production-75b7.up.railway.app', type: 'string', group: 'business', label: 'URL Tienda Online' },
+    { key: 'coupon_min_sale_amount', value: '100', type: 'number', group: 'coupons', label: 'Monto mínimo de venta para generar cupón (S/)' },
+    { key: 'coupon_discount_percent', value: '10', type: 'number', group: 'coupons', label: 'Descuento del cupón (%)' },
+    { key: 'coupon_validity_days', value: '30', type: 'number', group: 'coupons', label: 'Vigencia del cupón (días)' },
   ];
 
   for (const s of settings) {
