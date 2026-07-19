@@ -103,10 +103,10 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
 
     const widthMm = s.printerWidthMm;
     // Las impresoras térmicas reservan un margen físico no imprimible a cada
-    // lado (ej. la Epson TM-T20 de 80mm solo imprime ~72mm reales). Si el
-    // contenido llena el ancho nominal completo, el driver recorta texto en
-    // ambos bordes. Dejamos ~4mm de colchón por lado y centramos.
-    const printableWidthMm = Math.max(widthMm - 8, 40);
+    // lado, y ese margen suele ser más ancho de lo que el driver reporta.
+    // Vamos conservadores (nominal - 14mm) para no seguir comiéndonos los
+    // costados; si sobra papel en blanco es preferible a recortar texto.
+    const printableWidthMm = Math.max(widthMm - 14, 36);
     doc.open();
     doc.write(`
       <html><head><title>Ticket ${data.saleNumber}</title>
@@ -122,14 +122,21 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
           text-rendering: optimizeSpeed;
         }
         html, body { width: ${widthMm}mm; }
-        body { font-family: 'Courier New', monospace; font-size: 11px; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body {
+          font-family: 'Courier New', monospace; font-size: 11px; padding: 0;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
+          /* Un trazo delgado es casi todo borde antialiaseado — el driver
+             térmico lo difumina. En negrita el trazo tiene más negro sólido
+             y sale nítido, así que todo el ticket va en negrita. */
+          font-weight: 700;
+        }
         .ticket { width: ${printableWidthMm}mm; margin: 0 auto; }
         img { max-width: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
         .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .line { border-top: 1px dashed #000; margin: 4px 0; }
+        .bold { font-weight: 700; }
+        .line { border-top: 2px dashed #000; margin: 4px 0; }
         .row { display: flex; justify-content: space-between; }
-        .total-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; }
+        .total-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
       </style></head>
       <body><div class="ticket">${content}</div></body></html>
     `);
