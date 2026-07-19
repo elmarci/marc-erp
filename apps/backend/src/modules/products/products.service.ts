@@ -24,7 +24,7 @@ export interface CreateProductInput {
   trackBatch?: boolean;
   isBulk?: boolean;
   bulkUnit?: string;
-  imageUrl?: string;
+  imageUrl?: string | null;
 }
 
 interface UpdateProductInput extends Partial<CreateProductInput> {

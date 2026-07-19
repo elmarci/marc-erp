@@ -1,11 +1,11 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Image, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +24,7 @@ const schema = z.object({
   description: z.string().optional(),
   isBulk: z.boolean().default(false),
   bulkUnit: z.string().optional(),
+  imageUrl: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -51,8 +52,22 @@ export function ProductFormPage() {
     enabled: isEdit,
   });
 
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
+  });
+
+  const imageUploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append('image', file);
+      return api.post<{ data: { imageUrl: string } }>('/products/upload-image', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
+    onSuccess: (res) => setValue('imageUrl', res.data.data.imageUrl),
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   // Cargar valores del producto incluyendo isBulk/bulkUnit
@@ -102,6 +117,40 @@ export function ProductFormPage() {
         <Card>
           <CardHeader><CardTitle>Información del Producto</CardTitle></CardHeader>
           <CardContent className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Imagen del producto</label>
+              <div className="flex items-center gap-4">
+                <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-dashed bg-muted overflow-hidden shrink-0">
+                  {watch('imageUrl') ? (
+                    <img src={watch('imageUrl')} alt="Producto" className="h-full w-full object-cover" />
+                  ) : (
+                    <Image className="h-6 w-6 text-muted-foreground/40" />
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) imageUploadMutation.mutate(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <Button type="button" variant="outline" size="sm" loading={imageUploadMutation.isPending}
+                    onClick={() => imageInputRef.current?.click()}>
+                    <Upload className="mr-1.5 h-4 w-4" />{watch('imageUrl') ? 'Cambiar' : 'Subir imagen'}
+                  </Button>
+                  {watch('imageUrl') && (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setValue('imageUrl', '')}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium">Nombre *</label>
               <Input {...register('name')} error={errors.name?.message} placeholder="Ej: Coca-Cola 500ml" />

@@ -21,6 +21,7 @@ interface Product {
   currentStock: number;
   minStock: number;
   status: string;
+  imageUrl: string | null;
   category: { name: string };
   brand: { name: string } | null;
 }
@@ -141,14 +142,23 @@ export function ProductsPage() {
                   {products.map((product) => (
                     <tr key={product.id} className="hover:bg-muted/30 transition-colors">
                       <td data-label="Producto" className="px-4 py-3">
-                        <div>
-                          <p className="font-medium">{product.name}</p>
-                          {product.barcode && (
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <Barcode className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-xs font-mono text-muted-foreground">{product.barcode}</span>
-                            </div>
-                          )}
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-muted overflow-hidden">
+                            {product.imageUrl ? (
+                              <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <Package className="h-4 w-4 text-muted-foreground/40" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-medium">{product.name}</p>
+                            {product.barcode && (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <Barcode className="h-3 w-3 text-muted-foreground" />
+                                <span className="text-xs font-mono text-muted-foreground">{product.barcode}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td data-label="Categoría" className="px-4 py-3 text-muted-foreground col-md">{product.category.name}</td>

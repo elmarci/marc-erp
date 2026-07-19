@@ -1,10 +1,30 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import sharp from 'sharp';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import fs from 'fs/promises';
 import { ProductStatus, UnitOfMeasure } from '@prisma/client';
 import { productsService, CreateProductInput, SearchProductsQuery } from './products.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
+import { ValidationError } from '../../utils/errors';
 
 const router = Router();
+
+const PRODUCT_IMAGE_DIR = path.join(process.cwd(), 'uploads', 'products');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!/^image\/(png|jpe?g|webp)$/.test(file.mimetype)) {
+      cb(new ValidationError('La imagen debe ser PNG, JPG o WEBP.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
 
 const createSchema = z.object({
   name: z.string().min(1).max(200),
@@ -27,7 +47,7 @@ const createSchema = z.object({
   trackBatch: z.boolean().default(false),
   isBulk: z.boolean().default(false),
   bulkUnit: z.string().optional(),
-  imageUrl: z.string().url().optional(),
+  imageUrl: z.union([z.string().url(), z.literal('')]).optional(),
 });
 
 const searchSchema = z.object({
@@ -43,6 +63,25 @@ const searchSchema = z.object({
 });
 
 router.use(authenticate);
+
+router.post('/upload-image', authorizeMinRole('WAREHOUSE'), upload.single('image'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) throw new ValidationError('No se recibió ninguna imagen.');
+
+    await fs.mkdir(PRODUCT_IMAGE_DIR, { recursive: true });
+
+    const filename = `${uuidv4()}.jpg`;
+    await sharp(req.file.buffer)
+      .resize(600, 600, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toFile(path.join(PRODUCT_IMAGE_DIR, filename));
+
+    // URL absoluta: el campo imageUrl del producto exige una URL completa
+    // (la usan tal cual el POS y la tienda online, sin prefijo de origen).
+    const imageUrl = `${req.protocol}://${req.get('host')}/uploads/products/${filename}`;
+    res.json({ success: true, data: { imageUrl } });
+  } catch (err) { next(err); }
+});
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -76,6 +115,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 router.post('/', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const input = createSchema.parse(req.body) as CreateProductInput;
+    if (input.imageUrl === '') input.imageUrl = undefined;
     const product = await productsService.create(input);
     res.status(201).json({ success: true, data: product });
   } catch (err) { next(err); }
@@ -83,7 +123,9 @@ router.post('/', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Respon
 
 router.patch('/:id', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const input = createSchema.partial().extend({ status: z.nativeEnum(ProductStatus).optional() }).parse(req.body);
+    const input: Parameters<typeof productsService.update>[1] =
+      createSchema.partial().extend({ status: z.nativeEnum(ProductStatus).optional() }).parse(req.body);
+    if (input.imageUrl === '') input.imageUrl = null;
     const product = await productsService.update(req.params.id, input);
     res.json({ success: true, data: product });
   } catch (err) { next(err); }

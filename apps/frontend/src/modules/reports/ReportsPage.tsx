@@ -122,7 +122,12 @@ function SalesTab() {
               { label: 'Total ventas', value: formatCurrency(data.summary.total), sub: `${data.summary.count} transacciones`, color: 'text-success' },
               { label: 'Ticket promedio', value: formatCurrency(data.summary.average), sub: 'por venta', color: 'text-primary' },
               { label: 'Descuentos', value: formatCurrency(data.summary.discounts), sub: 'total aplicado', color: 'text-amber-500' },
-              { label: 'IGV recaudado', value: formatCurrency(data.summary.taxes), sub: '18% del neto', color: 'text-muted-foreground' },
+              {
+                label: 'Unidades vendidas',
+                value: data.byCategory.reduce((sum, c) => sum + c.quantity, 0).toLocaleString('es-PE'),
+                sub: 'en el período',
+                color: 'text-muted-foreground',
+              },
             ].map(kpi => (
               <Card key={kpi.label}>
                 <CardContent className="p-5">
