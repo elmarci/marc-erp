@@ -263,10 +263,6 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
         >
           Cobrar {items.length > 0 && formatCurrency(total)}
         </Button>
-
-        <p className="mt-2 text-center text-xs text-muted-foreground">
-          F1: Buscar · F2: Cobrar · F3: Anular · Esc: Vaciar
-        </p>
       </div>
     </div>
 

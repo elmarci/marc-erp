@@ -28,27 +28,40 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
   const [amount, setAmount] = useState(total.toFixed(2));
   const remaining = Math.max(0, total - totalPaid);
 
-  const handleAddPayment = () => {
-    const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) {
+  const isComplete = totalPaid >= total - 0.01;
+  const enteredAmount = parseFloat(amount) || 0;
+  // El botón principal cubre pago completo en un solo toque; solo si el
+  // cajero ingresa un monto parcial (pago dividido) queda pendiente agregar
+  // otro método — sin obligar a un paso extra en el caso más común.
+  const willCompleteWithThisPayment = !isComplete && enteredAmount >= remaining - 0.001;
+
+  const registerPayment = (): boolean => {
+    if (enteredAmount <= 0) {
       toast.error('Ingrese un monto válido.');
-      return;
+      return false;
     }
-    if (selectedMethod === 'CREDIT' && amt > remaining) {
+    if (selectedMethod === 'CREDIT' && enteredAmount > remaining) {
       toast.error('El monto de fiado no puede exceder el saldo pendiente.');
-      return;
+      return false;
     }
-    addPayment({ method: selectedMethod, amount: amt });
+    addPayment({ method: selectedMethod, amount: enteredAmount });
     if (selectedMethod === 'CREDIT') setIsCredit(true);
-    setAmount((remaining - amt).toFixed(2));
+    setAmount(Math.max(0, remaining - enteredAmount).toFixed(2));
+    return true;
+  };
+
+  const handlePrimaryAction = () => {
+    if (isComplete) { onConfirm(); return; }
+    if (!registerPayment()) return;
+    // Si este pago cubre lo que faltaba, confirmar directo — sin exigir un
+    // segundo toque para lo que ya es, en los hechos, una venta pagada.
+    if (willCompleteWithThisPayment) onConfirm();
   };
 
   const handleQuickAmount = (multiplier: number) => {
     const amt = Math.ceil(total * multiplier / 10) * 10;
     setAmount(amt.toFixed(2));
   };
-
-  const isComplete = totalPaid >= total - 0.01;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -107,24 +120,16 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
           </div>
 
           {/* Monto */}
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <p className="mb-1.5 text-sm font-medium">Monto</p>
-              <Input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="text-lg font-bold"
-                min={0}
-                step={0.10}
-              />
-            </div>
-            <div>
-              <p className="mb-1.5 text-sm font-medium invisible">.</p>
-              <Button onClick={handleAddPayment} className="h-10" disabled={!amount}>
-                Agregar
-              </Button>
-            </div>
+          <div>
+            <p className="mb-1.5 text-sm font-medium">Monto</p>
+            <Input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="text-lg font-bold"
+              min={0}
+              step={0.10}
+            />
           </div>
 
           {/* Montos rápidos (solo efectivo) */}
@@ -183,20 +188,30 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
           )}
         </div>
 
-        {/* Botón confirmar — siempre visible, fuera del scroll */}
+        {/* Botón principal — siempre visible, fuera del scroll. Agrega el
+            pago y, si con eso ya se cubre el total, confirma la venta en el
+            mismo toque; si es un pago parcial (dividido), solo lo agrega y
+            queda listo para el siguiente método. */}
         <div className="border-t p-4 sm:p-5 shrink-0 safe-bottom">
           <Button
             className="w-full min-h-[54px] text-base"
             size="xl"
-            disabled={!isComplete || isProcessing}
+            disabled={(!isComplete && enteredAmount <= 0) || isProcessing}
             loading={isProcessing}
-            onClick={onConfirm}
+            onClick={handlePrimaryAction}
           >
             {isComplete ? (
               <>
                 <Check className="mr-2 h-5 w-5" />
                 Confirmar Venta {change > 0 && `· Vuelto ${formatCurrency(change)}`}
               </>
+            ) : willCompleteWithThisPayment ? (
+              <>
+                <Check className="mr-2 h-5 w-5" />
+                Cobrar {formatCurrency(remaining)}
+              </>
+            ) : enteredAmount > 0 ? (
+              `Agregar ${formatCurrency(enteredAmount)} · Faltan ${formatCurrency(remaining - enteredAmount)}`
             ) : (
               `Faltan ${formatCurrency(remaining)}`
             )}

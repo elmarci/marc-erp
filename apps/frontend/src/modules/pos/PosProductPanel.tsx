@@ -327,7 +327,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
           <Input
             ref={searchInputRef}
             startIcon={<Search className="h-4 w-4" />}
-            placeholder="Buscar producto o escanear código... (F1)"
+            placeholder="Buscar producto o escanear código..."
             autoFocus
             onChange={(e) => debouncedSearch(e.target.value)}
             onKeyDown={handleSearchKeyDown}
