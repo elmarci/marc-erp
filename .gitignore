@@ -26,6 +26,12 @@ pids/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+apps/frontend/vite.config.js
+apps/frontend/vite.config.d.ts
 
 # IDE
 .vscode/

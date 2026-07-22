@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
+import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { LoginPage } from '@/modules/auth/LoginPage';
 import { DashboardPage } from '@/modules/dashboard/DashboardPage';
@@ -33,6 +34,7 @@ function RequirePasswordChange({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  useOfflineSync();
   return (
     <>
       <Toaster position="top-right" richColors closeButton />

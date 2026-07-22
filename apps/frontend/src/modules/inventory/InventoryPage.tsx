@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUp, ArrowDown, Search, Plus, X, AlertTriangle, Package,
   BarChart3, ClipboardList, History, TrendingDown, DollarSign,
-  ChevronDown, ChevronUp, Printer,
+  ChevronDown, ChevronUp, Printer, ScanBarcode,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
@@ -126,7 +126,7 @@ function BulkAdjustModal({ onClose }: { onClose: () => void }) {
 
   const { data: products } = useQuery({
     queryKey: ['products-adj-search', search],
-    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; currentStock: number }> }>(`/products?search=${search}&limit=15`)).data.data,
+    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; currentStock: number }> }>(`/products?q=${search}&limit=15`)).data.data,
     enabled: search.length >= 2,
   });
 
@@ -134,6 +134,20 @@ function BulkAdjustModal({ onClose }: { onClose: () => void }) {
     if (items.find(i => i.productId === p.id)) return;
     setItems(v => [...v, { productId: p.id, name: p.name, systemQty: p.currentStock, physicalQty: p.currentStock }]);
     setSearch('');
+  };
+
+  // Escanear código de barras agrega directo (sin pasar por la lista de
+  // coincidencias) — mucho más rápido para un conteo físico con lector.
+  const handleScanKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const value = e.currentTarget.value.trim();
+    if (!/^\d{8,}$/.test(value)) return;
+    try {
+      const res = await api.get<{ data: { id: string; name: string; currentStock: number } }>(`/products/barcode/${value}`);
+      addProduct(res.data.data);
+    } catch {
+      toast.error(`No se encontró ningún producto con código ${value}.`);
+    }
   };
 
   const mutation = useMutation({
@@ -174,8 +188,9 @@ function BulkAdjustModal({ onClose }: { onClose: () => void }) {
           <div>
             <label className="mb-1 block text-sm font-medium">Agregar producto</label>
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} />
+              <ScanBarcode className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Buscar o escanear código de barras..." value={search}
+                onChange={e => setSearch(e.target.value)} onKeyDown={handleScanKeyDown} />
             </div>
             {products && products.length > 0 && search.length >= 2 && (
               <div className="border rounded-lg mt-1 divide-y max-h-36 overflow-y-auto bg-popover shadow-lg">

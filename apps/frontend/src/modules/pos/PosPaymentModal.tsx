@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { X, DollarSign, CreditCard, Smartphone, Check } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { X, DollarSign, CreditCard, Smartphone, Check, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePosStore } from '@/stores/posStore';
 import { formatCurrency, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
+import { parseVoiceCommand } from './voiceCommands';
 
 interface PosPaymentModalProps {
   onClose: () => void;
@@ -63,6 +65,26 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
     setAmount(amt.toFixed(2));
   };
 
+  // Comando de voz solo pre-selecciona método y monto — el cajero igual debe
+  // presionar el botón de cobro, para evitar que un error de reconocimiento
+  // cierre una venta por accidente.
+  const handleVoiceResult = useCallback((transcript: string) => {
+    const command = parseVoiceCommand(transcript);
+    if (command.type === 'SET_PAYMENT_METHOD') {
+      const known = PAYMENT_METHODS.find((pm) => pm.method === command.method);
+      if (!known) { toast.error('Método de pago no reconocido.'); return; }
+      setSelectedMethod(command.method);
+      setAmount(remaining.toFixed(2));
+      toast.success(`Método: ${known.label}. Confirma el monto y presiona Cobrar.`, { duration: 3000 });
+      return;
+    }
+    toast.error('Intenta: "cobrar con yape", "efectivo" o "fiado".');
+  }, [remaining]);
+
+  const { isListening, toggle: toggleListening, isSupported: voiceSupported } = useVoiceRecognition({
+    onResult: handleVoiceResult,
+  });
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-lg bg-card shadow-2xl animate-fade-in
@@ -96,7 +118,18 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
 
           {/* Métodos de pago */}
           <div>
-            <p className="mb-2 text-sm font-medium">Método de pago</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-medium">Método de pago</p>
+              {voiceSupported && (
+                <button
+                  type="button" onClick={toggleListening}
+                  title={isListening ? 'Toca para apagar el micrófono' : 'Decir "cobrar con yape" o "fiado"'}
+                  className={cn('flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors',
+                    isListening ? 'border-destructive text-destructive bg-destructive/10 animate-pulse' : 'border-border text-muted-foreground hover:bg-muted')}>
+                  <Mic className="h-3.5 w-3.5" />{isListening ? 'Escuchando...' : 'Voz'}
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-4 gap-2">
               {PAYMENT_METHODS.map((pm) => (
                 <button

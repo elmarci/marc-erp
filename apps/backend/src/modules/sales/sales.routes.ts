@@ -32,6 +32,11 @@ const createSaleSchema = z.object({
   isCredit: z.boolean().optional(),
   notes: z.string().optional(),
   couponCode: z.string().optional(),
+  pointsToRedeem: z.coerce.number().int().min(0).optional(),
+  // Venta hecha en el POS mientras no había internet, sincronizada después —
+  // no bloquear por stock/sesión ya cerrada, ver sales.service.ts.
+  isOfflineSync: z.boolean().optional(),
+  offlineCreatedAt: z.coerce.date().optional(),
 });
 
 const returnSchema = z.object({

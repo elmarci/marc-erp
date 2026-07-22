@@ -52,6 +52,8 @@ async function main() {
     { key: 'coupon_min_sale_amount', value: '100', type: 'number', group: 'coupons', label: 'Monto mínimo de venta para generar cupón (S/)' },
     { key: 'coupon_discount_percent', value: '10', type: 'number', group: 'coupons', label: 'Descuento del cupón (%)' },
     { key: 'coupon_validity_days', value: '30', type: 'number', group: 'coupons', label: 'Vigencia del cupón (días)' },
+    { key: 'loyalty_points_per_sol', value: '1', type: 'number', group: 'loyalty', label: 'Puntos ganados por S/1 de compra' },
+    { key: 'loyalty_point_value', value: '0.03', type: 'number', group: 'loyalty', label: 'Valor de canje por punto (S/)' },
   ];
 
   for (const s of settings) {

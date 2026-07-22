@@ -34,6 +34,9 @@ export interface CreateSaleInput {
   isCredit?: boolean;
   notes?: string;
   couponCode?: string;
+  pointsToRedeem?: number;
+  isOfflineSync?: boolean;
+  offlineCreatedAt?: Date;
 }
 
 export interface ReturnSaleInput {
@@ -56,10 +59,14 @@ export interface ListSalesQuery {
 
 export class SalesService {
   async create(input: CreateSaleInput) {
-    // Verificar sesión de caja abierta
-    const cashSession = await prisma.cashSession.findFirst({
-      where: { id: input.cashSessionId, status: 'OPEN' },
-    });
+    // Verificar sesión de caja abierta — excepto al sincronizar una venta
+    // hecha offline: para entonces el cajero pudo haber cerrado la caja sin
+    // saber que esa venta seguía pendiente de subir, y bloquearla la dejaría
+    // atascada en la cola para siempre. Ese caso queda fuera del arqueo de
+    // esa sesión (limitación conocida y aceptada del modo offline).
+    const cashSession = input.isOfflineSync
+      ? await prisma.cashSession.findUnique({ where: { id: input.cashSessionId } })
+      : await prisma.cashSession.findFirst({ where: { id: input.cashSessionId, status: 'OPEN' } });
     if (!cashSession) {
       throw new BusinessError('No hay una sesión de caja abierta. Abra la caja para procesar ventas.');
     }
@@ -77,10 +84,13 @@ export class SalesService {
       throw new BusinessError(`Productos no encontrados: ${missing.join(', ')}`);
     }
 
-    // Verificar stock suficiente
+    // Verificar stock suficiente — al sincronizar una venta offline se deja
+    // pasar igual aunque quede negativo (se pudo vender lo mismo en otra caja
+    // mientras no había internet); se marca con una alerta de stock para que
+    // alguien lo revise, en vez de perder la venta ya cobrada al cliente.
     for (const item of input.items) {
       const product = products.find((p) => p.id === item.productId)!;
-      if (product.currentStock < item.quantity) {
+      if (product.currentStock < item.quantity && !input.isOfflineSync) {
         throw new BusinessError(
           `Stock insuficiente para "${product.name}". Disponible: ${product.currentStock}, solicitado: ${item.quantity}.`,
         );
@@ -125,11 +135,34 @@ export class SalesService {
     }
     const couponDiscountAmt = coupon ? (subtotal * Number(coupon.discountPercent)) / 100 : 0;
 
-    const discountedSubtotal = subtotal - saleDiscountAmt - couponDiscountAmt;
+    // Puntos de fidelización (opcional): excluyente con el cupón — un solo
+    // mecanismo de descuento por venta para no acumular impacto en margen.
+    const pointsToRedeem = input.pointsToRedeem ?? 0;
+    if (pointsToRedeem > 0 && coupon) {
+      throw new BusinessError('No se puede canjear puntos y un cupón en la misma venta.');
+    }
+    const loyaltyConfig = await getSettingValues(['loyalty_points_per_sol', 'loyalty_point_value']);
+    const pointsPerSol = Number(loyaltyConfig['loyalty_points_per_sol'] ?? 1);
+    const pointValue = Number(loyaltyConfig['loyalty_point_value'] ?? 0.03);
+
+    let pointsDiscountAmt = 0;
+    if (pointsToRedeem > 0) {
+      if (!input.customerId) {
+        throw new BusinessError('Para canjear puntos la venta debe tener un cliente asignado.');
+      }
+      const customerForPoints = await prisma.customer.findUnique({ where: { id: input.customerId } });
+      if (!customerForPoints || customerForPoints.loyaltyPoints < pointsToRedeem) {
+        throw new BusinessError('El cliente no tiene suficientes puntos disponibles.');
+      }
+      pointsDiscountAmt = Math.min(pointsToRedeem * pointValue, subtotal - saleDiscountAmt);
+    }
+
+    const discountedSubtotal = subtotal - saleDiscountAmt - couponDiscountAmt - pointsDiscountAmt;
 
     // Régimen Simple: sin IGV separado — precio de venta es precio final
     const taxAmount = 0;
     const totalAmount = discountedSubtotal;
+    const pointsEarned = input.customerId ? Math.floor(totalAmount * pointsPerSol) : 0;
 
     // Config para generar un cupón nuevo si esta venta supera el mínimo
     const couponConfig = await getSettingValues([
@@ -164,6 +197,13 @@ export class SalesService {
     // Generar número de venta
     const saleNumber = await this.generateSaleNumber();
 
+    // El monto a crédito es solo la porción cuyo método de pago es CREDIT —
+    // una venta puede ser parte al contado y parte fiada. paidAmount guarda
+    // lo ya cobrado (todo lo no-crédito) y currentBalance del cliente solo
+    // sube por la porción realmente fiada (no por el total de la venta).
+    const creditPortion = input.payments.filter((p) => p.method === 'CREDIT').reduce((sum, p) => sum + p.amount, 0);
+    const nonCreditPaid = input.payments.filter((p) => p.method !== 'CREDIT').reduce((sum, p) => sum + p.amount, 0);
+
     // Procesar venta en transacción
     const sale = await prisma.$transaction(async (tx) => {
       const newSale = await tx.sale.create({
@@ -175,7 +215,7 @@ export class SalesService {
           customerId: input.customerId,
           documentType: input.documentType ?? 'TICKET',
           subtotal: subtotal,
-          discountAmount: saleDiscountAmt + couponDiscountAmt,
+          discountAmount: saleDiscountAmt + couponDiscountAmt + pointsDiscountAmt,
           discountPercent: input.discountPercent ?? 0,
           taxAmount,
           totalAmount,
@@ -185,6 +225,9 @@ export class SalesService {
             input.payments.reduce((sum, p) => sum + p.amount, 0) - totalAmount,
           ),
           isCredit: input.isCredit ?? false,
+          paidAmount: nonCreditPaid,
+          pointsEarned,
+          pointsRedeemed: pointsToRedeem,
           notes: input.notes,
           items: {
             create: saleItems,
@@ -232,7 +275,7 @@ export class SalesService {
 
         // Actualizar alerta de stock (non-blocking — no debe interrumpir la venta)
         try {
-          const alertType = newStock === 0 ? 'OUT_OF_STOCK' : newStock <= product.minStock ? 'LOW_STOCK' : null;
+          const alertType = newStock < 0 ? 'NEGATIVE_STOCK' : newStock === 0 ? 'OUT_OF_STOCK' : newStock <= product.minStock ? 'LOW_STOCK' : null;
           if (alertType) {
             const existing = await tx.stockAlert.findFirst({
               where: { productId: item.productId, alertType },
@@ -253,12 +296,26 @@ export class SalesService {
         }
       }
 
-      // Actualizar saldo de crédito del cliente
-      if (input.isCredit && input.customerId) {
-        await tx.customer.update({
-          where: { id: input.customerId },
-          data: { currentBalance: { increment: totalAmount } },
-        });
+      // Actualizar saldo de crédito y puntos de fidelización del cliente en
+      // una sola operación. Si se canjean puntos, el where con `gte` evita
+      // una carrera con otra venta que gaste los mismos puntos a la vez.
+      if (input.customerId) {
+        const customerUpdateData: Prisma.CustomerUpdateInput = {};
+        if (creditPortion > 0) customerUpdateData.currentBalance = { increment: creditPortion };
+        const pointsDelta = pointsEarned - pointsToRedeem;
+        if (pointsDelta !== 0) customerUpdateData.loyaltyPoints = { increment: pointsDelta };
+
+        if (pointsToRedeem > 0) {
+          const result = await tx.customer.updateMany({
+            where: { id: input.customerId, loyaltyPoints: { gte: pointsToRedeem } },
+            data: customerUpdateData,
+          });
+          if (result.count !== 1) {
+            throw new BusinessError('El cliente ya no tiene suficientes puntos disponibles. Intente sin canjear puntos.');
+          }
+        } else if (Object.keys(customerUpdateData).length > 0) {
+          await tx.customer.update({ where: { id: input.customerId }, data: customerUpdateData });
+        }
       }
 
       // Canjear el cupón — condicionado a que siga ACTIVE para evitar que dos

@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
-import { X, Printer } from 'lucide-react';
+import { X, Printer, Mic } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { formatCurrency, PAYMENT_METHOD_LABELS } from '@/lib/utils';
+import { formatCurrency, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { api, API_ORIGIN } from '@/services/api';
+import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
+import { parseVoiceCommand } from './voiceCommands';
 
 interface ReceiptItem {
   productName: string;
@@ -39,6 +42,9 @@ export interface ReceiptData {
   payments: ReceiptPayment[];
   change?: number;
   generatedCoupon?: GeneratedCoupon | null;
+  pointsEarned?: number;
+  pointsRedeemed?: number;
+  offlinePending?: boolean;
 }
 
 interface ReceiptModalProps {
@@ -160,6 +166,20 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
     };
   };
 
+  const handleVoiceResult = useCallback((transcript: string) => {
+    const command = parseVoiceCommand(transcript);
+    if (command.type === 'PRINT') {
+      handlePrint();
+      return;
+    }
+    toast.error('Solo puedo "imprimir" el ticket desde aquí.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const { isListening, toggle: toggleListening, isSupported: voiceSupported } = useVoiceRecognition({
+    onResult: handleVoiceResult,
+  });
+
   const date = new Date(data.createdAt);
   const dateStr = date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const timeStr = date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
@@ -170,6 +190,14 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
         <div className="flex items-center justify-between border-b p-4">
           <h2 className="font-bold text-lg">Ticket de Venta</h2>
           <div className="flex gap-2">
+            {voiceSupported && (
+              <Button
+                size="sm" variant="outline" onClick={toggleListening}
+                title={isListening ? 'Toca para apagar el micrófono' : 'Decir "imprimir"'}
+                className={cn(isListening && 'border-destructive text-destructive bg-destructive/10 animate-pulse')}>
+                <Mic className="h-4 w-4" />
+              </Button>
+            )}
             <Button size="sm" onClick={handlePrint}>
               <Printer className="mr-1.5 h-4 w-4" />
               Imprimir
@@ -179,6 +207,12 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             </Button>
           </div>
         </div>
+
+        {data.offlinePending && (
+          <div className="bg-amber-500/15 text-amber-700 dark:text-amber-400 text-xs font-medium px-4 py-2 text-center border-b border-amber-500/20">
+            ⚠ Sin conexión — esta venta se guardó localmente y se sincronizará sola cuando vuelva el internet.
+          </div>
+        )}
 
         {/* Ticket visual */}
         <div className="p-4 max-h-[70vh] overflow-y-auto">
@@ -232,7 +266,8 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
             {Number(data.discountAmount) > 0 && (
               <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Descuento:</span><span>-{formatCurrency(data.discountAmount)}</span>
+                <span>Descuento{data.pointsRedeemed ? ` (${data.pointsRedeemed} pts)` : ''}:</span>
+                <span>-{formatCurrency(data.discountAmount)}</span>
               </div>
             )}
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
@@ -259,6 +294,12 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
 
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
             <p className="center" style={{ textAlign: 'center' }}>{s.footer}</p>
+
+            {Number(data.pointsEarned) > 0 && (
+              <p className="center bold" style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '11px', marginTop: '2px' }}>
+                ⭐ Ganaste {data.pointsEarned} puntos de fidelización
+              </p>
+            )}
 
             {data.generatedCoupon && (
               <>

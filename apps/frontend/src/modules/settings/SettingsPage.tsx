@@ -46,6 +46,7 @@ export function SettingsPage() {
 
   const businessSettings = settings?.filter((s) => s.group === 'business' && s.key !== 'business_logo_url' && s.key !== 'business_logo_print_url') ?? [];
   const couponSettings = settings?.filter((s) => s.group === 'coupons') ?? [];
+  const loyaltySettings = settings?.filter((s) => s.group === 'loyalty') ?? [];
   const logoUrl = settings?.find((s) => s.key === 'business_logo_url')?.value;
   const logoSrc = logoUrl ? (logoUrl.startsWith('http') ? logoUrl : `${API_ORIGIN}${logoUrl}`) : null;
 
@@ -130,6 +131,36 @@ export function SettingsPage() {
               <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
               <Input
                 type="number"
+                defaultValue={s.value}
+                onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
+              />
+            </div>
+          ))}
+          <div className="flex justify-end pt-2">
+            <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
+              disabled={Object.keys(values).length === 0}>
+              <Save className="mr-2 h-4 w-4" />Guardar Cambios
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Puntos de Fidelización</CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Los clientes ganan puntos en cada compra con cliente asignado, canjeables por descuento
+            en una compra futura (excluyente con los cupones — solo uno de los dos por venta).
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoading ? (
+            <div className="text-center text-muted-foreground py-4">Cargando...</div>
+          ) : loyaltySettings.map((s) => (
+            <div key={s.key}>
+              <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
+              <Input
+                type="number" step="0.01"
                 defaultValue={s.value}
                 onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
               />

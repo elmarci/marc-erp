@@ -4,7 +4,8 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { TrendingUp, Package, Trophy } from 'lucide-react';
+import { TrendingUp, Package, Trophy, Wallet } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/services/api';
@@ -427,9 +428,86 @@ function TopProductsTab() {
   );
 }
 
+/* ─── Accounts Receivable Tab ─────────────────────────────────────────────── */
+interface Receivable {
+  customerId: string; customerName: string; phone: string | null; balance: number;
+  unpaidSalesCount: number; oldestUnpaidSale: { id: string; saleNumber: string; createdAt: string } | null;
+  daysOverdue: number;
+}
+
+function AccountsReceivableTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['report-accounts-receivable'],
+    queryFn: async () => (await api.get<{ data: Receivable[] }>('/reports/accounts-receivable')).data.data,
+  });
+
+  const totalOwed = (data ?? []).reduce((sum, r) => sum + r.balance, 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Total por cobrar</p>
+            <p className="text-2xl font-bold mt-1 text-destructive">{formatCurrency(totalOwed)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">en {(data ?? []).length} cliente(s)</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Clientes con deuda pendiente</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="py-16 text-center text-muted-foreground">Cargando...</div>
+          ) : !data || data.length === 0 ? (
+            <div className="py-16 text-center text-muted-foreground">Ningún cliente tiene deuda pendiente.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="px-4 py-2 text-left font-medium">Cliente</th>
+                    <th className="px-4 py-2 text-right font-medium">Deuda</th>
+                    <th className="px-4 py-2 text-center font-medium">Ventas fiadas</th>
+                    <th className="px-4 py-2 text-left font-medium">Venta más antigua sin pagar</th>
+                    <th className="px-4 py-2 text-right font-medium">Días</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {data.map((r) => (
+                    <tr key={r.customerId} className="hover:bg-muted/30">
+                      <td className="px-4 py-2">
+                        <p className="font-medium">{r.customerName}</p>
+                        {r.phone && <p className="text-xs text-muted-foreground">{r.phone}</p>}
+                      </td>
+                      <td className="px-4 py-2 text-right font-semibold text-destructive">{formatCurrency(r.balance)}</td>
+                      <td className="px-4 py-2 text-center">{r.unpaidSalesCount}</td>
+                      <td className="px-4 py-2">
+                        {r.oldestUnpaidSale ? (
+                          <Link to={`/sales/${r.oldestUnpaidSale.id}`} className="text-primary hover:underline">
+                            {r.oldestUnpaidSale.saleNumber}
+                          </Link>
+                        ) : '—'}
+                      </td>
+                      <td className={cn('px-4 py-2 text-right font-medium', r.daysOverdue > 30 ? 'text-destructive' : 'text-muted-foreground')}>
+                        {r.daysOverdue}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function ReportsPage() {
-  const [tab, setTab] = useState<'sales' | 'inventory' | 'products'>('sales');
+  const [tab, setTab] = useState<'sales' | 'inventory' | 'products' | 'receivable'>('sales');
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -443,6 +521,7 @@ export function ReportsPage() {
           ['sales', TrendingUp, 'Ventas'],
           ['inventory', Package, 'Inventario'],
           ['products', Trophy, 'Top Productos'],
+          ['receivable', Wallet, 'Cuentas por Cobrar'],
         ] as const).map(([key, Icon, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn('flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px',
@@ -455,6 +534,7 @@ export function ReportsPage() {
       {tab === 'sales' && <SalesTab />}
       {tab === 'inventory' && <InventoryTab />}
       {tab === 'products' && <TopProductsTab />}
+      {tab === 'receivable' && <AccountsReceivableTab />}
     </div>
   );
 }

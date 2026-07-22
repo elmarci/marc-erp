@@ -307,10 +307,18 @@ export class InventoryService {
 
   /* ── Low Stock ──────────────────────────────────────────────────────────── */
   async getLowStockProducts() {
-    return prisma.$queryRaw<{ id: string; name: string; barcode: string | null; current_stock: number; min_stock: number; category: string }[]>`
-      SELECT p.id, p.name, p.barcode, p.current_stock, p.min_stock, c.name as category
+    return prisma.$queryRaw<{
+      id: string; name: string; barcode: string | null; current_stock: number; min_stock: number;
+      category: string; cost_price: number; supplier_id: string | null; supplier_name: string | null;
+      suggested_qty: number;
+    }[]>`
+      SELECT
+        p.id, p.name, p.barcode, p.current_stock, p.min_stock, c.name as category,
+        p.cost_price::float as cost_price, p.supplier_id, s.business_name as supplier_name,
+        GREATEST(COALESCE(p.max_stock, p.min_stock * 2) - p.current_stock, 1)::int as suggested_qty
       FROM products p
       JOIN categories c ON p.category_id = c.id
+      LEFT JOIN suppliers s ON p.supplier_id = s.id
       WHERE p.deleted_at IS NULL AND p.status = 'ACTIVE' AND p.current_stock <= p.min_stock
       ORDER BY (p.current_stock::float / NULLIF(p.min_stock, 0)) ASC, p.name ASC
     `;

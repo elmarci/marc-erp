@@ -309,6 +309,38 @@ export class ReportsService {
       LIMIT ${limit}
     `;
   }
+
+  /** Cuentas por cobrar: clientes con deuda y hace cuánto tienen su venta fiada más antigua sin pagar. */
+  async getAccountsReceivable() {
+    const customers = await prisma.customer.findMany({
+      where: { deletedAt: null, currentBalance: { gt: 0 } },
+      orderBy: { currentBalance: 'desc' },
+      select: {
+        id: true, firstName: true, lastName: true, phone: true, currentBalance: true,
+        sales: {
+          where: { isCredit: true, status: 'COMPLETED' },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, saleNumber: true, createdAt: true, totalAmount: true, paidAmount: true },
+          take: 100,
+        },
+      },
+    });
+
+    return customers.map((c) => {
+      const unpaidSales = c.sales.filter((s) => Number(s.totalAmount) - Number(s.paidAmount) > 0.009);
+      const oldest = unpaidSales[0];
+      const daysOverdue = oldest ? Math.floor((Date.now() - oldest.createdAt.getTime()) / 86_400_000) : 0;
+      return {
+        customerId: c.id,
+        customerName: `${c.firstName} ${c.lastName ?? ''}`.trim(),
+        phone: c.phone,
+        balance: Number(c.currentBalance),
+        unpaidSalesCount: unpaidSales.length,
+        oldestUnpaidSale: oldest ? { id: oldest.id, saleNumber: oldest.saleNumber, createdAt: oldest.createdAt } : null,
+        daysOverdue,
+      };
+    });
+  }
 }
 
 export const reportsService = new ReportsService();

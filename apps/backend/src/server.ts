@@ -176,6 +176,8 @@ async function ensureDefaultSettings() {
     { key: 'coupon_min_sale_amount', value: '100', label: 'Monto mínimo de venta para generar cupón (S/)', group: 'coupons' },
     { key: 'coupon_discount_percent', value: '10', label: 'Descuento del cupón (%)', group: 'coupons' },
     { key: 'coupon_validity_days', value: '30', label: 'Vigencia del cupón (días)', group: 'coupons' },
+    { key: 'loyalty_points_per_sol', value: '1', label: 'Puntos ganados por S/1 de compra', group: 'loyalty' },
+    { key: 'loyalty_point_value', value: '0.03', label: 'Valor de canje por punto (S/)', group: 'loyalty' },
   ];
   for (const s of defaults) {
     await prisma.setting.upsert({ where: { key: s.key }, update: {}, create: s });

@@ -97,6 +97,14 @@ export function getErrorMessage(error: unknown): string {
   return 'Error desconocido';
 }
 
+// Distingue una falla de red real (no llegó respuesta del servidor — sin
+// internet, timeout, servidor caído) de un rechazo de negocio (400/404/etc,
+// el servidor sí respondió). Solo las de red ameritan cola offline/reintento;
+// un rechazo de negocio (ej. stock insuficiente) no se arregla reintentando.
+export function isNetworkError(error: unknown): boolean {
+  return error instanceof AxiosError && !error.response;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data: T;

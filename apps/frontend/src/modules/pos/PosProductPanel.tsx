@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Package, AlertCircle, Scale, Tag, X } from 'lucide-react';
+import { Search, Package, AlertCircle, Scale, Tag, X, Mic } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,8 @@ import { usePosStore } from '@/stores/posStore';
 import { api } from '@/services/api';
 import { formatCurrency, cn, debounce } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
+import { parseVoiceCommand } from './voiceCommands';
 
 interface Product {
   id: string;
@@ -305,6 +307,75 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
     });
   };
 
+  // Comandos de voz: "agregar dos gaseosas" agrega al carrito, "precio del
+  // aceite" solo consulta sin agregar. Usa el mismo endpoint de búsqueda que
+  // la grilla y toma la primera coincidencia — no hay desambiguación por voz.
+  const handleVoiceResult = useCallback(async (transcript: string) => {
+    const command = parseVoiceCommand(transcript);
+
+    if (command.type === 'ADD_PRODUCT' || command.type === 'QUERY_PRICE') {
+      if (!command.query) {
+        toast.error('No entendí qué producto — intenta de nuevo.');
+        return;
+      }
+      try {
+        const res = await api.get<{ data: Product[] }>(
+          `/products?limit=5&status=ACTIVE&q=${encodeURIComponent(command.query)}`,
+        );
+        const match = res.data.data[0];
+        if (!match) {
+          toast.error(`No encontré ningún producto para "${command.query}".`);
+          return;
+        }
+        if (command.type === 'QUERY_PRICE') {
+          toast.info(
+            `${match.name}: ${formatCurrency(match.salePrice)}${match.currentStock <= 0 ? ' — sin stock' : ''}`,
+            { duration: 4000 },
+          );
+        } else {
+          handleAddProduct(match, match.isBulk ? undefined : command.quantity);
+        }
+      } catch {
+        toast.error('No se pudo buscar el producto por voz.');
+      }
+      return;
+    }
+
+    if (command.type === 'REMOVE_PRODUCT') {
+      if (!command.query) { toast.error('No entendí qué producto quitar.'); return; }
+      const cartItems = usePosStore.getState().items;
+      const q = command.query.toLowerCase();
+      const found = cartItems.find((i) => i.name.toLowerCase().includes(q));
+      if (!found) { toast.error(`No hay ningún "${command.query}" en el carrito.`); return; }
+      usePosStore.getState().removeItem(found.productId);
+      toast.success(`${found.name} quitado del carrito.`);
+      return;
+    }
+
+    if (command.type === 'CLEAR_CART') {
+      usePosStore.getState().clearCart();
+      toast.success('Carrito vaciado.');
+      return;
+    }
+
+    if (command.type === 'SET_PAYMENT_METHOD') {
+      toast('Para cobrar, dilo dentro del carrito.', { duration: 3000 });
+      return;
+    }
+
+    if (command.type === 'PRINT') {
+      toast('Para imprimir, dilo cuando se muestre el ticket.', { duration: 3000 });
+      return;
+    }
+
+    toast.error('No entendí el comando. Intenta: "agregar dos gaseosas", "precio del aceite" o "quitar la coca cola".');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const { isListening, toggle: toggleListening, isSupported: voiceSupported } = useVoiceRecognition({
+    onResult: handleVoiceResult,
+  });
+
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
     // Usar el valor actual del input, no el estado debounced (que puede ir
@@ -322,8 +393,8 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
   return (
     <div className={cn('flex flex-col bg-pos-product', className)}>
       {/* Barra de búsqueda + botón ofertas */}
-      <div className="border-b p-3 flex gap-2">
-        <div className="flex-1">
+      <div className="border-b p-3 flex flex-wrap gap-2">
+        <div className="flex-1 min-w-[140px]">
           <Input
             ref={searchInputRef}
             startIcon={<Search className="h-4 w-4" />}
@@ -334,6 +405,14 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
             className="bg-background"
           />
         </div>
+        {voiceSupported && (
+          <Button
+            variant="outline" size="sm" onClick={toggleListening}
+            title={isListening ? 'Toca para apagar el micrófono' : 'Decir "agregar dos gaseosas", "precio del aceite", "quitar la coca cola"...'}
+            className={cn('shrink-0 gap-1.5', isListening && 'border-destructive text-destructive bg-destructive/10 animate-pulse')}>
+            <Mic className="h-4 w-4" />{isListening ? 'Escuchando...' : 'Voz'}
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={() => setShowOffers(true)}
           className="shrink-0 gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
           <Tag className="h-4 w-4" />Ofertas

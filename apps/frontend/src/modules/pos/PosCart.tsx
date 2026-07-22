@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ function formatShortDate(iso: string) {
 
 /* ─── Cupón de descuento del cliente asignado ────────────────────────────── */
 function CouponBanner({ customerId }: { customerId: string }) {
-  const { couponCode, setCoupon } = usePosStore();
+  const { couponCode, pointsToRedeem, setCoupon } = usePosStore();
 
   const { data: coupons } = useQuery({
     queryKey: ['customer-coupons', customerId],
@@ -39,7 +39,8 @@ function CouponBanner({ customerId }: { customerId: string }) {
     );
   }
 
-  if (!available) return null;
+  // Excluyente con los puntos: si ya se están canjeando puntos, no ofrecer el cupón.
+  if (!available || pointsToRedeem > 0) return null;
 
   return (
     <div className="flex items-center justify-between border-b bg-amber-500/10 px-4 py-2">
@@ -50,6 +51,59 @@ function CouponBanner({ customerId }: { customerId: string }) {
       <Button size="sm" variant="outline" className="h-6 text-xs px-2"
         onClick={() => setCoupon(available.code, available.discountPercent)}>
         Aplicar
+      </Button>
+    </div>
+  );
+}
+
+/* ─── Puntos de fidelización del cliente asignado ────────────────────────── */
+function LoyaltyPointsBanner({ customerId }: { customerId: string }) {
+  const { couponCode, pointsToRedeem, subtotal, setPointsRedemption } = usePosStore();
+
+  const { data: customer } = useQuery({
+    queryKey: ['customer-loyalty', customerId],
+    queryFn: async () => (await api.get<{ data: { loyaltyPoints: number } }>(`/customers/${customerId}`)).data.data,
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => (await api.get<{ data: Array<{ key: string; value: string }> }>('/settings')).data.data,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const pointValue = Number(settings?.find(s => s.key === 'loyalty_point_value')?.value ?? 0.05);
+  const points = customer?.loyaltyPoints ?? 0;
+
+  if (pointsToRedeem > 0) {
+    return (
+      <div className="flex items-center justify-between border-b bg-success/10 px-4 py-2">
+        <span className="text-xs font-medium text-success flex items-center gap-1.5">
+          <Star className="h-3.5 w-3.5" />
+          {pointsToRedeem} puntos canjeados (-{formatCurrency(pointsToRedeem * pointValue)})
+        </span>
+        <button onClick={() => setPointsRedemption(0, 0)} className="text-muted-foreground hover:text-destructive">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  // Excluyente con el cupón, y no tiene sentido si no hay puntos o no alcanzan para nada.
+  if (couponCode || points <= 0) return null;
+
+  // No se puede canjear más de lo que cubre el subtotal actual.
+  const usablePoints = Math.min(points, Math.floor(subtotal / pointValue));
+  if (usablePoints <= 0) return null;
+
+  return (
+    <div className="flex items-center justify-between border-b bg-amber-500/10 px-4 py-2">
+      <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+        <Star className="h-3.5 w-3.5" />
+        {points} puntos disponibles (equivalen a {formatCurrency(points * pointValue)})
+      </span>
+      <Button size="sm" variant="outline" className="h-6 text-xs px-2"
+        onClick={() => setPointsRedemption(usablePoints, usablePoints * pointValue)}>
+        Canjear
       </Button>
     </div>
   );
@@ -173,8 +227,13 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
         </div>
       )}
 
-      {/* Cupón de descuento del cliente */}
-      {customerId && items.length > 0 && <CouponBanner customerId={customerId} />}
+      {/* Cupón de descuento o puntos de fidelización del cliente (excluyentes) */}
+      {customerId && items.length > 0 && (
+        <>
+          <CouponBanner customerId={customerId} />
+          <LoyaltyPointsBanner customerId={customerId} />
+        </>
+      )}
 
       {/* Lista de items */}
       <div className="flex-1 overflow-y-auto">

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
-  PackageCheck, Truck, Clock, FileText, X,
+  PackageCheck, Truck, Clock, FileText, X, ScanBarcode, Sparkles, ArrowLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,13 @@ interface OrderDetail extends PurchaseOrder {
 interface Product {
   id: string; name: string; barcode: string | null; costPrice: number;
   currentStock: number; category: { name: string };
+}
+
+interface LowStockProduct {
+  id: string; name: string; barcode: string | null;
+  current_stock: number; min_stock: number; category: string;
+  cost_price: number; supplier_id: string | null; supplier_name: string | null;
+  suggested_qty: number;
 }
 
 /* ─── Status helpers ────────────────────────────────────────────────────── */
@@ -155,7 +162,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
   const { data: products } = useQuery({
     queryKey: ['products-search', search],
-    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?search=${search}&limit=20`)).data.data,
+    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${search}&limit=20`)).data.data,
     enabled: search.length >= 2,
   });
 
@@ -163,6 +170,20 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     if (items.find(i => i.productId === p.id)) return;
     setItems(v => [...v, { productId: p.id, name: p.name, orderedQty: 1, unitCost: Number(p.costPrice) }]);
     setSearch('');
+  };
+
+  // Escanear código de barras agrega directo el producto a la orden — no
+  // hace falta buscarlo ni hacer clic en la lista de coincidencias.
+  const handleScanKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const value = e.currentTarget.value.trim();
+    if (!/^\d{8,}$/.test(value)) return;
+    try {
+      const res = await api.get<{ data: Product }>(`/products/barcode/${value}`);
+      addProduct(res.data.data);
+    } catch {
+      toast.error(`No se encontró ningún producto con código ${value}.`);
+    }
   };
 
   const updateItem = (idx: number, field: 'orderedQty' | 'unitCost', val: number) =>
@@ -215,9 +236,9 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           <div>
             <label className="mb-1 block text-sm font-medium">Agregar productos</label>
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Buscar producto por nombre..." value={search}
-                onChange={e => setSearch(e.target.value)} />
+              <ScanBarcode className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Buscar por nombre o escanear código de barras..." value={search}
+                onChange={e => setSearch(e.target.value)} onKeyDown={handleScanKeyDown} />
             </div>
             {products && products.length > 0 && search.length >= 2 && (
               <div className="border rounded-lg mt-1 divide-y max-h-40 overflow-y-auto bg-popover shadow-lg z-10">
@@ -296,6 +317,159 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   );
 }
 
+/* ─── Suggest Order Modal (a partir de stock bajo) ───────────────────────── */
+function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const queryClient = useQueryClient();
+  const [supplierId, setSupplierId] = useState<string | null>(null);
+  const [items, setItems] = useState<Array<{ productId: string; name: string; orderedQty: number; unitCost: number }>>([]);
+
+  const { data: lowStock, isLoading } = useQuery({
+    queryKey: ['inv-low-stock'],
+    queryFn: async () => (await api.get<{ data: LowStockProduct[] }>('/inventory/low-stock')).data.data,
+  });
+
+  const withSupplier = (lowStock ?? []).filter(p => p.supplier_id);
+  const withoutSupplier = (lowStock ?? []).filter(p => !p.supplier_id);
+
+  const groups = withSupplier.reduce((acc, p) => {
+    const key = p.supplier_id!;
+    if (!acc[key]) acc[key] = { supplierId: key, supplierName: p.supplier_name ?? '—', products: [] as LowStockProduct[] };
+    acc[key].products.push(p);
+    return acc;
+  }, {} as Record<string, { supplierId: string; supplierName: string; products: LowStockProduct[] }>);
+  const groupList = Object.values(groups).sort((a, b) => b.products.length - a.products.length);
+
+  const pickSupplier = (group: { supplierId: string; supplierName: string; products: LowStockProduct[] }) => {
+    setSupplierId(group.supplierId);
+    setItems(group.products.map(p => ({
+      productId: p.id, name: p.name, orderedQty: p.suggested_qty, unitCost: Number(p.cost_price),
+    })));
+  };
+
+  const updateItem = (idx: number, field: 'orderedQty' | 'unitCost', val: number) =>
+    setItems(v => v.map((i, n) => n === idx ? { ...i, [field]: val } : i));
+
+  const total = items.reduce((s, i) => s + i.orderedQty * i.unitCost, 0);
+  const pickedGroup = groupList.find(g => g.supplierId === supplierId);
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/purchases', {
+      supplierId,
+      items: items.map(i => ({ productId: i.productId, orderedQty: i.orderedQty, unitCost: i.unitCost })),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      toast.success('Orden de compra sugerida creada.');
+      onCreated();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between border-b p-5">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            {supplierId ? `Orden sugerida — ${pickedGroup?.supplierName}` : 'Sugerir Orden de Compra'}
+          </h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-4 flex-1">
+          {isLoading ? (
+            <div className="py-12 text-center text-muted-foreground">Cargando productos con stock bajo...</div>
+          ) : !supplierId ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Productos con stock bajo o sin stock, agrupados por proveedor. Elige un proveedor para armar la orden
+                — las cantidades se sugieren para llegar al stock máximo (o al doble del mínimo si no tiene máximo definido).
+              </p>
+              {groupList.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground">
+                  No hay productos con stock bajo que tengan proveedor asignado.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {groupList.map(g => {
+                    const groupTotal = g.products.reduce((s, p) => s + p.suggested_qty * Number(p.cost_price), 0);
+                    return (
+                      <button key={g.supplierId} onClick={() => pickSupplier(g)}
+                        className="w-full text-left rounded-lg border p-3 hover:border-primary hover:bg-primary/5 transition-colors flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">{g.supplierName}</p>
+                          <p className="text-xs text-muted-foreground">{g.products.length} producto{g.products.length !== 1 ? 's' : ''} con stock bajo</p>
+                        </div>
+                        <p className="font-bold text-primary">{formatCurrency(groupTotal)}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {withoutSupplier.length > 0 && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                  {withoutSupplier.length} producto{withoutSupplier.length !== 1 ? 's' : ''} con stock bajo no tiene{withoutSupplier.length !== 1 ? 'n' : ''} proveedor
+                  asignado, así que no se puede{withoutSupplier.length !== 1 ? 'n' : ''} sugerir aquí — asígnaselo en Productos primero.
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <button onClick={() => { setSupplierId(null); setItems([]); }}
+                className="flex items-center gap-1.5 text-sm text-primary hover:underline">
+                <ArrowLeft className="h-3.5 w-3.5" />Elegir otro proveedor
+              </button>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="py-2 font-medium">Producto</th>
+                    <th className="py-2 font-medium text-center w-24">Cant. sugerida</th>
+                    <th className="py-2 font-medium text-right w-28">Costo unit.</th>
+                    <th className="py-2 font-medium text-right w-24">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {items.map((item, idx) => (
+                    <tr key={item.productId}>
+                      <td className="py-2">{item.name}</td>
+                      <td className="py-2 px-2">
+                        <Input type="number" min={1} value={item.orderedQty}
+                          onChange={e => updateItem(idx, 'orderedQty', Number(e.target.value))}
+                          className="h-8 text-center" />
+                      </td>
+                      <td className="py-2 px-2">
+                        <Input type="number" min={0} step={0.01} value={item.unitCost}
+                          onChange={e => updateItem(idx, 'unitCost', Number(e.target.value))}
+                          className="h-8 text-right" />
+                      </td>
+                      <td className="py-2 text-right font-medium">{formatCurrency(item.orderedQty * item.unitCost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t">
+                    <td colSpan={3} className="py-2 text-right font-semibold">Subtotal (sin IGV)</td>
+                    <td className="py-2 text-right font-bold">{formatCurrency(total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </>
+          )}
+        </div>
+
+        <div className="border-t p-5 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          {supplierId && (
+            <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={items.length === 0}>
+              Crear Orden Sugerida
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Receive Order Modal ────────────────────────────────────────────────── */
 function ReceiveOrderModal({ order, onClose, onReceived }: {
   order: OrderDetail; onClose: () => void; onReceived: () => void;
@@ -303,12 +477,29 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
   const queryClient = useQueryClient();
   const [items, setItems] = useState(
     order.items.map(i => ({
-      productId: i.product.id, name: i.product.name,
+      productId: i.product.id, name: i.product.name, barcode: i.product.barcode,
       orderedQty: i.orderedQty, receivedQty: i.orderedQty - i.receivedQty,
       unitCost: Number(i.unitCost),
     }))
   );
   const [notes, setNotes] = useState('');
+  const [scan, setScan] = useState('');
+
+  // Escanear el código de cada caja/unidad que va llegando suma 1 al
+  // "Recibido" de esa línea — más rápido que teclear la cantidad a mano
+  // cuando se está cotejando contra la guía de remisión físicamente.
+  const handleScanKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const value = e.currentTarget.value.trim();
+    setScan('');
+    if (!value) return;
+    const idx = items.findIndex(i => i.barcode === value);
+    if (idx === -1) {
+      toast.error(`"${value}" no está en esta orden de compra.`);
+      return;
+    }
+    setItems(v => v.map((i, n) => n === idx ? { ...i, receivedQty: Math.min(i.orderedQty, i.receivedQty + 1) } : i));
+  };
 
   const mutation = useMutation({
     mutationFn: () => api.post(`/purchases/${order.id}/receive`, {
@@ -332,6 +523,11 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
         <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+          <div className="relative">
+            <ScanBarcode className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-9" placeholder="Escanear código de barras para sumar 1 a lo recibido..."
+              value={scan} onChange={e => setScan(e.target.value)} onKeyDown={handleScanKeyDown} autoFocus />
+          </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
@@ -571,6 +767,7 @@ function OrdersTab() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
+  const [showSuggest, setShowSuggest] = useState(false);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -589,6 +786,10 @@ function OrdersTab() {
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <div className="flex-1" />
+        <Button variant="outline" onClick={() => setShowSuggest(true)}
+          className="border-primary/30 text-primary hover:bg-primary/10">
+          <Sparkles className="mr-2 h-4 w-4" />Sugerir Orden
+        </Button>
         <Button onClick={() => setShowNew(true)}>
           <Plus className="mr-2 h-4 w-4" />Nueva Orden
         </Button>
@@ -632,6 +833,7 @@ function OrdersTab() {
       </Card>
 
       {showNew && <NewOrderModal onClose={() => setShowNew(false)} onCreated={() => setShowNew(false)} />}
+      {showSuggest && <SuggestOrderModal onClose={() => setShowSuggest(false)} onCreated={() => setShowSuggest(false)} />}
     </div>
   );
 }

@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ArrowLeft, Wifi, WifiOff, Clock } from 'lucide-react';
+import { ArrowLeft, Wifi, WifiOff, Clock, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
 import { usePosStore } from '@/stores/posStore';
+import { useOfflineSalesStore } from '@/stores/offlineSalesStore';
 import { cn } from '@/lib/utils';
 
 interface PosHeaderProps {
@@ -15,6 +16,7 @@ interface PosHeaderProps {
 export function PosHeader({ onExitPos, onOpenSession }: PosHeaderProps) {
   const { user } = useAuthStore();
   const { cashSessionId } = usePosStore();
+  const pendingOfflineSales = useOfflineSalesStore((s) => s.queue.length);
   const [time, setTime] = useState(new Date());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -61,6 +63,16 @@ export function PosHeader({ onExitPos, onOpenSession }: PosHeaderProps) {
           {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
           <span className="hidden sm:inline">{isOnline ? 'En línea' : 'Sin conexión'}</span>
         </div>
+
+        {/* Ventas offline pendientes de sincronizar */}
+        {pendingOfflineSales > 0 && (
+          <div
+            title="Ventas hechas sin conexión, pendientes de subir al servidor"
+            className="flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+            <UploadCloud className="h-3.5 w-3.5" />
+            {pendingOfflineSales} pendiente{pendingOfflineSales !== 1 ? 's' : ''}
+          </div>
+        )}
 
         {/* Estado de caja */}
         <div

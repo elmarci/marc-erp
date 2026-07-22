@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserCheck, Search, Plus, X, DollarSign } from 'lucide-react';
+import { UserCheck, Search, Plus, X, DollarSign, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
+import { usePosStore } from '@/stores/posStore';
+import { printDebtPaymentReceipt } from './printDebtPaymentReceipt';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface Customer {
@@ -15,14 +18,18 @@ interface Customer {
   taxId: string | null; taxIdType: string | null;
   businessName: string | null; email: string | null; phone: string | null;
   address: string | null; type: string;
-  creditLimit: number; currentBalance: number; isActive: boolean;
+  creditLimit: number; currentBalance: number; loyaltyPoints: number; isActive: boolean;
   notes: string | null; createdAt: string;
 }
 
 interface Sale {
-  id: string; saleNumber: string; totalAmount: number; status: string;
+  id: string; saleNumber: string; totalAmount: number; paidAmount: number; isCredit: boolean; status: string;
   createdAt: string; payments: Array<{ method: string; amount: number }>;
   _count: { items: number };
+}
+
+interface UnpaidSale {
+  id: string; saleNumber: string; createdAt: string; totalAmount: number; paidAmount: number; outstanding: number;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -181,29 +188,82 @@ function DebtPaymentModal({ customer, onClose, onPaid }: {
   customer: Customer; onClose: () => void; onPaid: () => void;
 }) {
   const queryClient = useQueryClient();
+  const cashSessionId = usePosStore((s) => s.cashSessionId);
   const debt = Number(customer.currentBalance);
-  const [amount, setAmount] = useState(debt.toFixed(2));
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [amount, setAmount] = useState('');
+  const [amountTouched, setAmountTouched] = useState(false);
   const [method, setMethod] = useState('CASH');
   const [notes, setNotes] = useState('');
 
+  const { data: unpaidSales, isLoading } = useQuery({
+    queryKey: ['customer-unpaid-sales', customer.id],
+    queryFn: async () => (await api.get<{ data: UnpaidSale[] }>(`/customers/${customer.id}/unpaid-sales`)).data.data,
+  });
+
+  // unpaidSales ya viene ordenado del más antiguo al más reciente — se
+  // reparte el monto ingresado en ese orden entre las ventas seleccionadas.
+  const selectedSales = (unpaidSales ?? []).filter((s) => selectedIds.has(s.id));
+  const selectedTotal = selectedSales.reduce((sum, s) => sum + s.outstanding, 0);
+
+  const toggleSale = (s: UnpaidSale) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+      return next;
+    });
+    setAmountTouched(false);
+  };
+
+  const effectiveAmount = amountTouched ? parseFloat(amount) || 0 : selectedTotal;
+
+  const buildAllocations = () => {
+    let remaining = effectiveAmount;
+    const allocations: Array<{ saleId: string; amount: number }> = [];
+    for (const s of selectedSales) {
+      if (remaining <= 0) break;
+      const applied = Math.min(remaining, s.outstanding);
+      if (applied > 0) allocations.push({ saleId: s.id, amount: applied });
+      remaining -= applied;
+    }
+    return allocations;
+  };
+
   const mutation = useMutation({
     mutationFn: () => api.post(`/customers/${customer.id}/payments`, {
-      amount: parseFloat(amount), method, notes: notes || undefined,
+      allocations: buildAllocations(),
+      method,
+      notes: notes || undefined,
+      cashSessionId: method === 'CASH' ? cashSessionId ?? undefined : undefined,
     }),
     onSuccess: (res) => {
-      const { paid, remaining } = res.data.data;
+      const { paid, remaining, appliedTo } = res.data.data as {
+        paid: number; remaining: number; appliedTo: Array<{ saleNumber: string; amount: number }>;
+      };
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['customer-sales', customer.id] });
-      toast.success(`Pago de ${formatCurrency(paid)} registrado. Saldo restante: ${formatCurrency(remaining)}`);
+      queryClient.invalidateQueries({ queryKey: ['customer-unpaid-sales', customer.id] });
+      queryClient.invalidateQueries({ queryKey: ['customer-debt-payments', customer.id] });
+      toast.success(`Pago de ${formatCurrency(paid)} registrado. Saldo total restante: ${formatCurrency(remaining)}`);
+      printDebtPaymentReceipt({
+        customerName: `${customer.firstName} ${customer.lastName ?? ''}`.trim(),
+        paidAt: new Date().toISOString(),
+        amount: paid,
+        method,
+        appliedTo,
+        remaining,
+      });
       onPaid();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const canSubmit = selectedIds.size > 0 && effectiveAmount > 0 && effectiveAmount <= selectedTotal + 0.009;
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-5">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between border-b p-5 shrink-0">
           <div>
             <h2 className="text-lg font-bold">Registrar pago de deuda</h2>
             <p className="text-sm text-muted-foreground">{customer.firstName} {customer.lastName}</p>
@@ -211,51 +271,82 @@ function DebtPaymentModal({ customer, onClose, onPaid }: {
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto">
           <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-4 text-center">
-            <p className="text-sm text-muted-foreground">Deuda pendiente</p>
+            <p className="text-sm text-muted-foreground">Deuda pendiente (total)</p>
             <p className="text-3xl font-bold text-destructive">{formatCurrency(debt)}</p>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Monto a cobrar (S/)</label>
-            <Input type="number" min={0.01} max={debt} step={0.10}
-              value={amount} onChange={e => setAmount(e.target.value)}
-              className="text-lg font-bold text-center" autoFocus />
-            <div className="flex gap-2 mt-2">
-              {[debt * 0.25, debt * 0.5, debt].map((v, i) => (
-                <Button key={i} variant="outline" size="sm" className="flex-1 text-xs"
-                  onClick={() => setAmount(v.toFixed(2))}>
-                  {i === 2 ? 'Todo' : `${(i + 1) * 25}%`} ({formatCurrency(v)})
-                </Button>
-              ))}
-            </div>
+            <label className="mb-1.5 block text-sm font-medium">¿A cuáles ventas fiadas aplica este pago? (puede elegir varias)</label>
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Cargando...</p>
+            ) : !unpaidSales || unpaidSales.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Sin ventas fiadas pendientes.</p>
+            ) : (
+              <div className="divide-y border rounded-lg max-h-56 overflow-y-auto">
+                {unpaidSales.map((s) => (
+                  <label key={s.id}
+                    className={cn('flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors',
+                      selectedIds.has(s.id) ? 'bg-primary/10' : 'hover:bg-muted')}>
+                    <div className="flex items-center gap-2.5">
+                      <input type="checkbox" checked={selectedIds.has(s.id)} onChange={() => toggleSale(s)} className="h-4 w-4" />
+                      <div>
+                        <p className="text-sm font-medium">{s.saleNumber}</p>
+                        <p className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-bold text-destructive">{formatCurrency(s.outstanding)}</p>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Método de pago</label>
-            <select value={method} onChange={e => setMethod(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              {PAYMENT_METHODS_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
+          {selectedIds.size > 0 && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">
+                  Monto a pagar (S/) — {selectedIds.size} venta{selectedIds.size !== 1 ? 's' : ''} seleccionada{selectedIds.size !== 1 ? 's' : ''}
+                </label>
+                <Input type="number" min={0.01} max={selectedTotal} step={0.10}
+                  value={amountTouched ? amount : selectedTotal.toFixed(2)}
+                  onChange={(e) => { setAmount(e.target.value); setAmountTouched(true); }}
+                  className="text-lg font-bold text-center" autoFocus />
+                <p className="text-xs text-muted-foreground mt-1 text-center">
+                  Total seleccionado: {formatCurrency(selectedTotal)}. Si el monto es menor, se aplica primero a la venta más antigua.
+                </p>
+              </div>
 
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Notas (opcional)</label>
-            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones..." />
-          </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Método de pago</label>
+                <select value={method} onChange={(e) => setMethod(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {PAYMENT_METHODS_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                {method === 'CASH' && !cashSessionId && (
+                  <p className="text-xs text-amber-600 mt-1">No tienes una caja abierta — este cobro no se reflejará en un arqueo.</p>
+                )}
+              </div>
 
-          {parseFloat(amount) > 0 && parseFloat(amount) < debt && (
-            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 text-center">
-              Saldo restante tras el pago: <strong>{formatCurrency(debt - parseFloat(amount))}</strong>
-            </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Notas (opcional)</label>
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observaciones..." />
+              </div>
+
+              {effectiveAmount > 0 && effectiveAmount < selectedTotal - 0.009 && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 text-center">
+                  Saldo restante de lo seleccionado: <strong>{formatCurrency(selectedTotal - effectiveAmount)}</strong>
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        <div className="border-t p-5 flex gap-3">
+        <div className="border-t p-5 flex gap-3 shrink-0">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
           <Button className="flex-1" onClick={() => mutation.mutate()} loading={mutation.isPending}
-            disabled={!amount || parseFloat(amount) <= 0}>
+            disabled={!canSubmit}>
             <DollarSign className="mr-2 h-4 w-4" />Confirmar pago
           </Button>
         </div>
@@ -286,7 +377,7 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
   const { data: debtPayments } = useQuery({
     queryKey: ['customer-debt-payments', customer.id],
     queryFn: async () => {
-      const res = await api.get<{ data: Array<{ id: string; amount: number; method: string; notes: string | null; paidAt: string }> }>(`/customers/${customer.id}/debt-payments`);
+      const res = await api.get<{ data: Array<{ id: string; amount: number; method: string; notes: string | null; paidAt: string; sale: { saleNumber: string } | null }> }>(`/customers/${customer.id}/debt-payments`);
       return res.data.data;
     },
     enabled: activeTab === 'debt',
@@ -343,6 +434,12 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
                 </div>
                 {salesData && <div className="flex justify-between border-t pt-2"><span className="text-muted-foreground">Total comprado</span><span className="font-bold text-success">{formatCurrency(salesData.totalSpent)}</span></div>}
               </div>
+              <div className="flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
+                <span className="flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-400">
+                  <Star className="h-3.5 w-3.5" />Puntos de fidelización
+                </span>
+                <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{customer.loyaltyPoints}</span>
+              </div>
               {customer.notes && <p className="text-xs text-muted-foreground italic">"{customer.notes}"</p>}
               <p className="text-xs text-muted-foreground">Cliente desde {new Date(customer.createdAt).toLocaleDateString('es-PE')}</p>
             </div>
@@ -369,22 +466,32 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
             ) : (
               <>
                 <div className="divide-y border rounded-lg">
-                  {salesData.data.map(sale => (
-                    <div key={sale.id} className="flex items-center justify-between px-4 py-3 text-sm hover:bg-muted/30">
-                      <div>
-                        <p className="font-medium">{sale.saleNumber}</p>
-                        <p className="text-xs text-muted-foreground">{formatDateTime(sale.createdAt)} · {sale._count.items} ítem(s)</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold">{formatCurrency(sale.totalAmount)}</p>
-                        <div className="flex gap-1 justify-end mt-0.5">
-                          <Badge variant={sale.status === 'COMPLETED' ? 'success' : 'destructive'} className="text-xs">
-                            {STATUS_LABELS[sale.status] ?? sale.status}
-                          </Badge>
+                  {salesData.data.map(sale => {
+                    const outstanding = Number(sale.totalAmount) - Number(sale.paidAmount);
+                    const paymentBadge = !sale.isCredit
+                      ? { variant: 'secondary' as const, label: 'Contado' }
+                      : outstanding > 0.009
+                        ? { variant: 'destructive' as const, label: `Fiado — Pendiente ${formatCurrency(outstanding)}` }
+                        : { variant: 'success' as const, label: 'Fiado — Pagado' };
+                    return (
+                      <Link key={sale.id} to={`/sales/${sale.id}`}
+                        className="flex items-center justify-between px-4 py-3 text-sm hover:bg-muted/30">
+                        <div>
+                          <p className="font-medium">{sale.saleNumber}</p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(sale.createdAt)} · {sale._count.items} ítem(s)</p>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                        <div className="text-right">
+                          <p className="font-bold">{formatCurrency(sale.totalAmount)}</p>
+                          <div className="flex gap-1 justify-end mt-0.5">
+                            <Badge variant={paymentBadge.variant} className="text-xs">{paymentBadge.label}</Badge>
+                            {sale.status !== 'COMPLETED' && (
+                              <Badge variant="secondary" className="text-xs">{STATUS_LABELS[sale.status] ?? sale.status}</Badge>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
                 {salesData.pagination.totalPages > 1 && (
                   <div className="flex justify-between items-center mt-3 text-sm text-muted-foreground">
@@ -407,7 +514,10 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
                   {debtPayments.map(p => (
                     <div key={p.id} className="flex items-center justify-between px-4 py-3 text-sm">
                       <div>
-                        <p className="font-medium">{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</p>
+                        <p className="font-medium">
+                          {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                          {p.sale && <span className="text-muted-foreground font-normal"> · aplicado a {p.sale.saleNumber}</span>}
+                        </p>
                         <p className="text-xs text-muted-foreground">{formatDateTime(p.paidAt)}</p>
                         {p.notes && <p className="text-xs text-muted-foreground italic">{p.notes}</p>}
                       </div>
