@@ -64,6 +64,46 @@ export class SuppliersService {
     // Soft delete
     return prisma.supplier.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
   }
+
+  /* ── Catálogo de productos por proveedor ─────────────────────────────────── */
+  async listProducts(supplierId: string) {
+    await this.get(supplierId);
+    const rows = await prisma.supplierProduct.findMany({
+      where: { supplierId },
+      include: { product: { select: { id: true, name: true, barcode: true, currentStock: true, minStock: true, costPrice: true } } },
+      orderBy: [{ isPreferred: 'desc' }, { product: { name: 'asc' } }],
+    });
+    // Decimal se serializa como string en JSON — el frontend espera number.
+    return rows.map(r => ({ ...r, price: Number(r.price), product: { ...r.product, costPrice: Number(r.product.costPrice) } }));
+  }
+
+  async upsertProduct(supplierId: string, data: { productId: string; price: number; supplierSku?: string; isPreferred?: boolean }) {
+    await this.get(supplierId);
+    const product = await prisma.product.findFirst({ where: { id: data.productId, deletedAt: null } });
+    if (!product) throw new NotFoundError('Producto');
+
+    // Solo un proveedor preferido por producto — si se marca este, se
+    // desmarca cualquier otro para no tener dos "preferidos" en simultáneo.
+    if (data.isPreferred) {
+      await prisma.supplierProduct.updateMany({
+        where: { productId: data.productId, NOT: { supplierId } },
+        data: { isPreferred: false },
+      });
+    }
+
+    return prisma.supplierProduct.upsert({
+      where: { supplierId_productId: { supplierId, productId: data.productId } },
+      create: { supplierId, productId: data.productId, price: data.price, supplierSku: data.supplierSku, isPreferred: data.isPreferred ?? false },
+      update: { price: data.price, supplierSku: data.supplierSku, isPreferred: data.isPreferred },
+      include: { product: { select: { id: true, name: true, barcode: true } } },
+    });
+  }
+
+  async removeProduct(supplierId: string, productId: string) {
+    const existing = await prisma.supplierProduct.findUnique({ where: { supplierId_productId: { supplierId, productId } } });
+    if (!existing) throw new NotFoundError('Producto en el catálogo del proveedor');
+    return prisma.supplierProduct.delete({ where: { supplierId_productId: { supplierId, productId } } });
+  }
 }
 
 export const suppliersService = new SuppliersService();

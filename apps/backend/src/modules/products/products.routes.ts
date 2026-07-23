@@ -138,6 +138,13 @@ router.delete('/:id', authorizeMinRole('ADMIN'), async (req: Request, res: Respo
   } catch (err) { next(err); }
 });
 
+router.get('/:id/suppliers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const suppliers = await productsService.getSuppliers(req.params.id);
+    res.json({ success: true, data: suppliers });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id/movements', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;

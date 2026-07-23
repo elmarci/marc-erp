@@ -178,6 +178,31 @@ export class ProductsService {
     return product;
   }
 
+  /* ── Comparación de precios entre proveedores ─────────────────────────────── */
+  async getSuppliers(productId: string) {
+    const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null }, select: { id: true } });
+    if (!product) throw new NotFoundError('Producto');
+
+    const rows = await prisma.supplierProduct.findMany({
+      where: { productId },
+      include: { supplier: { select: { id: true, businessName: true, phone: true } } },
+      orderBy: { price: 'asc' },
+    });
+
+    const cheapestPrice = rows.length > 0 ? Math.min(...rows.map(r => Number(r.price))) : null;
+
+    return rows.map(r => ({
+      supplierId: r.supplierId,
+      supplierName: r.supplier.businessName,
+      supplierPhone: r.supplier.phone,
+      price: Number(r.price),
+      supplierSku: r.supplierSku,
+      isPreferred: r.isPreferred,
+      isCheapest: cheapestPrice !== null && Number(r.price) === cheapestPrice,
+      lastPurchaseAt: r.lastPurchaseAt,
+    }));
+  }
+
   async update(id: string, input: UpdateProductInput) {
     const product = await prisma.product.findFirst({ where: { id, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');

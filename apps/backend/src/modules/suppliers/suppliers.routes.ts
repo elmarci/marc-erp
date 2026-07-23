@@ -60,4 +60,44 @@ router.delete('/:id', authorizeMinRole('ADMIN'), async (req: Request, res: Respo
   } catch (err) { next(err); }
 });
 
+/* ── Catálogo de productos por proveedor ──────────────────────────────────── */
+router.get('/:id/products', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const products = await suppliersService.listProducts(req.params.id);
+    res.json({ success: true, data: products });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/products', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = z.object({
+      productId: z.string().uuid(),
+      price: z.coerce.number().min(0),
+      supplierSku: z.string().optional(),
+      isPreferred: z.boolean().optional(),
+    }).parse(req.body);
+    const entry = await suppliersService.upsertProduct(req.params.id, data);
+    res.status(201).json({ success: true, data: entry });
+  } catch (err) { next(err); }
+});
+
+router.put('/:id/products/:productId', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = z.object({
+      price: z.coerce.number().min(0),
+      supplierSku: z.string().optional(),
+      isPreferred: z.boolean().optional(),
+    }).parse(req.body);
+    const entry = await suppliersService.upsertProduct(req.params.id, { productId: req.params.productId, ...data });
+    res.json({ success: true, data: entry });
+  } catch (err) { next(err); }
+});
+
+router.delete('/:id/products/:productId', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await suppliersService.removeProduct(req.params.id, req.params.productId);
+    res.json({ success: true, message: 'Producto quitado del catálogo del proveedor.' });
+  } catch (err) { next(err); }
+});
+
 export default router;

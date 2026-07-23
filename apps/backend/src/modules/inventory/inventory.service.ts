@@ -306,22 +306,62 @@ export class InventoryService {
   }
 
   /* ── Low Stock ──────────────────────────────────────────────────────────── */
+  // El proveedor "elegido" por producto ya no depende solo del campo fijo
+  // Product.supplierId: si hay catálogo real (SupplierProduct), manda el
+  // proveedor marcado como preferido, o si no el que vende más barato — así
+  // los pedidos sugeridos usan lógica de abastecimiento real, no un dato fijo.
   async getLowStockProducts() {
-    return prisma.$queryRaw<{
+    const products = await prisma.$queryRaw<{
       id: string; name: string; barcode: string | null; current_stock: number; min_stock: number;
-      category: string; cost_price: number; supplier_id: string | null; supplier_name: string | null;
-      suggested_qty: number;
+      max_stock: number | null; category: string; cost_price: number;
+      supplier_id: string | null; supplier_name: string | null;
     }[]>`
       SELECT
-        p.id, p.name, p.barcode, p.current_stock, p.min_stock, c.name as category,
-        p.cost_price::float as cost_price, p.supplier_id, s.business_name as supplier_name,
-        GREATEST(COALESCE(p.max_stock, p.min_stock * 2) - p.current_stock, 1)::int as suggested_qty
+        p.id, p.name, p.barcode, p.current_stock, p.min_stock, p.max_stock, c.name as category,
+        p.cost_price::float as cost_price, p.supplier_id, s.business_name as supplier_name
       FROM products p
       JOIN categories c ON p.category_id = c.id
       LEFT JOIN suppliers s ON p.supplier_id = s.id
       WHERE p.deleted_at IS NULL AND p.status = 'ACTIVE' AND p.current_stock <= p.min_stock
       ORDER BY (p.current_stock::float / NULLIF(p.min_stock, 0)) ASC, p.name ASC
     `;
+
+    if (products.length === 0) return [];
+
+    const catalogRows = await prisma.supplierProduct.findMany({
+      where: { productId: { in: products.map(p => p.id) } },
+      include: { supplier: { select: { businessName: true } } },
+    });
+    const byProduct = new Map<string, typeof catalogRows>();
+    for (const row of catalogRows) {
+      const list = byProduct.get(row.productId) ?? [];
+      list.push(row);
+      byProduct.set(row.productId, list);
+    }
+
+    return products.map(p => {
+      const candidates = byProduct.get(p.id) ?? [];
+      const preferred = candidates.find(c => c.isPreferred);
+      const cheapest = candidates.length > 0
+        ? candidates.reduce((min, c) => (Number(c.price) < Number(min.price) ? c : min))
+        : null;
+      const best = preferred ?? cheapest;
+
+      return {
+        id: p.id,
+        name: p.name,
+        barcode: p.barcode,
+        current_stock: Number(p.current_stock),
+        min_stock: Number(p.min_stock),
+        category: p.category,
+        cost_price: best ? Number(best.price) : Number(p.cost_price),
+        supplier_id: best?.supplierId ?? p.supplier_id,
+        supplier_name: best?.supplier.businessName ?? p.supplier_name,
+        supplier_source: preferred ? 'preferred' as const : cheapest ? 'cheapest' as const : p.supplier_id ? 'legacy' as const : null,
+        alternatives_count: candidates.length,
+        suggested_qty: Math.max((p.max_stock != null ? Number(p.max_stock) : Number(p.min_stock) * 2) - Number(p.current_stock), 1),
+      };
+    });
   }
 }
 

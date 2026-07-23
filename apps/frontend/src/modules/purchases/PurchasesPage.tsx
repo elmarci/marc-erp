@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
   PackageCheck, Truck, Clock, FileText, X, ScanBarcode, Sparkles, ArrowLeft,
+  BookOpen, Star, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -50,7 +51,14 @@ interface LowStockProduct {
   id: string; name: string; barcode: string | null;
   current_stock: number; min_stock: number; category: string;
   cost_price: number; supplier_id: string | null; supplier_name: string | null;
+  supplier_source: 'preferred' | 'cheapest' | 'legacy' | null; alternatives_count: number;
   suggested_qty: number;
+}
+
+interface SupplierCatalogItem {
+  supplierId: string; productId: string; price: number;
+  supplierSku: string | null; isPreferred: boolean; lastPurchaseAt: string | null;
+  product: { id: string; name: string; barcode: string | null; currentStock: number; minStock: number; costPrice: number };
 }
 
 /* ─── Status helpers ────────────────────────────────────────────────────── */
@@ -146,6 +154,152 @@ function SupplierModal({ supplier, onClose, onSaved }: {
   );
 }
 
+/* ─── Supplier Catalog Modal (qué vende cada proveedor y a qué precio) ──── */
+function SupplierCatalogModal({ supplier, onClose }: { supplier: Supplier; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [draft, setDraft] = useState<{ productId: string; name: string; price: string } | null>(null);
+
+  const { data: catalog, isLoading } = useQuery({
+    queryKey: ['supplier-products', supplier.id],
+    queryFn: async () => (await api.get<{ data: SupplierCatalogItem[] }>(`/suppliers/${supplier.id}/products`)).data.data,
+  });
+
+  const { data: products } = useQuery({
+    queryKey: ['products-search-catalog', search],
+    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${search}&limit=15`)).data.data,
+    enabled: search.length >= 2,
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['supplier-products', supplier.id] });
+
+  const addMutation = useMutation({
+    mutationFn: (data: { productId: string; price: number }) => api.post(`/suppliers/${supplier.id}/products`, data),
+    onSuccess: () => { invalidate(); setDraft(null); toast.success('Producto agregado al catálogo.'); },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { productId: string; price: number; isPreferred?: boolean }) =>
+      api.put(`/suppliers/${supplier.id}/products/${data.productId}`, { price: data.price, isPreferred: data.isPreferred }),
+    onSuccess: invalidate,
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (productId: string) => api.delete(`/suppliers/${supplier.id}/products/${productId}`),
+    onSuccess: () => { invalidate(); toast.success('Producto quitado del catálogo.'); },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const existingIds = new Set((catalog ?? []).map(c => c.productId));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-xl rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-bold flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" />Catálogo — {supplier.businessName}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Qué productos vende este proveedor y a qué precio, para armar pedidos y comparar precios.</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-4 flex-1">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Agregar producto al catálogo</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Buscar producto por nombre o código..." value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            {products && products.length > 0 && search.length >= 2 && (
+              <div className="border rounded-lg mt-1 divide-y max-h-40 overflow-y-auto bg-popover shadow-lg">
+                {products.map(p => (
+                  <button key={p.id} disabled={existingIds.has(p.id)} onClick={() => { setDraft({ productId: p.id, name: p.name, price: String(p.costPrice) }); setSearch(''); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between disabled:opacity-40 disabled:cursor-not-allowed">
+                    <span>{p.name}</span>
+                    <span className="text-muted-foreground">{existingIds.has(p.id) ? 'Ya en catálogo' : `S/ ${Number(p.costPrice).toFixed(2)}`}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {draft && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg border p-3">
+                <span className="flex-1 text-sm font-medium truncate">{draft.name}</span>
+                <span className="text-sm text-muted-foreground">S/</span>
+                <Input type="number" min={0} step={0.01} value={draft.price} autoFocus
+                  onChange={e => setDraft(d => d && { ...d, price: e.target.value })} className="h-8 w-24 text-right" />
+                <Button size="sm" loading={addMutation.isPending} disabled={!draft.price}
+                  onClick={() => addMutation.mutate({ productId: draft.productId, price: Number(draft.price) })}>
+                  Agregar
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setDraft(null)}><X className="h-3.5 w-3.5" /></Button>
+              </div>
+            )}
+          </div>
+
+          {isLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Cargando catálogo...</div>
+          ) : (catalog ?? []).length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground text-sm">
+              Este proveedor aún no tiene productos registrados. Se agregan solos al crear/recibir órdenes de compra, o puedes registrarlos aquí manualmente.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="py-2 font-medium">Producto</th>
+                  <th className="py-2 font-medium text-right w-28">Precio</th>
+                  <th className="py-2 font-medium text-center w-16">Preferido</th>
+                  <th className="py-2 font-medium text-right w-28">Última compra</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {catalog!.map(item => (
+                  <tr key={item.productId}>
+                    <td className="py-2">
+                      <p className="font-medium">{item.product.name}</p>
+                      {item.product.barcode && <p className="text-xs text-muted-foreground font-mono">{item.product.barcode}</p>}
+                    </td>
+                    <td className="py-2 px-2">
+                      <Input type="number" min={0} step={0.01} defaultValue={item.price}
+                        onBlur={e => {
+                          const price = Number(e.target.value);
+                          if (price !== item.price) updateMutation.mutate({ productId: item.productId, price, isPreferred: item.isPreferred });
+                        }}
+                        className="h-8 text-right" />
+                    </td>
+                    <td className="py-2 text-center">
+                      <button onClick={() => updateMutation.mutate({ productId: item.productId, price: item.price, isPreferred: !item.isPreferred })}
+                        title={item.isPreferred ? 'Proveedor preferido para este producto' : 'Marcar como preferido'}>
+                        <Star className={cn('h-4 w-4 mx-auto', item.isPreferred ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground')} />
+                      </button>
+                    </td>
+                    <td className="py-2 text-right text-xs text-muted-foreground">
+                      {item.lastPurchaseAt ? formatDateTime(item.lastPurchaseAt) : 'Sin compras aún'}
+                    </td>
+                    <td className="py-2">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                        onClick={() => { if (confirm(`¿Quitar "${item.product.name}" del catálogo de ${supplier.businessName}?`)) removeMutation.mutate(item.productId); }}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="border-t p-5 flex justify-end">
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── New Purchase Order Modal ──────────────────────────────────────────── */
 function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const queryClient = useQueryClient();
@@ -166,10 +320,25 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     enabled: search.length >= 2,
   });
 
+  // Catálogo conocido de este proveedor — permite armar la orden con un
+  // clic (sin buscar) y precarga el último precio pagado, en vez del costo
+  // genérico del producto.
+  const { data: catalog } = useQuery({
+    queryKey: ['supplier-products', supplierId],
+    queryFn: async () => (await api.get<{ data: SupplierCatalogItem[] }>(`/suppliers/${supplierId}/products`)).data.data,
+    enabled: !!supplierId,
+  });
+
   const addProduct = (p: Product) => {
     if (items.find(i => i.productId === p.id)) return;
-    setItems(v => [...v, { productId: p.id, name: p.name, orderedQty: 1, unitCost: Number(p.costPrice) }]);
+    const catalogPrice = catalog?.find(c => c.productId === p.id)?.price;
+    setItems(v => [...v, { productId: p.id, name: p.name, orderedQty: 1, unitCost: catalogPrice ?? Number(p.costPrice) }]);
     setSearch('');
+  };
+
+  const quickAddFromCatalog = (item: SupplierCatalogItem) => {
+    if (items.find(i => i.productId === item.productId)) return;
+    setItems(v => [...v, { productId: item.productId, name: item.product.name, orderedQty: 1, unitCost: item.price }]);
   };
 
   // Escanear código de barras agrega directo el producto a la orden — no
@@ -231,6 +400,21 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
               <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones..." />
             </div>
           </div>
+
+          {/* Catálogo del proveedor seleccionado */}
+          {supplierId && catalog && catalog.length > 0 && (
+            <div>
+              <label className="mb-1 block text-sm font-medium">Catálogo de este proveedor</label>
+              <div className="flex flex-wrap gap-1.5">
+                {catalog.filter(c => !items.find(i => i.productId === c.productId)).map(c => (
+                  <button key={c.productId} onClick={() => quickAddFromCatalog(c)}
+                    className="rounded-full border px-3 py-1 text-xs hover:border-primary hover:bg-primary/5 transition-colors">
+                    {c.product.name} · S/ {c.price.toFixed(2)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Product search */}
           <div>
@@ -321,7 +505,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState<string | null>(null);
-  const [items, setItems] = useState<Array<{ productId: string; name: string; orderedQty: number; unitCost: number }>>([]);
+  const [items, setItems] = useState<Array<{ productId: string; name: string; orderedQty: number; unitCost: number; source: LowStockProduct['supplier_source']; alternatives: number }>>([]);
 
   const { data: lowStock, isLoading } = useQuery({
     queryKey: ['inv-low-stock'],
@@ -343,6 +527,7 @@ function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void; onCrea
     setSupplierId(group.supplierId);
     setItems(group.products.map(p => ({
       productId: p.id, name: p.name, orderedQty: p.suggested_qty, unitCost: Number(p.cost_price),
+      source: p.supplier_source, alternatives: p.alternatives_count,
     })));
   };
 
@@ -382,8 +567,9 @@ function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void; onCrea
           ) : !supplierId ? (
             <>
               <p className="text-sm text-muted-foreground">
-                Productos con stock bajo o sin stock, agrupados por proveedor. Elige un proveedor para armar la orden
-                — las cantidades se sugieren para llegar al stock máximo (o al doble del mínimo si no tiene máximo definido).
+                Productos con stock bajo o sin stock, agrupados por el proveedor elegido automáticamente (el marcado
+                como preferido, o si no el que vende más barato según el catálogo). Las cantidades se sugieren para
+                llegar al stock máximo (o al doble del mínimo si no tiene máximo definido).
               </p>
               {groupList.length === 0 ? (
                 <div className="py-10 text-center text-muted-foreground">
@@ -431,7 +617,15 @@ function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void; onCrea
                 <tbody className="divide-y">
                   {items.map((item, idx) => (
                     <tr key={item.productId}>
-                      <td className="py-2">{item.name}</td>
+                      <td className="py-2">
+                        <p>{item.name}</p>
+                        {item.source && (
+                          <p className="text-xs text-muted-foreground">
+                            {item.source === 'preferred' ? '★ Proveedor preferido' : item.source === 'cheapest' ? 'Precio más bajo' : 'Proveedor asignado'}
+                            {item.alternatives > 1 && ` · ${item.alternatives} proveedores lo venden`}
+                          </p>
+                        )}
+                      </td>
                       <td className="py-2 px-2">
                         <Input type="number" min={1} value={item.orderedQty}
                           onChange={e => updateItem(idx, 'orderedQty', Number(e.target.value))}
@@ -680,6 +874,7 @@ function SuppliersTab() {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editSupplier, setEditSupplier] = useState<Supplier | undefined>();
+  const [catalogSupplier, setCatalogSupplier] = useState<Supplier | undefined>();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -733,6 +928,9 @@ function SuppliersTab() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setCatalogSupplier(s)}>
+                          <BookOpen className="mr-1 h-3.5 w-3.5" />Catálogo
+                        </Button>
                         <Button variant="ghost" size="sm" onClick={() => { setEditSupplier(s); setShowModal(true); }}>Editar</Button>
                         <Button variant="ghost" size="sm" className="text-destructive"
                           onClick={() => { if (confirm('¿Eliminar este proveedor?')) deleteMutation.mutate(s.id); }}>
@@ -758,6 +956,7 @@ function SuppliersTab() {
           onSaved={() => setShowModal(false)}
         />
       )}
+      {catalogSupplier && <SupplierCatalogModal supplier={catalogSupplier} onClose={() => setCatalogSupplier(undefined)} />}
     </div>
   );
 }

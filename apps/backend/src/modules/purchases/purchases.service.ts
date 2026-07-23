@@ -68,7 +68,7 @@ export class PurchasesService {
     const taxAmount = subtotal * 0.18;
     const totalAmount = subtotal + taxAmount;
 
-    return prisma.purchaseOrder.create({
+    const order = await prisma.purchaseOrder.create({
       data: {
         orderNumber: await this.nextOrderNumber(),
         supplierId: data.supplierId,
@@ -93,6 +93,21 @@ export class PurchasesService {
         supplier: { select: { businessName: true } },
         items: { include: { product: { select: { name: true } } } },
       },
+    });
+
+    // Registra/actualiza el catálogo del proveedor con el precio cotizado,
+    // para que el sistema ya sepa que este proveedor vende estos productos
+    // aunque la orden todavía no se haya recibido.
+    await Promise.all(data.items.map(i => this.trackSupplierProduct(data.supplierId, i.productId, i.unitCost)));
+
+    return order;
+  }
+
+  private async trackSupplierProduct(supplierId: string, productId: string, price: number, confirmed = false) {
+    await prisma.supplierProduct.upsert({
+      where: { supplierId_productId: { supplierId, productId } },
+      create: { supplierId, productId, price, lastPurchaseAt: confirmed ? new Date() : undefined },
+      update: { price, ...(confirmed ? { lastPurchaseAt: new Date() } : {}) },
     });
   }
 
@@ -181,6 +196,14 @@ export class PurchasesService {
         await tx.purchaseOrderItem.updateMany({
           where: { purchaseOrderId: orderId, productId: item.productId },
           data: { receivedQty: { increment: item.receivedQty } },
+        });
+
+        // El precio recibido y confirmado es más confiable que el cotizado
+        // al crear la orden — actualiza el catálogo del proveedor con este.
+        await tx.supplierProduct.upsert({
+          where: { supplierId_productId: { supplierId: order.supplierId, productId: item.productId } },
+          create: { supplierId: order.supplierId, productId: item.productId, price: item.unitCost, lastPurchaseAt: new Date() },
+          update: { price: item.unitCost, lastPurchaseAt: new Date() },
         });
       }
 

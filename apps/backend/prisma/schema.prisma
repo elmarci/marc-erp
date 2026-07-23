@@ -322,12 +322,37 @@ model Supplier {
   updatedAt       DateTime @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
-  products       Product[]
-  purchaseOrders PurchaseOrder[]
+  products         Product[]
+  purchaseOrders   PurchaseOrder[]
+  supplierProducts SupplierProduct[]
 
   @@index([taxId])
   @@index([businessName])
   @@map("suppliers")
+}
+
+// Catálogo real de qué producto vende cada proveedor y a qué precio.
+// Se alimenta solo (al crear/recibir órdenes de compra) y también se
+// puede registrar a mano, para poder armar pedidos sugeridos y comparar
+// precios entre proveedores sin depender del Product.supplierId único.
+model SupplierProduct {
+  id             String    @id @default(uuid())
+  supplierId     String    @map("supplier_id")
+  productId      String    @map("product_id")
+  price          Decimal   @db.Decimal(10, 2)
+  supplierSku    String?   @map("supplier_sku")
+  isPreferred    Boolean   @default(false) @map("is_preferred")
+  lastPurchaseAt DateTime? @map("last_purchase_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([supplierId, productId])
+  @@index([supplierId])
+  @@index([productId])
+  @@map("supplier_products")
 }
 
 // =============================================================================
@@ -378,6 +403,7 @@ model Product {
   stockAlerts       StockAlert[]
   batches           Batch[]
   promotionItems    PromotionProduct[]
+  supplierProducts  SupplierProduct[]
 
   @@index([barcode])
   @@index([internalCode])

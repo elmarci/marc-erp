@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUp, ArrowDown, Search, Plus, X, AlertTriangle, Package,
   BarChart3, ClipboardList, History, TrendingDown, DollarSign,
-  ChevronDown, ChevronUp, Printer, ScanBarcode,
+  ChevronDown, ChevronUp, Printer, ScanBarcode, Scale, Star,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
@@ -38,6 +38,10 @@ interface Adjustment {
   items: Array<{ productId: string; productName: string; systemQuantity: number; physicalQuantity: number; difference: number }>;
 }
 interface Category { id: string; name: string }
+interface SupplierPrice {
+  supplierId: string; supplierName: string; supplierPhone: string | null;
+  price: number; supplierSku: string | null; isPreferred: boolean; isCheapest: boolean; lastPurchaseAt: string | null;
+}
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 const MOV_LABELS: Record<string, string> = {
@@ -49,6 +53,69 @@ const isEntry = (t: string) => ['PURCHASE_IN', 'ADJUSTMENT_IN', 'RETURN_IN', 'IN
 
 const STATUS_LABEL: Record<string, string> = { ok: 'Normal', low: 'Stock bajo', out: 'Sin stock' };
 const STATUS_VARIANT: Record<string, 'success' | 'default' | 'destructive'> = { ok: 'success', low: 'default', out: 'destructive' };
+
+/* ─── Price Comparison Modal (mismo producto, distintos proveedores) ───────── */
+function PriceComparisonModal({ product, onClose }: { product: StockProduct; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['product-suppliers', product.id],
+    queryFn: async () => (await api.get<{ data: SupplierPrice[] }>(`/products/${product.id}/suppliers`)).data.data,
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-bold flex items-center gap-2"><Scale className="h-5 w-5 text-primary" />Comparar precios</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">{product.name}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 max-h-[60vh] overflow-y-auto">
+          {isLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Cargando...</div>
+          ) : !data || data.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground text-sm">
+              Ningún proveedor tiene este producto registrado en su catálogo todavía. Se registra solo al comprarlo,
+              o puedes agregarlo a mano desde Compras → Proveedores → Catálogo.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="py-2 font-medium">Proveedor</th>
+                  <th className="py-2 font-medium text-right w-24">Precio</th>
+                  <th className="py-2 font-medium text-right w-28">Última compra</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {data.map(s => (
+                  <tr key={s.supplierId} className={cn(s.isCheapest && 'bg-success/5')}>
+                    <td className="py-2">
+                      <div className="flex items-center gap-1.5">
+                        {s.isPreferred && <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />}
+                        <span className="font-medium">{s.supplierName}</span>
+                      </div>
+                    </td>
+                    <td className={cn('py-2 text-right font-semibold', s.isCheapest && 'text-success')}>
+                      {formatCurrency(s.price)}{s.isCheapest && <span className="block text-[10px] font-normal">más barato</span>}
+                    </td>
+                    <td className="py-2 text-right text-xs text-muted-foreground">
+                      {s.lastPurchaseAt ? formatDateTime(s.lastPurchaseAt) : 'Sin compras aún'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="border-t p-5 flex justify-end">
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ─── Quick Adjust Modal ─────────────────────────────────────────────────── */
 function QuickAdjustModal({ product, onClose }: { product: StockProduct; onClose: () => void }) {
@@ -371,6 +438,7 @@ function StockTab() {
   const [categoryId, setCategoryId] = useState('');
   const [page, setPage] = useState(1);
   const [adjustProduct, setAdjustProduct] = useState<StockProduct | null>(null);
+  const [compareProduct, setCompareProduct] = useState<StockProduct | null>(null);
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -471,9 +539,14 @@ function StockTab() {
                       {p.last_movement ? formatDateTime(p.last_movement) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <Button variant="outline" size="sm" onClick={() => setAdjustProduct(p)}>
-                        Ajustar
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setCompareProduct(p)} title="Comparar precios entre proveedores">
+                          <Scale className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setAdjustProduct(p)}>
+                          Ajustar
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -497,6 +570,7 @@ function StockTab() {
       </Card>
 
       {adjustProduct && <QuickAdjustModal product={adjustProduct} onClose={() => setAdjustProduct(null)} />}
+      {compareProduct && <PriceComparisonModal product={compareProduct} onClose={() => setCompareProduct(null)} />}
     </div>
   );
 }
