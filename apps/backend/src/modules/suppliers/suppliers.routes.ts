@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { suppliersService } from './suppliers.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
+import { sendExcel } from '../../utils/excel';
 
 const router = Router();
 router.use(authenticate);
@@ -27,6 +28,37 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     }).parse(req.query);
     const result = await suppliersService.list({ search, page, limit });
     res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.get('/export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { search } = z.object({ search: z.string().optional() }).parse(req.query);
+    const suppliers = await suppliersService.exportAll({ search });
+
+    await sendExcel(res, 'proveedores.xlsx', 'Proveedores', [
+      { header: 'Razón social', key: 'businessName', width: 30 },
+      { header: 'RUC', key: 'taxId', width: 14 },
+      { header: 'Contacto', key: 'contactName', width: 20 },
+      { header: 'Email', key: 'email', width: 25 },
+      { header: 'Teléfono', key: 'phone', width: 14 },
+      { header: 'Dirección', key: 'address', width: 30 },
+      { header: 'Ciudad', key: 'city', width: 16 },
+      { header: 'Plazo de pago (días)', key: 'paymentTermDays', width: 16 },
+      { header: 'N° Órdenes', key: 'orders', width: 12 },
+      { header: 'Estado', key: 'status', width: 10 },
+    ], suppliers.map((s) => ({
+      businessName: s.businessName,
+      taxId: s.taxId ?? '',
+      contactName: s.contactName ?? '',
+      email: s.email ?? '',
+      phone: s.phone ?? '',
+      address: s.address ?? '',
+      city: s.city ?? '',
+      paymentTermDays: s.paymentTermDays,
+      orders: s._count.purchaseOrders,
+      status: s.isActive ? 'Activo' : 'Inactivo',
+    })));
   } catch (err) { next(err); }
 });
 

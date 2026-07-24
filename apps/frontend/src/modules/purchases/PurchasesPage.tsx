@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
   PackageCheck, Truck, Clock, FileText, X, ScanBarcode, Sparkles, ArrowLeft,
-  BookOpen, Star, Trash2,
+  BookOpen, Star, Trash2, FileSpreadsheet,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
+import { downloadExcel } from '@/lib/exportExcel';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface Supplier {
@@ -895,6 +896,10 @@ function SuppliersTab() {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input className="pl-9" placeholder="Buscar proveedor..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+        <Button variant="outline"
+          onClick={() => downloadExcel(`/suppliers/export${search ? `?search=${encodeURIComponent(search)}` : ''}`, 'proveedores.xlsx')}>
+          <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
+        </Button>
         <Button onClick={() => { setEditSupplier(undefined); setShowModal(true); }}>
           <Plus className="mr-2 h-4 w-4" />Nuevo Proveedor
         </Button>
@@ -985,6 +990,10 @@ function OrdersTab() {
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <div className="flex-1" />
+        <Button variant="outline"
+          onClick={() => downloadExcel(`/purchases/export${statusFilter ? `?status=${statusFilter}` : ''}`, 'compras.xlsx')}>
+          <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
+        </Button>
         <Button variant="outline" onClick={() => setShowSuggest(true)}
           className="border-primary/30 text-primary hover:bg-primary/10">
           <Sparkles className="mr-2 h-4 w-4" />Sugerir Orden

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserCheck, Search, Plus, X, DollarSign, Star } from 'lucide-react';
+import { UserCheck, Search, Plus, X, DollarSign, Star, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
 import { usePosStore } from '@/stores/posStore';
 import { printDebtPaymentReceipt } from './printDebtPaymentReceipt';
+import { downloadExcel } from '@/lib/exportExcel';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface Customer {
@@ -579,9 +580,15 @@ export function CustomersPage() {
           <h1 className="text-2xl font-bold">Clientes</h1>
           <p className="text-sm text-muted-foreground">Base de datos de clientes</p>
         </div>
-        <Button onClick={() => { setEditCustomer(undefined); setShowModal(true); }}>
-          <Plus className="mr-2 h-4 w-4" />Nuevo Cliente
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline"
+            onClick={() => downloadExcel(`/customers/export${search ? `?search=${encodeURIComponent(search)}` : ''}`, 'clientes.xlsx')}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
+          </Button>
+          <Button onClick={() => { setEditCustomer(undefined); setShowModal(true); }}>
+            <Plus className="mr-2 h-4 w-4" />Nuevo Cliente
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">

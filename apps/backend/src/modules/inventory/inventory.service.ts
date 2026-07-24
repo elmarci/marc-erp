@@ -148,6 +148,42 @@ export class InventoryService {
     };
   }
 
+  /* ── Exportar stock a Excel (mismos filtros que getStockOverview, sin paginar) ── */
+  async exportStock(filters: { search?: string; categoryId?: string; status?: 'all' | 'ok' | 'low' | 'out' }) {
+    const conditions: string[] = ["p.deleted_at IS NULL AND p.status = 'ACTIVE'"];
+
+    if (filters.search) {
+      conditions.push(`(p.name ILIKE '%${filters.search.replace(/'/g, "''")}%' OR p.barcode ILIKE '%${filters.search.replace(/'/g, "''")}%')`);
+    }
+    if (filters.categoryId) {
+      conditions.push(`p.category_id = '${filters.categoryId}'`);
+    }
+    if (filters.status === 'out') {
+      conditions.push('p.current_stock = 0');
+    } else if (filters.status === 'low') {
+      conditions.push('p.current_stock > 0 AND p.current_stock <= p.min_stock');
+    } else if (filters.status === 'ok') {
+      conditions.push('p.current_stock > p.min_stock');
+    }
+
+    const where = conditions.join(' AND ');
+
+    return prisma.$queryRawUnsafe<{
+      name: string; barcode: string | null; sku: string | null;
+      current_stock: number; min_stock: number; max_stock: number | null;
+      cost_price: number; sale_price: number; category: string;
+    }[]>(`
+      SELECT p.name, p.barcode, p.sku,
+        p.current_stock, p.min_stock, p.max_stock,
+        p.cost_price::float, p.sale_price::float,
+        c.name as category
+      FROM products p
+      JOIN categories c ON p.category_id = c.id
+      WHERE ${where}
+      ORDER BY p.name ASC
+    `);
+  }
+
   /* ── Movimientos (con filtros) ───────────────────────────────────────────── */
   async listMovements(filters: {
     productId?: string;

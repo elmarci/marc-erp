@@ -215,6 +215,23 @@ export class CashService {
     return { data, pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) } };
   }
 
+  // Mismos filtros que listSessions(), sin paginar — para exportar a Excel.
+  async exportSessions(filters: { status?: string; cashRegisterId?: string }) {
+    const where: Record<string, unknown> = {};
+    if (filters.status) where['status'] = filters.status;
+    if (filters.cashRegisterId) where['cashRegisterId'] = filters.cashRegisterId;
+
+    return prisma.cashSession.findMany({
+      where,
+      include: {
+        cashRegister: { select: { name: true } },
+        user: { select: { firstName: true, lastName: true } },
+        _count: { select: { sales: true, movements: true } },
+      },
+      orderBy: { openedAt: 'desc' },
+    });
+  }
+
   async getSessionMovements(sessionId: string) {
     const session = await prisma.cashSession.findUnique({ where: { id: sessionId } });
     if (!session) throw new NotFoundError('Sesión de caja');

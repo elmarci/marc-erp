@@ -422,6 +422,38 @@ export class SalesService {
     };
   }
 
+  // Mismos filtros que list(), pero sin paginar — para exportar a Excel el
+  // total de ventas que calzan con los filtros, no solo la página visible.
+  async exportList(query: Omit<ListSalesQuery, 'page' | 'limit'>) {
+    const { cashSessionId, cashierId, customerId, dateFrom, dateTo, status } = query;
+
+    const where: Prisma.SaleWhereInput = {
+      ...(cashSessionId ? { cashSessionId } : {}),
+      ...(cashierId ? { cashierId } : {}),
+      ...(customerId ? { customerId } : {}),
+      ...(status ? { status: status as never } : {}),
+      ...(dateFrom || dateTo
+        ? {
+            createdAt: {
+              ...(dateFrom ? { gte: dateFrom } : {}),
+              ...(dateTo ? { lte: dateTo } : {}),
+            },
+          }
+        : {}),
+    };
+
+    return prisma.sale.findMany({
+      where,
+      include: {
+        cashier: { select: { firstName: true, lastName: true } },
+        customer: { select: { firstName: true, lastName: true } },
+        payments: { select: { method: true, amount: true } },
+        _count: { select: { items: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async void(id: string, reason: string, voidedById: string) {
     const sale = await prisma.sale.findUnique({
       where: { id },

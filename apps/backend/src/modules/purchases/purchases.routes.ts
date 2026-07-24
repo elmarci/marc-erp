@@ -2,9 +2,15 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { purchasesService } from './purchases.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
+import { sendExcel } from '../../utils/excel';
 
 const router = Router();
 router.use(authenticate);
+
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Borrador', PENDING_APPROVAL: 'Pend. aprobación', APPROVED: 'Aprobada',
+  SENT: 'Enviada', PARTIALLY_RECEIVED: 'Parcial', RECEIVED: 'Recibida', CANCELLED: 'Cancelada',
+};
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -16,6 +22,44 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     }).parse(req.query);
     const result = await purchasesService.listOrders({ status, supplierId, page, limit });
     res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.get('/export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { status, supplierId } = z.object({
+      status: z.string().optional(),
+      supplierId: z.string().uuid().optional(),
+    }).parse(req.query);
+    const orders = await purchasesService.exportOrders({ status, supplierId });
+
+    await sendExcel(res, 'compras.xlsx', 'Órdenes de Compra', [
+      { header: 'N° Orden', key: 'orderNumber', width: 14 },
+      { header: 'Proveedor', key: 'supplier', width: 28 },
+      { header: 'Estado', key: 'status', width: 16 },
+      { header: 'Fecha creación', key: 'createdAt', width: 18 },
+      { header: 'Fecha esperada', key: 'expectedDate', width: 16 },
+      { header: 'Fecha recibida', key: 'receivedDate', width: 16 },
+      { header: 'Ítems', key: 'items', width: 8 },
+      { header: 'Subtotal', key: 'subtotal', width: 12 },
+      { header: 'IGV', key: 'taxAmount', width: 10 },
+      { header: 'Total', key: 'totalAmount', width: 12 },
+      { header: 'Factura proveedor', key: 'supplierInvoice', width: 18 },
+      { header: 'Registrado por', key: 'user', width: 20 },
+    ], orders.map((o) => ({
+      orderNumber: o.orderNumber,
+      supplier: o.supplier.businessName,
+      status: STATUS_LABELS[o.status] ?? o.status,
+      createdAt: o.createdAt.toLocaleString('es-PE'),
+      expectedDate: o.expectedDate ? o.expectedDate.toLocaleDateString('es-PE') : '',
+      receivedDate: o.receivedDate ? o.receivedDate.toLocaleDateString('es-PE') : '',
+      items: o._count.items,
+      subtotal: Number(o.subtotal),
+      taxAmount: Number(o.taxAmount),
+      totalAmount: Number(o.totalAmount),
+      supplierInvoice: o.supplierInvoice ?? '',
+      user: `${o.user.firstName} ${o.user.lastName}`,
+    })));
   } catch (err) { next(err); }
 });
 

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUp, ArrowDown, Search, Plus, X, AlertTriangle, Package,
   BarChart3, ClipboardList, History, TrendingDown, DollarSign,
-  ChevronDown, ChevronUp, Printer, ScanBarcode, Scale, Star,
+  ChevronDown, ChevronUp, Printer, ScanBarcode, Scale, Star, FileSpreadsheet,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
+import { downloadExcel } from '@/lib/exportExcel';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface DashboardData {
@@ -501,6 +502,15 @@ function StockTab() {
           {(categories ?? []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <Button variant="outline" onClick={printStock}><Printer className="mr-2 h-4 w-4" />Imprimir</Button>
+        <Button variant="outline" onClick={() => {
+          const params = new URLSearchParams();
+          if (search) params.set('search', search);
+          if (status !== 'all') params.set('status', status);
+          if (categoryId) params.set('categoryId', categoryId);
+          downloadExcel(`/inventory/stock/export?${params}`, 'inventario.xlsx');
+        }}>
+          <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
+        </Button>
       </div>
 
       {/* Tabla */}

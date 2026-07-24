@@ -3,6 +3,15 @@ import { z } from 'zod';
 import { PaymentMethod, DocumentType } from '@prisma/client';
 import { salesService, CreateSaleInput, ReturnSaleInput, ListSalesQuery } from './sales.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
+import { sendExcel } from '../../utils/excel';
+
+const STATUS_LABELS: Record<string, string> = {
+  COMPLETED: 'Completada', CANCELLED: 'Anulada', RETURNED: 'Devuelta', PARTIALLY_RETURNED: 'Devuelta parcial',
+};
+const PAYMENT_LABELS: Record<string, string> = {
+  CASH: 'Efectivo', DEBIT_CARD: 'T. Débito', CREDIT_CARD: 'T. Crédito',
+  TRANSFER: 'Transferencia', CREDIT: 'Crédito', YAPE: 'Yape', PLIN: 'Plin', OTHER: 'Otro',
+};
 
 const router = Router();
 
@@ -67,6 +76,45 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const query = listSchema.parse(req.query) as ListSalesQuery;
     const result = await salesService.list(query);
     res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.get('/export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const query = listSchema.omit({ page: true, limit: true }).parse(req.query);
+    const sales = await salesService.exportList(query);
+
+    await sendExcel(res, 'ventas.xlsx', 'Ventas', [
+      { header: 'N° Venta', key: 'saleNumber', width: 16 },
+      { header: 'Fecha', key: 'createdAt', width: 18 },
+      { header: 'Cajero', key: 'cashier', width: 20 },
+      { header: 'Cliente', key: 'customer', width: 22 },
+      { header: 'Documento', key: 'documentType', width: 12 },
+      { header: 'Ítems', key: 'items', width: 8 },
+      { header: 'Subtotal', key: 'subtotal', width: 12 },
+      { header: 'Descuento', key: 'discountAmount', width: 12 },
+      { header: 'IGV', key: 'taxAmount', width: 10 },
+      { header: 'Total', key: 'totalAmount', width: 12 },
+      { header: 'Métodos de pago', key: 'payments', width: 25 },
+      { header: 'Fiado', key: 'isCredit', width: 8 },
+      { header: 'Pagado', key: 'paidAmount', width: 12 },
+      { header: 'Estado', key: 'status', width: 14 },
+    ], sales.map((s) => ({
+      saleNumber: s.saleNumber,
+      createdAt: s.createdAt.toLocaleString('es-PE'),
+      cashier: `${s.cashier.firstName} ${s.cashier.lastName}`,
+      customer: s.customer ? `${s.customer.firstName} ${s.customer.lastName ?? ''}`.trim() : '',
+      documentType: s.documentType,
+      items: s._count.items,
+      subtotal: Number(s.subtotal),
+      discountAmount: Number(s.discountAmount),
+      taxAmount: Number(s.taxAmount),
+      totalAmount: Number(s.totalAmount),
+      payments: s.payments.map((p) => `${PAYMENT_LABELS[p.method] ?? p.method}: S/${Number(p.amount).toFixed(2)}`).join(', '),
+      isCredit: s.isCredit ? 'Sí' : 'No',
+      paidAmount: Number(s.paidAmount),
+      status: STATUS_LABELS[s.status] ?? s.status,
+    })));
   } catch (err) { next(err); }
 });
 

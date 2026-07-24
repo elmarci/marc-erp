@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { cashService } from './cash.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
+import { sendExcel } from '../../utils/excel';
 
 const router = Router();
 
@@ -17,6 +18,42 @@ router.get('/sessions', async (req: Request, res: Response, next: NextFunction) 
     }).parse(req.query);
     const result = await cashService.listSessions({ status, cashRegisterId, page, limit });
     res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.get('/sessions/export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { status, cashRegisterId } = z.object({
+      status: z.enum(['OPEN', 'CLOSED']).optional(),
+      cashRegisterId: z.string().uuid().optional(),
+    }).parse(req.query);
+    const sessions = await cashService.exportSessions({ status, cashRegisterId });
+
+    await sendExcel(res, 'cajas.xlsx', 'Sesiones de Caja', [
+      { header: 'Caja', key: 'register', width: 18 },
+      { header: 'Cajero', key: 'user', width: 22 },
+      { header: 'Estado', key: 'status', width: 10 },
+      { header: 'Apertura', key: 'openedAt', width: 18 },
+      { header: 'Cierre', key: 'closedAt', width: 18 },
+      { header: 'Monto inicial', key: 'openingAmount', width: 14 },
+      { header: 'Monto esperado', key: 'expectedAmount', width: 14 },
+      { header: 'Monto contado', key: 'closingAmount', width: 14 },
+      { header: 'Diferencia', key: 'difference', width: 12 },
+      { header: 'N° Ventas', key: 'sales', width: 10 },
+      { header: 'N° Movimientos', key: 'movements', width: 14 },
+    ], sessions.map((s) => ({
+      register: s.cashRegister.name,
+      user: `${s.user.firstName} ${s.user.lastName}`,
+      status: s.status === 'OPEN' ? 'Abierta' : 'Cerrada',
+      openedAt: s.openedAt.toLocaleString('es-PE'),
+      closedAt: s.closedAt ? s.closedAt.toLocaleString('es-PE') : '',
+      openingAmount: Number(s.openingAmount),
+      expectedAmount: s.expectedAmount != null ? Number(s.expectedAmount) : '',
+      closingAmount: s.closingAmount != null ? Number(s.closingAmount) : '',
+      difference: s.difference != null ? Number(s.difference) : '',
+      sales: s._count.sales,
+      movements: s._count.movements,
+    })));
   } catch (err) { next(err); }
 });
 

@@ -28,6 +28,23 @@ export class SuppliersService {
     return { data, pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) } };
   }
 
+  // Mismo filtro de búsqueda que list(), sin paginar — para exportar a Excel.
+  async exportAll(filters: { search?: string }) {
+    const where: Record<string, unknown> = { deletedAt: null };
+    if (filters.search) {
+      where['OR'] = [
+        { businessName: { contains: filters.search, mode: 'insensitive' } },
+        { taxId: { contains: filters.search } },
+        { contactName: { contains: filters.search, mode: 'insensitive' } },
+      ];
+    }
+    return prisma.supplier.findMany({
+      where,
+      include: { _count: { select: { purchaseOrders: true } } },
+      orderBy: { businessName: 'asc' },
+    });
+  }
+
   async get(id: string) {
     const supplier = await prisma.supplier.findFirst({ where: { id, deletedAt: null } });
     if (!supplier) throw new NotFoundError('Proveedor');

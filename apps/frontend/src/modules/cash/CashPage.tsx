@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Wallet, Plus, Minus, X, ChevronDown, ChevronUp, TrendingUp,
-  TrendingDown, Clock, CheckCircle, ArrowDownUp, ShoppingCart, Printer,
+  TrendingDown, Clock, CheckCircle, ArrowDownUp, ShoppingCart, Printer, FileSpreadsheet,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatDateTime, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { OpenSessionModal } from '@/modules/pos/OpenSessionModal';
 import { usePosStore } from '@/stores/posStore';
+import { downloadExcel } from '@/lib/exportExcel';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface CashRegister { id: string; name: string }
@@ -587,9 +588,14 @@ export function CashPage() {
           <h1 className="text-2xl font-bold">Caja</h1>
           <p className="text-sm text-muted-foreground">Gestión de sesiones y arqueos</p>
         </div>
-        <Button onClick={() => setShowOpenSession(true)}>
-          <Plus className="mr-2 h-4 w-4" />Abrir Caja
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => downloadExcel('/cash/sessions/export', 'cajas.xlsx')}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
+          </Button>
+          <Button onClick={() => setShowOpenSession(true)}>
+            <Plus className="mr-2 h-4 w-4" />Abrir Caja
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}

@@ -3,10 +3,65 @@ import { z } from 'zod';
 import { prisma } from '../../database/client';
 import { authenticate } from '../../middleware/auth';
 import { Prisma } from '@prisma/client';
+import { sendExcel } from '../../utils/excel';
 
 const router = Router();
 
 router.use(authenticate);
+
+const CUSTOMER_TYPE_LABELS: Record<string, string> = {
+  REGULAR: 'Regular', WHOLESALE: 'Mayorista', VIP: 'VIP', CREDIT: 'Crédito',
+};
+
+router.get('/export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { search, type } = req.query as Record<string, string>;
+    const where: Prisma.CustomerWhereInput = {
+      deletedAt: null,
+      ...(type ? { type: type as never } : {}),
+      ...(search ? {
+        OR: [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search } },
+          { taxId: { contains: search } },
+        ],
+      } : {}),
+    };
+
+    const customers = await prisma.customer.findMany({ where, orderBy: { firstName: 'asc' } });
+
+    await sendExcel(res, 'clientes.xlsx', 'Clientes', [
+      { header: 'Nombre', key: 'firstName', width: 20 },
+      { header: 'Apellido', key: 'lastName', width: 20 },
+      { header: 'Empresa', key: 'businessName', width: 25 },
+      { header: 'Tipo', key: 'type', width: 12 },
+      { header: 'Documento', key: 'taxId', width: 15 },
+      { header: 'Teléfono', key: 'phone', width: 14 },
+      { header: 'Email', key: 'email', width: 25 },
+      { header: 'Dirección', key: 'address', width: 30 },
+      { header: 'Límite de crédito', key: 'creditLimit', width: 16 },
+      { header: 'Saldo deuda', key: 'currentBalance', width: 14 },
+      { header: 'Puntos', key: 'loyaltyPoints', width: 10 },
+      { header: 'Estado', key: 'status', width: 10 },
+      { header: 'Fecha registro', key: 'createdAt', width: 18 },
+    ], customers.map((c) => ({
+      firstName: c.firstName,
+      lastName: c.lastName ?? '',
+      businessName: c.businessName ?? '',
+      type: CUSTOMER_TYPE_LABELS[c.type] ?? c.type,
+      taxId: c.taxId ?? '',
+      phone: c.phone ?? '',
+      email: c.email ?? '',
+      address: c.address ?? '',
+      creditLimit: Number(c.creditLimit),
+      currentBalance: Number(c.currentBalance),
+      loyaltyPoints: c.loyaltyPoints,
+      status: c.isActive ? 'Activo' : 'Inactivo',
+      createdAt: c.createdAt.toLocaleString('es-PE'),
+    })));
+  } catch (err) { next(err); }
+});
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {

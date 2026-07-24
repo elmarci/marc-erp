@@ -2,9 +2,52 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { inventoryService } from './inventory.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
+import { sendExcel } from '../../utils/excel';
 
 const router = Router();
 router.use(authenticate);
+
+const STOCK_STATUS_LABELS: Record<string, string> = { ok: 'Normal', low: 'Stock bajo', out: 'Sin stock' };
+
+router.get('/stock/export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { search, categoryId, status } = z.object({
+      search: z.string().optional(),
+      categoryId: z.string().uuid().optional(),
+      status: z.enum(['all', 'ok', 'low', 'out']).optional(),
+    }).parse(req.query);
+    const products = await inventoryService.exportStock({ search, categoryId, status });
+
+    await sendExcel(res, 'inventario.xlsx', 'Stock', [
+      { header: 'Producto', key: 'name', width: 30 },
+      { header: 'Código de barras', key: 'barcode', width: 18 },
+      { header: 'SKU', key: 'sku', width: 14 },
+      { header: 'Categoría', key: 'category', width: 18 },
+      { header: 'Stock actual', key: 'currentStock', width: 12 },
+      { header: 'Stock mínimo', key: 'minStock', width: 12 },
+      { header: 'Stock máximo', key: 'maxStock', width: 12 },
+      { header: 'Costo', key: 'costPrice', width: 12 },
+      { header: 'Precio venta', key: 'salePrice', width: 12 },
+      { header: 'Valor total (costo)', key: 'stockValue', width: 16 },
+      { header: 'Estado', key: 'stockStatus', width: 12 },
+    ], products.map((p) => {
+      const stockStatus = p.current_stock === 0 ? 'out' : p.current_stock <= p.min_stock ? 'low' : 'ok';
+      return {
+        name: p.name,
+        barcode: p.barcode ?? '',
+        sku: p.sku ?? '',
+        category: p.category,
+        currentStock: Number(p.current_stock),
+        minStock: Number(p.min_stock),
+        maxStock: p.max_stock != null ? Number(p.max_stock) : '',
+        costPrice: Number(p.cost_price),
+        salePrice: Number(p.sale_price),
+        stockValue: Number(p.current_stock) * Number(p.cost_price),
+        stockStatus: STOCK_STATUS_LABELS[stockStatus],
+      };
+    }));
+  } catch (err) { next(err); }
+});
 
 router.get('/dashboard', async (req: Request, res: Response, next: NextFunction) => {
   try {

@@ -30,6 +30,23 @@ export class PurchasesService {
     return { data, pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) } };
   }
 
+  // Mismos filtros que listOrders(), sin paginar — para exportar a Excel.
+  async exportOrders(filters: { status?: string; supplierId?: string }) {
+    const where: Record<string, unknown> = {};
+    if (filters.status) where['status'] = filters.status;
+    if (filters.supplierId) where['supplierId'] = filters.supplierId;
+
+    return prisma.purchaseOrder.findMany({
+      where,
+      include: {
+        supplier: { select: { businessName: true } },
+        user: { select: { firstName: true, lastName: true } },
+        _count: { select: { items: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async getOrder(id: string) {
     const order = await prisma.purchaseOrder.findUnique({
       where: { id },

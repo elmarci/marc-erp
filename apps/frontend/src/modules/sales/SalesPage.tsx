@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Receipt, Search, Eye } from 'lucide-react';
+import { Receipt, Search, Eye, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { api } from '@/services/api';
 import { formatCurrency, formatDateTime, STATUS_LABELS } from '@/lib/utils';
+import { downloadExcel } from '@/lib/exportExcel';
 
 interface Sale {
   id: string; saleNumber: string; totalAmount: number; status: string; createdAt: string;
@@ -42,7 +43,12 @@ export function SalesPage() {
           <h1 className="text-2xl font-bold">Ventas</h1>
           <p className="text-sm text-muted-foreground">Historial de ventas</p>
         </div>
-        <Link to="/pos"><Button><Receipt className="mr-2 h-4 w-4" />Nueva Venta</Button></Link>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => downloadExcel('/sales/export', 'ventas.xlsx')}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
+          </Button>
+          <Link to="/pos"><Button><Receipt className="mr-2 h-4 w-4" />Nueva Venta</Button></Link>
+        </div>
       </div>
 
       <Card>
