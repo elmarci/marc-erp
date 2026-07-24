@@ -35,9 +35,11 @@ interface OrderDetail extends PurchaseOrder {
   supplierInvoice: string | null; notes: string | null;
   supplier: Supplier;
   approvedBy: { firstName: string; lastName: string } | null;
+  voidedAt: string | null; voidReason: string | null;
+  voidedBy: { firstName: string; lastName: string } | null;
   items: Array<{
     id: string; orderedQty: number; receivedQty: number;
-    unitCost: number; subtotal: number;
+    unitCost: number; subtotal: number; isBonus: boolean;
     product: { id: string; name: string; barcode: string | null; currentStock: number };
   }>;
   receipts: Array<{ id: string; receivedAt: string; notes: string | null }>;
@@ -46,6 +48,7 @@ interface OrderDetail extends PurchaseOrder {
 interface Product {
   id: string; name: string; barcode: string | null; costPrice: number;
   currentStock: number; category: { name: string };
+  isBulk?: boolean; bulkUnit?: string | null;
 }
 
 interface LowStockProduct {
@@ -295,6 +298,296 @@ function SupplierCatalogModal({ supplier, onClose }: { supplier: Supplier; onClo
 
         <div className="border-t p-5 flex justify-end">
           <Button variant="outline" onClick={onClose}>Cerrar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Print de comprobante de compra ─────────────────────────────────────── */
+function printPurchaseReceipt(order: OrderDetail) {
+  const win = window.open('', '_blank', 'width=380,height=700');
+  if (!win) return;
+  const rows = order.items.map(i => `
+    <tr>
+      <td style="padding:4px 0">${i.product.name}${i.isBonus ? ' <b>(bonif.)</b>' : ''}</td>
+      <td style="padding:4px 0;text-align:center">${Number(i.orderedQty).toLocaleString('es-PE', { maximumFractionDigits: 3 })}</td>
+      <td style="padding:4px 0;text-align:right">${i.isBonus ? 'GRATIS' : `S/ ${Number(i.unitCost).toFixed(2)}`}</td>
+      <td style="padding:4px 0;text-align:right">S/ ${Number(i.subtotal).toFixed(2)}</td>
+    </tr>`).join('');
+  win.document.write(`<html><head><title>Compra ${order.orderNumber}</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:12px;width:320px;padding:10px}
+    .c{text-align:center}.b{font-weight:bold}.line{border-top:1px dashed #000;margin:6px 0}
+    table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;border-bottom:1px solid #000}
+    .row{display:flex;justify-content:space-between}</style></head><body>
+    <p class="c b" style="font-size:14px">COMPROBANTE DE COMPRA</p>
+    <p class="c">${order.orderNumber}</p>
+    <div class="line"></div>
+    <div class="row"><span>Proveedor:</span><span>${order.supplier.businessName}</span></div>
+    ${order.supplierInvoice ? `<div class="row"><span>Documento:</span><span>${order.supplierInvoice}</span></div>` : ''}
+    <div class="row"><span>Fecha:</span><span>${new Date(order.createdAt).toLocaleString('es-PE')}</span></div>
+    <div class="line"></div>
+    <table><thead><tr><th>Producto</th><th style="text-align:center">Cant.</th><th style="text-align:right">Costo</th><th style="text-align:right">Subt.</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="line"></div>
+    <div class="row b" style="font-size:14px"><span>TOTAL:</span><span>S/ ${Number(order.totalAmount).toFixed(2)}</span></div>
+    <p class="c" style="margin-top:10px">MARC ERP</p>
+    </body></html>`);
+  win.document.close(); win.focus(); win.print();
+}
+
+/* ─── Registrar Compra (directa, con CPP/bonificación/granel) ───────────── */
+interface DirectLine {
+  productId: string; name: string; isBulk: boolean; bulkUnit: string | null;
+  isBonus: boolean; quantity: string; unitCost: string;
+  useBulkEntry: boolean; sacks: string; weightPerSack: string; totalCost: string;
+}
+
+function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; onCreated: (order: OrderDetail) => void }) {
+  const queryClient = useQueryClient();
+  const [supplierId, setSupplierId] = useState('');
+  const [documentNumber, setDocumentNumber] = useState('');
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState('');
+  const [search, setSearch] = useState('');
+  const [lines, setLines] = useState<DirectLine[]>([]);
+
+  const { data: suppliers } = useQuery({
+    queryKey: ['suppliers-all'],
+    queryFn: async () => (await api.get<{ data: Supplier[] }>('/suppliers?limit=200')).data.data,
+  });
+
+  const { data: catalog } = useQuery({
+    queryKey: ['supplier-products', supplierId],
+    queryFn: async () => (await api.get<{ data: SupplierCatalogItem[] }>(`/suppliers/${supplierId}/products`)).data.data,
+    enabled: !!supplierId,
+  });
+
+  const { data: products } = useQuery({
+    queryKey: ['products-search', search],
+    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${search}&limit=20`)).data.data,
+    enabled: search.length >= 2,
+  });
+
+  const addLine = (p: { id: string; name: string; isBulk?: boolean; bulkUnit?: string | null }, defaultCost: number) => {
+    if (lines.find(l => l.productId === p.id)) return;
+    setLines(v => [...v, {
+      productId: p.id, name: p.name, isBulk: !!p.isBulk, bulkUnit: p.bulkUnit ?? null,
+      isBonus: false, quantity: '1', unitCost: String(defaultCost),
+      useBulkEntry: false, sacks: '', weightPerSack: '', totalCost: '',
+    }]);
+    setSearch('');
+  };
+
+  const handleScanKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const value = e.currentTarget.value.trim();
+    if (!/^\d{8,}$/.test(value)) return;
+    try {
+      const res = await api.get<{ data: Product }>(`/products/barcode/${value}`);
+      addLine(res.data.data, Number(res.data.data.costPrice));
+    } catch {
+      toast.error(`No se encontró ningún producto con código ${value}.`);
+    }
+  };
+
+  const updateLine = (idx: number, patch: Partial<DirectLine>) =>
+    setLines(v => v.map((l, n) => n === idx ? { ...l, ...patch } : l));
+  const removeLine = (idx: number) => setLines(v => v.filter((_, n) => n !== idx));
+
+  const effQty = (l: DirectLine) => l.useBulkEntry
+    ? (Number(l.sacks) || 0) * (Number(l.weightPerSack) || 0)
+    : Number(l.quantity) || 0;
+  const effUnitCost = (l: DirectLine) => {
+    if (l.isBonus) return 0;
+    if (l.useBulkEntry) {
+      const q = effQty(l);
+      return q > 0 ? (Number(l.totalCost) || 0) / q : 0;
+    }
+    return Number(l.unitCost) || 0;
+  };
+
+  const total = lines.reduce((s, l) => s + effQty(l) * effUnitCost(l), 0);
+  const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0);
+
+  const mutation = useMutation({
+    mutationFn: () => api.post<{ data: OrderDetail }>('/purchases/direct', {
+      supplierId,
+      documentNumber: documentNumber || undefined,
+      date: date ? new Date(`${date}T12:00:00`).toISOString() : undefined,
+      notes: notes || undefined,
+      items: lines.map(l => ({
+        productId: l.productId,
+        quantity: effQty(l),
+        unitCost: effUnitCost(l),
+        isBonus: l.isBonus,
+      })),
+    }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Compra registrada — stock y costo actualizados de inmediato.');
+      onCreated(res.data.data);
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const catalogToShow = (catalog ?? []).filter(c => !lines.find(l => l.productId === c.productId));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-3xl rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-bold">Registrar Compra</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Mercadería que ya llegó — actualiza stock y costo promedio de inmediato.</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-4 flex-1">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Proveedor *</label>
+              <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">Seleccionar...</option>
+                {suppliers?.map(s => <option key={s.id} value={s.id}>{s.businessName}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">N° Documento</label>
+              <Input value={documentNumber} onChange={e => setDocumentNumber(e.target.value)} placeholder="F001-000123" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Fecha</label>
+              <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+          </div>
+
+          {supplierId && catalogToShow.length > 0 && (
+            <div>
+              <label className="mb-1 block text-sm font-medium">Catálogo de este proveedor</label>
+              <div className="flex flex-wrap gap-1.5">
+                {catalogToShow.map(c => (
+                  <button key={c.productId} onClick={() => addLine(c.product, c.price)}
+                    className="rounded-full border px-3 py-1 text-xs hover:border-primary hover:bg-primary/5 transition-colors">
+                    {c.product.name} · S/ {c.price.toFixed(2)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Agregar productos</label>
+            <div className="relative">
+              <ScanBarcode className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Buscar por nombre o escanear código de barras..." value={search}
+                onChange={e => setSearch(e.target.value)} onKeyDown={handleScanKeyDown} />
+            </div>
+            {products && products.length > 0 && search.length >= 2 && (
+              <div className="border rounded-lg mt-1 divide-y max-h-40 overflow-y-auto bg-popover shadow-lg z-10">
+                {products.map(p => (
+                  <button key={p.id} onClick={() => addLine(p, Number(p.costPrice))}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
+                    <span>{p.name}{p.isBulk && <span className="ml-1.5 text-xs text-muted-foreground">(granel · {p.bulkUnit})</span>}</span>
+                    <span className="text-muted-foreground">Stock: {p.currentStock} · S/ {Number(p.costPrice).toFixed(2)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {lines.length > 0 && (
+            <div className="space-y-2">
+              {lines.map((l, idx) => (
+                <div key={l.productId} className={cn('rounded-lg border p-3 space-y-2', l.isBonus && 'bg-success/5 border-success/30')}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="font-medium truncate">{l.name}</p>
+                      {l.isBulk && <Badge variant="secondary" className="shrink-0 text-xs">Granel · {l.bulkUnit}</Badge>}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button type="button" size="sm" variant={l.isBonus ? 'outline' : 'default'}
+                        className="h-7 px-2 text-xs" onClick={() => updateLine(idx, { isBonus: false })}>
+                        Compra
+                      </Button>
+                      <Button type="button" size="sm" variant={l.isBonus ? 'success' : 'outline'}
+                        className="h-7 px-2 text-xs" onClick={() => updateLine(idx, { isBonus: true })}>
+                        Bonificación
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeLine(idx)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {l.isBulk && (
+                    <button type="button" onClick={() => updateLine(idx, { useBulkEntry: !l.useBulkEntry })}
+                      className="text-xs text-primary hover:underline">
+                      {l.useBulkEntry ? '← Ingresar cantidad directamente' : 'Ingresar por N° de sacos/bultos →'}
+                    </button>
+                  )}
+
+                  {l.useBulkEntry ? (
+                    <div className="grid grid-cols-4 gap-2 items-end">
+                      <div>
+                        <label className="mb-1 block text-xs text-muted-foreground">N° sacos</label>
+                        <Input type="number" min={0} value={l.sacks} onChange={e => updateLine(idx, { sacks: e.target.value })} className="h-8" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-muted-foreground">Peso/saco ({l.bulkUnit})</label>
+                        <Input type="number" min={0} step={0.01} value={l.weightPerSack} onChange={e => updateLine(idx, { weightPerSack: e.target.value })} className="h-8" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-muted-foreground">{l.isBonus ? 'Costo total (n/a)' : 'Costo total del lote'}</label>
+                        <Input type="number" min={0} step={0.01} value={l.totalCost} disabled={l.isBonus}
+                          onChange={e => updateLine(idx, { totalCost: e.target.value })} className="h-8" />
+                      </div>
+                      <div className="text-xs text-muted-foreground pb-2">
+                        = {effQty(l).toLocaleString('es-PE', { maximumFractionDigits: 3 })} {l.bulkUnit} · S/ {effUnitCost(l).toFixed(4)} c/u
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 items-end">
+                      <div>
+                        <label className="mb-1 block text-xs text-muted-foreground">Cantidad{l.isBulk ? ` (${l.bulkUnit})` : ''}</label>
+                        <Input type="number" min={0} step={l.isBulk ? 0.01 : 1} value={l.quantity}
+                          onChange={e => updateLine(idx, { quantity: e.target.value })} className="h-8" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-muted-foreground">Costo unit.</label>
+                        <Input type="number" min={0} step={0.01} value={l.isBonus ? '0' : l.unitCost} disabled={l.isBonus}
+                          onChange={e => updateLine(idx, { unitCost: e.target.value })} className="h-8" />
+                      </div>
+                      <div className="text-sm text-right font-medium pb-1.5">
+                        {l.isBonus ? <span className="text-success">GRATIS</span> : formatCurrency(effQty(l) * effUnitCost(l))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Notas</label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones..." />
+          </div>
+
+          {lines.length > 0 && (
+            <div className="flex justify-end text-lg font-bold border-t pt-3">
+              Total: {formatCurrency(total)}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t p-5 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!canSubmit}>
+            Registrar Compra
+          </Button>
         </div>
       </div>
     </div>
@@ -674,11 +967,24 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
     order.items.map(i => ({
       productId: i.product.id, name: i.product.name, barcode: i.product.barcode,
       orderedQty: i.orderedQty, receivedQty: i.orderedQty - i.receivedQty,
-      unitCost: Number(i.unitCost),
+      unitCost: Number(i.unitCost), isBonus: false,
     }))
   );
   const [notes, setNotes] = useState('');
   const [scan, setScan] = useState('');
+  const [bonusSearch, setBonusSearch] = useState('');
+
+  const { data: bonusResults } = useQuery({
+    queryKey: ['products-search', bonusSearch],
+    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; barcode: string | null; costPrice: number }> }>(`/products?q=${bonusSearch}&limit=10`)).data.data,
+    enabled: bonusSearch.length >= 2,
+  });
+
+  const addBonusProduct = (p: { id: string; name: string; barcode: string | null }) => {
+    if (items.find(i => i.productId === p.id)) return;
+    setItems(v => [...v, { productId: p.id, name: p.name, barcode: p.barcode, orderedQty: 0, receivedQty: 1, unitCost: 0, isBonus: true }]);
+    setBonusSearch('');
+  };
 
   // Escanear el código de cada caja/unidad que va llegando suma 1 al
   // "Recibido" de esa línea — más rápido que teclear la cantidad a mano
@@ -698,7 +1004,7 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
 
   const mutation = useMutation({
     mutationFn: () => api.post(`/purchases/${order.id}/receive`, {
-      items: items.map(i => ({ productId: i.productId, receivedQty: i.receivedQty, unitCost: i.unitCost })),
+      items: items.map(i => ({ productId: i.productId, receivedQty: i.receivedQty, unitCost: i.unitCost, isBonus: i.isBonus })),
       notes,
     }),
     onSuccess: () => {
@@ -727,30 +1033,53 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
             <thead>
               <tr className="border-b text-left">
                 <th className="py-2 font-medium">Producto</th>
-                <th className="py-2 font-medium text-center w-24">Pedido</th>
-                <th className="py-2 font-medium text-center w-28">Recibido</th>
-                <th className="py-2 font-medium text-right w-28">Costo unit.</th>
+                <th className="py-2 font-medium text-center w-20">Pedido</th>
+                <th className="py-2 font-medium text-center w-24">Recibido</th>
+                <th className="py-2 font-medium text-right w-24">Costo unit.</th>
+                <th className="py-2 font-medium text-center w-20">Bonif.</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {items.map((item, idx) => (
-                <tr key={item.productId}>
+                <tr key={item.productId} className={cn(item.isBonus && 'bg-success/5')}>
                   <td className="py-2">{item.name}</td>
-                  <td className="py-2 text-center text-muted-foreground">{item.orderedQty}</td>
+                  <td className="py-2 text-center text-muted-foreground">{item.orderedQty || '—'}</td>
                   <td className="py-2 px-2">
-                    <Input type="number" min={0} max={item.orderedQty} value={item.receivedQty}
+                    <Input type="number" min={0} step={0.001} value={item.receivedQty}
                       onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, receivedQty: Number(e.target.value) } : i))}
                       className="h-8 text-center" />
                   </td>
                   <td className="py-2 px-2">
-                    <Input type="number" min={0} step={0.01} value={item.unitCost}
+                    <Input type="number" min={0} step={0.01} value={item.isBonus ? 0 : item.unitCost} disabled={item.isBonus}
                       onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, unitCost: Number(e.target.value) } : i))}
                       className="h-8 text-right" />
+                  </td>
+                  <td className="py-2 text-center">
+                    <input type="checkbox" checked={item.isBonus} className="h-4 w-4"
+                      onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, isBonus: e.target.checked } : i))} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Agregar producto bonificado (que no estaba en la orden)</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Ej: te regalaron un producto distinto..." value={bonusSearch}
+                onChange={e => setBonusSearch(e.target.value)} />
+            </div>
+            {bonusResults && bonusResults.length > 0 && bonusSearch.length >= 2 && (
+              <div className="border rounded-lg mt-1 divide-y max-h-32 overflow-y-auto bg-popover shadow-lg">
+                {bonusResults.map(p => (
+                  <button key={p.id} onClick={() => addBonusProduct(p)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted">{p.name}</button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="mb-1 block text-sm font-medium">Notas de recepción</label>
             <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones..." />
@@ -791,9 +1120,39 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const voidMutation = useMutation({
+    mutationFn: (reason: string) => api.post(`/purchases/${order.id}/void`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Compra anulada — stock y costo revertidos a como estaban antes.');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const handleVoid = async () => {
+    try {
+      const checkRes = await api.get<{ data: { hasWarning: boolean; affectedProducts: string[] } }>(`/purchases/${order.id}/void-check`);
+      const { hasWarning, affectedProducts } = checkRes.data.data;
+      if (hasWarning) {
+        const proceed = confirm(
+          `Ya se vendieron estos productos después de esta compra: ${affectedProducts.join(', ')}.\n\n` +
+          `Anular esta compra podría no reflejar el estado real de tu inventario. ¿Anular de todas formas?`,
+        );
+        if (!proceed) return;
+      }
+      const reason = window.prompt('Motivo de la anulación:');
+      if (reason) voidMutation.mutate(reason);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
   const canApprove = order.status === 'PENDING_APPROVAL';
   const canReceive = ['APPROVED', 'SENT', 'PARTIALLY_RECEIVED'].includes(order.status);
   const canCancel = !['RECEIVED', 'CANCELLED'].includes(order.status);
+  const canVoid = order.status === 'RECEIVED';
 
   return (
     <>
@@ -819,6 +1178,9 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
             {canCancel && <Button size="sm" variant="ghost" onClick={() => cancelMutation.mutate()} loading={cancelMutation.isPending}>
               <XCircle className="h-3.5 w-3.5 text-destructive" />
             </Button>}
+            {canVoid && <Button size="sm" variant="ghost" className="text-destructive" onClick={handleVoid} loading={voidMutation.isPending}>
+              Anular
+            </Button>}
           </div>
         </td>
         <td className="px-4 py-3">{expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</td>
@@ -842,18 +1204,30 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                 <tbody className="divide-y">
                   {detail.items.map(item => (
                     <tr key={item.id}>
-                      <td className="py-1.5">{item.product.name}</td>
+                      <td className="py-1.5">
+                        {item.product.name}
+                        {item.isBonus && <Badge variant="success" className="ml-1.5 text-xs">Bonificación</Badge>}
+                      </td>
                       <td className="py-1.5 text-center">{item.orderedQty}</td>
                       <td className={cn('py-1.5 text-center', item.receivedQty >= item.orderedQty ? 'text-success' : item.receivedQty > 0 ? 'text-amber-500' : '')}>
                         {item.receivedQty}
                       </td>
-                      <td className="py-1.5 text-right">{formatCurrency(item.unitCost)}</td>
+                      <td className="py-1.5 text-right">{item.isBonus ? 'GRATIS' : formatCurrency(item.unitCost)}</td>
                       <td className="py-1.5 text-right font-medium">{formatCurrency(item.subtotal)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {detail.notes && <p className="text-muted-foreground text-xs">Notas: {detail.notes}</p>}
+              {detail.voidedAt && (
+                <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive">
+                  <p className="font-semibold">Anulada el {formatDateTime(detail.voidedAt)}{detail.voidedBy ? ` por ${detail.voidedBy.firstName} ${detail.voidedBy.lastName}` : ''}</p>
+                  {detail.voidReason && <p className="mt-0.5">Motivo: {detail.voidReason}</p>}
+                </div>
+              )}
+              <Button variant="outline" size="sm" onClick={() => printPurchaseReceipt(detail)}>
+                <FileText className="mr-1.5 h-3.5 w-3.5" />Imprimir comprobante
+              </Button>
             </div>
           </td>
         </tr>
@@ -972,6 +1346,8 @@ function OrdersTab() {
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
+  const [justRegistered, setJustRegistered] = useState<OrderDetail | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -1000,6 +1376,9 @@ function OrdersTab() {
         </Button>
         <Button onClick={() => setShowNew(true)}>
           <Plus className="mr-2 h-4 w-4" />Nueva Orden
+        </Button>
+        <Button onClick={() => setShowRegister(true)} className="bg-success text-success-foreground hover:bg-success/90">
+          <PackageCheck className="mr-2 h-4 w-4" />Registrar Compra
         </Button>
       </div>
 
@@ -1042,6 +1421,30 @@ function OrdersTab() {
 
       {showNew && <NewOrderModal onClose={() => setShowNew(false)} onCreated={() => setShowNew(false)} />}
       {showSuggest && <SuggestOrderModal onClose={() => setShowSuggest(false)} onCreated={() => setShowSuggest(false)} />}
+      {showRegister && (
+        <RegisterPurchaseModal
+          onClose={() => setShowRegister(false)}
+          onCreated={(order) => { setShowRegister(false); setJustRegistered(order); }}
+        />
+      )}
+
+      {justRegistered && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl p-6 text-center space-y-4">
+            <CheckCircle className="h-12 w-12 text-success mx-auto" />
+            <div>
+              <h3 className="font-bold text-lg">Compra registrada</h3>
+              <p className="text-sm text-muted-foreground">{justRegistered.orderNumber} — {formatCurrency(justRegistered.totalAmount)}</p>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setJustRegistered(null)}>Cerrar</Button>
+              <Button className="flex-1" onClick={() => printPurchaseReceipt(justRegistered)}>
+                <FileText className="mr-2 h-4 w-4" />Imprimir
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

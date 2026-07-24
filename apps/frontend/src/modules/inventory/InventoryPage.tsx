@@ -46,7 +46,7 @@ interface SupplierPrice {
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 const MOV_LABELS: Record<string, string> = {
-  PURCHASE_IN: 'Compra', SALE_OUT: 'Venta', ADJUSTMENT_IN: 'Ajuste +',
+  PURCHASE_IN: 'Compra', PURCHASE_VOID: 'Anulación compra', SALE_OUT: 'Venta', ADJUSTMENT_IN: 'Ajuste +',
   ADJUSTMENT_OUT: 'Ajuste −', RETURN_IN: 'Devolución E', RETURN_OUT: 'Devolución S',
   INITIAL_STOCK: 'Stock inicial', LOSS: 'Pérdida', EXPIRY: 'Vencimiento',
 };
@@ -104,6 +104,72 @@ function PriceComparisonModal({ product, onClose }: { product: StockProduct; onC
                     <td className="py-2 text-right text-xs text-muted-foreground">
                       {s.lastPurchaseAt ? formatDateTime(s.lastPurchaseAt) : 'Sin compras aún'}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="border-t p-5 flex justify-end">
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Cost History Modal (kardex de costo promedio ponderado) ──────────────── */
+interface CostHistoryEntry {
+  id: string; date: string; type: string; quantity: number;
+  unitCost: number | null; avgCostBefore: number | null; avgCostAfter: number | null; notes: string | null;
+}
+function CostHistoryModal({ product, onClose }: { product: StockProduct; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['product-cost-history', product.id],
+    queryFn: async () => (await api.get<{ data: { productName: string; currentCost: number; history: CostHistoryEntry[] } }>(`/products/${product.id}/cost-history`)).data.data,
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-card shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-bold flex items-center gap-2"><History className="h-5 w-5 text-primary" />Historial de costos</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">{product.name}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 overflow-y-auto flex-1">
+          {isLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Cargando...</div>
+          ) : !data || data.history.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground text-sm">
+              Este producto todavía no tiene compras registradas con costo promedio — el costo actual
+              (S/ {data ? data.currentCost.toFixed(2) : product.cost_price.toFixed(2)}) es el que se ingresó al crearlo.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="py-2 font-medium">Fecha</th>
+                  <th className="py-2 font-medium">Movimiento</th>
+                  <th className="py-2 font-medium text-center">Cant.</th>
+                  <th className="py-2 font-medium text-right">Costo entrada</th>
+                  <th className="py-2 font-medium text-right">Prom. antes</th>
+                  <th className="py-2 font-medium text-right">Prom. después</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {data.history.map(h => (
+                  <tr key={h.id}>
+                    <td className="py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(h.date)}</td>
+                    <td className="py-2">{MOV_LABELS[h.type] ?? h.type}</td>
+                    <td className={cn('py-2 text-center', h.quantity < 0 ? 'text-destructive' : 'text-success')}>
+                      {h.quantity > 0 ? '+' : ''}{h.quantity}
+                    </td>
+                    <td className="py-2 text-right">{h.unitCost != null ? formatCurrency(h.unitCost) : '—'}</td>
+                    <td className="py-2 text-right text-muted-foreground">{h.avgCostBefore != null ? formatCurrency(h.avgCostBefore) : '—'}</td>
+                    <td className="py-2 text-right font-semibold">{h.avgCostAfter != null ? formatCurrency(h.avgCostAfter) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -440,6 +506,7 @@ function StockTab() {
   const [page, setPage] = useState(1);
   const [adjustProduct, setAdjustProduct] = useState<StockProduct | null>(null);
   const [compareProduct, setCompareProduct] = useState<StockProduct | null>(null);
+  const [historyProduct, setHistoryProduct] = useState<StockProduct | null>(null);
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -553,6 +620,9 @@ function StockTab() {
                         <Button variant="ghost" size="sm" onClick={() => setCompareProduct(p)} title="Comparar precios entre proveedores">
                           <Scale className="h-3.5 w-3.5" />
                         </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setHistoryProduct(p)} title="Historial de costos">
+                          <History className="h-3.5 w-3.5" />
+                        </Button>
                         <Button variant="outline" size="sm" onClick={() => setAdjustProduct(p)}>
                           Ajustar
                         </Button>
@@ -581,6 +651,7 @@ function StockTab() {
 
       {adjustProduct && <QuickAdjustModal product={adjustProduct} onClose={() => setAdjustProduct(null)} />}
       {compareProduct && <PriceComparisonModal product={compareProduct} onClose={() => setCompareProduct(null)} />}
+      {historyProduct && <CostHistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} />}
     </div>
   );
 }

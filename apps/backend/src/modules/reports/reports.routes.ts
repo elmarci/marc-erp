@@ -38,6 +38,15 @@ router.get('/sales', async (req: Request, res: Response, next: NextFunction) => 
   } catch (err) { next(err); }
 });
 
+router.get('/margin', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { from, to } = dateRangeSchema.parse(req.query);
+    const groupBy = (req.query.groupBy as 'day' | 'week' | 'month') ?? 'day';
+    const data = await reportsService.getMarginReport({ from, to }, groupBy);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 router.get('/inventory', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await reportsService.getInventoryReport();

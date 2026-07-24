@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Package, Edit, MoreVertical, AlertTriangle, Barcode } from 'lucide-react';
+import { Plus, Search, Package, Edit, MoreVertical, AlertTriangle, Barcode, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,17 @@ export function ProductsPage() {
       );
       return res.data;
     },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete<{ data: { deleted?: boolean; discontinued?: boolean } }>(`/products/${id}`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(res.data.data.discontinued
+        ? 'El producto tiene ventas registradas, así que se marcó como descontinuado en vez de eliminarse.'
+        : 'Producto eliminado.');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const products = data?.data ?? [];
@@ -183,11 +194,17 @@ export function ProductsPage() {
                       </td>
                       <td data-label="Acciones" className="px-4 py-3 text-center">
                         {hasMinRole('WAREHOUSE') && (
-                          <Link to={`/products/${product.id}/edit`}>
-                            <Button variant="ghost" size="icon-sm">
-                              <Edit className="h-4 w-4" />
+                          <div className="flex justify-center gap-1">
+                            <Link to={`/products/${product.id}/edit`}>
+                              <Button variant="ghost" size="icon-sm">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                            <Button variant="ghost" size="icon-sm" className="text-destructive"
+                              onClick={() => { if (confirm(`¿Eliminar "${product.name}"?`)) deleteMutation.mutate(product.id); }}>
+                              <Trash2 className="h-4 w-4" />
                             </Button>
-                          </Link>
+                          </div>
                         )}
                       </td>
                     </tr>

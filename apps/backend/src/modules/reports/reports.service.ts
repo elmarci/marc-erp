@@ -310,6 +310,98 @@ export class ReportsService {
     `;
   }
 
+  /**
+   * Margen/utilidad real por periodo: usa el costo promedio ponderado que
+   * quedó guardado en cada línea de venta en el momento exacto de venderse
+   * (SaleItem.costPrice), no el costo actual del producto — así el margen de
+   * una venta pasada no cambia cuando el costo sigue moviéndose después.
+   * Las ventas de antes de este cambio no tienen ese costo guardado; se
+   * cuentan aparte (itemsWithoutCost) en vez de tratarlas como costo cero.
+   */
+  async getMarginReport(range: DateRange, groupBy: 'day' | 'week' | 'month' = 'day') {
+    const groupFormat = {
+      day: 'YYYY-MM-DD',
+      week: 'IYYY-IW',
+      month: 'YYYY-MM',
+    }[groupBy];
+
+    const [summaryRows, chart, byProduct] = await Promise.all([
+      prisma.$queryRaw<{ revenue: number; cost: number; items_without_cost: bigint }[]>`
+        SELECT
+          SUM(si.subtotal)::float as revenue,
+          SUM(si.quantity * COALESCE(si.cost_price, 0))::float as cost,
+          COUNT(*) FILTER (WHERE si.cost_price IS NULL)::bigint as items_without_cost
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
+          AND s.created_at BETWEEN ${range.from} AND ${range.to}
+      `,
+      prisma.$queryRaw<{ period: string; revenue: number; cost: number }[]>`
+        SELECT
+          TO_CHAR(s.created_at AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
+          SUM(si.subtotal)::float as revenue,
+          SUM(si.quantity * COALESCE(si.cost_price, 0))::float as cost
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
+          AND s.created_at BETWEEN ${range.from} AND ${range.to}
+        GROUP BY period
+        ORDER BY period ASC
+      `,
+      prisma.$queryRaw<{ product_id: string; name: string; revenue: number; cost: number; quantity: number }[]>`
+        SELECT
+          p.id as product_id,
+          p.name,
+          SUM(si.subtotal)::float as revenue,
+          SUM(si.quantity * COALESCE(si.cost_price, 0))::float as cost,
+          SUM(si.quantity)::float as quantity
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        JOIN products p ON si.product_id = p.id
+        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
+          AND s.created_at BETWEEN ${range.from} AND ${range.to}
+        GROUP BY p.id, p.name
+        ORDER BY (SUM(si.subtotal) - SUM(si.quantity * COALESCE(si.cost_price, 0))) DESC
+        LIMIT 20
+      `,
+    ]);
+
+    const row = summaryRows[0];
+    const revenue = Number(row?.revenue ?? 0);
+    const cost = Number(row?.cost ?? 0);
+    const margin = revenue - cost;
+
+    return {
+      range,
+      summary: {
+        revenue,
+        cost,
+        margin,
+        marginPercent: revenue > 0 ? (margin / revenue) * 100 : 0,
+        itemsWithoutCost: Number(row?.items_without_cost ?? 0),
+      },
+      chart: chart.map((c) => ({
+        period: c.period,
+        revenue: Number(c.revenue ?? 0),
+        cost: Number(c.cost ?? 0),
+        margin: Number(c.revenue ?? 0) - Number(c.cost ?? 0),
+      })),
+      byProduct: byProduct.map((p) => {
+        const pRevenue = Number(p.revenue ?? 0);
+        const pCost = Number(p.cost ?? 0);
+        return {
+          productId: p.product_id,
+          name: p.name,
+          quantity: Number(p.quantity ?? 0),
+          revenue: pRevenue,
+          cost: pCost,
+          margin: pRevenue - pCost,
+          marginPercent: pRevenue > 0 ? ((pRevenue - pCost) / pRevenue) * 100 : 0,
+        };
+      }),
+    };
+  }
+
   /** Cuentas por cobrar: clientes con deuda y hace cuánto tienen su venta fiada más antigua sin pagar. */
   async getAccountsReceivable() {
     const customers = await prisma.customer.findMany({

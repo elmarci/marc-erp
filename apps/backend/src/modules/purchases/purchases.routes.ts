@@ -110,6 +110,7 @@ router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, 
         productId: z.string().uuid(),
         receivedQty: z.coerce.number().min(0),
         unitCost: z.coerce.number().min(0),
+        isBonus: z.boolean().optional(),
         batchNumber: z.string().optional(),
         expiryDate: z.coerce.date().optional(),
       })).min(1),
@@ -118,6 +119,45 @@ router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, 
 
     const receipt = await purchasesService.receiveOrder(req.params.id, req.user!.sub, items as Parameters<typeof purchasesService.receiveOrder>[2], notes);
     res.status(201).json({ success: true, data: receipt });
+  } catch (err) { next(err); }
+});
+
+// "Registrar Compra" — mercadería que ya llegó con factura en mano: aplica
+// todo de inmediato (CPP, bonificaciones, kardex) sin pasar por aprobación.
+router.post('/direct', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = z.object({
+      supplierId: z.string().uuid(),
+      documentNumber: z.string().optional(),
+      date: z.coerce.date().optional(),
+      notes: z.string().optional(),
+      items: z.array(z.object({
+        productId: z.string().uuid(),
+        quantity: z.coerce.number().positive(),
+        unitCost: z.coerce.number().min(0),
+        isBonus: z.boolean().optional(),
+        batchNumber: z.string().optional(),
+        expiryDate: z.coerce.date().optional(),
+      })).min(1),
+    }).parse(req.body);
+
+    const order = await purchasesService.createDirectPurchase(req.user!.sub, data);
+    res.status(201).json({ success: true, data: order });
+  } catch (err) { next(err); }
+});
+
+router.get('/:id/void-check', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await purchasesService.checkVoidWarnings(req.params.id);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/void', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { reason } = z.object({ reason: z.string().min(3, 'Indica el motivo de la anulación.') }).parse(req.body);
+    const order = await purchasesService.voidPurchase(req.params.id, req.user!.sub, reason);
+    res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });
 

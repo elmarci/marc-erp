@@ -45,6 +45,7 @@ enum UnitOfMeasure {
 
 enum MovementType {
   PURCHASE_IN
+  PURCHASE_VOID
   SALE_OUT
   ADJUSTMENT_IN
   ADJUSTMENT_OUT
@@ -170,6 +171,7 @@ model User {
   purchaseOrders     PurchaseOrder[]
   auditLogs          AuditLog[]
   approvedPurchases  PurchaseOrder[] @relation("ApprovedByPurchases")
+  voidedPurchases    PurchaseOrder[] @relation("VoidedByPurchases")
   voidedSales        Sale[]          @relation("VoidedBySales")
 
   @@index([email])
@@ -371,13 +373,13 @@ model Product {
   supplierId      String?       @map("supplier_id")
   taxRateId       String?       @map("tax_rate_id")
   unitOfMeasure   UnitOfMeasure @default(UNIT) @map("unit_of_measure")
-  costPrice       Decimal       @db.Decimal(10, 2) @map("cost_price")
+  costPrice       Decimal       @db.Decimal(10, 4) @map("cost_price")
   salePrice       Decimal       @db.Decimal(10, 2) @map("sale_price")
   wholesalePrice  Decimal?      @db.Decimal(10, 2) @map("wholesale_price")
-  minStock        Int           @default(0) @map("min_stock")
-  maxStock        Int?          @map("max_stock")
-  currentStock    Int           @default(0) @map("current_stock")
-  reservedStock   Int           @default(0) @map("reserved_stock")
+  minStock        Decimal       @default(0) @db.Decimal(10, 3) @map("min_stock")
+  maxStock        Decimal?      @db.Decimal(10, 3) @map("max_stock")
+  currentStock    Decimal       @default(0) @db.Decimal(10, 3) @map("current_stock")
+  reservedStock   Decimal       @default(0) @db.Decimal(10, 3) @map("reserved_stock")
   isComposite     Boolean       @default(false) @map("is_composite")
   hasVariants     Boolean       @default(false) @map("has_variants")
   imageUrl        String?       @map("image_url")
@@ -470,10 +472,16 @@ model InventoryMovement {
   id              String       @id @default(uuid())
   productId       String       @map("product_id")
   type            MovementType
-  quantity        Int          // positivo = entrada, negativo = salida
-  quantityBefore  Int          @map("quantity_before")
-  quantityAfter   Int          @map("quantity_after")
-  unitCost        Decimal?     @db.Decimal(10, 2) @map("unit_cost")
+  quantity        Decimal      @db.Decimal(10, 3) // positivo = entrada, negativo = salida
+  quantityBefore  Decimal      @db.Decimal(10, 3) @map("quantity_before")
+  quantityAfter   Decimal      @db.Decimal(10, 3) @map("quantity_after")
+  unitCost        Decimal?     @db.Decimal(10, 4) @map("unit_cost")
+  // Costo promedio ponderado del producto antes/después de este movimiento —
+  // solo se llena en movimientos que recalculan CPP (compras y su reversión).
+  // Es el kardex de costos: permite ver cómo evolucionó el costo y revertir
+  // una compra anulada con exactitud, sin depender de otros movimientos.
+  avgCostBefore   Decimal?     @db.Decimal(10, 4) @map("avg_cost_before")
+  avgCostAfter    Decimal?     @db.Decimal(10, 4) @map("avg_cost_after")
   referenceType   String?      @map("reference_type") // "SALE", "PURCHASE", "ADJUSTMENT"
   referenceId     String?      @map("reference_id")
   notes           String?
@@ -509,10 +517,10 @@ model InventoryAdjustmentItem {
   id            String  @id @default(uuid())
   adjustmentId  String  @map("adjustment_id")
   productId     String  @map("product_id")
-  systemQuantity Int    @map("system_quantity")
-  physicalQuantity Int  @map("physical_quantity")
-  difference    Int
-  unitCost      Decimal @db.Decimal(10, 2) @map("unit_cost")
+  systemQuantity Decimal @db.Decimal(10, 3) @map("system_quantity")
+  physicalQuantity Decimal @db.Decimal(10, 3) @map("physical_quantity")
+  difference    Decimal @db.Decimal(10, 3)
+  unitCost      Decimal @db.Decimal(10, 4) @map("unit_cost")
 
   adjustment InventoryAdjustment @relation(fields: [adjustmentId], references: [id])
 
@@ -554,12 +562,16 @@ model PurchaseOrder {
   totalAmount     Decimal             @db.Decimal(12, 2) @map("total_amount")
   notes           String?
   supplierInvoice String?             @map("supplier_invoice")
+  voidedAt        DateTime?           @map("voided_at")
+  voidedById      String?             @map("voided_by_id")
+  voidReason      String?             @map("void_reason")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
 
   supplier   Supplier          @relation(fields: [supplierId], references: [id])
   user       User              @relation(fields: [userId], references: [id])
   approvedBy User?             @relation("ApprovedByPurchases", fields: [approvedById], references: [id])
+  voidedBy   User?             @relation("VoidedByPurchases", fields: [voidedById], references: [id])
   items      PurchaseOrderItem[]
   receipts   PurchaseReceipt[]
   payments   SupplierPayment[]
@@ -574,11 +586,14 @@ model PurchaseOrderItem {
   id              String   @id @default(uuid())
   purchaseOrderId String   @map("purchase_order_id")
   productId       String   @map("product_id")
-  orderedQty      Int      @map("ordered_qty")
-  receivedQty     Int      @default(0) @map("received_qty")
-  unitCost        Decimal  @db.Decimal(10, 2) @map("unit_cost")
+  orderedQty      Decimal  @db.Decimal(10, 3) @map("ordered_qty")
+  receivedQty     Decimal  @default(0) @db.Decimal(10, 3) @map("received_qty")
+  unitCost        Decimal  @db.Decimal(10, 4) @map("unit_cost")
   taxRate         Decimal  @db.Decimal(5, 4) @default(0.18) @map("tax_rate")
   subtotal        Decimal  @db.Decimal(12, 2)
+  // Línea de bonificación del proveedor (producto gratis) — el costo se
+  // fuerza a 0 en el backend sin importar lo que llegue aquí.
+  isBonus         Boolean  @default(false) @map("is_bonus")
   notes           String?
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
@@ -607,9 +622,10 @@ model PurchaseReceiptItem {
   id          String   @id @default(uuid())
   receiptId   String   @map("receipt_id")
   productId   String   @map("product_id")
-  orderedQty  Int      @map("ordered_qty")
-  receivedQty Int      @map("received_qty")
-  unitCost    Decimal  @db.Decimal(10, 2) @map("unit_cost")
+  orderedQty  Decimal  @db.Decimal(10, 3) @map("ordered_qty")
+  receivedQty Decimal  @db.Decimal(10, 3) @map("received_qty")
+  unitCost    Decimal  @db.Decimal(10, 4) @map("unit_cost")
+  isBonus     Boolean  @default(false) @map("is_bonus")
   batchNumber String?  @map("batch_number")
   expiryDate  DateTime? @map("expiry_date")
   notes       String?
@@ -825,6 +841,10 @@ model SaleItem {
   discountPercent  Decimal  @default(0) @db.Decimal(5, 2) @map("discount_percent")
   taxRate          Decimal  @db.Decimal(5, 4) @default(0.18) @map("tax_rate")
   subtotal         Decimal  @db.Decimal(12, 2)
+  // Costo promedio ponderado del producto en el momento exacto de la venta —
+  // así el margen de una venta pasada no cambia cuando el costo del producto
+  // sigue moviéndose después por nuevas compras.
+  costPrice        Decimal? @db.Decimal(10, 4) @map("cost_price")
   productName      String   @map("product_name") // snapshot del nombre al momento de la venta
   productBarcode   String?  @map("product_barcode")
 
@@ -1075,7 +1095,7 @@ model StoreOrderItem {
   productId String  @map("product_id")
   name      String
   imageUrl  String? @map("image_url")
-  quantity  Int
+  quantity  Decimal @db.Decimal(10, 3)
   unitPrice Decimal @db.Decimal(10, 2) @map("unit_price")
   subtotal  Decimal @db.Decimal(10, 2)
 

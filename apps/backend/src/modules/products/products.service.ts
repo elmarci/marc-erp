@@ -5,25 +5,25 @@ import { NotFoundError, ConflictError, BusinessError } from '../../utils/errors'
 
 export interface CreateProductInput {
   name: string;
-  description?: string;
-  barcode?: string;
-  internalCode?: string;
-  sku?: string;
+  description?: string | null;
+  barcode?: string | null;
+  internalCode?: string | null;
+  sku?: string | null;
   categoryId: string;
-  brandId?: string;
-  supplierId?: string;
-  taxRateId?: string;
+  brandId?: string | null;
+  supplierId?: string | null;
+  taxRateId?: string | null;
   unitOfMeasure: UnitOfMeasure;
   costPrice: number;
   salePrice: number;
-  wholesalePrice?: number;
+  wholesalePrice?: number | null;
   minStock: number;
-  maxStock?: number;
+  maxStock?: number | null;
   currentStock?: number;
   trackExpiry?: boolean;
   trackBatch?: boolean;
   isBulk?: boolean;
-  bulkUnit?: string;
+  bulkUnit?: string | null;
   imageUrl?: string | null;
 }
 
@@ -203,6 +203,37 @@ export class ProductsService {
     }));
   }
 
+  // Kardex de costos: cómo fue variando el costo promedio ponderado de un
+  // producto con cada compra o bonificación recibida (y sus anulaciones).
+  async getCostHistory(productId: string) {
+    const product = await prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      select: { id: true, name: true, costPrice: true },
+    });
+    if (!product) throw new NotFoundError('Producto');
+
+    const movements = await prisma.inventoryMovement.findMany({
+      where: { productId, avgCostAfter: { not: null } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      productName: product.name,
+      currentCost: Number(product.costPrice),
+      history: movements.map((m) => ({
+        id: m.id,
+        date: m.createdAt,
+        type: m.type,
+        quantity: Number(m.quantity),
+        unitCost: m.unitCost != null ? Number(m.unitCost) : null,
+        avgCostBefore: m.avgCostBefore != null ? Number(m.avgCostBefore) : null,
+        avgCostAfter: m.avgCostAfter != null ? Number(m.avgCostAfter) : null,
+        notes: m.notes,
+        referenceId: m.referenceId,
+      })),
+    };
+  }
+
   async update(id: string, input: UpdateProductInput) {
     const product = await prisma.product.findFirst({ where: { id, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');
@@ -280,7 +311,8 @@ export class ProductsService {
     });
     if (!product) throw new NotFoundError('Producto');
 
-    const difference = physicalQuantity - product.currentStock;
+    const currentStock = Number(product.currentStock);
+    const difference = physicalQuantity - currentStock;
     const movementType = difference >= 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT';
 
     await prisma.$transaction(async (tx) => {
@@ -292,7 +324,7 @@ export class ProductsService {
           items: {
             create: {
               productId,
-              systemQuantity: product.currentStock,
+              systemQuantity: currentStock,
               physicalQuantity,
               difference,
               unitCost: Number(product.costPrice),
@@ -311,7 +343,7 @@ export class ProductsService {
           productId,
           type: movementType,
           quantity: Math.abs(difference),
-          quantityBefore: product.currentStock,
+          quantityBefore: currentStock,
           quantityAfter: physicalQuantity,
           unitCost: product.costPrice,
           referenceType: 'ADJUSTMENT',
@@ -322,12 +354,12 @@ export class ProductsService {
       });
 
       // Actualizar alerta de stock bajo
-      if (physicalQuantity <= product.minStock) {
+      if (physicalQuantity <= Number(product.minStock)) {
         await tx.stockAlert.upsert({
           where: {
             productId_alertType: { productId, alertType: 'LOW_STOCK' } as never,
           },
-          create: { productId, alertType: 'LOW_STOCK', threshold: product.minStock, isActive: true },
+          create: { productId, alertType: 'LOW_STOCK', threshold: Math.round(Number(product.minStock)), isActive: true },
           update: { isActive: true },
         } as never);
       } else {

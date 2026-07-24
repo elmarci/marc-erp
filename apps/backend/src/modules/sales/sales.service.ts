@@ -90,7 +90,7 @@ export class SalesService {
     // alguien lo revise, en vez de perder la venta ya cobrada al cliente.
     for (const item of input.items) {
       const product = products.find((p) => p.id === item.productId)!;
-      if (product.currentStock < item.quantity && !input.isOfflineSync) {
+      if (Number(product.currentStock) < item.quantity && !input.isOfflineSync) {
         throw new BusinessError(
           `Stock insuficiente para "${product.name}". Disponible: ${product.currentStock}, solicitado: ${item.quantity}.`,
         );
@@ -116,6 +116,10 @@ export class SalesService {
         discountPercent: item.discountPercent ?? 0,
         taxRate: product.taxRate ? Number(product.taxRate.rate) : 0.18,
         subtotal: itemSubtotal,
+        // Costo promedio de este producto en el momento exacto de la venta —
+        // para poder calcular el margen real de esta venta después, aunque
+        // el costo del producto siga cambiando con compras futuras.
+        costPrice: Number(product.costPrice),
         productName: product.name,
         productBarcode: product.barcode,
       };
@@ -252,7 +256,7 @@ export class SalesService {
       // Reducir stock y registrar movimientos
       for (const item of saleItems) {
         const product = products.find((p) => p.id === item.productId)!;
-        const newStock = product.currentStock - item.quantity;
+        const newStock = Number(product.currentStock) - item.quantity;
 
         await tx.product.update({
           where: { id: item.productId },
@@ -275,7 +279,7 @@ export class SalesService {
 
         // Actualizar alerta de stock (non-blocking — no debe interrumpir la venta)
         try {
-          const alertType = newStock < 0 ? 'NEGATIVE_STOCK' : newStock === 0 ? 'OUT_OF_STOCK' : newStock <= product.minStock ? 'LOW_STOCK' : null;
+          const alertType = newStock < 0 ? 'NEGATIVE_STOCK' : newStock === 0 ? 'OUT_OF_STOCK' : newStock <= Number(product.minStock) ? 'LOW_STOCK' : null;
           if (alertType) {
             const existing = await tx.stockAlert.findFirst({
               where: { productId: item.productId, alertType },
@@ -287,7 +291,7 @@ export class SalesService {
               });
             } else {
               await tx.stockAlert.create({
-                data: { productId: item.productId, alertType, threshold: product.minStock, isActive: true },
+                data: { productId: item.productId, alertType, threshold: Math.round(Number(product.minStock)), isActive: true },
               });
             }
           }
@@ -485,7 +489,8 @@ export class SalesService {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
         if (!product) continue;
 
-        const newStock = product.currentStock + Number(item.quantity);
+        const stockBefore = Number(product.currentStock);
+        const newStock = stockBefore + Number(item.quantity);
         await tx.product.update({
           where: { id: item.productId },
           data: { currentStock: newStock },
@@ -496,7 +501,7 @@ export class SalesService {
             productId: item.productId,
             type: 'RETURN_IN',
             quantity: Number(item.quantity),
-            quantityBefore: product.currentStock,
+            quantityBefore: stockBefore,
             quantityAfter: newStock,
             unitCost: product.costPrice,
             referenceType: 'SALE_VOID',
@@ -584,6 +589,7 @@ export class SalesService {
         const product = await tx.product.findUnique({ where: { id: retItem.productId } });
         if (!product) continue;
 
+        const stockBefore = Number(product.currentStock);
         await tx.product.update({
           where: { id: retItem.productId },
           data: { currentStock: { increment: retItem.quantity } },
@@ -594,8 +600,8 @@ export class SalesService {
             productId: retItem.productId,
             type: 'RETURN_IN',
             quantity: retItem.quantity,
-            quantityBefore: product.currentStock,
-            quantityAfter: product.currentStock + retItem.quantity,
+            quantityBefore: stockBefore,
+            quantityAfter: stockBefore + Number(retItem.quantity),
             unitCost: product.costPrice,
             referenceType: 'RETURN',
             referenceId: ret.id,

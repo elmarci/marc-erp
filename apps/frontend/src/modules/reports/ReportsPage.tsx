@@ -4,7 +4,7 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { TrendingUp, Package, Trophy, Wallet } from 'lucide-react';
+import { TrendingUp, Package, Trophy, Wallet, DollarSign } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,12 @@ interface InventoryReport {
 interface TopProduct {
   product_id: string; name: string; barcode: string | null;
   category: string; quantity: number; revenue: number; transactions: number;
+}
+
+interface MarginReport {
+  summary: { revenue: number; cost: number; margin: number; marginPercent: number; itemsWithoutCost: number };
+  chart: Array<{ period: string; revenue: number; cost: number; margin: number }>;
+  byProduct: Array<{ productId: string; name: string; quantity: number; revenue: number; cost: number; margin: number; marginPercent: number }>;
 }
 
 /* ─── Date preset helpers ────────────────────────────────────────────────── */
@@ -428,6 +434,135 @@ function TopProductsTab() {
   );
 }
 
+/* ─── Margin / Utilidad Tab ──────────────────────────────────────────────── */
+function MarginTab() {
+  const [preset, setPreset] = useState(1);
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [groupBy, setGroupBy] = useState<'day' | 'week' | 'month'>('day');
+
+  const dateRange = customFrom && customTo
+    ? { from: customFrom, to: customTo }
+    : getDateRange(PRESETS[preset].days);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['report-margin', dateRange, groupBy],
+    queryFn: async () => (await api.get<{ data: MarginReport }>(
+      `/reports/margin?from=${dateRange.from}&to=${dateRange.to}&groupBy=${groupBy}`
+    )).data.data,
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 rounded-lg border p-1">
+          {PRESETS.map((p, i) => (
+            <button key={p.label} onClick={() => { setPreset(i); setCustomFrom(''); setCustomTo(''); }}
+              className={cn('px-3 py-1.5 text-sm rounded-md transition-colors',
+                preset === i && !customFrom ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+          <span className="text-muted-foreground">—</span>
+          <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        </div>
+        <div className="flex gap-1 rounded-lg border p-1 ml-auto">
+          {(['day', 'week', 'month'] as const).map(g => (
+            <button key={g} onClick={() => setGroupBy(g)}
+              className={cn('px-3 py-1.5 text-xs rounded-md transition-colors',
+                groupBy === g ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+              {g === 'day' ? 'Día' : g === 'week' ? 'Semana' : 'Mes'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="py-16 text-center text-muted-foreground">Cargando datos...</div>
+      ) : data ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-4">
+            {[
+              { label: 'Ingresos', value: formatCurrency(data.summary.revenue), sub: 'en el período', color: 'text-foreground' },
+              { label: 'Costo', value: formatCurrency(data.summary.cost), sub: 'costo promedio de lo vendido', color: 'text-muted-foreground' },
+              { label: 'Utilidad', value: formatCurrency(data.summary.margin), sub: `${data.summary.marginPercent.toFixed(1)}% de margen`, color: data.summary.margin >= 0 ? 'text-success' : 'text-destructive' },
+              { label: 'Sin costo registrado', value: String(data.summary.itemsWithoutCost), sub: 'ítems de ventas anteriores a este cálculo', color: 'text-amber-500' },
+            ].map(kpi => (
+              <Card key={kpi.label}>
+                <CardContent className="p-5">
+                  <p className="text-sm text-muted-foreground">{kpi.label}</p>
+                  <p className={cn('text-2xl font-bold mt-1', kpi.color)}>{kpi.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{kpi.sub}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {data.chart.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Utilidad por período</CardTitle></CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={data.chart}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+                    <YAxis tickFormatter={(v: number) => `S/ ${v.toFixed(0)}`} tick={{ fontSize: 12 }} width={80} />
+                    <Tooltip formatter={(v: number, name: string) => [formatCurrency(v), name === 'revenue' ? 'Ingresos' : name === 'cost' ? 'Costo' : 'Utilidad']} />
+                    <Legend formatter={(v: string) => v === 'revenue' ? 'Ingresos' : v === 'cost' ? 'Costo' : 'Utilidad'} />
+                    <Bar dataKey="revenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="cost" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="margin" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">Utilidad por producto</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="px-4 py-2 text-left font-medium">Producto</th>
+                      <th className="px-4 py-2 text-right font-medium">Cant.</th>
+                      <th className="px-4 py-2 text-right font-medium">Ingresos</th>
+                      <th className="px-4 py-2 text-right font-medium">Costo</th>
+                      <th className="px-4 py-2 text-right font-medium">Utilidad</th>
+                      <th className="px-4 py-2 text-right font-medium">Margen %</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {data.byProduct.map(p => (
+                      <tr key={p.productId} className="hover:bg-muted/30">
+                        <td className="px-4 py-2 font-medium">{p.name}</td>
+                        <td className="px-4 py-2 text-right">{p.quantity.toFixed(0)}</td>
+                        <td className="px-4 py-2 text-right">{formatCurrency(p.revenue)}</td>
+                        <td className="px-4 py-2 text-right text-muted-foreground">{formatCurrency(p.cost)}</td>
+                        <td className={cn('px-4 py-2 text-right font-semibold', p.margin >= 0 ? 'text-success' : 'text-destructive')}>{formatCurrency(p.margin)}</td>
+                        <td className="px-4 py-2 text-right text-muted-foreground">{p.marginPercent.toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                    {data.byProduct.length === 0 && (
+                      <tr><td colSpan={6} className="py-12 text-center text-muted-foreground">Sin datos en este período</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 /* ─── Accounts Receivable Tab ─────────────────────────────────────────────── */
 interface Receivable {
   customerId: string; customerName: string; phone: string | null; balance: number;
@@ -507,7 +642,7 @@ function AccountsReceivableTab() {
 
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function ReportsPage() {
-  const [tab, setTab] = useState<'sales' | 'inventory' | 'products' | 'receivable'>('sales');
+  const [tab, setTab] = useState<'sales' | 'margin' | 'inventory' | 'products' | 'receivable'>('sales');
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -516,15 +651,16 @@ export function ReportsPage() {
         <p className="text-sm text-muted-foreground">Análisis de ventas, inventario y productos</p>
       </div>
 
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b overflow-x-auto">
         {([
           ['sales', TrendingUp, 'Ventas'],
+          ['margin', DollarSign, 'Margen'],
           ['inventory', Package, 'Inventario'],
           ['products', Trophy, 'Top Productos'],
           ['receivable', Wallet, 'Cuentas por Cobrar'],
         ] as const).map(([key, Icon, label]) => (
           <button key={key} onClick={() => setTab(key)}
-            className={cn('flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px',
+            className={cn('flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
               tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
             <Icon className="h-4 w-4" />{label}
           </button>
@@ -532,6 +668,7 @@ export function ReportsPage() {
       </div>
 
       {tab === 'sales' && <SalesTab />}
+      {tab === 'margin' && <MarginTab />}
       {tab === 'inventory' && <InventoryTab />}
       {tab === 'products' && <TopProductsTab />}
       {tab === 'receivable' && <AccountsReceivableTab />}

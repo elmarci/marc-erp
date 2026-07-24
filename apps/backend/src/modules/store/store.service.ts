@@ -281,7 +281,8 @@ export class StoreService {
       for (const item of order.items) {
         const product = productMap.get(item.productId);
         if (!product) continue;
-        const newStock = product.currentStock - Number(item.quantity);
+        const stockBefore = Number(product.currentStock);
+        const newStock = stockBefore - Number(item.quantity);
 
         await tx.product.update({
           where: { id: item.productId },
@@ -293,7 +294,7 @@ export class StoreService {
             productId: item.productId,
             type: 'SALE_OUT',
             quantity: Number(item.quantity),
-            quantityBefore: product.currentStock,
+            quantityBefore: stockBefore,
             quantityAfter: Math.max(0, newStock),
             unitCost: product.costPrice,
             referenceType: 'STORE_ORDER',

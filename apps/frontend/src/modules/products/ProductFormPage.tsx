@@ -70,14 +70,29 @@ export function ProductFormPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  // Cargar valores del producto incluyendo isBulk/bulkUnit
+  // Solo se cargan los campos que este formulario realmente gestiona — antes
+  // se copiaba el producto completo tal cual venía de la API, así que campos
+  // que no están en este form (sku, brandId, supplierId, taxRateId...)
+  // viajaban de vuelta como `null` en el guardado y el backend los rechazaba
+  // (por eso a veces "no dejaba editar" salvo que algún otro campo, como la
+  // imagen, tapara el error).
   useEffect(() => {
     if (product) {
       const p = product as unknown as Record<string, unknown>;
       reset({
-        ...(product as unknown as FormData),
+        name: (p['name'] as string) ?? '',
+        barcode: (p['barcode'] as string) ?? '',
+        internalCode: (p['internalCode'] as string) ?? '',
+        categoryId: (p['categoryId'] as string) ?? '',
+        unitOfMeasure: (p['unitOfMeasure'] as string) ?? 'UNIT',
+        costPrice: Number(p['costPrice'] ?? 0),
+        salePrice: Number(p['salePrice'] ?? 0),
+        minStock: Number(p['minStock'] ?? 0),
+        currentStock: Number(p['currentStock'] ?? 0),
+        description: (p['description'] as string) ?? '',
         isBulk: Boolean(p['isBulk']),
         bulkUnit: (p['bulkUnit'] as string) ?? '',
+        imageUrl: (p['imageUrl'] as string) ?? '',
       });
     }
   }, [product, reset]);

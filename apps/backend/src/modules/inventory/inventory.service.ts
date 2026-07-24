@@ -221,7 +221,8 @@ export class InventoryService {
     const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');
 
-    const diff = newQuantity - product.currentStock;
+    const currentStock = Number(product.currentStock);
+    const diff = newQuantity - currentStock;
 
     return prisma.$transaction(async (tx) => {
       const adjustment = await tx.inventoryAdjustment.create({
@@ -230,7 +231,7 @@ export class InventoryService {
           items: {
             create: [{
               productId,
-              systemQuantity: product.currentStock,
+              systemQuantity: currentStock,
               physicalQuantity: newQuantity,
               difference: diff,
               unitCost: product.costPrice,
@@ -247,7 +248,7 @@ export class InventoryService {
             productId,
             type: diff > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
             quantity: Math.abs(diff),
-            quantityBefore: product.currentStock,
+            quantityBefore: currentStock,
             quantityAfter: newQuantity,
             unitCost: product.costPrice,
             referenceType: 'ADJUSTMENT',
@@ -257,7 +258,7 @@ export class InventoryService {
         });
       }
 
-      return { productId, before: product.currentStock, after: newQuantity, diff };
+      return { productId, before: currentStock, after: newQuantity, diff };
     });
   }
 
@@ -278,9 +279,9 @@ export class InventoryService {
               const product = productMap.get(item.productId)!;
               return {
                 productId: item.productId,
-                systemQuantity: product.currentStock,
+                systemQuantity: Number(product.currentStock),
                 physicalQuantity: item.physicalQuantity,
-                difference: item.physicalQuantity - product.currentStock,
+                difference: item.physicalQuantity - Number(product.currentStock),
                 unitCost: product.costPrice,
               };
             }),
@@ -291,7 +292,7 @@ export class InventoryService {
 
       for (const item of items) {
         const product = productMap.get(item.productId)!;
-        const diff = item.physicalQuantity - product.currentStock;
+        const diff = item.physicalQuantity - Number(product.currentStock);
         if (diff === 0) continue;
         await tx.product.update({ where: { id: item.productId }, data: { currentStock: item.physicalQuantity } });
         await tx.inventoryMovement.create({
@@ -299,7 +300,7 @@ export class InventoryService {
             productId: item.productId,
             type: diff > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
             quantity: Math.abs(diff),
-            quantityBefore: product.currentStock,
+            quantityBefore: Number(product.currentStock),
             quantityAfter: item.physicalQuantity,
             unitCost: product.costPrice,
             referenceType: 'ADJUSTMENT',

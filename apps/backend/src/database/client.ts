@@ -1,5 +1,14 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { logger } from '../config/logger';
+
+// Los campos Decimal (costos, stock a granel, cantidades, etc.) se
+// serializan como texto por defecto en JSON.stringify — Prisma lo hace así
+// para no perder precisión, pero para el resto del backend y el frontend es
+// mucho más simple si viajan como number en las respuestas de la API. Se
+// sobreescribe una sola vez acá, antes de que corra cualquier query.
+(Prisma.Decimal.prototype as unknown as { toJSON(): number }).toJSON = function (this: InstanceType<typeof Prisma.Decimal>) {
+  return this.toNumber();
+};
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;

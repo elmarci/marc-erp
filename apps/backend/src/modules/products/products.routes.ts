@@ -28,26 +28,26 @@ const upload = multer({
 
 const createSchema = z.object({
   name: z.string().min(1).max(200),
-  description: z.string().optional(),
-  barcode: z.string().max(50).optional(),
-  internalCode: z.string().max(50).optional(),
-  sku: z.string().max(50).optional(),
+  description: z.string().optional().nullable(),
+  barcode: z.string().max(50).optional().nullable(),
+  internalCode: z.string().max(50).optional().nullable(),
+  sku: z.string().max(50).optional().nullable(),
   categoryId: z.string().uuid(),
-  brandId: z.string().uuid().optional(),
-  supplierId: z.string().uuid().optional(),
-  taxRateId: z.string().uuid().optional(),
+  brandId: z.string().uuid().optional().nullable(),
+  supplierId: z.string().uuid().optional().nullable(),
+  taxRateId: z.string().uuid().optional().nullable(),
   unitOfMeasure: z.nativeEnum(UnitOfMeasure),
   costPrice: z.number().min(0),
   salePrice: z.number().min(0),
-  wholesalePrice: z.number().min(0).optional(),
+  wholesalePrice: z.number().min(0).optional().nullable(),
   minStock: z.number().int().min(0).default(0),
-  maxStock: z.number().int().min(0).optional(),
+  maxStock: z.number().int().min(0).optional().nullable(),
   currentStock: z.number().int().min(0).default(0),
   trackExpiry: z.boolean().default(false),
   trackBatch: z.boolean().default(false),
   isBulk: z.boolean().default(false),
-  bulkUnit: z.string().optional(),
-  imageUrl: z.union([z.string().url(), z.literal('')]).optional(),
+  bulkUnit: z.string().optional().nullable(),
+  imageUrl: z.union([z.string().url(), z.literal('')]).optional().nullable(),
 });
 
 const searchSchema = z.object({
@@ -135,6 +135,13 @@ router.delete('/:id', authorizeMinRole('ADMIN'), async (req: Request, res: Respo
   try {
     const result = await productsService.softDelete(req.params.id);
     res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.get('/:id/cost-history', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const history = await productsService.getCostHistory(req.params.id);
+    res.json({ success: true, data: history });
   } catch (err) { next(err); }
 });
 
