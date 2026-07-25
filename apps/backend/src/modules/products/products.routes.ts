@@ -72,7 +72,11 @@ router.post('/upload-image', authorizeMinRole('WAREHOUSE'), upload.single('image
 
     const filename = `${uuidv4()}.jpg`;
     await sharp(req.file.buffer)
-      .resize(600, 600, { fit: 'inside', withoutEnlargement: true })
+      // Recorte a cuadrado exacto en vez de solo "achicar" — así todas las
+      // fotos de producto salen del mismo tamaño sin importar la proporción
+      // original. 'attention' recorta priorizando la zona con más detalle de
+      // la imagen en vez de recortar a ciegas desde el centro.
+      .resize(600, 600, { fit: 'cover', position: 'attention' })
       .jpeg({ quality: 82 })
       .toFile(path.join(PRODUCT_IMAGE_DIR, filename));
 
