@@ -254,6 +254,10 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
 export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelProps) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // Los productos a granel no tienen código de barras — el cajero no puede
+  // simplemente escanearlos, así que este atajo les da acceso rápido sin
+  // tener que buscarlos por nombre uno por uno (menestras, pan, fruta, etc.).
+  const [bulkOnly, setBulkOnly] = useState(false);
   const [bulkProduct, setBulkProduct] = useState<Product | null>(null);
   const [showOffers, setShowOffers] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -290,7 +294,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
     staleTime: 30000,
   });
 
-  const products = productsData ?? [];
+  const products = bulkOnly ? (productsData ?? []).filter((p) => p.isBulk) : (productsData ?? []);
 
   const handleAddProduct = (product: Product, forceQty?: number) => {
     if (product.currentStock <= 0) {
@@ -453,6 +457,15 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
             onClick={() => setSelectedCategory(null)}
           >
             Todos
+          </Button>
+          <Button
+            variant={bulkOnly ? 'default' : 'outline'}
+            size="sm"
+            className={cn('shrink-0 h-7 text-xs gap-1', bulkOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
+            onClick={() => setBulkOnly((v) => !v)}
+            title="Productos a granel — sin código de barras, acceso rápido"
+          >
+            <Scale className="h-3 w-3" />A granel
           </Button>
           {categories.map((cat) => (
             <Button
