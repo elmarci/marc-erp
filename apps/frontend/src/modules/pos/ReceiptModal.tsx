@@ -74,6 +74,9 @@ function useBusinessSettings() {
     footer: get('receipt_footer', '¡Gracias por su compra!'),
     storeUrl: get('store_url'),
     printerWidthMm: Number(get('printer_width', '80')) || 80,
+    showPoints: get('receipt_show_points', 'true') !== 'false',
+    showCoupon: get('receipt_show_coupon', 'true') !== 'false',
+    showQr: get('receipt_show_qr', 'true') !== 'false',
   };
 }
 
@@ -295,13 +298,13 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
             <p className="center" style={{ textAlign: 'center' }}>{s.footer}</p>
 
-            {Number(data.pointsEarned) > 0 && (
+            {s.showPoints && Number(data.pointsEarned) > 0 && (
               <p className="center bold" style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '11px', marginTop: '2px' }}>
                 ⭐ Ganaste {data.pointsEarned} puntos de fidelización
               </p>
             )}
 
-            {data.generatedCoupon && (
+            {s.showCoupon && data.generatedCoupon && (
               <>
                 <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
                 <div className="center" style={{ textAlign: 'center', border: '2px dashed #000', padding: '4px', marginTop: '2px' }}>
@@ -315,7 +318,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
               </>
             )}
 
-            {qrDataUrl && (
+            {s.showQr && qrDataUrl && (
               <>
                 <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
                 <div className="center" style={{ textAlign: 'center', marginTop: '4px' }}>

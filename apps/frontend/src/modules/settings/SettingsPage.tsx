@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage, API_ORIGIN } from '@/services/api';
 import { useRef, useState } from 'react';
 
-interface Setting { key: string; value: string; label: string; group: string }
+interface Setting { key: string; value: string; label: string; group: string; type: string }
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -47,6 +47,7 @@ export function SettingsPage() {
   const businessSettings = settings?.filter((s) => s.group === 'business' && s.key !== 'business_logo_url' && s.key !== 'business_logo_print_url') ?? [];
   const couponSettings = settings?.filter((s) => s.group === 'coupons') ?? [];
   const loyaltySettings = settings?.filter((s) => s.group === 'loyalty') ?? [];
+  const receiptSettings = settings?.filter((s) => s.group === 'receipts') ?? [];
   const logoUrl = settings?.find((s) => s.key === 'business_logo_url')?.value;
   const logoSrc = logoUrl ? (logoUrl.startsWith('http') ? logoUrl : `${API_ORIGIN}${logoUrl}`) : null;
 
@@ -166,6 +167,46 @@ export function SettingsPage() {
               />
             </div>
           ))}
+          <div className="flex justify-end pt-2">
+            <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
+              disabled={Object.keys(values).length === 0}>
+              <Save className="mr-2 h-4 w-4" />Guardar Cambios
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ticket de Venta</CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Qué información se imprime en el ticket que recibe el cliente.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoading ? (
+            <div className="text-center text-muted-foreground py-4">Cargando...</div>
+          ) : receiptSettings.map((s) =>
+            s.type === 'boolean' ? (
+              <label key={s.key} className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-input"
+                  defaultChecked={s.value === 'true'}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.checked ? 'true' : 'false' }))}
+                />
+                <span className="text-sm font-medium">{s.label}</span>
+              </label>
+            ) : (
+              <div key={s.key}>
+                <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
+                <Input
+                  defaultValue={s.value}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
+                />
+              </div>
+            ),
+          )}
           <div className="flex justify-end pt-2">
             <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
               disabled={Object.keys(values).length === 0}>
