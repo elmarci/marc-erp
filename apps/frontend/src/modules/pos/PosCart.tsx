@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { usePosStore } from '@/stores/posStore';
 import { formatCurrency, cn } from '@/lib/utils';
 import { api } from '@/services/api';
+import { toast } from 'sonner';
 
 interface Customer { id: string; firstName: string; lastName: string | null; phone: string | null; taxId: string | null }
 interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
@@ -174,8 +175,13 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
 
   const handleQuantityChange = (productId: string, value: string) => {
-    const qty = parseInt(value);
-    if (!isNaN(qty) && qty >= 0) updateQuantity(productId, qty);
+    const qty = parseFloat(value);
+    if (isNaN(qty) || qty < 0) return;
+    const result = updateQuantity(productId, qty);
+    if (result.capped) {
+      const item = items.find((i) => i.productId === productId);
+      toast.error(`"${item?.name ?? 'Producto'}" — stock disponible: ${result.finalQuantity}.`);
+    }
   };
 
   return (

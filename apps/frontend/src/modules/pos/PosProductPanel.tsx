@@ -136,7 +136,7 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
         ? Number(offer.value)
         : Math.round(originalPrice * paidUnits * 100) / 100; // 2×5.20 = 10.40 exacto
       const packLabel = `${offer.storeBadge ?? offer.name} — pack de ${totalUnits}`;
-      addItem({
+      const packResult = addItem({
         productId: product.id,
         name: `${product.name} (${packLabel})`,
         barcode: product.barcode,
@@ -147,13 +147,17 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
         discountPercent: 0,
         stock: product.currentStock,
       });
+      if (packResult.addedQuantity <= 0) {
+        toast.error(`No hay stock suficiente de "${product.name}" para esta oferta.`);
+        return;
+      }
       toast.success(`${packLabel} agregado — ${formatCurrency(packPrice)}`);
       return;
     }
 
     // Descuento simple (% o monto fijo): unitPrice = original, discountAmount = descuento
     const discountPerUnit = Math.round((originalPrice - finalPrice) * 100) / 100;
-    addItem({
+    const discountResult = addItem({
       productId: product.id,
       name: `${product.name} (${label})`,
       barcode: product.barcode,
@@ -164,6 +168,10 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
       discountPercent: 0,
       stock: product.currentStock,
     });
+    if (discountResult.addedQuantity <= 0) {
+      toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito (${product.currentStock}).`);
+      return;
+    }
     toast.success(`${product.name} con oferta — ${formatCurrency(finalPrice)}`);
   };
 
@@ -250,6 +258,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
   const [showOffers, setShowOffers] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const addItem = usePosStore((s) => s.addItem);
+  const renameItem = usePosStore((s) => s.renameItem);
 
   const { data: categories } = useQuery({
     queryKey: ['pos-categories'],
@@ -294,9 +303,10 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       return;
     }
     const qty = forceQty ?? 1;
-    addItem({
+    const unit = product.isBulk ? (product.bulkUnit ?? 'u') : 'unidades';
+    const result = addItem({
       productId: product.id,
-      name: product.isBulk ? `${product.name} (${qty} ${product.bulkUnit ?? 'u'})` : product.name,
+      name: product.isBulk ? `${product.name} (${qty} ${unit})` : product.name,
       barcode: product.barcode,
       quantity: qty,
       unitPrice: Number(product.salePrice),
@@ -305,6 +315,20 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       discountPercent: 0,
       stock: product.currentStock,
     });
+    // El nombre mostrado en el carrito incluye el peso para productos a
+    // granel — si la cantidad terminó topada por el stock (o ya había algo
+    // de este producto en el carrito), hay que corregirlo para que no quede
+    // desfasado de la cantidad real cobrada.
+    if (product.isBulk && result.finalQuantity !== qty) {
+      renameItem(product.id, `${product.name} (${result.finalQuantity} ${unit})`);
+    }
+    if (result.capped) {
+      if (result.addedQuantity <= 0) {
+        toast.error(`No hay más stock de "${product.name}" disponible (máximo ${product.currentStock} ${unit}).`);
+      } else {
+        toast.warning(`Solo se agregaron ${result.finalQuantity} ${unit} de "${product.name}" — stock disponible: ${product.currentStock} ${unit}.`);
+      }
+    }
   };
 
   // Comandos de voz: "agregar dos gaseosas" agrega al carrito, "precio del

@@ -46,8 +46,9 @@ interface PosState {
   change: number;
 
   setCashSession: (sessionId: string, registerId: string) => void;
-  addItem: (item: Omit<CartItem, 'subtotal'>) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  addItem: (item: Omit<CartItem, 'subtotal'>) => { addedQuantity: number; finalQuantity: number; capped: boolean };
+  updateQuantity: (productId: string, quantity: number) => { finalQuantity: number; capped: boolean };
+  renameItem: (productId: string, name: string) => void;
   updateDiscount: (productId: string, discountAmount: number, discountPercent: number) => void;
   removeItem: (productId: string) => void;
   setCustomer: (id: string | null, name: string | null) => void;
@@ -120,22 +121,30 @@ export const usePosStore = create<PosState>()((set, get) => ({
   addItem: (newItem) => {
     const { items, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent, pointsDiscountAmount } = get();
     const existing = items.find((i) => i.productId === newItem.productId);
+    const currentQty = existing?.quantity ?? 0;
+    // El stock que llega en newItem siempre es el más fresco (recién leído del
+    // catálogo), así que es la referencia — nunca dejar que la cantidad final
+    // lo supere, sea un ítem nuevo o uno que ya estaba en el carrito.
+    const finalQty = Math.min(currentQty + newItem.quantity, newItem.stock);
+
+    if (finalQty <= currentQty) {
+      return { addedQuantity: 0, finalQuantity: currentQty, capped: true };
+    }
 
     let updatedItems: CartItem[];
     if (existing) {
-      const newQty = existing.quantity + newItem.quantity;
-      if (newQty > existing.stock) return; // No exceder stock
       updatedItems = items.map((i) =>
         i.productId === newItem.productId
-          ? { ...i, quantity: newQty, subtotal: calcItemSubtotal({ ...i, quantity: newQty }) }
+          ? { ...i, quantity: finalQty, stock: newItem.stock, subtotal: calcItemSubtotal({ ...i, quantity: finalQty }) }
           : i,
       );
     } else {
-      const item: CartItem = { ...newItem, subtotal: calcItemSubtotal(newItem) };
+      const item: CartItem = { ...newItem, quantity: finalQty, subtotal: calcItemSubtotal({ ...newItem, quantity: finalQty }) };
       updatedItems = [...items, item];
     }
 
     set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent, pointsDiscountAmount) });
+    return { addedQuantity: finalQty - currentQty, finalQuantity: finalQty, capped: finalQty < currentQty + newItem.quantity };
   },
 
   updateQuantity: (productId, quantity) => {
@@ -143,14 +152,22 @@ export const usePosStore = create<PosState>()((set, get) => ({
     if (quantity <= 0) {
       const updatedItems = items.filter((i) => i.productId !== productId);
       set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent, pointsDiscountAmount) });
-      return;
+      return { finalQuantity: 0, capped: false };
     }
+    const item = items.find((i) => i.productId === productId);
+    const finalQty = item ? Math.min(quantity, item.stock) : quantity;
     const updatedItems = items.map((i) =>
       i.productId === productId
-        ? { ...i, quantity, subtotal: calcItemSubtotal({ ...i, quantity }) }
+        ? { ...i, quantity: finalQty, subtotal: calcItemSubtotal({ ...i, quantity: finalQty }) }
         : i,
     );
     set({ items: updatedItems, ...recalcTotals(updatedItems, globalDiscountAmount, globalDiscountPercent, payments, couponDiscountPercent, pointsDiscountAmount) });
+    return { finalQuantity: finalQty, capped: finalQty < quantity };
+  },
+
+  renameItem: (productId, name) => {
+    const { items } = get();
+    set({ items: items.map((i) => (i.productId === productId ? { ...i, name } : i)) });
   },
 
   updateDiscount: (productId, discountAmount, discountPercent) => {

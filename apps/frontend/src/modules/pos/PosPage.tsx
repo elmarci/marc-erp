@@ -107,7 +107,7 @@ export function PosPage() {
       toast.error(`"${product.name}" sin stock disponible.`);
       return;
     }
-    usePosStore.getState().addItem({
+    const result = usePosStore.getState().addItem({
       productId: product.id,
       name: product.name,
       barcode: product.barcode,
@@ -118,6 +118,10 @@ export function PosPage() {
       discountPercent: 0,
       stock: product.currentStock,
     });
+    if (result.addedQuantity <= 0) {
+      toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito (${product.currentStock}).`);
+      return;
+    }
     toast.success(`${product.name} agregado${offline ? ' (sin conexión)' : ''}`, { duration: 1500 });
   };
 
