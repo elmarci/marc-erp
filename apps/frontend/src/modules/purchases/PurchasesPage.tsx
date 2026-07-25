@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
-import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
+import { formatCurrency, formatCost, formatDateTime, cn } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -222,7 +222,7 @@ function SupplierCatalogModal({ supplier, onClose }: { supplier: Supplier; onClo
                   <button key={p.id} disabled={existingIds.has(p.id)} onClick={() => { setDraft({ productId: p.id, name: p.name, price: String(p.costPrice) }); setSearch(''); }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between disabled:opacity-40 disabled:cursor-not-allowed">
                     <span>{p.name}</span>
-                    <span className="text-muted-foreground">{existingIds.has(p.id) ? 'Ya en catálogo' : `S/ ${Number(p.costPrice).toFixed(2)}`}</span>
+                    <span className="text-muted-foreground">{existingIds.has(p.id) ? 'Ya en catálogo' : formatCost(p.costPrice)}</span>
                   </button>
                 ))}
               </div>
@@ -231,7 +231,7 @@ function SupplierCatalogModal({ supplier, onClose }: { supplier: Supplier; onClo
               <div className="mt-2 flex items-center gap-2 rounded-lg border p-3">
                 <span className="flex-1 text-sm font-medium truncate">{draft.name}</span>
                 <span className="text-sm text-muted-foreground">S/</span>
-                <Input type="number" min={0} step={0.01} value={draft.price} autoFocus
+                <Input type="number" min={0} step={0.0001} value={draft.price} autoFocus
                   onChange={e => setDraft(d => d && { ...d, price: e.target.value })} className="h-8 w-24 text-right" />
                 <Button size="sm" loading={addMutation.isPending} disabled={!draft.price}
                   onClick={() => addMutation.mutate({ productId: draft.productId, price: Number(draft.price) })}>
@@ -267,7 +267,7 @@ function SupplierCatalogModal({ supplier, onClose }: { supplier: Supplier; onClo
                       {item.product.barcode && <p className="text-xs text-muted-foreground font-mono">{item.product.barcode}</p>}
                     </td>
                     <td className="py-2 px-2">
-                      <Input type="number" min={0} step={0.01} defaultValue={item.price}
+                      <Input type="number" min={0} step={0.0001} defaultValue={item.price}
                         onBlur={e => {
                           const price = Number(e.target.value);
                           if (price !== item.price) updateMutation.mutate({ productId: item.productId, price, isPreferred: item.isPreferred });
@@ -312,7 +312,7 @@ function printPurchaseReceipt(order: OrderDetail) {
     <tr>
       <td style="padding:4px 0">${i.product.name}${i.isBonus ? ' <b>(bonif.)</b>' : ''}</td>
       <td style="padding:4px 0;text-align:center">${Number(i.orderedQty).toLocaleString('es-PE', { maximumFractionDigits: 3 })}</td>
-      <td style="padding:4px 0;text-align:right">${i.isBonus ? 'GRATIS' : `S/ ${Number(i.unitCost).toFixed(2)}`}</td>
+      <td style="padding:4px 0;text-align:right">${i.isBonus ? 'GRATIS' : formatCost(i.unitCost)}</td>
       <td style="padding:4px 0;text-align:right">S/ ${Number(i.subtotal).toFixed(2)}</td>
     </tr>`).join('');
   win.document.write(`<html><head><title>Compra ${order.orderNumber}</title>
@@ -492,7 +492,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                   <button key={p.id} onClick={() => addLine(p, Number(p.costPrice))}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
                     <span>{p.name}{p.isBulk && <span className="ml-1.5 text-xs text-muted-foreground">(granel · {p.bulkUnit})</span>}</span>
-                    <span className="text-muted-foreground">Stock: {p.currentStock} · S/ {Number(p.costPrice).toFixed(2)}</span>
+                    <span className="text-muted-foreground">Stock: {p.currentStock} · {formatCost(p.costPrice)}</span>
                   </button>
                 ))}
               </div>
@@ -558,7 +558,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">Costo unit.</label>
-                        <Input type="number" min={0} step={0.01} value={l.isBonus ? '0' : l.unitCost} disabled={l.isBonus}
+                        <Input type="number" min={0} step={0.0001} value={l.isBonus ? '0' : l.unitCost} disabled={l.isBonus}
                           onChange={e => updateLine(idx, { unitCost: e.target.value })} className="h-8" />
                       </div>
                       <div className="text-sm text-right font-medium pb-1.5">
@@ -724,7 +724,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                   <button key={p.id} onClick={() => addProduct(p)}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
                     <span>{p.name}</span>
-                    <span className="text-muted-foreground">Stock: {p.currentStock} · S/ {Number(p.costPrice).toFixed(2)}</span>
+                    <span className="text-muted-foreground">Stock: {p.currentStock} · {formatCost(p.costPrice)}</span>
                   </button>
                 ))}
               </div>
@@ -753,7 +753,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                         className="h-8 text-center" />
                     </td>
                     <td className="py-2 px-2">
-                      <Input type="number" min={0} step={0.01} value={item.unitCost}
+                      <Input type="number" min={0} step={0.0001} value={item.unitCost}
                         onChange={e => updateItem(idx, 'unitCost', Number(e.target.value))}
                         className="h-8 text-right" />
                     </td>
@@ -926,7 +926,7 @@ function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void; onCrea
                           className="h-8 text-center" />
                       </td>
                       <td className="py-2 px-2">
-                        <Input type="number" min={0} step={0.01} value={item.unitCost}
+                        <Input type="number" min={0} step={0.0001} value={item.unitCost}
                           onChange={e => updateItem(idx, 'unitCost', Number(e.target.value))}
                           className="h-8 text-right" />
                       </td>
@@ -1050,7 +1050,7 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
                       className="h-8 text-center" />
                   </td>
                   <td className="py-2 px-2">
-                    <Input type="number" min={0} step={0.01} value={item.isBonus ? 0 : item.unitCost} disabled={item.isBonus}
+                    <Input type="number" min={0} step={0.0001} value={item.isBonus ? 0 : item.unitCost} disabled={item.isBonus}
                       onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, unitCost: Number(e.target.value) } : i))}
                       className="h-8 text-right" />
                   </td>
@@ -1212,7 +1212,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                       <td className={cn('py-1.5 text-center', item.receivedQty >= item.orderedQty ? 'text-success' : item.receivedQty > 0 ? 'text-amber-500' : '')}>
                         {item.receivedQty}
                       </td>
-                      <td className="py-1.5 text-right">{item.isBonus ? 'GRATIS' : formatCurrency(item.unitCost)}</td>
+                      <td className="py-1.5 text-right">{item.isBonus ? 'GRATIS' : formatCost(item.unitCost)}</td>
                       <td className="py-1.5 text-right font-medium">{formatCurrency(item.subtotal)}</td>
                     </tr>
                   ))}

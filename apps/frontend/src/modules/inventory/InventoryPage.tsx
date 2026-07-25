@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
-import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
+import { formatCurrency, formatCost, formatDateTime, cn } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -167,9 +167,9 @@ function CostHistoryModal({ product, onClose }: { product: StockProduct; onClose
                     <td className={cn('py-2 text-center', h.quantity < 0 ? 'text-destructive' : 'text-success')}>
                       {h.quantity > 0 ? '+' : ''}{h.quantity}
                     </td>
-                    <td className="py-2 text-right">{h.unitCost != null ? formatCurrency(h.unitCost) : '—'}</td>
-                    <td className="py-2 text-right text-muted-foreground">{h.avgCostBefore != null ? formatCurrency(h.avgCostBefore) : '—'}</td>
-                    <td className="py-2 text-right font-semibold">{h.avgCostAfter != null ? formatCurrency(h.avgCostAfter) : '—'}</td>
+                    <td className="py-2 text-right">{h.unitCost != null ? formatCost(h.unitCost) : '—'}</td>
+                    <td className="py-2 text-right text-muted-foreground">{h.avgCostBefore != null ? formatCost(h.avgCostBefore) : '—'}</td>
+                    <td className="py-2 text-right font-semibold">{h.avgCostAfter != null ? formatCost(h.avgCostAfter) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -610,7 +610,7 @@ function StockTab() {
                     <td className="px-4 py-3 text-center">
                       <Badge variant={STATUS_VARIANT[p.stockStatus]}>{STATUS_LABEL[p.stockStatus]}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(p.cost_price)}</td>
+                    <td className="px-4 py-3 text-right">{formatCost(p.cost_price)}</td>
                     <td className="px-4 py-3 text-right font-semibold">{formatCurrency(p.stockValue)}</td>
                     <td className="px-4 py-3 text-right text-xs text-muted-foreground">
                       {p.last_movement ? formatDateTime(p.last_movement) : '—'}
@@ -730,7 +730,7 @@ function MovementsTab() {
                       </td>
                       <td className="px-4 py-3 text-center text-muted-foreground">{m.quantityBefore}</td>
                       <td className="px-4 py-3 text-center font-semibold">{m.quantityAfter}</td>
-                      <td className="px-4 py-3 text-right">{m.unitCost ? formatCurrency(m.unitCost) : '—'}</td>
+                      <td className="px-4 py-3 text-right">{m.unitCost ? formatCost(m.unitCost) : '—'}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{m.notes ?? m.referenceType ?? '—'}</td>
                     </tr>
                   );

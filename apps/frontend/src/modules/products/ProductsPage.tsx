@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, formatCost, cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 
 interface Product {
@@ -173,7 +173,7 @@ export function ProductsPage() {
                         </div>
                       </td>
                       <td data-label="Categoría" className="px-4 py-3 text-muted-foreground col-md">{product.category.name}</td>
-                      <td data-label="Costo" className="px-4 py-3 text-right col-lg">{formatCurrency(product.costPrice)}</td>
+                      <td data-label="Costo" className="px-4 py-3 text-right col-lg">{formatCost(product.costPrice)}</td>
                       <td data-label="Precio" className="px-4 py-3 text-right font-semibold">{formatCurrency(product.salePrice)}</td>
                       <td data-label="Stock" className="px-4 py-3 text-right">
                         <span className={cn(

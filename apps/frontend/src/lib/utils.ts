@@ -17,6 +17,24 @@ export function formatCurrency(
   return `${symbol} ${num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 }
 
+// Para el costo de un producto: a diferencia del precio de venta (siempre a
+// 2 decimales, como corresponde a soles/céntimos reales), el costo interno
+// necesita hasta 4 decimales — un costo por kilo calculado desde una compra
+// a granel (total del lote / kg) rara vez cae en un número redondo. Muestra
+// el mínimo necesario: nunca menos de 2 decimales, nunca más de 4.
+export function formatCost(
+  amount: number | string | null | undefined,
+  symbol = 'S/',
+): string {
+  if (amount === null || amount === undefined) return `${symbol} 0.00`;
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(num)) return `${symbol} 0.00`;
+  const [intPart, decPart] = num.toFixed(4).split('.');
+  let end = decPart.length;
+  while (end > 2 && decPart[end - 1] === '0') end--;
+  return `${symbol} ${intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decPart.slice(0, end)}`;
+}
+
 export function formatDate(date: string | Date | null | undefined): string {
   if (!date) return '—';
   return format(new Date(date), 'dd/MM/yyyy', { locale: es });
