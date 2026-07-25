@@ -1,5 +1,5 @@
 import { prisma } from '../../database/client';
-import { NotFoundError } from '../../utils/errors';
+import { NotFoundError, BusinessError } from '../../utils/errors';
 import { emitEvent } from '../../config/socket';
 import { redis } from '../../config/redis';
 
@@ -105,6 +105,26 @@ export class StoreService {
     for (const item of resolvedItems) {
       if (!productMap.has(item.realProductId)) {
         throw new NotFoundError(`Producto no disponible`);
+      }
+    }
+
+    // Verificar stock disponible — este endpoint es público (lo llama
+    // cualquier visitante de la tienda sin autenticarse), así que es la única
+    // línea de defensa real contra pedir más de lo que hay; el carrito del
+    // navegador es solo una ayuda visual, nunca la fuente de verdad.
+    const requestedByProduct = new Map<string, number>();
+    for (const item of resolvedItems) {
+      requestedByProduct.set(
+        item.realProductId,
+        (requestedByProduct.get(item.realProductId) ?? 0) + item.quantity,
+      );
+    }
+    for (const [productId, requestedQty] of requestedByProduct) {
+      const product = productMap.get(productId)!;
+      if (Number(product.currentStock) < requestedQty) {
+        throw new BusinessError(
+          `Stock insuficiente para "${product.name}". Disponible: ${product.currentStock}, solicitado: ${requestedQty}.`,
+        );
       }
     }
 

@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 /* ── Modal para productos a granel ─────────────────────────────────── */
 function BulkModal({ product, onClose }: { product: Product; onClose: () => void }) {
-  const { addItem, openCart } = useCartStore()
+  const { addItem, renameItem, openCart } = useCartStore()
   const [qty, setQty] = useState('')
   const unit = product.bulkUnit ?? 'kg'
   const price = Number(product.salePrice)
@@ -16,14 +16,28 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
   const handleAdd = () => {
     const q = parseFloat(qty)
     if (!q || q <= 0) { toast.error('Ingresa una cantidad válida'); return }
-    addItem({
+    const result = addItem({
       ...product,
       name: `${product.name} (${q} ${unit})`,
       salePrice: price, // price per unit
     }, q)
-    toast.success(`${product.name} (${q} ${unit}) agregado`, {
-      action: { label: 'Ver carrito', onClick: openCart }
-    })
+    if (result.addedQuantity <= 0) {
+      toast.error(`No hay más stock de "${product.name}" disponible (máximo ${product.currentStock} ${unit}).`)
+      return
+    }
+    // El nombre incluye el peso ("Azucar (1000 kg)") — si terminó topado por
+    // el stock hay que corregirlo para que coincida con lo que realmente se
+    // agregó, no con lo que se pidió antes de topar.
+    if (result.finalQuantity !== q) {
+      renameItem(product.id, `${product.name} (${result.finalQuantity} ${unit})`)
+    }
+    if (result.capped) {
+      toast.warning(`Solo se agregaron ${result.finalQuantity} ${unit} de "${product.name}" — stock disponible: ${product.currentStock} ${unit}.`)
+    } else {
+      toast.success(`${product.name} (${q} ${unit}) agregado`, {
+        action: { label: 'Ver carrito', onClick: openCart }
+      })
+    }
     onClose()
   }
 
@@ -47,8 +61,10 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
 
         <div className="p-4 space-y-4">
           <div>
-            <label className="text-sm text-white/60 mb-2 block">Cantidad ({unit})</label>
-            <input type="number" min={0.01} step={0.01} value={qty} onChange={e => setQty(e.target.value)}
+            <label className="text-sm text-white/60 mb-2 block">
+              Cantidad ({unit}) <span className="text-white/30">· disponible: {product.currentStock} {unit}</span>
+            </label>
+            <input type="number" min={0.01} max={product.currentStock} step={0.01} value={qty} onChange={e => setQty(e.target.value)}
               placeholder={`Ej: 0.5 ${unit}`} autoFocus
               className="w-full bg-white/5 border border-white/10 focus:border-green-400 rounded-xl px-4 py-3 text-lg font-bold text-white text-center placeholder-white/20 outline-none transition-colors" />
           </div>
@@ -99,7 +115,11 @@ export function ProductCard({ product }: { product: Product }) {
   const handleAdd = () => {
     if (outOfStock) return
     if (product.isBulk) { setShowBulk(true); return }
-    addItem(product)
+    const result = addItem(product)
+    if (result.addedQuantity <= 0) {
+      toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito (${product.currentStock}).`)
+      return
+    }
     toast.success(`${product.name} agregado`, {
       duration: 1500, action: { label: 'Ver carrito', onClick: openCart }
     })
@@ -161,8 +181,8 @@ export function ProductCard({ product }: { product: Product }) {
                   <Minus className="h-3 w-3" />
                 </button>
                 <span className="w-5 text-center text-sm font-bold">{qty}</span>
-                <button onClick={() => addItem(product)}
-                  className="h-7 w-7 bg-green-500 hover:bg-green-400 text-black rounded-full flex items-center justify-center transition-colors">
+                <button onClick={() => addItem(product)} disabled={qty >= product.currentStock}
+                  className="h-7 w-7 bg-green-500 hover:bg-green-400 disabled:opacity-30 disabled:hover:bg-green-500 text-black rounded-full flex items-center justify-center transition-colors">
                   <Plus className="h-3 w-3" />
                 </button>
               </div>
