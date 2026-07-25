@@ -19,8 +19,8 @@ const schema = z.object({
   unitOfMeasure: z.string().default('UNIT'),
   costPrice: z.coerce.number().min(0, 'Costo requerido'),
   salePrice: z.coerce.number().min(0, 'Precio requerido'),
-  minStock: z.coerce.number().int().min(0).default(0),
-  currentStock: z.coerce.number().int().min(0).default(0),
+  minStock: z.coerce.number().min(0).default(0),
+  currentStock: z.coerce.number().min(0).default(0),
   description: z.string().optional(),
   isBulk: z.boolean().default(false),
   bulkUnit: z.string().optional(),
@@ -199,13 +199,13 @@ export function ProductFormPage() {
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Stock Mínimo</label>
-                <Input {...register('minStock')} type="number" min="0" />
+                <Input {...register('minStock')} type="number" step={watch('isBulk') ? '0.01' : '1'} min="0" />
               </div>
             </div>
             {!isEdit && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Stock Inicial</label>
-                <Input {...register('currentStock')} type="number" min="0" />
+                <Input {...register('currentStock')} type="number" step={watch('isBulk') ? '0.01' : '1'} min="0" />
               </div>
             )}
 

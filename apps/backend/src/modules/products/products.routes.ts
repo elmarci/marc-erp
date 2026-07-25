@@ -40,9 +40,9 @@ const createSchema = z.object({
   costPrice: z.number().min(0),
   salePrice: z.number().min(0),
   wholesalePrice: z.number().min(0).optional().nullable(),
-  minStock: z.number().int().min(0).default(0),
-  maxStock: z.number().int().min(0).optional().nullable(),
-  currentStock: z.number().int().min(0).default(0),
+  minStock: z.number().min(0).default(0),
+  maxStock: z.number().min(0).optional().nullable(),
+  currentStock: z.number().min(0).default(0),
   trackExpiry: z.boolean().default(false),
   trackBatch: z.boolean().default(false),
   isBulk: z.boolean().default(false),
@@ -164,7 +164,7 @@ router.get('/:id/movements', async (req: Request, res: Response, next: NextFunct
 router.post('/:id/adjust-stock', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { physicalQuantity, reason, notes } = z.object({
-      physicalQuantity: z.number().int().min(0),
+      physicalQuantity: z.number().min(0),
       reason: z.string().min(1),
       notes: z.string().optional(),
     }).parse(req.body);

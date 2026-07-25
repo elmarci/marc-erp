@@ -45,6 +45,14 @@ export interface SearchProductsQuery {
 
 export class ProductsService {
   async create(input: CreateProductInput) {
+    // Cadena vacía no es lo mismo que null para la restricción unique de
+    // Postgres: dos productos sin código de barras con "" chocan entre sí,
+    // mientras que con NULL no (NULL nunca es igual a NULL). Normalizamos acá
+    // para que "dejar el campo en blanco" nunca produzca un falso conflicto.
+    input.barcode = input.barcode || null;
+    input.internalCode = input.internalCode || null;
+    input.sku = input.sku || null;
+
     if (input.barcode) {
       const existing = await prisma.product.findUnique({ where: { barcode: input.barcode } });
       if (existing) throw new ConflictError(`El código de barras ${input.barcode} ya está registrado.`);
@@ -78,6 +86,8 @@ export class ProductsService {
         currentStock: input.currentStock ?? 0,
         trackExpiry: input.trackExpiry ?? false,
         trackBatch: input.trackBatch ?? false,
+        isBulk: input.isBulk ?? false,
+        bulkUnit: input.bulkUnit,
         imageUrl: input.imageUrl,
       },
       include: { category: true, brand: true, supplier: true },
@@ -237,6 +247,10 @@ export class ProductsService {
   async update(id: string, input: UpdateProductInput) {
     const product = await prisma.product.findFirst({ where: { id, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');
+
+    if ('barcode' in input) input.barcode = input.barcode || null;
+    if ('internalCode' in input) input.internalCode = input.internalCode || null;
+    if ('sku' in input) input.sku = input.sku || null;
 
     if (input.barcode && input.barcode !== product.barcode) {
       const existing = await prisma.product.findFirst({
@@ -432,8 +446,8 @@ export class ProductsService {
           unitOfMeasure: (row['unidad'] as UnitOfMeasure) || 'UNIT',
           costPrice: parseFloat(row['precio_costo']) || 0,
           salePrice: parseFloat(row['precio_venta']) || 0,
-          minStock: parseInt(row['stock_minimo']) || 0,
-          currentStock: parseInt(row['stock_actual']) || 0,
+          minStock: parseFloat(row['stock_minimo']) || 0,
+          currentStock: parseFloat(row['stock_actual']) || 0,
         });
         results.created++;
       } catch (err) {
