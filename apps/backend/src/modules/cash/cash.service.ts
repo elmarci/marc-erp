@@ -1,9 +1,16 @@
 import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
 import { emitEvent } from '../../config/socket';
+import { treasuryService } from '../treasury/treasury.service';
 
 export class CashService {
-  async openSession(cashRegisterId: string, userId: string, openingAmount: number, notes?: string) {
+  async openSession(
+    cashRegisterId: string,
+    userId: string,
+    openingAmount: number,
+    notes?: string,
+    fromTreasury = false,
+  ) {
     // Verificar no haya sesión abierta en esta caja
     const existing = await prisma.cashSession.findFirst({
       where: { cashRegisterId, status: 'OPEN' },
@@ -17,21 +24,33 @@ export class CashService {
     });
     if (!cashRegister) throw new NotFoundError('Caja registradora');
 
-    const session = await prisma.cashSession.create({
-      data: { cashRegisterId, userId, openingAmount, notes },
-      include: {
-        cashRegister: true,
-        user: { select: { firstName: true, lastName: true } },
-      },
+    const session = await prisma.$transaction(async (tx) => {
+      const created = await tx.cashSession.create({
+        data: { cashRegisterId, userId, openingAmount, notes },
+        include: {
+          cashRegister: true,
+          user: { select: { firstName: true, lastName: true } },
+        },
+      });
+      // El monto inicial sale de la Caja General — mismo dinero que se
+      // depositó ahí al cerrar la sesión anterior, no efectivo "de la nada".
+      if (fromTreasury && openingAmount > 0) {
+        await treasuryService.recordMovementInTx(
+          tx, 'WITHDRAWAL', openingAmount,
+          `Apertura de caja: ${cashRegister.name}`, userId, 'CASH_SESSION_OPEN', created.id,
+        );
+      }
+      return created;
     });
     emitEvent('erp:cash-updated');
     return session;
   }
 
-  async closeSession(sessionId: string, closingAmount: number, notes?: string) {
+  async closeSession(sessionId: string, closingAmount: number, notes?: string, toTreasury = false) {
     const session = await prisma.cashSession.findFirst({
       where: { id: sessionId, status: 'OPEN' },
       include: {
+        cashRegister: true,
         sales: {
           where: { status: 'COMPLETED' },
           include: { payments: true },
@@ -61,15 +80,26 @@ export class CashService {
     const expectedAmount = Number(session.openingAmount) + cashSales + deposits - withdrawals;
     const difference = closingAmount - expectedAmount;
 
-    const closed = await prisma.cashSession.update({
-      where: { id: sessionId },
-      data: { status: 'CLOSED', closingAmount, expectedAmount, difference, closedAt: new Date(), notes },
-      include: {
-        cashRegister: true,
-        user: { select: { firstName: true, lastName: true } },
-        sales: { include: { payments: true }, orderBy: { createdAt: 'desc' } },
-        movements: true,
-      },
+    const closed = await prisma.$transaction(async (tx) => {
+      const updated = await tx.cashSession.update({
+        where: { id: sessionId },
+        data: { status: 'CLOSED', closingAmount, expectedAmount, difference, closedAt: new Date(), notes },
+        include: {
+          cashRegister: true,
+          user: { select: { firstName: true, lastName: true } },
+          sales: { include: { payments: true }, orderBy: { createdAt: 'desc' } },
+          movements: true,
+        },
+      });
+      // El efectivo contado al cerrar se deposita en la Caja General — así
+      // queda disponible para la próxima apertura o para pagar gastos.
+      if (toTreasury && closingAmount > 0) {
+        await treasuryService.recordMovementInTx(
+          tx, 'DEPOSIT', closingAmount,
+          `Cierre de caja: ${session.cashRegister.name}`, session.userId, 'CASH_SESSION_CLOSE', sessionId,
+        );
+      }
+      return updated;
     });
     emitEvent('erp:cash-updated');
     return closed;

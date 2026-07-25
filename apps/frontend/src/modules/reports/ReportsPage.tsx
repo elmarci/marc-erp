@@ -4,7 +4,7 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { TrendingUp, Package, Trophy, Wallet, DollarSign } from 'lucide-react';
+import { TrendingUp, Package, Trophy, Wallet, DollarSign, PiggyBank } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +36,16 @@ interface MarginReport {
   chart: Array<{ period: string; revenue: number; cost: number; margin: number }>;
   byProduct: Array<{ productId: string; name: string; quantity: number; revenue: number; cost: number; margin: number; marginPercent: number }>;
 }
+
+interface NetProfitReport {
+  summary: { revenue: number; cost: number; grossMargin: number; expenses: number; netProfit: number; netProfitPercent: number };
+  expensesByCategory: Array<{ category: string; total: number; count: number }>;
+}
+
+const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  PERSONNEL: 'Personal', BAGS: 'Bolsas', TRANSPORT: 'Transporte', SYSTEM: 'Sistema',
+  WATER: 'Agua', ELECTRICITY: 'Electricidad', RENT: 'Alquiler', OTHER: 'Otro',
+};
 
 /* ─── Date preset helpers ────────────────────────────────────────────────── */
 const PRESETS = [
@@ -563,6 +573,104 @@ function MarginTab() {
   );
 }
 
+/* ─── Utilidad Neta Tab ───────────────────────────────────────────────────── */
+function NetProfitTab() {
+  const [preset, setPreset] = useState(1);
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+
+  const dateRange = customFrom && customTo
+    ? { from: customFrom, to: customTo }
+    : getDateRange(PRESETS[preset].days);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['report-net-profit', dateRange],
+    queryFn: async () => (await api.get<{ data: NetProfitReport }>(
+      `/reports/net-profit?from=${dateRange.from}&to=${dateRange.to}`
+    )).data.data,
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 rounded-lg border p-1">
+          {PRESETS.map((p, i) => (
+            <button key={p.label} onClick={() => { setPreset(i); setCustomFrom(''); setCustomTo(''); }}
+              className={cn('px-3 py-1.5 text-sm rounded-md transition-colors',
+                preset === i && !customFrom ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+          <span className="text-muted-foreground">—</span>
+          <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="py-16 text-center text-muted-foreground">Cargando datos...</div>
+      ) : data ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-5">
+            {[
+              { label: 'Ingresos', value: formatCurrency(data.summary.revenue), color: 'text-foreground' },
+              { label: 'Costo de venta', value: formatCurrency(data.summary.cost), color: 'text-muted-foreground' },
+              { label: 'Margen bruto', value: formatCurrency(data.summary.grossMargin), color: 'text-foreground' },
+              { label: 'Gastos operativos', value: formatCurrency(data.summary.expenses), color: 'text-destructive' },
+              {
+                label: 'Utilidad neta', value: formatCurrency(data.summary.netProfit),
+                sub: `${data.summary.netProfitPercent.toFixed(1)}% de las ventas`,
+                color: data.summary.netProfit >= 0 ? 'text-success' : 'text-destructive',
+              },
+            ].map((kpi) => (
+              <Card key={kpi.label}>
+                <CardContent className="p-5">
+                  <p className="text-sm text-muted-foreground">{kpi.label}</p>
+                  <p className={cn('text-2xl font-bold mt-1', kpi.color)}>{kpi.value}</p>
+                  {kpi.sub && <p className="text-xs text-muted-foreground mt-0.5">{kpi.sub}</p>}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">Gastos por categoría</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="px-4 py-2 text-left font-medium">Categoría</th>
+                      <th className="px-4 py-2 text-right font-medium">N° de gastos</th>
+                      <th className="px-4 py-2 text-right font-medium">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {data.expensesByCategory.map((e) => (
+                      <tr key={e.category} className="hover:bg-muted/30">
+                        <td className="px-4 py-2 font-medium">{EXPENSE_CATEGORY_LABELS[e.category] ?? e.category}</td>
+                        <td className="px-4 py-2 text-right">{e.count}</td>
+                        <td className="px-4 py-2 text-right font-semibold text-destructive">{formatCurrency(e.total)}</td>
+                      </tr>
+                    ))}
+                    {data.expensesByCategory.length === 0 && (
+                      <tr><td colSpan={3} className="py-12 text-center text-muted-foreground">Sin gastos registrados en este período</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 /* ─── Accounts Receivable Tab ─────────────────────────────────────────────── */
 interface Receivable {
   customerId: string; customerName: string; phone: string | null; balance: number;
@@ -642,7 +750,7 @@ function AccountsReceivableTab() {
 
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function ReportsPage() {
-  const [tab, setTab] = useState<'sales' | 'margin' | 'inventory' | 'products' | 'receivable'>('sales');
+  const [tab, setTab] = useState<'sales' | 'margin' | 'netprofit' | 'inventory' | 'products' | 'receivable'>('sales');
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -655,6 +763,7 @@ export function ReportsPage() {
         {([
           ['sales', TrendingUp, 'Ventas'],
           ['margin', DollarSign, 'Margen'],
+          ['netprofit', PiggyBank, 'Utilidad Neta'],
           ['inventory', Package, 'Inventario'],
           ['products', Trophy, 'Top Productos'],
           ['receivable', Wallet, 'Cuentas por Cobrar'],
@@ -669,6 +778,7 @@ export function ReportsPage() {
 
       {tab === 'sales' && <SalesTab />}
       {tab === 'margin' && <MarginTab />}
+      {tab === 'netprofit' && <NetProfitTab />}
       {tab === 'inventory' && <InventoryTab />}
       {tab === 'products' && <TopProductsTab />}
       {tab === 'receivable' && <AccountsReceivableTab />}

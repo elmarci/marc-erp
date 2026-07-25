@@ -73,13 +73,14 @@ router.get('/registers/:registerId/session', async (req: Request, res: Response,
 
 router.post('/sessions', authorizeMinRole('CASHIER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { cashRegisterId, openingAmount, notes } = z.object({
+    const { cashRegisterId, openingAmount, notes, fromTreasury } = z.object({
       cashRegisterId: z.string().uuid(),
       openingAmount: z.number().min(0),
       notes: z.string().optional(),
+      fromTreasury: z.boolean().optional(),
     }).parse(req.body);
 
-    const session = await cashService.openSession(cashRegisterId, req.user!.sub, openingAmount, notes);
+    const session = await cashService.openSession(cashRegisterId, req.user!.sub, openingAmount, notes, fromTreasury);
     res.status(201).json({ success: true, data: session });
   } catch (err) { next(err); }
 });
@@ -100,12 +101,13 @@ router.get('/sessions/:id/summary', async (req: Request, res: Response, next: Ne
 
 router.post('/sessions/:id/close', authorizeMinRole('CASHIER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { closingAmount, notes } = z.object({
+    const { closingAmount, notes, toTreasury } = z.object({
       closingAmount: z.number().min(0),
       notes: z.string().optional(),
+      toTreasury: z.boolean().optional(),
     }).parse(req.body);
 
-    const session = await cashService.closeSession(req.params.id, closingAmount, notes);
+    const session = await cashService.closeSession(req.params.id, closingAmount, notes, toTreasury);
     res.json({ success: true, data: session });
   } catch (err) { next(err); }
 });

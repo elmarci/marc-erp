@@ -33,6 +33,8 @@ import storeRoutes from './modules/store/store.routes';
 import storeAuthRoutes from './modules/store/store-auth.routes';
 import promotionsRoutes from './modules/promotions/promotions.routes';
 import couponsRoutes from './modules/coupons/coupons.routes';
+import treasuryRoutes from './modules/treasury/treasury.routes';
+import { treasuryService } from './modules/treasury/treasury.service';
 
 const app = express();
 const httpServer = createServer(app);
@@ -137,6 +139,7 @@ app.use(`${API_PREFIX}/store`, storeRoutes);
 app.use(`${API_PREFIX}/store/auth`, storeAuthRoutes);
 app.use(`${API_PREFIX}/promotions`, promotionsRoutes);
 app.use(`${API_PREFIX}/coupons`, couponsRoutes);
+app.use(`${API_PREFIX}/treasury`, treasuryRoutes);
 
 // ─── Swagger docs ────────────────────────────────────────────────────────────
 if (env.NODE_ENV === 'development') {
@@ -193,6 +196,19 @@ async function bootstrap() {
     await connectDatabase();
     await connectRedis();
     await ensureDefaultSettings();
+
+    // Gastos recurrentes (alquiler, sueldos, etc.): no hay un cron externo —
+    // se revisan al iniciar y cada pocas horas mientras el proceso siga
+    // corriendo, así que un gasto que "toca" el día 5 del mes se genera solo
+    // dentro de esa ventana sin depender de que alguien abra la pantalla.
+    await treasuryService.processRecurringExpenses().catch((err) =>
+      logger.error({ err }, 'Error al procesar gastos recurrentes'),
+    );
+    setInterval(() => {
+      treasuryService.processRecurringExpenses().catch((err) =>
+        logger.error({ err }, 'Error al procesar gastos recurrentes'),
+      );
+    }, 6 * 60 * 60 * 1000);
 
     const PORT = Number(process.env.PORT) || env.BACKEND_PORT;
     httpServer.listen(PORT, '0.0.0.0', () => {

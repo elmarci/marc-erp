@@ -402,6 +402,44 @@ export class ReportsService {
     };
   }
 
+  /**
+   * Utilidad neta real = margen bruto (ingresos - costo de venta) menos los
+   * gastos operativos del mismo período (alquiler, personal, servicios...).
+   * El margen bruto ya existe en getMarginReport — acá solo se le resta el
+   * gasto para dar la foto completa que el margen por sí solo no muestra.
+   */
+  async getNetProfitReport(range: DateRange) {
+    const [margin, expenseRows] = await Promise.all([
+      this.getMarginReport(range, 'day'),
+      prisma.expense.groupBy({
+        by: ['category'],
+        where: { expenseDate: { gte: range.from, lte: range.to } },
+        _sum: { amount: true },
+        _count: true,
+      }),
+    ]);
+
+    const totalExpenses = expenseRows.reduce((s, r) => s + Number(r._sum.amount ?? 0), 0);
+    const netProfit = margin.summary.margin - totalExpenses;
+
+    return {
+      range,
+      summary: {
+        revenue: margin.summary.revenue,
+        cost: margin.summary.cost,
+        grossMargin: margin.summary.margin,
+        expenses: totalExpenses,
+        netProfit,
+        netProfitPercent: margin.summary.revenue > 0 ? (netProfit / margin.summary.revenue) * 100 : 0,
+      },
+      expensesByCategory: expenseRows.map((r) => ({
+        category: r.category,
+        total: Number(r._sum.amount ?? 0),
+        count: r._count,
+      })),
+    };
+  }
+
   /** Cuentas por cobrar: clientes con deuda y hace cuánto tienen su venta fiada más antigua sin pagar. */
   async getAccountsReceivable() {
     const customers = await prisma.customer.findMany({

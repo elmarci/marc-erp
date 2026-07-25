@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Wallet, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api, getErrorMessage } from '@/services/api';
+import { formatCurrency } from '@/lib/utils';
 
 interface OpenSessionModalProps {
   onClose: () => void;
@@ -16,6 +17,7 @@ interface CashRegister { id: string; name: string; description: string | null }
 export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
   const [selectedRegister, setSelectedRegister] = useState('');
   const [openingAmount, setOpeningAmount] = useState('0');
+  const [fromTreasury, setFromTreasury] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const { data: registers } = useQuery({
@@ -25,6 +27,20 @@ export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
       return res.data.data;
     },
   });
+
+  // El saldo de Caja General es lo mínimo que necesita un cajero para decidir
+  // cuánto sacar — accesible desde Cajero+, aunque el resto del módulo de
+  // Caja General requiera Supervisor. Si el usuario no tiene ni ese permiso
+  // (no debería pasar, pero por si acaso), simplemente no se ofrece la opción.
+  const { data: treasuryBalance } = useQuery({
+    queryKey: ['treasury-balance'],
+    queryFn: async () => (await api.get<{ data: { balance: number } }>('/treasury/balance')).data.data.balance,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (treasuryBalance !== undefined && treasuryBalance <= 0) setFromTreasury(false);
+  }, [treasuryBalance]);
 
   const handleOpen = async () => {
     if (!selectedRegister) { toast.error('Seleccione una caja.'); return; }
@@ -36,6 +52,7 @@ export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
       const res = await api.post<{ data: { id: string; cashRegisterId: string } }>('/cash/sessions', {
         cashRegisterId: selectedRegister,
         openingAmount: amount,
+        fromTreasury: treasuryBalance !== undefined ? fromTreasury : undefined,
       });
       toast.success('Caja abierta correctamente.');
       onOpened(res.data.data.id, res.data.data.cashRegisterId);
@@ -97,6 +114,19 @@ export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
               ))}
             </div>
           </div>
+
+          {treasuryBalance !== undefined && (
+            <label className="flex items-start gap-2.5 rounded-lg border p-3 cursor-pointer">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-input"
+                checked={fromTreasury} onChange={(e) => setFromTreasury(e.target.checked)} />
+              <span className="text-sm">
+                <span className="font-medium">Retirar de Caja General</span>
+                <span className="block text-xs text-muted-foreground">
+                  Saldo disponible: {formatCurrency(treasuryBalance)}
+                </span>
+              </span>
+            </label>
+          )}
 
           <Button className="w-full" size="lg" onClick={handleOpen} loading={loading}
             disabled={!selectedRegister}>

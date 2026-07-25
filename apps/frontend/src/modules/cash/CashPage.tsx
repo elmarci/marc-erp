@@ -13,6 +13,7 @@ import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatDateTime, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { OpenSessionModal } from '@/modules/pos/OpenSessionModal';
 import { usePosStore } from '@/stores/posStore';
+import { useAuthStore } from '@/stores/authStore';
 import { downloadExcel } from '@/lib/exportExcel';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -134,6 +135,7 @@ function CloseSessionModal({
   onClose: () => void; onClosed: () => void;
 }) {
   const [closingAmount, setClosingAmount] = useState('');
+  const [toTreasury, setToTreasury] = useState(true);
   const queryClient = useQueryClient();
 
   const counted = parseFloat(closingAmount) || 0;
@@ -141,11 +143,13 @@ function CloseSessionModal({
   const diff = counted - expected;
 
   const mutation = useMutation({
-    mutationFn: () => api.post(`/cash/sessions/${sessionId}/close`, { closingAmount: counted }),
+    mutationFn: () => api.post(`/cash/sessions/${sessionId}/close`, { closingAmount: counted, toTreasury }),
     onSuccess: (res) => {
       const closed = res.data.data;
       queryClient.invalidateQueries({ queryKey: ['cash-registers'] });
       queryClient.invalidateQueries({ queryKey: ['cash-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
       toast.success('Caja cerrada correctamente.');
       // Print arqueo automatically
       printArqueo({ ...summary, session: { ...summary.session, closingAmount: counted, difference: diff, closedAt: new Date().toISOString() } });
@@ -217,6 +221,17 @@ function CloseSessionModal({
               </p>
             </div>
           )}
+
+          <label className="flex items-start gap-2.5 rounded-lg border p-3 cursor-pointer">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-input"
+              checked={toTreasury} onChange={(e) => setToTreasury(e.target.checked)} />
+            <span className="text-sm">
+              <span className="font-medium">Depositar en Caja General</span>
+              <span className="block text-xs text-muted-foreground">
+                El monto contado pasa al fondo general del negocio, disponible para la próxima apertura o para gastos.
+              </span>
+            </span>
+          </label>
         </div>
 
         <div className="border-t p-5">
@@ -563,12 +578,398 @@ function HistoryPanel() {
   );
 }
 
+/* ─── Caja General ───────────────────────────────────────────────────────── */
+interface TreasuryMovementRow {
+  id: string; type: 'DEPOSIT' | 'WITHDRAWAL'; amount: number;
+  balanceAfter: number; description: string; createdAt: string;
+  user: { firstName: string; lastName: string };
+}
+
+interface ExpenseRow {
+  id: string; category: string; description: string; amount: number;
+  method: string; expenseDate: string; templateId: string | null;
+}
+
+interface RecurringTemplate {
+  id: string; category: string; description: string; amount: number;
+  dayOfMonth: number; isActive: boolean; lastGeneratedPeriod: string | null;
+}
+
+const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  PERSONNEL: 'Personal', BAGS: 'Bolsas', TRANSPORT: 'Transporte', SYSTEM: 'Sistema',
+  WATER: 'Agua', ELECTRICITY: 'Electricidad', RENT: 'Alquiler', OTHER: 'Otro',
+};
+
+function DepositModal({ onClose }: { onClose: () => void }) {
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/treasury/deposits', { amount: parseFloat(amount), description }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
+      toast.success('Depósito registrado.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">Registrar Depósito</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Monto (S/)</label>
+            <Input type="number" min={0.01} step={0.01} value={amount}
+              onChange={(e) => setAmount(e.target.value)} className="text-lg font-bold" autoFocus />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Descripción</label>
+            <Input placeholder="Ej: Aporte de capital" value={description}
+              onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <Button className="w-full" onClick={() => mutation.mutate()} loading={mutation.isPending}
+            disabled={!amount || parseFloat(amount) <= 0 || !description}>
+            Confirmar Depósito
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExpenseModal({ onClose }: { onClose: () => void }) {
+  const [category, setCategory] = useState('PERSONNEL');
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('CASH');
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/treasury/expenses', { category, description, amount: parseFloat(amount), method }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-expenses'] });
+      toast.success('Gasto registrado.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">Registrar Gasto</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Categoría</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+              {Object.entries(EXPENSE_CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Descripción</label>
+            <Input placeholder="Ej: Pago de luz de julio" value={description}
+              onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Monto (S/)</label>
+              <Input type="number" min={0.01} step={0.01} value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Método</label>
+              <select value={method} onChange={(e) => setMethod(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+          <Button className="w-full" variant="destructive" onClick={() => mutation.mutate()} loading={mutation.isPending}
+            disabled={!amount || parseFloat(amount) <= 0 || !description}>
+            Confirmar Gasto
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecurringTemplateModal({ onClose }: { onClose: () => void }) {
+  const [category, setCategory] = useState('RENT');
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [dayOfMonth, setDayOfMonth] = useState('1');
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/treasury/recurring-expenses', {
+      category, description, amount: parseFloat(amount), dayOfMonth: parseInt(dayOfMonth),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['treasury-recurring'] });
+      toast.success('Plantilla creada — se generará sola cada mes.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">Nuevo Gasto Recurrente</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Categoría</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+              {Object.entries(EXPENSE_CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Descripción</label>
+            <Input placeholder="Ej: Alquiler del local" value={description}
+              onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Monto (S/)</label>
+              <Input type="number" min={0.01} step={0.01} value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Día del mes</label>
+              <Input type="number" min={1} max={28} value={dayOfMonth} onChange={(e) => setDayOfMonth(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Se generará solo, cada mes, ese día — sin que tengas que volver a registrarlo.
+          </p>
+          <Button className="w-full" onClick={() => mutation.mutate()} loading={mutation.isPending}
+            disabled={!amount || parseFloat(amount) <= 0 || !description}>
+            Crear Plantilla
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TreasuryPanel() {
+  const queryClient = useQueryClient();
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showExpense, setShowExpense] = useState(false);
+  const [showTemplate, setShowTemplate] = useState(false);
+  const [tab, setTab] = useState<'movimientos' | 'gastos' | 'recurrentes'>('movimientos');
+
+  const { data: balance } = useQuery({
+    queryKey: ['treasury-balance'],
+    queryFn: async () => (await api.get<{ data: { balance: number } }>('/treasury/balance')).data.data.balance,
+    refetchInterval: 30000,
+  });
+
+  const { data: movements } = useQuery({
+    queryKey: ['treasury-movements'],
+    queryFn: async () => (await api.get<{ data: TreasuryMovementRow[] }>('/treasury/movements?limit=50')).data.data,
+    enabled: tab === 'movimientos',
+  });
+
+  const { data: expenses } = useQuery({
+    queryKey: ['treasury-expenses'],
+    queryFn: async () => (await api.get<{ data: ExpenseRow[] }>('/treasury/expenses?limit=50')).data.data,
+    enabled: tab === 'gastos',
+  });
+
+  const { data: templates } = useQuery({
+    queryKey: ['treasury-recurring'],
+    queryFn: async () => (await api.get<{ data: RecurringTemplate[] }>('/treasury/recurring-expenses')).data.data,
+    enabled: tab === 'recurrentes',
+  });
+
+  const toggleTemplateMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api.patch(`/treasury/recurring-expenses/${id}`, { isActive }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['treasury-recurring'] }),
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/treasury/recurring-expenses/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['treasury-recurring'] });
+      toast.success('Plantilla eliminada.');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="flex flex-col items-center gap-2 p-8">
+          <p className="text-sm text-muted-foreground">Saldo de Caja General</p>
+          <p className={cn('text-4xl font-black', (balance ?? 0) < 0 ? 'text-destructive' : 'text-foreground')}>
+            {balance !== undefined ? formatCurrency(balance) : '—'}
+          </p>
+          <div className="flex gap-2 mt-3">
+            <Button variant="outline" onClick={() => setShowDeposit(true)}>
+              <Plus className="mr-1.5 h-4 w-4" />Depositar
+            </Button>
+            <Button variant="destructive" onClick={() => setShowExpense(true)}>
+              <Minus className="mr-1.5 h-4 w-4" />Registrar Gasto
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex gap-1 border-b">
+        {([['movimientos', 'Movimientos'], ['gastos', 'Gastos'], ['recurrentes', 'Gastos recurrentes']] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={cn('px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+              tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'movimientos' && (
+        <Card>
+          <CardContent className="p-4">
+            {!movements || movements.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground py-8">Sin movimientos registrados</p>
+            ) : movements.map((m) => (
+              <div key={m.id} className="flex items-center justify-between py-2.5 border-b last:border-0 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className={cn('flex h-7 w-7 items-center justify-center rounded-full text-white',
+                    m.type === 'WITHDRAWAL' ? 'bg-destructive' : 'bg-success')}>
+                    {m.type === 'WITHDRAWAL' ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                  </span>
+                  <div>
+                    <p className="font-medium">{m.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDateTime(m.createdAt)} · {m.user.firstName} {m.user.lastName}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className={cn('font-bold', m.type === 'WITHDRAWAL' ? 'text-destructive' : 'text-success')}>
+                    {m.type === 'WITHDRAWAL' ? '-' : '+'}{formatCurrency(m.amount)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Saldo: {formatCurrency(m.balanceAfter)}</p>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 'gastos' && (
+        <Card>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50 text-left">
+                  <th className="px-4 py-3 font-medium">Fecha</th>
+                  <th className="px-4 py-3 font-medium">Categoría</th>
+                  <th className="px-4 py-3 font-medium">Descripción</th>
+                  <th className="px-4 py-3 font-medium">Método</th>
+                  <th className="px-4 py-3 font-medium text-right">Monto</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {(expenses ?? []).map((e) => (
+                  <tr key={e.id}>
+                    <td className="px-4 py-3 text-muted-foreground">{formatDateTime(e.expenseDate)}</td>
+                    <td className="px-4 py-3"><Badge variant="outline">{EXPENSE_CATEGORY_LABELS[e.category] ?? e.category}</Badge></td>
+                    <td className="px-4 py-3">
+                      {e.description}
+                      {e.templateId && <span className="ml-1.5 text-xs text-muted-foreground">(recurrente)</span>}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{PAYMENT_METHOD_LABELS[e.method] ?? e.method}</td>
+                    <td className="px-4 py-3 text-right font-semibold">{formatCurrency(e.amount)}</td>
+                  </tr>
+                ))}
+                {(!expenses || expenses.length === 0) && (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Sin gastos registrados</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {tab === 'recurrentes' && (
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => setShowTemplate(true)}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />Nuevo Gasto Recurrente
+            </Button>
+          </div>
+          <Card>
+            <CardContent className="p-4">
+              {!templates || templates.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground py-8">Sin gastos recurrentes configurados</p>
+              ) : templates.map((t) => (
+                <div key={t.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                  <div>
+                    <p className="font-medium">
+                      {t.description} <Badge variant="outline" className="ml-1.5">{EXPENSE_CATEGORY_LABELS[t.category] ?? t.category}</Badge>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Cada mes el día {t.dayOfMonth} · {formatCurrency(t.amount)}
+                      {t.lastGeneratedPeriod && ` · último generado: ${t.lastGeneratedPeriod}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={t.isActive ? 'success' : 'secondary'}>{t.isActive ? 'Activo' : 'Pausado'}</Badge>
+                    <Button variant="outline" size="sm"
+                      onClick={() => toggleTemplateMutation.mutate({ id: t.id, isActive: !t.isActive })}>
+                      {t.isActive ? 'Pausar' : 'Activar'}
+                    </Button>
+                    <Button variant="ghost" size="icon"
+                      onClick={() => { if (confirm(`¿Eliminar "${t.description}"?`)) deleteTemplateMutation.mutate(t.id); }}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
+      {showExpense && <ExpenseModal onClose={() => setShowExpense(false)} />}
+      {showTemplate && <RecurringTemplateModal onClose={() => setShowTemplate(false)} />}
+    </div>
+  );
+}
+
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function CashPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'activas' | 'historial'>('activas');
+  const [activeTab, setActiveTab] = useState<'activas' | 'historial' | 'general'>('activas');
   const [showOpenSession, setShowOpenSession] = useState(false);
   const { setCashSession } = usePosStore();
+  const { hasMinRole } = useAuthStore();
+  const canSeeTreasury = hasMinRole('SUPERVISOR');
+  const tabs: Array<[typeof activeTab, string]> = [
+    ['activas', 'Cajas activas'],
+    ['historial', 'Historial'],
+    ...(canSeeTreasury ? [['general', 'Caja General'] as [typeof activeTab, string]] : []),
+  ];
 
   const { data: registers, isLoading } = useQuery({
     queryKey: ['cash-registers'],
@@ -600,7 +1001,7 @@ export function CashPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">
-        {([['activas', 'Cajas activas'], ['historial', 'Historial']] as const).map(([key, label]) => (
+        {tabs.map(([key, label]) => (
           <button key={key} onClick={() => setActiveTab(key)}
             className={cn('px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px',
               activeTab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
@@ -639,6 +1040,8 @@ export function CashPage() {
 
       {activeTab === 'historial' && <HistoryPanel />}
 
+      {activeTab === 'general' && canSeeTreasury && <TreasuryPanel />}
+
       {showOpenSession && (
         <OpenSessionModal
           onClose={() => setShowOpenSession(false)}
@@ -646,6 +1049,8 @@ export function CashPage() {
             setCashSession(sessionId, registerId);
             setShowOpenSession(false);
             queryClient.invalidateQueries({ queryKey: ['cash-registers'] });
+            queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+            queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
             toast.success('Caja abierta exitosamente.');
           }}
         />

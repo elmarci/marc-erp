@@ -47,6 +47,14 @@ router.get('/margin', async (req: Request, res: Response, next: NextFunction) =>
   } catch (err) { next(err); }
 });
 
+router.get('/net-profit', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { from, to } = dateRangeSchema.parse(req.query);
+    const data = await reportsService.getNetProfitReport({ from, to });
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 router.get('/inventory', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await reportsService.getInventoryReport();
