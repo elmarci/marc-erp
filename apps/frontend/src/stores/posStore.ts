@@ -11,6 +11,11 @@ export interface CartItem {
   discountPercent: number;
   subtotal: number;
   stock: number;
+  // Paquete/2x1 — cuántas unidades físicas forman "1" de esta oferta. El
+  // carrito debe moverse de a packSize unidades, no de a 1, o se rompe el
+  // sentido de "2 por S/9" (quedaría vendiendo cantidades sueltas al precio
+  // rebajado del paquete).
+  packSize?: number;
 }
 
 export interface CartPayment {

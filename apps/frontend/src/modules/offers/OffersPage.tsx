@@ -237,7 +237,10 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
 
           {/* Products */}
           <div>
-            <label className="mb-1 block text-sm font-medium">Productos en oferta (opcional)</label>
+            <label className="mb-1 block text-sm font-medium">Productos en la oferta *</label>
+            <p className="mb-1.5 text-xs text-muted-foreground">
+              Sin productos elegidos, la oferta no aparece ni se puede aplicar en el POS.
+            </p>
             <div className="relative mb-2">
               <Input placeholder="Buscar producto..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
               {products && products.length > 0 && productSearch.length >= 2 && (
@@ -269,6 +272,7 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={
             !form.name ||
+            form.productIds.length === 0 ||
             (form.type === 'PERCENTAGE_DISCOUNT' && !form.value) ||
             (form.type === 'FIXED_DISCOUNT' && !form.value) ||
             (form.type === 'BUNDLE_PRICE' && (!form.value || !form.getQuantity)) ||

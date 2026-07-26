@@ -179,9 +179,15 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
   const handleQuantityChange = (productId: string, value: string) => {
     const qty = parseFloat(value);
     if (isNaN(qty) || qty < 0) return;
-    const result = updateQuantity(productId, qty);
+    const item = items.find((i) => i.productId === productId);
+    // Paquete/2x1: si escriben un número que no es múltiplo del tamaño del
+    // paquete, se redondea al múltiplo más cercano — vender "media promo"
+    // no tiene sentido comercial (el precio por unidad ya viene rebajado
+    // asumiendo que se lleva el paquete completo).
+    const step = item?.packSize ?? 1;
+    const roundedQty = step > 1 ? Math.max(step, Math.round(qty / step) * step) : qty;
+    const result = updateQuantity(productId, roundedQty);
     if (result.capped) {
-      const item = items.find((i) => i.productId === productId);
       toast.error(`"${item?.name ?? 'Producto'}" — stock disponible: ${result.finalQuantity}.`);
     }
   };
@@ -281,13 +287,14 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
                 </div>
 
                 <div className="mt-2 flex items-center justify-between">
-                  {/* Control de cantidad */}
+                  {/* Control de cantidad — en paquetes se mueve de a packSize
+                      unidades por clic, no de a 1, para no romper la promo */}
                   <div className="flex items-center gap-1">
                     <Button
                       variant="outline"
                       size="icon-sm"
                       className="h-7 w-7"
-                      onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                      onClick={() => updateQuantity(item.productId, item.quantity - (item.packSize ?? 1))}
                     >
                       <Minus className="h-3 w-3" />
                     </Button>
@@ -303,8 +310,8 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
                       variant="outline"
                       size="icon-sm"
                       className="h-7 w-7"
-                      onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                      disabled={item.quantity >= item.stock}
+                      onClick={() => updateQuantity(item.productId, item.quantity + (item.packSize ?? 1))}
+                      disabled={item.quantity + (item.packSize ?? 1) > item.stock}
                     >
                       <Plus className="h-3 w-3" />
                     </Button>

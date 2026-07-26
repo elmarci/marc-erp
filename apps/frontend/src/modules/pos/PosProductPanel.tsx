@@ -164,6 +164,7 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
         discountAmount: perUnitDiscount,
         discountPercent: 0,
         stock: product.currentStock,
+        packSize: totalUnits,
       });
       if (packResult.addedQuantity <= 0) {
         toast.error(`No hay stock suficiente de "${product.name}" para otro paquete de ${totalUnits}.`);
