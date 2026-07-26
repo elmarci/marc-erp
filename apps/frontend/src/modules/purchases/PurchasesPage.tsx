@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatCost, formatDateTime, cn } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface Supplier {
@@ -162,6 +163,7 @@ function SupplierModal({ supplier, onClose, onSaved }: {
 function SupplierCatalogModal({ supplier, onClose }: { supplier: Supplier; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [draft, setDraft] = useState<{ productId: string; name: string; price: string } | null>(null);
 
   const { data: catalog, isLoading } = useQuery({
@@ -170,9 +172,9 @@ function SupplierCatalogModal({ supplier, onClose }: { supplier: Supplier; onClo
   });
 
   const { data: products } = useQuery({
-    queryKey: ['products-search-catalog', search],
-    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${search}&limit=15`)).data.data,
-    enabled: search.length >= 2,
+    queryKey: ['products-search-catalog', debouncedSearch],
+    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${debouncedSearch}&limit=15`)).data.data,
+    enabled: debouncedSearch.length >= 2,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['supplier-products', supplier.id] });
@@ -350,6 +352,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [lines, setLines] = useState<DirectLine[]>([]);
 
   const { data: suppliers } = useQuery({
@@ -364,9 +367,9 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   });
 
   const { data: products } = useQuery({
-    queryKey: ['products-search', search],
-    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${search}&limit=20`)).data.data,
-    enabled: search.length >= 2,
+    queryKey: ['products-search', debouncedSearch],
+    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${debouncedSearch}&limit=20`)).data.data,
+    enabled: debouncedSearch.length >= 2,
   });
 
   const addLine = (p: { id: string; name: string; isBulk?: boolean; bulkUnit?: string | null }, defaultCost: number) => {
@@ -601,6 +604,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [items, setItems] = useState<Array<{ productId: string; name: string; orderedQty: number; unitCost: number }>>([]);
 
   const { data: suppliers } = useQuery({
@@ -609,9 +613,9 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   });
 
   const { data: products } = useQuery({
-    queryKey: ['products-search', search],
-    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${search}&limit=20`)).data.data,
-    enabled: search.length >= 2,
+    queryKey: ['products-search', debouncedSearch],
+    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${debouncedSearch}&limit=20`)).data.data,
+    enabled: debouncedSearch.length >= 2,
   });
 
   // Catálogo conocido de este proveedor — permite armar la orden con un
@@ -973,11 +977,12 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
   const [notes, setNotes] = useState('');
   const [scan, setScan] = useState('');
   const [bonusSearch, setBonusSearch] = useState('');
+  const debouncedBonusSearch = useDebouncedValue(bonusSearch, 300);
 
   const { data: bonusResults } = useQuery({
-    queryKey: ['products-search', bonusSearch],
-    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; barcode: string | null; costPrice: number }> }>(`/products?q=${bonusSearch}&limit=10`)).data.data,
-    enabled: bonusSearch.length >= 2,
+    queryKey: ['products-search', debouncedBonusSearch],
+    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; barcode: string | null; costPrice: number }> }>(`/products?q=${debouncedBonusSearch}&limit=10`)).data.data,
+    enabled: debouncedBonusSearch.length >= 2,
   });
 
   const addBonusProduct = (p: { id: string; name: string; barcode: string | null }) => {

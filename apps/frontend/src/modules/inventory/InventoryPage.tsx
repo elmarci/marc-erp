@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatCost, formatDateTime, cn } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface DashboardData {
@@ -256,12 +257,13 @@ function BulkAdjustModal({ onClose }: { onClose: () => void }) {
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [items, setItems] = useState<Array<{ productId: string; name: string; systemQty: number; physicalQty: number }>>([]);
 
   const { data: products } = useQuery({
-    queryKey: ['products-adj-search', search],
-    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; currentStock: number }> }>(`/products?q=${search}&limit=15`)).data.data,
-    enabled: search.length >= 2,
+    queryKey: ['products-adj-search', debouncedSearch],
+    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; currentStock: number }> }>(`/products?q=${debouncedSearch}&limit=15`)).data.data,
+    enabled: debouncedSearch.length >= 2,
   });
 
   const addProduct = (p: { id: string; name: string; currentStock: number }) => {
@@ -501,6 +503,7 @@ function DashboardTab() {
 /* ─── Tab: Stock ─────────────────────────────────────────────────────────── */
 function StockTab() {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [status, setStatus] = useState<'all' | 'ok' | 'low' | 'out'>('all');
   const [categoryId, setCategoryId] = useState('');
   const [page, setPage] = useState(1);
@@ -514,10 +517,10 @@ function StockTab() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['inv-stock', search, status, categoryId, page],
+    queryKey: ['inv-stock', debouncedSearch, status, categoryId, page],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: '50' });
-      if (search) params.set('search', search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       if (status !== 'all') params.set('status', status);
       if (categoryId) params.set('categoryId', categoryId);
       return (await api.get<{ data: StockProduct[]; pagination: { total: number; totalPages: number } }>(`/inventory/stock?${params}`)).data;

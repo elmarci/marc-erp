@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatCost, cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 interface Product {
   id: string;
@@ -31,16 +32,17 @@ export function ProductsPage() {
   const { hasMinRole } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const page = parseInt(searchParams.get('page') ?? '1');
   const lowStock = searchParams.get('lowStock') === 'true';
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', search, page, lowStock],
+    queryKey: ['products', debouncedSearch, page, lowStock],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         limit: '25',
-        ...(search ? { q: search } : {}),
+        ...(debouncedSearch ? { q: debouncedSearch } : {}),
         ...(lowStock ? { lowStock: 'true' } : {}),
       });
       const res = await api.get<{ data: Product[]; pagination: { total: number; totalPages: number } }>(

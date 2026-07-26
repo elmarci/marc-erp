@@ -12,6 +12,7 @@ import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
 import { usePosStore } from '@/stores/posStore';
 import { printDebtPaymentReceipt } from './printDebtPaymentReceipt';
 import { downloadExcel } from '@/lib/exportExcel';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface Customer {
@@ -551,15 +552,16 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
 export function CustomersPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | undefined>();
   const [detailCustomer, setDetailCustomer] = useState<Customer | undefined>();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', page, search],
+    queryKey: ['customers', page, debouncedSearch],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '25', ...(search ? { search } : {}) });
+      const params = new URLSearchParams({ page: String(page), limit: '25', ...(debouncedSearch ? { search: debouncedSearch } : {}) });
       const res = await api.get<{ data: Customer[]; pagination: { total: number; totalPages: number } }>(`/customers?${params}`);
       return res.data;
     },

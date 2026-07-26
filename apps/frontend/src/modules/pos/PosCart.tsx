@@ -7,6 +7,7 @@ import { usePosStore } from '@/stores/posStore';
 import { formatCurrency, cn } from '@/lib/utils';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 interface Customer { id: string; firstName: string; lastName: string | null; phone: string | null; taxId: string | null }
 interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
@@ -115,14 +116,15 @@ function CustomerSearchModal({ onSelect, onClose }: {
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const { data } = useQuery({
-    queryKey: ['pos-customers', search],
+    queryKey: ['pos-customers', debouncedSearch],
     queryFn: async () => {
-      const res = await api.get<{ data: Customer[] }>(`/customers?search=${search}&limit=10`);
+      const res = await api.get<{ data: Customer[] }>(`/customers?search=${debouncedSearch}&limit=10`);
       return res.data.data;
     },
-    enabled: search.length >= 1,
+    enabled: debouncedSearch.length >= 1,
   });
 
   return (

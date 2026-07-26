@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { api } from '@/services/api';
 import { formatCurrency, formatDateTime, STATUS_LABELS } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 interface Sale {
   id: string; saleNumber: string; totalAmount: number; status: string; createdAt: string;
@@ -21,10 +22,11 @@ interface Sale {
 export function SalesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const page = parseInt(searchParams.get('page') ?? '1');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales', page, search],
+    queryKey: ['sales', page, debouncedSearch],
     queryFn: async () => {
       const res = await api.get<{ data: Sale[]; pagination: { total: number; totalPages: number } }>(
         `/sales?page=${page}&limit=25`,

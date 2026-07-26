@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { api, getErrorMessage } from '@/services/api'
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 interface Offer {
   id: string; name: string; description: string | null; type: string; value: number
@@ -40,11 +41,12 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     productIds: offer?.products.map(p => p.product.id) ?? [],
   })
   const [productSearch, setProductSearch] = useState('')
+  const debouncedProductSearch = useDebouncedValue(productSearch, 300)
 
   const { data: products } = useQuery({
-    queryKey: ['products-offer-search', productSearch],
-    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?search=${productSearch}&limit=10`)).data.data,
-    enabled: productSearch.length >= 2,
+    queryKey: ['products-offer-search', debouncedProductSearch],
+    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?search=${debouncedProductSearch}&limit=10`)).data.data,
+    enabled: debouncedProductSearch.length >= 2,
   })
 
   const mutation = useMutation({
