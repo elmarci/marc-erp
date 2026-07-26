@@ -12,6 +12,9 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 interface Offer {
   id: string; name: string; description: string | null; type: string; value: number
+  valueType: 'PERCENTAGE' | 'FIXED' | null
+  buyQuantity: number | null; getQuantity: number | null
+  startTime: string | null; endTime: string | null; daysOfWeek: number[]
   startDate: string; endDate: string | null; isActive: boolean; showInStore: boolean
   storeBadge: string | null; storeImage: string | null; priority: number
   products: Array<{ product: { id: string; name: string; imageUrl: string | null } }>
@@ -24,6 +27,8 @@ const TYPE_LABELS: Record<string, string> = {
   BUY_X_GET_Y: '2×1 / Lleva más', BUNDLE_PRICE: 'Precio paquete', HAPPY_HOUR: 'Hora feliz',
 }
 
+const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
 function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
@@ -31,6 +36,12 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     description: offer?.description ?? '',
     type: offer?.type ?? 'PERCENTAGE_DISCOUNT',
     value: String(offer?.value ?? ''),
+    valueType: offer?.valueType ?? 'PERCENTAGE',
+    buyQuantity: String(offer?.buyQuantity ?? 2),
+    getQuantity: String(offer?.getQuantity ?? 3),
+    startTime: offer?.startTime ?? '14:00',
+    endTime: offer?.endTime ?? '18:00',
+    daysOfWeek: offer?.daysOfWeek ?? ([] as number[]),
     startDate: offer?.startDate ? offer.startDate.split('T')[0] : new Date().toISOString().split('T')[0],
     endDate: offer?.endDate ? offer.endDate.split('T')[0] : '',
     isActive: offer?.isActive ?? true,
@@ -45,13 +56,35 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
 
   const { data: products } = useQuery({
     queryKey: ['products-offer-search', debouncedProductSearch],
-    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?search=${debouncedProductSearch}&limit=10`)).data.data,
+    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${debouncedProductSearch}&limit=10`)).data.data,
     enabled: debouncedProductSearch.length >= 2,
   })
 
+  const isPack = form.type === 'BUY_X_GET_Y' || form.type === 'BUNDLE_PRICE'
+  const isHappyHour = form.type === 'HAPPY_HOUR'
+
   const mutation = useMutation({
     mutationFn: () => {
-      const payload = { ...form, value: Number(form.value), priority: Number(form.priority), endDate: form.endDate || undefined }
+      const payload: Record<string, unknown> = {
+        ...form,
+        value: form.type === 'BUY_X_GET_Y' ? 0 : Number(form.value),
+        priority: Number(form.priority),
+        endDate: form.endDate || undefined,
+      }
+      if (isPack) {
+        payload.buyQuantity = Number(form.buyQuantity)
+        payload.getQuantity = Number(form.getQuantity)
+      } else {
+        delete payload.buyQuantity; delete payload.getQuantity
+      }
+      if (isHappyHour) {
+        payload.valueType = form.valueType
+        payload.startTime = form.startTime
+        payload.endTime = form.endTime
+        payload.daysOfWeek = form.daysOfWeek
+      } else {
+        delete payload.valueType; delete payload.startTime; delete payload.endTime; delete payload.daysOfWeek
+      }
       return offer ? api.put(`/promotions/${offer.id}`, payload) : api.post('/promotions', payload)
     },
     onSuccess: () => {
@@ -90,12 +123,80 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
                 {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Valor {form.type === 'PERCENTAGE_DISCOUNT' ? '(%)' : '(S/)'}
-              </label>
-              <Input type="number" min={0} value={form.value} onChange={set('value')} placeholder="20" />
-            </div>
+            {!isPack && !isHappyHour && (
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Valor {form.type === 'PERCENTAGE_DISCOUNT' ? '(%)' : '(S/)'}
+                </label>
+                <Input type="number" min={0} value={form.value} onChange={set('value')} placeholder="20" />
+              </div>
+            )}
+            {form.type === 'BUNDLE_PRICE' && (
+              <div>
+                <label className="mb-1 block text-sm font-medium">Precio del paquete (S/)</label>
+                <Input type="number" min={0} step={0.1} value={form.value} onChange={set('value')} placeholder="9.00" />
+              </div>
+            )}
+            {form.type === 'BUY_X_GET_Y' && (
+              <>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Paga (unidades)</label>
+                  <Input type="number" min={1} value={form.buyQuantity} onChange={set('buyQuantity')} placeholder="2" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Se lleva (unidades)</label>
+                  <Input type="number" min={1} value={form.getQuantity} onChange={set('getQuantity')} placeholder="3" />
+                </div>
+              </>
+            )}
+            {form.type === 'BUNDLE_PRICE' && (
+              <div>
+                <label className="mb-1 block text-sm font-medium">Unidades por paquete</label>
+                <Input type="number" min={1} value={form.getQuantity} onChange={set('getQuantity')} placeholder="2" />
+              </div>
+            )}
+            {isHappyHour && (
+              <>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Tipo de valor</label>
+                  <select value={form.valueType} onChange={set('valueType')}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <option value="PERCENTAGE">Porcentaje (%)</option>
+                    <option value="FIXED">Monto fijo (S/)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Valor {form.valueType === 'PERCENTAGE' ? '(%)' : '(S/)'}
+                  </label>
+                  <Input type="number" min={0} value={form.value} onChange={set('value')} placeholder="20" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Hora inicio</label>
+                  <Input type="time" value={form.startTime} onChange={set('startTime')} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Hora fin</label>
+                  <Input type="time" value={form.endTime} onChange={set('endTime')} />
+                </div>
+                <div className="col-span-2">
+                  <label className="mb-1 block text-sm font-medium">Días (ninguno = todos los días)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {DAY_LABELS.map((label, idx) => (
+                      <button key={idx} type="button"
+                        onClick={() => setForm(v => ({
+                          ...v,
+                          daysOfWeek: v.daysOfWeek.includes(idx) ? v.daysOfWeek.filter(d => d !== idx) : [...v.daysOfWeek, idx],
+                        }))}
+                        className={cn('px-2.5 py-1 rounded-md text-xs font-medium border',
+                          form.daysOfWeek.includes(idx) ? 'bg-primary text-primary-foreground border-primary' : 'bg-background')}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
             <div>
               <label className="mb-1 block text-sm font-medium">Fecha inicio *</label>
               <Input type="date" value={form.startDate} onChange={set('startDate')} />
@@ -166,7 +267,14 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
         </div>
         <div className="border-t p-5 flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!form.name || !form.value}>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={
+            !form.name ||
+            (form.type === 'PERCENTAGE_DISCOUNT' && !form.value) ||
+            (form.type === 'FIXED_DISCOUNT' && !form.value) ||
+            (form.type === 'BUNDLE_PRICE' && (!form.value || !form.getQuantity)) ||
+            (form.type === 'BUY_X_GET_Y' && (!form.buyQuantity || !form.getQuantity)) ||
+            (isHappyHour && (!form.value || !form.startTime || !form.endTime))
+          }>
             {offer ? 'Guardar cambios' : 'Crear oferta'}
           </Button>
         </div>
@@ -232,9 +340,18 @@ export function OffersPage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{TYPE_LABELS[offer.type] ?? offer.type}</td>
                     <td className="px-4 py-3 text-right font-semibold">
-                      {offer.type === 'PERCENTAGE_DISCOUNT' ? `${offer.value}%` : formatCurrency(offer.value)}
+                      {offer.type === 'PERCENTAGE_DISCOUNT' ? `${offer.value}%` :
+                       offer.type === 'BUNDLE_PRICE' ? `${offer.getQuantity ?? '?'} x ${formatCurrency(offer.value)}` :
+                       offer.type === 'BUY_X_GET_Y' ? `Paga ${offer.buyQuantity ?? '?'}, lleva ${offer.getQuantity ?? '?'}` :
+                       offer.type === 'HAPPY_HOUR' ? (offer.valueType === 'FIXED' ? formatCurrency(offer.value) : `${offer.value}%`) :
+                       formatCurrency(offer.value)}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
+                      {offer.type === 'HAPPY_HOUR' && offer.startTime && (
+                        <p className="font-medium text-foreground">
+                          {offer.startTime}–{offer.endTime} {offer.daysOfWeek.length > 0 ? offer.daysOfWeek.map(d => DAY_LABELS[d]).join(',') : 'Todos los días'}
+                        </p>
+                      )}
                       <p>{new Date(offer.startDate).toLocaleDateString('es-PE')}</p>
                       {offer.endDate && <p>→ {new Date(offer.endDate).toLocaleDateString('es-PE')}</p>}
                     </td>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Package, AlertCircle, Scale, Tag, X, Mic } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -105,8 +105,16 @@ function BulkModal({ product, onConfirm, onClose }: {
 /* ─── Offers panel ────────────────────────────────────────────────────────── */
 interface Offer {
   id: string; name: string; type: string; value: number;
+  valueType: 'PERCENTAGE' | 'FIXED' | null;
+  buyQuantity: number | null; getQuantity: number | null;
   isActive: boolean; storeBadge: string | null;
   products: Array<{ product: { id: string; name: string; salePrice: number; barcode: string | null; currentStock: number; imageUrl: string | null; isBulk: boolean; bulkUnit: string | null; category: { name: string } } }>;
+}
+
+interface HappyHourPromo {
+  id: string; name: string; value: number; valueType: 'PERCENTAGE' | 'FIXED' | null;
+  priority: number;
+  products: Array<{ product: { id: string; salePrice: number } }>;
 }
 
 function OffersPanel({ onClose }: { onClose: () => void }) {
@@ -129,29 +137,43 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
     } else if (offer.type === 'FIXED_DISCOUNT') {
       finalPrice = Math.max(0, Math.round((originalPrice - offer.value) * 100) / 100);
     } else if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
-      const paidUnits = (offer as {buyQuantity?:number}).buyQuantity ?? 2;
-      const totalUnits = (offer as {getQuantity?:number}).getQuantity ?? 3;
-      // Precio exacto del pack — sin dividir entre unidades para evitar redondeo
+      const paidUnits = offer.buyQuantity ?? 2;
+      const totalUnits = offer.getQuantity ?? 3;
+      // Precio total del pack — sin dividir entre unidades para evitar redondeo
       const packPrice = offer.type === 'BUNDLE_PRICE'
         ? Number(offer.value)
         : Math.round(originalPrice * paidUnits * 100) / 100; // 2×5.20 = 10.40 exacto
       const packLabel = `${offer.storeBadge ?? offer.name} — pack de ${totalUnits}`;
+      // Clave: la cantidad real que se agrega al carrito son las unidades
+      // FÍSICAS del pack (totalUnits), no "1 pack" — si no, el stock queda
+      // mal descontado (se resta 1 en vez de las 2-3 unidades reales que se
+      // lleva el cliente) y el tope de stock disponible pierde sentido.
+      if (product.currentStock < totalUnits) {
+        toast.error(`No hay stock suficiente de "${product.name}" para esta oferta (necesita ${totalUnits}, disponible: ${product.currentStock}).`);
+        return;
+      }
+      const unitEffectivePrice = Math.round((packPrice / totalUnits) * 100) / 100;
+      const perUnitDiscount = Math.round((originalPrice - unitEffectivePrice) * 100) / 100;
       const packResult = addItem({
         productId: product.id,
         name: `${product.name} (${packLabel})`,
         barcode: product.barcode,
-        quantity: 1,          // 1 pack
-        unitPrice: packPrice, // precio exacto del pack
-        originalPrice: Math.round(originalPrice * totalUnits * 100) / 100,
-        discountAmount: 0,
+        quantity: totalUnits,
+        unitPrice: originalPrice,
+        originalPrice,
+        discountAmount: perUnitDiscount,
         discountPercent: 0,
         stock: product.currentStock,
       });
       if (packResult.addedQuantity <= 0) {
-        toast.error(`No hay stock suficiente de "${product.name}" para esta oferta.`);
+        toast.error(`No hay stock suficiente de "${product.name}" para otro paquete de ${totalUnits}.`);
         return;
       }
-      toast.success(`${packLabel} agregado — ${formatCurrency(packPrice)}`);
+      if (packResult.capped) {
+        toast.warning(`Solo se pudieron agregar ${packResult.addedQuantity} unidad(es) más de "${product.name}" — stock limitado.`);
+      } else {
+        toast.success(`${packLabel} agregado — ${formatCurrency(packPrice)}`);
+      }
       return;
     }
 
@@ -195,8 +217,8 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
                   <p className="text-xs text-success font-medium">
                     {offer.type === 'PERCENTAGE_DISCOUNT' ? `${offer.value}% OFF` :
                      offer.type === 'FIXED_DISCOUNT' ? `S/ ${offer.value} OFF` :
-                     offer.type === 'BUY_X_GET_Y' ? `Lleva ${(offer as {getQuantity?:number}).getQuantity ?? 3}, paga ${(offer as {buyQuantity?:number}).buyQuantity ?? 2}` :
-                     offer.type === 'BUNDLE_PRICE' ? `Pack a S/ ${offer.value}` : 'Precio especial'}
+                     offer.type === 'BUY_X_GET_Y' ? `Lleva ${offer.getQuantity ?? 3}, paga ${offer.buyQuantity ?? 2}` :
+                     offer.type === 'BUNDLE_PRICE' ? `${offer.getQuantity ?? '?'} x S/ ${offer.value}` : 'Precio especial'}
                   </p>
                 </div>
                 {offer.storeBadge && <Badge variant="success" className="text-xs">{offer.storeBadge}</Badge>}
@@ -208,6 +230,7 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
                     let finalPrice = orig;
                     let qty = 1;
                     let priceLabel = '';
+                    let packsAvailable: number | null = null;
 
                     if (offer.type === 'PERCENTAGE_DISCOUNT') {
                       finalPrice = Math.round(orig * (1 - offer.value / 100) * 100) / 100;
@@ -216,13 +239,16 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
                       finalPrice = Math.max(0, Math.round((orig - offer.value) * 100) / 100);
                       priceLabel = `c/u con S/${offer.value} OFF`;
                     } else if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
-                      const paidUnits = (offer as {buyQuantity?:number}).buyQuantity ?? 2;
-                      const totalUnits = (offer as {getQuantity?:number}).getQuantity ?? 3;
+                      const paidUnits = offer.buyQuantity ?? 2;
+                      const totalUnits = offer.getQuantity ?? 3;
                       finalPrice = offer.type === 'BUNDLE_PRICE'
                         ? Math.round((offer.value / totalUnits) * 100) / 100
                         : Math.round((orig * paidUnits / totalUnits) * 100) / 100;
                       qty = totalUnits;
                       priceLabel = `c/u · agrega ${totalUnits} uds · total ${formatCurrency(finalPrice * totalUnits)}`;
+                      // Cuántos paquetes completos alcanza el stock actual —
+                      // esto es lo que antes el sistema no calculaba.
+                      packsAvailable = Math.floor(product.currentStock / totalUnits);
                     }
 
                     return (
@@ -234,8 +260,13 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
                             <span className="text-success font-bold">{formatCurrency(finalPrice)}</span>
                             {priceLabel && <span className="text-muted-foreground">{priceLabel}</span>}
                           </div>
+                          {packsAvailable !== null && (
+                            <p className={cn('text-xs mt-0.5', packsAvailable <= 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                              {packsAvailable <= 0 ? 'Sin stock para armar un paquete' : `Alcanza para ${packsAvailable} paquete${packsAvailable === 1 ? '' : 's'} (stock: ${product.currentStock})`}
+                            </p>
+                          )}
                         </div>
-                        <Button size="sm" onClick={() => applyOffer(offer, product)}>
+                        <Button size="sm" onClick={() => applyOffer(offer, product)} disabled={packsAvailable !== null && packsAvailable <= 0}>
                           Agregar {qty > 1 ? `(${qty}u)` : ''}
                         </Button>
                       </div>
@@ -296,6 +327,30 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
 
   const products = bulkOnly ? (productsData ?? []).filter((p) => p.isBulk) : (productsData ?? []);
 
+  // Hora Feliz automática — se recalcula solo cada minuto para que el
+  // descuento entre y salga sin que el cajero tenga que hacer nada.
+  const { data: happyHours } = useQuery({
+    queryKey: ['pos-happy-hours'],
+    queryFn: async () => (await api.get<{ data: HappyHourPromo[] }>('/promotions/active-now')).data.data,
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+
+  const happyHourByProductId = useMemo(() => {
+    const map = new Map<string, { name: string; effectivePrice: number }>();
+    for (const promo of happyHours ?? []) {
+      for (const { product } of promo.products) {
+        if (map.has(product.id)) continue; // ya asignado por una promo de mayor prioridad
+        const orig = Number(product.salePrice);
+        const effectivePrice = promo.valueType === 'FIXED'
+          ? Math.max(0, Math.round((orig - promo.value) * 100) / 100)
+          : Math.round(orig * (1 - promo.value / 100) * 100) / 100;
+        map.set(product.id, { name: promo.name, effectivePrice });
+      }
+    }
+    return map;
+  }, [happyHours]);
+
   const handleAddProduct = (product: Product, forceQty?: number) => {
     if (product.currentStock <= 0) {
       toast.error(`"${product.name}" no tiene stock disponible.`);
@@ -308,14 +363,20 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
     }
     const qty = forceQty ?? 1;
     const unit = product.isBulk ? (product.bulkUnit ?? 'u') : 'unidades';
+    const originalPrice = Number(product.salePrice);
+    const hh = happyHourByProductId.get(product.id);
+    // unitPrice va siempre en precio de lista — calcItemSubtotal ya resta
+    // discountAmount por su cuenta. Poner aquí el precio ya rebajado
+    // duplicaría el descuento (se restaría dos veces).
+    const discountAmount = hh ? Math.round((originalPrice - hh.effectivePrice) * 100) / 100 : 0;
     const result = addItem({
       productId: product.id,
       name: product.isBulk ? `${product.name} (${qty} ${unit})` : product.name,
       barcode: product.barcode,
       quantity: qty,
-      unitPrice: Number(product.salePrice),
-      originalPrice: Number(product.salePrice),
-      discountAmount: 0,
+      unitPrice: originalPrice,
+      originalPrice,
+      discountAmount,
       discountPercent: 0,
       stock: product.currentStock,
     });
@@ -496,7 +557,9 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-            {products.map((product) => (
+            {products.map((product) => {
+              const hh = happyHourByProductId.get(product.id);
+              return (
               <button
                 key={product.id}
                 onClick={() => handleAddProduct(product)}
@@ -530,15 +593,27 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
 
                 {/* Precio + bulk badge */}
                 <div className="mt-1 flex items-center gap-1">
-                  <p className="text-sm font-bold text-primary">
-                    {formatCurrency(product.salePrice)}
-                    {product.isBulk && <span className="text-[10px] font-normal text-muted-foreground">/{product.bulkUnit ?? 'u'}</span>}
-                  </p>
+                  {hh ? (
+                    <p className="text-sm font-bold text-success">
+                      {formatCurrency(hh.effectivePrice)}
+                      <span className="ml-1 text-[10px] font-normal text-muted-foreground line-through">{formatCurrency(product.salePrice)}</span>
+                    </p>
+                  ) : (
+                    <p className="text-sm font-bold text-primary">
+                      {formatCurrency(product.salePrice)}
+                      {product.isBulk && <span className="text-[10px] font-normal text-muted-foreground">/{product.bulkUnit ?? 'u'}</span>}
+                    </p>
+                  )}
                 </div>
                 {product.isBulk && (
                   <div className="absolute left-1 top-1">
                     <Scale className="h-3 w-3 text-primary/60" />
                   </div>
+                )}
+                {hh && (
+                  <Badge variant="success" className="absolute left-1 top-1 text-[9px] px-1 py-0 gap-0.5">
+                    🔥 Hora feliz
+                  </Badge>
                 )}
 
                 {/* Stock badge */}
@@ -553,7 +628,8 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                   </div>
                 )}
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

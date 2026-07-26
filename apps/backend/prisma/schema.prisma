@@ -124,6 +124,13 @@ enum PromotionType {
   HAPPY_HOUR
 }
 
+// Solo aplica a HAPPY_HOUR — los demás tipos ya implican su propia semántica
+// de valor (PERCENTAGE_DISCOUNT siempre %, FIXED_DISCOUNT siempre S/).
+enum PromotionValueType {
+  PERCENTAGE
+  FIXED
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -990,6 +997,8 @@ model Promotion {
   description String?
   type        PromotionType
   value       Decimal       @db.Decimal(10, 2) // porcentaje o monto
+  // Solo para HAPPY_HOUR — indica si "value" es % o monto fijo en soles.
+  valueType   PromotionValueType? @map("value_type")
   minQuantity Int?          @map("min_quantity")
   maxQuantity Int?          @map("max_quantity")
   minAmount   Decimal?      @map("min_amount") @db.Decimal(10, 2)

@@ -35,6 +35,8 @@ export class PromotionsService {
 
   async create(data: {
     name: string; description?: string; type: string; value: number;
+    valueType?: string; buyQuantity?: number; getQuantity?: number;
+    startTime?: string; endTime?: string; daysOfWeek?: number[];
     startDate: Date; endDate?: Date;
     isActive?: boolean; showInStore?: boolean;
     storeBadge?: string; storeImage?: string; priority?: number;
@@ -45,6 +47,7 @@ export class PromotionsService {
       data: {
         ...promoData,
         type: promoData.type as never,
+        valueType: promoData.valueType as never,
         products: productIds ? {
           create: productIds.map(productId => ({ productId })),
         } : undefined,
@@ -57,6 +60,8 @@ export class PromotionsService {
 
   async update(id: string, data: {
     name?: string; description?: string; type?: string; value?: number;
+    valueType?: string; buyQuantity?: number; getQuantity?: number;
+    startTime?: string; endTime?: string; daysOfWeek?: number[];
     startDate?: Date; endDate?: Date;
     isActive?: boolean; showInStore?: boolean;
     storeBadge?: string; storeImage?: string; priority?: number;
@@ -97,6 +102,34 @@ export class PromotionsService {
       where: { id },
       data: { isActive: !promo.isActive },
     });
+  }
+
+  // Hora Feliz activa ahora mismo (hora Lima, sin horario de verano — Perú es
+  // siempre UTC-5) — el POS la usa para aplicar el precio rebajado solo.
+  async getActiveHappyHours() {
+    const lima = new Date(Date.now() - 5 * 60 * 60 * 1000);
+    const hhmm = lima.toISOString().slice(11, 16);
+    const dow = lima.getUTCDay();
+    const today = new Date(Date.UTC(lima.getUTCFullYear(), lima.getUTCMonth(), lima.getUTCDate()));
+
+    const promos = await prisma.promotion.findMany({
+      where: {
+        type: 'HAPPY_HOUR',
+        isActive: true,
+        startDate: { lte: lima },
+        OR: [{ endDate: null }, { endDate: { gte: today } }],
+      },
+      include: {
+        products: { include: { product: { select: { id: true, name: true, salePrice: true } } } },
+      },
+      orderBy: { priority: 'desc' },
+    });
+
+    return promos.filter(p =>
+      (p.daysOfWeek.length === 0 || p.daysOfWeek.includes(dow)) &&
+      (!p.startTime || hhmm >= p.startTime) &&
+      (!p.endTime || hhmm <= p.endTime),
+    );
   }
 }
 

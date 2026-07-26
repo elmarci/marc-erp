@@ -11,6 +11,15 @@ const promoSchema = z.object({
   description: z.string().optional(),
   type: z.enum(['PERCENTAGE_DISCOUNT', 'FIXED_DISCOUNT', 'BUY_X_GET_Y', 'BUNDLE_PRICE', 'HAPPY_HOUR']),
   value: z.coerce.number().min(0),
+  // Solo HAPPY_HOUR — % o monto fijo.
+  valueType: z.enum(['PERCENTAGE', 'FIXED']).optional(),
+  // BUY_X_GET_Y / BUNDLE_PRICE — cuántas unidades se pagan vs. cuántas se lleva.
+  buyQuantity: z.coerce.number().int().min(1).optional(),
+  getQuantity: z.coerce.number().int().min(1).optional(),
+  // HAPPY_HOUR — franja horaria "HH:MM" y días de la semana (0=Dom...6=Sáb, vacío = todos).
+  startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  daysOfWeek: z.array(z.coerce.number().int().min(0).max(6)).optional(),
   startDate: z.coerce.date(),
   endDate: z.coerce.date().optional(),
   isActive: z.boolean().default(true),
@@ -19,6 +28,13 @@ const promoSchema = z.object({
   storeImage: z.string().url().optional().or(z.literal('')),
   priority: z.coerce.number().default(0),
   productIds: z.array(z.string().uuid()).optional(),
+});
+
+router.get('/active-now', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await promotionsService.getActiveHappyHours();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
 });
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {

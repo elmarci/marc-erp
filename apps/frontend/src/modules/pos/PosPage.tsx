@@ -187,6 +187,7 @@ export function PosPage() {
         productId: i.productId,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
+        discountAmount: i.discountAmount,
       })),
       payments: cappedPayments,
       discountAmount: manualDiscountAmount,
