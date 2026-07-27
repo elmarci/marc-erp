@@ -32,9 +32,11 @@ export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
   // cuánto sacar — accesible desde Cajero+, aunque el resto del módulo de
   // Caja General requiera Supervisor. Si el usuario no tiene ni ese permiso
   // (no debería pasar, pero por si acaso), simplemente no se ofrece la opción.
+  // Solo el efectivo tiene sentido para abrir la caja física — el saldo de
+  // Yape/Plin no es billete que se pueda meter en el cajón.
   const { data: treasuryBalance } = useQuery({
     queryKey: ['treasury-balance'],
-    queryFn: async () => (await api.get<{ data: { balance: number } }>('/treasury/balance')).data.data.balance,
+    queryFn: async () => (await api.get<{ data: { cash: number } }>('/treasury/balance')).data.data.cash,
     retry: false,
   });
 

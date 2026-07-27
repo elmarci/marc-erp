@@ -21,8 +21,8 @@ router.use(authenticate);
 // requiere Supervisor o superior, mismo nivel que aprobar compras.
 router.get('/balance', authorizeMinRole('CASHIER'), async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const balance = await treasuryService.getBalance();
-    res.json({ success: true, data: { balance } });
+    const balances = await treasuryService.getBalances();
+    res.json({ success: true, data: balances });
   } catch (err) { next(err); }
 });
 
@@ -30,25 +30,27 @@ router.use(authorizeMinRole('SUPERVISOR'));
 
 router.get('/movements', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { type, dateFrom, dateTo, page, limit } = z.object({
+    const { type, account, dateFrom, dateTo, page, limit } = z.object({
       type: z.enum(['DEPOSIT', 'WITHDRAWAL']).optional(),
+      account: z.enum(['CASH', 'YAPE', 'PLIN']).optional(),
       dateFrom: z.string().transform((s) => parseLimaDate(s, false)).optional(),
       dateTo: z.string().transform((s) => parseLimaDate(s, true)).optional(),
       page: z.coerce.number().min(1).default(1),
       limit: z.coerce.number().min(1).max(100).default(25),
     }).parse(req.query);
-    const result = await treasuryService.listMovements({ type, dateFrom, dateTo, page, limit });
+    const result = await treasuryService.listMovements({ type, account, dateFrom, dateTo, page, limit });
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 });
 
 router.post('/deposits', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { amount, description } = z.object({
+    const { amount, description, account } = z.object({
       amount: z.number().positive(),
       description: z.string().min(1),
+      account: z.enum(['CASH', 'YAPE', 'PLIN']).default('CASH'),
     }).parse(req.body);
-    const movement = await treasuryService.deposit(amount, description, req.user!.sub);
+    const movement = await treasuryService.deposit(amount, description, req.user!.sub, account);
     res.status(201).json({ success: true, data: movement });
   } catch (err) { next(err); }
 });

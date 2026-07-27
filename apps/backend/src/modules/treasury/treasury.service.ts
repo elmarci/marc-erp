@@ -2,6 +2,15 @@ import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
 import type { Prisma } from '@prisma/client';
 
+export type TreasuryAccount = 'CASH' | 'YAPE' | 'PLIN';
+
+// Los gastos/movimientos con un método distinto a Yape o Plin salen de la
+// cuenta de efectivo por defecto — solo esas dos billeteras tienen cuenta
+// propia dentro de Caja General.
+function methodToAccount(method?: string): TreasuryAccount {
+  return method === 'YAPE' || method === 'PLIN' ? method : 'CASH';
+}
+
 export interface CreateExpenseInput {
   category: string;
   description: string;
@@ -22,9 +31,18 @@ export interface CreateRecurringTemplateInput {
 }
 
 export class TreasuryService {
-  async getBalance(): Promise<number> {
-    const last = await prisma.treasuryMovement.findFirst({ orderBy: { createdAt: 'desc' } });
+  async getBalance(account: TreasuryAccount = 'CASH'): Promise<number> {
+    const last = await prisma.treasuryMovement.findFirst({ where: { account }, orderBy: { createdAt: 'desc' } });
     return last ? Number(last.balanceAfter) : 0;
+  }
+
+  // Efectivo + Yape + Plin son cuentas independientes que suman al total del
+  // negocio — nunca se mezclan entre sí (cada una tiene su propio kardex).
+  async getBalances() {
+    const [cash, yape, plin] = await Promise.all([
+      this.getBalance('CASH'), this.getBalance('YAPE'), this.getBalance('PLIN'),
+    ]);
+    return { cash, yape, plin, total: cash + yape + plin };
   }
 
   // Movimiento genérico del fondo general — siempre dentro de una transacción
@@ -38,12 +56,13 @@ export class TreasuryService {
     userId: string,
     referenceType: string,
     referenceId?: string,
+    account: TreasuryAccount = 'CASH',
   ) {
-    const last = await tx.treasuryMovement.findFirst({ orderBy: { createdAt: 'desc' } });
+    const last = await tx.treasuryMovement.findFirst({ where: { account }, orderBy: { createdAt: 'desc' } });
     const balanceBefore = last ? Number(last.balanceAfter) : 0;
     const balanceAfter = type === 'DEPOSIT' ? balanceBefore + amount : balanceBefore - amount;
     return tx.treasuryMovement.create({
-      data: { type, amount, balanceBefore, balanceAfter, description, userId, referenceType, referenceId },
+      data: { type, account, amount, balanceBefore, balanceAfter, description, userId, referenceType, referenceId },
     });
   }
 
@@ -57,14 +76,15 @@ export class TreasuryService {
     userId: string,
     referenceType: string,
     referenceId?: string,
+    account: TreasuryAccount = 'CASH',
   ) {
-    return this.recordMovement(tx, type, amount, description, userId, referenceType, referenceId);
+    return this.recordMovement(tx, type, amount, description, userId, referenceType, referenceId, account);
   }
 
-  async deposit(amount: number, description: string, userId: string) {
+  async deposit(amount: number, description: string, userId: string, account: TreasuryAccount = 'CASH') {
     if (amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
     return prisma.$transaction((tx) =>
-      this.recordMovement(tx, 'DEPOSIT', amount, description, userId, 'MANUAL'),
+      this.recordMovement(tx, 'DEPOSIT', amount, description, userId, 'MANUAL', undefined, account),
     );
   }
 
@@ -72,11 +92,13 @@ export class TreasuryService {
     page: number;
     limit: number;
     type?: string;
+    account?: string;
     dateFrom?: Date;
     dateTo?: Date;
   }) {
     const where: Record<string, unknown> = {};
     if (filters.type) where['type'] = filters.type;
+    if (filters.account) where['account'] = filters.account;
     if (filters.dateFrom || filters.dateTo) {
       where['createdAt'] = {
         ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
@@ -121,6 +143,7 @@ export class TreasuryService {
       });
       await this.recordMovement(
         tx, 'WITHDRAWAL', input.amount, `Gasto: ${input.description}`, input.userId, 'EXPENSE', expense.id,
+        methodToAccount(input.method),
       );
       return expense;
     });

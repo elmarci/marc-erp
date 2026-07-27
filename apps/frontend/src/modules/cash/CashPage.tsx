@@ -54,8 +54,12 @@ interface Sale {
   _count: { items: number };
 }
 
+interface DigitalReconciliation {
+  method: string; expectedAmount: number; countedAmount: number; difference: number;
+}
+
 /* ─── Arqueo print helper ────────────────────────────────────────────────── */
-function printArqueo(summary: SessionSummary) {
+function printArqueo(summary: SessionSummary, reconciliations: DigitalReconciliation[] = []) {
   const s = summary.session;
   const sm = summary.summary;
   const diff = Number(s.difference ?? 0);
@@ -82,6 +86,13 @@ function printArqueo(summary: SessionSummary) {
   <div class="row b"><span>Efectivo esperado:</span><span>S/ ${Number(s.expectedAmount ?? sm.netCash).toFixed(2)}</span></div>
   ${s.closingAmount != null ? `<div class="row b"><span>Contado:</span><span>S/ ${Number(s.closingAmount).toFixed(2)}</span></div>` : ''}
   ${s.difference != null ? `<div class="row b ${diff >= 0 ? 'green' : 'red'}"><span>Diferencia:</span><span>${diff >= 0 ? '+' : ''}S/ ${diff.toFixed(2)}</span></div>` : ''}
+  ${reconciliations.map((r) => {
+    const rd = Number(r.difference);
+    return `<div class="line"></div>
+    <div class="row b"><span>${PAYMENT_METHOD_LABELS[r.method] ?? r.method} esperado:</span><span>S/ ${Number(r.expectedAmount).toFixed(2)}</span></div>
+    <div class="row"><span>Confirmado:</span><span>S/ ${Number(r.countedAmount).toFixed(2)}</span></div>
+    <div class="row b ${rd >= 0 ? 'green' : 'red'}"><span>Diferencia:</span><span>${rd >= 0 ? '+' : ''}S/ ${rd.toFixed(2)}</span></div>`;
+  }).join('')}
   <div class="line"></div>
   <div class="row"><span>Total transacciones:</span><span>${sm.totalTransactions}</span></div>
   <p class="c" style="margin-top:8px">ERP Minimarket</p>
@@ -136,14 +147,30 @@ function CloseSessionModal({
 }) {
   const [closingAmount, setClosingAmount] = useState('');
   const [toTreasury, setToTreasury] = useState(true);
+  const [yapeCounted, setYapeCounted] = useState('');
+  const [plinCounted, setPlinCounted] = useState('');
   const queryClient = useQueryClient();
 
   const counted = parseFloat(closingAmount) || 0;
   const expected = Number(summary.summary.netCash);
   const diff = counted - expected;
 
+  // Solo se pide cuadrar Yape/Plin si de verdad hubo ventas por ese medio en
+  // esta sesión — no tiene sentido pedir un monto de algo que no se usó.
+  const expectedYape = summary.summary.salesByMethod['YAPE'] ?? 0;
+  const expectedPlin = summary.summary.salesByMethod['PLIN'] ?? 0;
+  const yapeDiff = (parseFloat(yapeCounted) || 0) - expectedYape;
+  const plinDiff = (parseFloat(plinCounted) || 0) - expectedPlin;
+
+  const digitalCounts = [
+    ...(expectedYape > 0 ? [{ method: 'YAPE' as const, countedAmount: parseFloat(yapeCounted) || 0 }] : []),
+    ...(expectedPlin > 0 ? [{ method: 'PLIN' as const, countedAmount: parseFloat(plinCounted) || 0 }] : []),
+  ];
+  const missingDigitalCounts =
+    (expectedYape > 0 && yapeCounted === '') || (expectedPlin > 0 && plinCounted === '');
+
   const mutation = useMutation({
-    mutationFn: () => api.post(`/cash/sessions/${sessionId}/close`, { closingAmount: counted, toTreasury }),
+    mutationFn: () => api.post(`/cash/sessions/${sessionId}/close`, { closingAmount: counted, toTreasury, digitalCounts }),
     onSuccess: (res) => {
       const closed = res.data.data;
       queryClient.invalidateQueries({ queryKey: ['cash-registers'] });
@@ -152,7 +179,10 @@ function CloseSessionModal({
       queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
       toast.success('Caja cerrada correctamente.');
       // Print arqueo automatically
-      printArqueo({ ...summary, session: { ...summary.session, closingAmount: counted, difference: diff, closedAt: new Date().toISOString() } });
+      printArqueo(
+        { ...summary, session: { ...summary.session, closingAmount: counted, difference: diff, closedAt: new Date().toISOString() } },
+        closed.reconciliations ?? [],
+      );
       onClosed();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -232,12 +262,52 @@ function CloseSessionModal({
               </span>
             </span>
           </label>
+
+          {/* Cuadre de billeteras digitales — cada una es su propia cuenta en
+              Caja General, separada del efectivo. Se deposita siempre lo
+              confirmado (esa plata ya está acreditada, no es billete físico). */}
+          {expectedYape > 0 && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Ventas Yape esperadas</span>
+                <span className="font-medium">{formatCurrency(expectedYape)}</span>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium">Monto confirmado en Yape (S/)</label>
+                <Input type="number" placeholder="0.00" min={0} step={0.10}
+                  value={yapeCounted} onChange={(e) => setYapeCounted(e.target.value)} />
+              </div>
+              {yapeCounted && (
+                <p className={cn('text-xs font-medium', yapeDiff === 0 ? 'text-success' : yapeDiff > 0 ? 'text-blue-600' : 'text-destructive')}>
+                  Diferencia: {yapeDiff >= 0 ? '+' : ''}{formatCurrency(yapeDiff)}
+                </p>
+              )}
+            </div>
+          )}
+          {expectedPlin > 0 && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Ventas Plin esperadas</span>
+                <span className="font-medium">{formatCurrency(expectedPlin)}</span>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium">Monto confirmado en Plin (S/)</label>
+                <Input type="number" placeholder="0.00" min={0} step={0.10}
+                  value={plinCounted} onChange={(e) => setPlinCounted(e.target.value)} />
+              </div>
+              {plinCounted && (
+                <p className={cn('text-xs font-medium', plinDiff === 0 ? 'text-success' : plinDiff > 0 ? 'text-blue-600' : 'text-destructive')}>
+                  Diferencia: {plinDiff >= 0 ? '+' : ''}{formatCurrency(plinDiff)}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="border-t p-5">
           <Button
             className="w-full" variant="destructive"
-            disabled={!closingAmount || mutation.isPending}
+            disabled={!closingAmount || missingDigitalCounts || mutation.isPending}
             loading={mutation.isPending}
             onClick={() => mutation.mutate()}
           >
@@ -580,7 +650,7 @@ function HistoryPanel() {
 
 /* ─── Caja General ───────────────────────────────────────────────────────── */
 interface TreasuryMovementRow {
-  id: string; type: 'DEPOSIT' | 'WITHDRAWAL'; amount: number;
+  id: string; type: 'DEPOSIT' | 'WITHDRAWAL'; account: string; amount: number;
   balanceAfter: number; description: string; createdAt: string;
   user: { firstName: string; lastName: string };
 }
@@ -600,13 +670,16 @@ const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   WATER: 'Agua', ELECTRICITY: 'Electricidad', RENT: 'Alquiler', OTHER: 'Otro',
 };
 
+const TREASURY_ACCOUNT_LABELS: Record<string, string> = { CASH: 'Efectivo', YAPE: 'Yape', PLIN: 'Plin' };
+
 function DepositModal({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
+  const [account, setAccount] = useState('CASH');
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () => api.post('/treasury/deposits', { amount: parseFloat(amount), description }),
+    mutationFn: () => api.post('/treasury/deposits', { amount: parseFloat(amount), description, account }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
       queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
@@ -624,10 +697,19 @@ function DepositModal({ onClose }: { onClose: () => void }) {
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
         <div className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Monto (S/)</label>
-            <Input type="number" min={0.01} step={0.01} value={amount}
-              onChange={(e) => setAmount(e.target.value)} className="text-lg font-bold" autoFocus />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Monto (S/)</label>
+              <Input type="number" min={0.01} step={0.01} value={amount}
+                onChange={(e) => setAmount(e.target.value)} className="text-lg font-bold" autoFocus />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Cuenta</label>
+              <select value={account} onChange={(e) => setAccount(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                {Object.entries(TREASURY_ACCOUNT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium">Descripción</label>
@@ -775,9 +857,9 @@ function TreasuryPanel() {
   const [showTemplate, setShowTemplate] = useState(false);
   const [tab, setTab] = useState<'movimientos' | 'gastos' | 'recurrentes'>('movimientos');
 
-  const { data: balance } = useQuery({
+  const { data: balances } = useQuery({
     queryKey: ['treasury-balance'],
-    queryFn: async () => (await api.get<{ data: { balance: number } }>('/treasury/balance')).data.data.balance,
+    queryFn: async () => (await api.get<{ data: { cash: number; yape: number; plin: number; total: number } }>('/treasury/balance')).data.data,
     refetchInterval: 30000,
   });
 
@@ -820,9 +902,16 @@ function TreasuryPanel() {
       <Card>
         <CardContent className="flex flex-col items-center gap-2 p-8">
           <p className="text-sm text-muted-foreground">Saldo de Caja General</p>
-          <p className={cn('text-4xl font-black', (balance ?? 0) < 0 ? 'text-destructive' : 'text-foreground')}>
-            {balance !== undefined ? formatCurrency(balance) : '—'}
+          <p className={cn('text-4xl font-black', (balances?.total ?? 0) < 0 ? 'text-destructive' : 'text-foreground')}>
+            {balances !== undefined ? formatCurrency(balances.total) : '—'}
           </p>
+          {/* Cada cuenta se cuadra por separado (efectivo físico vs. billeteras
+              digitales) — nunca se mezclan aunque sumen al mismo total. */}
+          <div className="flex gap-4 text-sm text-muted-foreground">
+            <span>Efectivo: <span className="font-semibold text-foreground">{formatCurrency(balances?.cash ?? 0)}</span></span>
+            <span>Yape: <span className="font-semibold text-foreground">{formatCurrency(balances?.yape ?? 0)}</span></span>
+            <span>Plin: <span className="font-semibold text-foreground">{formatCurrency(balances?.plin ?? 0)}</span></span>
+          </div>
           <div className="flex gap-2 mt-3">
             <Button variant="outline" onClick={() => setShowDeposit(true)}>
               <Plus className="mr-1.5 h-4 w-4" />Depositar
@@ -860,6 +949,7 @@ function TreasuryPanel() {
                     <p className="font-medium">{m.description}</p>
                     <p className="text-xs text-muted-foreground">
                       {formatDateTime(m.createdAt)} · {m.user.firstName} {m.user.lastName}
+                      <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0">{TREASURY_ACCOUNT_LABELS[m.account] ?? m.account}</Badge>
                     </p>
                   </div>
                 </div>
@@ -867,7 +957,7 @@ function TreasuryPanel() {
                   <p className={cn('font-bold', m.type === 'WITHDRAWAL' ? 'text-destructive' : 'text-success')}>
                     {m.type === 'WITHDRAWAL' ? '-' : '+'}{formatCurrency(m.amount)}
                   </p>
-                  <p className="text-xs text-muted-foreground">Saldo: {formatCurrency(m.balanceAfter)}</p>
+                  <p className="text-xs text-muted-foreground">Saldo {TREASURY_ACCOUNT_LABELS[m.account] ?? m.account}: {formatCurrency(m.balanceAfter)}</p>
                 </div>
               </div>
             ))}

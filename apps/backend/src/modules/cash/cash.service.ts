@@ -46,7 +46,13 @@ export class CashService {
     return session;
   }
 
-  async closeSession(sessionId: string, closingAmount: number, notes?: string, toTreasury = false) {
+  async closeSession(
+    sessionId: string,
+    closingAmount: number,
+    notes?: string,
+    toTreasury = false,
+    digitalCounts: { method: 'YAPE' | 'PLIN'; countedAmount: number }[] = [],
+  ) {
     const session = await prisma.cashSession.findFirst({
       where: { id: sessionId, status: 'OPEN' },
       include: {
@@ -61,13 +67,15 @@ export class CashService {
 
     if (!session) throw new NotFoundError('Sesión de caja activa');
 
-    // Calcular total esperado
-    const cashSales = session.sales.reduce((sum, sale) => {
-      const cashPayments = sale.payments
-        .filter((p) => p.method === 'CASH')
+    const expectedForMethod = (method: string) => session.sales.reduce((sum, sale) => {
+      const payments = sale.payments
+        .filter((p) => p.method === method)
         .reduce((s, p) => s + Number(p.amount), 0);
-      return sum + cashPayments;
+      return sum + payments;
     }, 0);
+
+    // Calcular total esperado
+    const cashSales = expectedForMethod('CASH');
 
     const withdrawals = session.movements
       .filter((m) => m.type === 'WITHDRAWAL')
@@ -80,26 +88,59 @@ export class CashService {
     const expectedAmount = Number(session.openingAmount) + cashSales + deposits - withdrawals;
     const difference = closingAmount - expectedAmount;
 
+    // Cuadre de Yape/Plin — cada uno contra lo que realmente se vendió por
+    // ese método en esta sesión (no contra efectivo, son cuentas separadas).
+    const digitalReconciliations = digitalCounts.map((dc) => {
+      const expected = expectedForMethod(dc.method);
+      return { method: dc.method, expectedAmount: expected, countedAmount: dc.countedAmount, difference: dc.countedAmount - expected };
+    });
+
     const closed = await prisma.$transaction(async (tx) => {
-      const updated = await tx.cashSession.update({
+      await tx.cashSession.update({
         where: { id: sessionId },
         data: { status: 'CLOSED', closingAmount, expectedAmount, difference, closedAt: new Date(), notes },
-        include: {
-          cashRegister: true,
-          user: { select: { firstName: true, lastName: true } },
-          sales: { include: { payments: true }, orderBy: { createdAt: 'desc' } },
-          movements: true,
-        },
       });
+
       // El efectivo contado al cerrar se deposita en la Caja General — así
       // queda disponible para la próxima apertura o para pagar gastos.
       if (toTreasury && closingAmount > 0) {
         await treasuryService.recordMovementInTx(
           tx, 'DEPOSIT', closingAmount,
-          `Cierre de caja: ${session.cashRegister.name}`, session.userId, 'CASH_SESSION_CLOSE', sessionId,
+          `Cierre de caja: ${session.cashRegister.name}`, session.userId, 'CASH_SESSION_CLOSE', sessionId, 'CASH',
         );
       }
-      return updated;
+
+      // El dinero de Yape/Plin ya está acreditado desde el momento de la
+      // venta (no es billete físico que el cajero pueda dejar en el cajón),
+      // así que el monto confirmado se deposita siempre, sin checkbox.
+      for (const r of digitalReconciliations) {
+        await tx.cashSessionReconciliation.create({
+          data: {
+            cashSessionId: sessionId,
+            method: r.method,
+            expectedAmount: r.expectedAmount,
+            countedAmount: r.countedAmount,
+            difference: r.difference,
+          },
+        });
+        if (r.countedAmount > 0) {
+          await treasuryService.recordMovementInTx(
+            tx, 'DEPOSIT', r.countedAmount,
+            `Cierre de caja (${r.method}): ${session.cashRegister.name}`, session.userId, 'CASH_SESSION_CLOSE', sessionId, r.method,
+          );
+        }
+      }
+
+      return tx.cashSession.findUniqueOrThrow({
+        where: { id: sessionId },
+        include: {
+          cashRegister: true,
+          user: { select: { firstName: true, lastName: true } },
+          sales: { include: { payments: true }, orderBy: { createdAt: 'desc' } },
+          movements: true,
+          reconciliations: true,
+        },
+      });
     });
     emitEvent('erp:cash-updated');
     return closed;
@@ -119,6 +160,7 @@ export class CashService {
           orderBy: { createdAt: 'desc' },
         },
         movements: true,
+        reconciliations: true,
       },
     });
 

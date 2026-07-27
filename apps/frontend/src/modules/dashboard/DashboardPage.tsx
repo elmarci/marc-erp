@@ -86,11 +86,18 @@ export function DashboardPage() {
     refetchInterval: 60000, // Actualizar cada minuto
   });
 
-  const chartData = data?.salesChart.map((d) => ({
-    date: format(new Date(d.date), 'EEE', { locale: es }),
-    total: d.total,
-    ventas: Number(d.count),
-  })) ?? [];
+  const chartData = data?.salesChart.map((d) => {
+    // d.date es "YYYY-MM-DD" del backend (ya correcto en hora Lima). Si se
+    // parsea con `new Date(string)` JS lo toma como medianoche UTC, y en un
+    // navegador en Lima (UTC-5) eso cae en las 7pm del día ANTERIOR — el
+    // gráfico terminaba mostrando el día equivocado en cada barra.
+    const [y, m, day] = d.date.split('-').map(Number);
+    return {
+      date: format(new Date(y, m - 1, day), 'EEE', { locale: es }),
+      total: d.total,
+      ventas: Number(d.count),
+    };
+  }) ?? [];
 
   if (isLoading) {
     return (

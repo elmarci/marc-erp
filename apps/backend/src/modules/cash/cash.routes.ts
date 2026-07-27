@@ -101,13 +101,19 @@ router.get('/sessions/:id/summary', async (req: Request, res: Response, next: Ne
 
 router.post('/sessions/:id/close', authorizeMinRole('CASHIER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { closingAmount, notes, toTreasury } = z.object({
+    const { closingAmount, notes, toTreasury, digitalCounts } = z.object({
       closingAmount: z.number().min(0),
       notes: z.string().optional(),
       toTreasury: z.boolean().optional(),
+      // Cuadre de billeteras digitales (Yape, Plin) — el monto confirmado se
+      // deposita siempre a su cuenta en Caja General, sin checkbox aparte.
+      digitalCounts: z.array(z.object({
+        method: z.enum(['YAPE', 'PLIN']),
+        countedAmount: z.number().min(0),
+      })).optional(),
     }).parse(req.body);
 
-    const session = await cashService.closeSession(req.params.id, closingAmount, notes, toTreasury);
+    const session = await cashService.closeSession(req.params.id, closingAmount, notes, toTreasury, digitalCounts);
     res.json({ success: true, data: session });
   } catch (err) { next(err); }
 });
