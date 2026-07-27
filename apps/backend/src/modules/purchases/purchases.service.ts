@@ -1,5 +1,7 @@
 import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
+import { treasuryService, methodToAccount } from '../treasury/treasury.service';
+import { emitEvent } from '../../config/socket';
 import type { Prisma } from '@prisma/client';
 
 interface DirectPurchaseItemInput {
@@ -9,6 +11,11 @@ interface DirectPurchaseItemInput {
   isBonus?: boolean;
   batchNumber?: string;
   expiryDate?: Date;
+}
+
+interface PurchasePaymentInput {
+  paid: boolean;
+  method?: string;
 }
 
 export class PurchasesService {
@@ -129,6 +136,38 @@ export class PurchasesService {
     await Promise.all(data.items.map(i => this.trackSupplierProduct(data.supplierId, i.productId, i.unitCost)));
 
     return order;
+  }
+
+  /**
+   * Aplica un pago (parcial o total) contra el saldo pendiente de una compra
+   * ya recibida, y lo retira de Caja General en la misma transacción — así
+   * el dinero sale de la cuenta correcta (efectivo/Yape/Plin) en el momento
+   * exacto en que realmente se le paga al proveedor, no cuando se registra
+   * la mercadería.
+   */
+  private async applyPurchasePayment(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    totalAmount: number,
+    amount: number,
+    method: string | undefined,
+    userId: string,
+    description: string,
+  ) {
+    if (amount <= 0) return;
+
+    await treasuryService.recordMovementInTx(
+      tx, 'WITHDRAWAL', amount, description, userId, 'PURCHASE', orderId, methodToAccount(method),
+    );
+
+    const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
+    const newPaidAmount = Number(order.paidAmount) + amount;
+    const newStatus = newPaidAmount >= totalAmount - 0.009 ? 'PAID' : newPaidAmount > 0 ? 'PARTIAL' : 'CREDIT';
+
+    await tx.purchaseOrder.update({
+      where: { id: orderId },
+      data: { paidAmount: newPaidAmount, paymentStatus: newStatus },
+    });
   }
 
   private async trackSupplierProduct(supplierId: string, productId: string, price: number, confirmed = false) {
@@ -255,13 +294,18 @@ export class PurchasesService {
     userId: string,
     items: Array<{ productId: string; receivedQty: number; unitCost: number; isBonus?: boolean; batchNumber?: string; expiryDate?: Date }>,
     notes?: string,
+    payment?: PurchasePaymentInput,
   ) {
     const order = await this.getOrder(orderId);
     if (!['APPROVED', 'SENT', 'PARTIALLY_RECEIVED'].includes(order.status)) {
       throw new BusinessError('Solo se puede recibir mercadería en órdenes aprobadas o enviadas.');
     }
 
-    return prisma.$transaction(async (tx) => {
+    // Lo que realmente se le debe al proveedor por ESTA recepción (una orden
+    // puede recibirse en varias partes, cada una con su propio pago o no).
+    const receiptTotal = items.reduce((sum, i) => sum + (i.isBonus ? 0 : i.receivedQty * i.unitCost), 0);
+
+    const receipt = await prisma.$transaction(async (tx) => {
       const receipt = await tx.purchaseReceipt.create({
         data: {
           purchaseOrderId: orderId,
@@ -313,8 +357,18 @@ export class PurchasesService {
         data: { status: newStatus, receivedDate: allReceived ? new Date() : undefined },
       });
 
+      if (payment?.paid && receiptTotal > 0) {
+        await this.applyPurchasePayment(
+          tx, orderId, Number(order.totalAmount), receiptTotal, payment.method, userId,
+          `Pago de compra: OC ${order.orderNumber}`,
+        );
+      }
+
       return receipt;
     });
+
+    if (payment?.paid) emitEvent('erp:cash-updated');
+    return receipt;
   }
 
   /**
@@ -328,6 +382,7 @@ export class PurchasesService {
     date?: Date;
     notes?: string;
     items: DirectPurchaseItemInput[];
+    payment?: PurchasePaymentInput;
   }) {
     const supplier = await prisma.supplier.findFirst({ where: { id: data.supplierId, deletedAt: null } });
     if (!supplier) throw new NotFoundError('Proveedor');
@@ -399,9 +454,17 @@ export class PurchasesService {
         });
       }
 
+      if (data.payment?.paid && totalAmount > 0) {
+        await this.applyPurchasePayment(
+          tx, order.id, totalAmount, totalAmount, data.payment.method, userId,
+          `Pago de compra: OC ${order.orderNumber}`,
+        );
+      }
+
       return { orderId: order.id };
     });
 
+    if (data.payment?.paid) emitEvent('erp:cash-updated');
     return this.getOrder(orderId);
   }
 
@@ -448,6 +511,13 @@ export class PurchasesService {
     });
     if (movements.length === 0) throw new BusinessError('No se encontraron movimientos de esta compra para revertir.');
 
+    // Si ya se le había pagado algo a este proveedor por esta compra, ese
+    // dinero tiene que volver a Caja General — si no, quedaría retirado para
+    // siempre por una compra que ya no existe.
+    const paidMovements = await prisma.treasuryMovement.findMany({
+      where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
+    });
+
     await prisma.$transaction(async (tx) => {
       for (const m of movements) {
         const product = await tx.product.findUnique({ where: { id: m.productId } });
@@ -480,12 +550,83 @@ export class PurchasesService {
         });
       }
 
+      for (const pm of paidMovements) {
+        await treasuryService.recordMovementInTx(
+          tx, 'DEPOSIT', Number(pm.amount), `Reversión pago (compra anulada): OC ${order.orderNumber}`,
+          userId, 'PURCHASE_VOID', orderId, pm.account,
+        );
+      }
+
       await tx.purchaseOrder.update({
         where: { id: orderId },
         data: { status: 'CANCELLED', voidedAt: new Date(), voidedById: userId, voidReason: reason },
       });
     });
 
+    if (paidMovements.length > 0) emitEvent('erp:cash-updated');
+
+    return this.getOrder(orderId);
+  }
+
+  /** Compras recibidas que todavía le deben algo al proveedor. */
+  async listPayable(filters: { supplierId?: string; page: number; limit: number }) {
+    const where: Record<string, unknown> = {
+      status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] },
+      paymentStatus: { not: 'PAID' },
+    };
+    if (filters.supplierId) where['supplierId'] = filters.supplierId;
+
+    const [data, total] = await Promise.all([
+      prisma.purchaseOrder.findMany({
+        where,
+        include: {
+          supplier: { select: { businessName: true } },
+          user: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+        skip: (filters.page - 1) * filters.limit,
+        take: filters.limit,
+      }),
+      prisma.purchaseOrder.count({ where }),
+    ]);
+
+    return {
+      data: data.map((o) => ({ ...o, outstanding: Number(o.totalAmount) - Number(o.paidAmount) })),
+      pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
+    };
+  }
+
+  /**
+   * Registra el pago (total o parcial) de una compra a crédito ya recibida
+   * — retira de Caja General en el momento real en que sale el dinero,
+   * usando el registro histórico (SupplierPayment) para trazabilidad.
+   */
+  async payOrder(orderId: string, userId: string, amount: number, method: string, reference?: string, notes?: string) {
+    if (amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
+
+    const order = await prisma.purchaseOrder.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundError('Orden de compra');
+    if (!['RECEIVED', 'PARTIALLY_RECEIVED'].includes(order.status)) {
+      throw new BusinessError('Solo se pueden pagar compras que ya fueron recibidas.');
+    }
+
+    const outstanding = Number(order.totalAmount) - Number(order.paidAmount);
+    if (outstanding <= 0.009) throw new BusinessError('Esta compra ya está pagada por completo.');
+    if (amount > outstanding + 0.009) {
+      throw new BusinessError(`El monto excede el saldo pendiente (S/ ${outstanding.toFixed(2)}).`);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.supplierPayment.create({
+        data: { purchaseOrderId: orderId, userId, amount, method: method as never, reference, notes },
+      });
+      await this.applyPurchasePayment(
+        tx, orderId, Number(order.totalAmount), amount, method, userId,
+        `Pago a proveedor: OC ${order.orderNumber}`,
+      );
+    });
+
+    emitEvent('erp:cash-updated');
     return this.getOrder(orderId);
   }
 }

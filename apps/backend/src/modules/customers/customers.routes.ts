@@ -4,6 +4,8 @@ import { prisma } from '../../database/client';
 import { authenticate } from '../../middleware/auth';
 import { Prisma } from '@prisma/client';
 import { sendExcel } from '../../utils/excel';
+import { treasuryService, methodToAccount } from '../treasury/treasury.service';
+import { emitEvent } from '../../config/socket';
 
 const router = Router();
 
@@ -173,10 +175,17 @@ router.get('/:id/unpaid-sales', async (req: Request, res: Response, next: NextFu
 });
 
 // Un pago puede aplicarse a varias ventas fiadas a la vez (el cajero elige
-// cuáles, no es reparto automático sobre TODA la deuda). Si el pago es en
-// efectivo y se manda la sesión de caja abierta del cajero, se registra
-// también como un movimiento de esa caja para que aparezca en el arqueo del
-// día — de lo contrario ese dinero queda invisible al cierre de caja.
+// cuáles, no es reparto automático sobre TODA la deuda).
+//
+// A dónde va el dinero:
+// - Efectivo con una caja abierta en ese momento: se registra como
+//   movimiento de ESA sesión (igual que una venta en efectivo) y llega a
+//   Caja General recién cuando esa caja se cierra — así el conteo físico del
+//   cajero cuadra (ese billete ya está en su cajón).
+// - Yape/Plin, o efectivo sin ninguna caja abierta: no hay cajón físico que
+//   cuadrar ni cierre que lo vaya a recoger después, así que se deposita
+//   DIRECTO en Caja General en el momento del cobro — si no, ese dinero
+//   nunca queda registrado en ningún lado.
 router.post('/:id/payments', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { allocations, method, notes, cashSessionId } = z.object({
@@ -208,34 +217,46 @@ router.post('/:id/payments', async (req: Request, res: Response, next: NextFunct
     }
 
     const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
+    const customerName = `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || customer.businessName || 'cliente';
+    const description = `Cobro de deuda (${customerName}) — ${payments.map((p) => p.saleNumber).join(', ')}`;
 
     let cashSession = null;
     if (method === 'CASH' && cashSessionId) {
       cashSession = await prisma.cashSession.findFirst({ where: { id: cashSessionId, status: 'OPEN' } });
     }
 
-    const ops = [
-      ...payments.map((p) => prisma.sale.update({ where: { id: p.saleId }, data: { paidAmount: { increment: p.amount } } })),
-      ...payments.map((p) => prisma.customerDebtPayment.create({
-        data: { customerId: req.params.id, saleId: p.saleId, amount: p.amount, method, notes },
-      })),
-      prisma.customer.update({
+    const updatedCustomer = await prisma.$transaction(async (tx) => {
+      for (const p of payments) {
+        await tx.sale.update({ where: { id: p.saleId }, data: { paidAmount: { increment: p.amount } } });
+        await tx.customerDebtPayment.create({
+          data: { customerId: req.params.id, saleId: p.saleId, amount: p.amount, method, notes },
+        });
+      }
+
+      const customerAfter = await tx.customer.update({
         where: { id: req.params.id },
         data: { currentBalance: { decrement: totalPaid } },
-      }),
-      ...(cashSession ? [prisma.cashMovement.create({
-        data: {
-          cashSessionId: cashSession.id,
-          type: 'DEPOSIT',
-          amount: totalPaid,
-          reason: `Cobro de deuda — ${payments.map((p) => p.saleNumber).join(', ')}`,
-          notes,
-        },
-      })] : []),
-    ];
+      });
 
-    const results = await prisma.$transaction(ops);
-    const updatedCustomer = results[payments.length * 2] as Awaited<ReturnType<typeof prisma.customer.update>>;
+      if (cashSession) {
+        // Efectivo dentro de una sesión abierta: espera al cierre de esa
+        // caja para no contar el mismo billete dos veces en Caja General.
+        await tx.cashMovement.create({
+          data: { cashSessionId: cashSession.id, type: 'DEPOSIT', amount: totalPaid, reason: description, notes },
+        });
+      } else {
+        // Sin sesión que lo cuadre (Yape/Plin, o efectivo cobrado fuera de
+        // una caja abierta): va directo a Caja General, referenciado al
+        // cliente para trazabilidad.
+        await treasuryService.recordMovementInTx(
+          tx, 'DEPOSIT', totalPaid, description, req.user!.sub, 'DEBT_PAYMENT', customer.id, methodToAccount(method),
+        );
+      }
+
+      return customerAfter;
+    });
+
+    if (!cashSession) emitEvent('erp:cash-updated');
 
     res.json({
       success: true,

@@ -25,6 +25,8 @@ interface Supplier {
 
 interface PurchaseOrder {
   id: string; orderNumber: string; status: string;
+  paymentStatus: 'PAID' | 'PARTIAL' | 'CREDIT';
+  paidAmount: number;
   createdAt: string; expectedDate: string | null;
   subtotal: number; taxAmount: number; totalAmount: number;
   supplier: { businessName: string };
@@ -44,7 +46,20 @@ interface OrderDetail extends PurchaseOrder {
     product: { id: string; name: string; barcode: string | null; currentStock: number };
   }>;
   receipts: Array<{ id: string; receivedAt: string; notes: string | null }>;
+  payments: Array<{ id: string; amount: number; method: string; paidAt: string; reference: string | null; notes: string | null }>;
 }
+
+interface PayableOrder extends PurchaseOrder {
+  outstanding: number;
+}
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = { PAID: 'Pagada', PARTIAL: 'Pago parcial', CREDIT: 'Crédito' };
+const PAYMENT_STATUS_VARIANT: Record<string, 'default' | 'success' | 'destructive' | 'secondary' | 'outline'> = {
+  PAID: 'success', PARTIAL: 'default', CREDIT: 'destructive',
+};
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: 'Efectivo', YAPE: 'Yape', PLIN: 'Plin', TRANSFER: 'Transferencia', DEBIT_CARD: 'Tarjeta débito', CREDIT_CARD: 'Tarjeta crédito', OTHER: 'Otro',
+};
 
 interface Product {
   id: string; name: string; barcode: string | null; costPrice: number;
@@ -338,6 +353,38 @@ function printPurchaseReceipt(order: OrderDetail) {
   win.document.close(); win.focus(); win.print();
 }
 
+/* ─── Selector Pagado/Crédito + método (reutilizado en Registrar/Recibir) ── */
+function PaymentStatusPicker({ paid, method, onChange, amountLabel }: {
+  paid: boolean; method: string; onChange: (v: { paid: boolean; method: string }) => void; amountLabel?: string;
+}) {
+  return (
+    <div className="rounded-lg border p-3 space-y-2">
+      <label className="block text-sm font-medium">¿Cómo se paga esta compra?{amountLabel ? ` (${amountLabel})` : ''}</label>
+      <div className="flex gap-2">
+        <Button type="button" size="sm" variant={paid ? 'default' : 'outline'} className="flex-1"
+          onClick={() => onChange({ paid: true, method })}>
+          Pagado ahora
+        </Button>
+        <Button type="button" size="sm" variant={!paid ? 'destructive' : 'outline'} className="flex-1"
+          onClick={() => onChange({ paid: false, method })}>
+          Crédito (pendiente)
+        </Button>
+      </div>
+      {paid && (
+        <select value={method} onChange={e => onChange({ paid, method: e.target.value })}
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      )}
+      {!paid && (
+        <p className="text-xs text-muted-foreground">
+          Queda como cuenta por pagar al proveedor. Puedes saldarla luego desde la pestaña "Cuentas por Pagar".
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ─── Registrar Compra (directa, con CPP/bonificación/granel) ───────────── */
 interface DirectLine {
   productId: string; name: string; isBulk: boolean; bulkUnit: string | null;
@@ -354,6 +401,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [lines, setLines] = useState<DirectLine[]>([]);
+  const [payment, setPayment] = useState({ paid: true, method: 'CASH' });
 
   const { data: suppliers } = useQuery({
     queryKey: ['suppliers-all'],
@@ -425,11 +473,16 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
         unitCost: effUnitCost(l),
         isBonus: l.isBonus,
       })),
+      payment,
     }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Compra registrada — stock y costo actualizados de inmediato.');
+      queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      toast.success(payment.paid
+        ? 'Compra registrada y pagada — stock, costo y Caja General actualizados.'
+        : 'Compra registrada como crédito — queda en Cuentas por Pagar.');
       onCreated(res.data.data);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -580,9 +633,12 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
           </div>
 
           {lines.length > 0 && (
-            <div className="flex justify-end text-lg font-bold border-t pt-3">
-              Total: {formatCurrency(total)}
-            </div>
+            <>
+              <div className="flex justify-end text-lg font-bold border-t pt-3">
+                Total: {formatCurrency(total)}
+              </div>
+              <PaymentStatusPicker paid={payment.paid} method={payment.method} onChange={setPayment} amountLabel={formatCurrency(total)} />
+            </>
           )}
         </div>
 
@@ -978,6 +1034,8 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
   const [scan, setScan] = useState('');
   const [bonusSearch, setBonusSearch] = useState('');
   const debouncedBonusSearch = useDebouncedValue(bonusSearch, 300);
+  const [payment, setPayment] = useState({ paid: true, method: 'CASH' });
+  const receiptTotal = items.reduce((s, i) => s + (i.isBonus ? 0 : i.receivedQty * i.unitCost), 0);
 
   const { data: bonusResults } = useQuery({
     queryKey: ['products-search', debouncedBonusSearch],
@@ -1011,11 +1069,16 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
     mutationFn: () => api.post(`/purchases/${order.id}/receive`, {
       items: items.map(i => ({ productId: i.productId, receivedQty: i.receivedQty, unitCost: i.unitCost, isBonus: i.isBonus })),
       notes,
+      payment,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
-      toast.success('Mercadería recibida. Stock actualizado.');
+      queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      toast.success(payment.paid
+        ? 'Mercadería recibida y pagada — stock y Caja General actualizados.'
+        : 'Mercadería recibida como crédito — queda en Cuentas por Pagar.');
       onReceived();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -1089,6 +1152,10 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
             <label className="mb-1 block text-sm font-medium">Notas de recepción</label>
             <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones..." />
           </div>
+
+          {receiptTotal > 0 && (
+            <PaymentStatusPicker paid={payment.paid} method={payment.method} onChange={setPayment} amountLabel={formatCurrency(receiptTotal)} />
+          )}
         </div>
         <div className="border-t p-5 flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
@@ -1101,10 +1168,81 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
   );
 }
 
+/* ─── Registrar pago de una compra a crédito ─────────────────────────────── */
+function PayPurchaseModal({ order, onClose, onPaid }: {
+  order: { id: string; orderNumber: string; totalAmount: number; paidAmount: number };
+  onClose: () => void; onPaid: () => void;
+}) {
+  const outstanding = order.totalAmount - order.paidAmount;
+  const [amount, setAmount] = useState(outstanding.toFixed(2));
+  const [method, setMethod] = useState('CASH');
+  const [reference, setReference] = useState('');
+  const [notes, setNotes] = useState('');
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/purchases/${order.id}/pay`, {
+      amount: Number(amount), method, reference: reference || undefined, notes: notes || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
+      queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      toast.success('Pago registrado — descontado de Caja General.');
+      onPaid();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-bold">Pagar a proveedor</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{order.orderNumber} · Saldo pendiente: {formatCurrency(outstanding)}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Monto a pagar</label>
+            <Input type="number" min={0.01} max={outstanding} step={0.01} value={amount} onChange={e => setAmount(e.target.value)} className="text-right font-bold" />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Método</label>
+            <select value={method} onChange={e => setMethod(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Referencia (opcional)</label>
+            <Input value={reference} onChange={e => setReference(e.target.value)} placeholder="N° operación, voucher..." />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Notas</label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones..." />
+          </div>
+        </div>
+        <div className="border-t p-5 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending}
+            disabled={!amount || Number(amount) <= 0 || Number(amount) > outstanding + 0.009}>
+            Confirmar pago
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Order Row ─────────────────────────────────────────────────────────── */
 function OrderRow({ order }: { order: PurchaseOrder }) {
   const [expanded, setExpanded] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
+  const [showPay, setShowPay] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: detail } = useQuery({
@@ -1169,6 +1307,13 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
             {STATUS_LABELS[order.status] ?? order.status}
           </Badge>
         </td>
+        <td className="px-4 py-3">
+          {['RECEIVED', 'PARTIALLY_RECEIVED'].includes(order.status) && (
+            <Badge variant={PAYMENT_STATUS_VARIANT[order.paymentStatus] ?? 'default'}>
+              {PAYMENT_STATUS_LABELS[order.paymentStatus] ?? order.paymentStatus}
+            </Badge>
+          )}
+        </td>
         <td className="px-4 py-3 text-muted-foreground">{formatDateTime(order.createdAt)}</td>
         <td className="px-4 py-3 text-right font-semibold">{formatCurrency(order.totalAmount)}</td>
         <td className="px-4 py-3 text-center">{order._count.items}</td>
@@ -1193,7 +1338,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
 
       {expanded && detail && (
         <tr>
-          <td colSpan={8} className="bg-muted/20 px-6 py-4">
+          <td colSpan={9} className="bg-muted/20 px-6 py-4">
             <div className="space-y-2 text-sm">
               <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wide">Productos</p>
               <table className="w-full">
@@ -1224,6 +1369,36 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                 </tbody>
               </table>
               {detail.notes && <p className="text-muted-foreground text-xs">Notas: {detail.notes}</p>}
+
+              {['RECEIVED', 'PARTIALLY_RECEIVED'].includes(detail.status) && (
+                <div className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wide">Pagos a proveedor</p>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={PAYMENT_STATUS_VARIANT[detail.paymentStatus] ?? 'default'}>
+                        {PAYMENT_STATUS_LABELS[detail.paymentStatus] ?? detail.paymentStatus}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Pagado {formatCurrency(detail.paidAmount)} de {formatCurrency(detail.totalAmount)}
+                      </span>
+                    </div>
+                  </div>
+                  {detail.payments.length > 0 && (
+                    <div className="space-y-1">
+                      {detail.payments.map(p => (
+                        <div key={p.id} className="flex justify-between text-xs text-muted-foreground">
+                          <span>{formatDateTime(p.paidAt)} · {PAYMENT_METHOD_LABELS[p.method] ?? p.method}{p.reference ? ` · ${p.reference}` : ''}</span>
+                          <span className="font-medium text-foreground">{formatCurrency(p.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {detail.paymentStatus !== 'PAID' && (
+                    <Button size="sm" onClick={() => setShowPay(true)}>Registrar pago</Button>
+                  )}
+                </div>
+              )}
+
               {detail.voidedAt && (
                 <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive">
                   <p className="font-semibold">Anulada el {formatDateTime(detail.voidedAt)}{detail.voidedBy ? ` por ${detail.voidedBy.firstName} ${detail.voidedBy.lastName}` : ''}</p>
@@ -1236,6 +1411,10 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
             </div>
           </td>
         </tr>
+      )}
+
+      {showPay && detail && (
+        <PayPurchaseModal order={detail} onClose={() => setShowPay(false)} onPaid={() => setShowPay(false)} />
       )}
 
       {showReceive && detail && (
@@ -1396,6 +1575,7 @@ function OrdersTab() {
                   <th className="px-4 py-3 font-medium">N° Orden</th>
                   <th className="px-4 py-3 font-medium">Proveedor</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3 font-medium">Pago</th>
                   <th className="px-4 py-3 font-medium">Fecha</th>
                   <th className="px-4 py-3 font-medium text-right">Total</th>
                   <th className="px-4 py-3 font-medium text-center">Ítems</th>
@@ -1406,7 +1586,7 @@ function OrdersTab() {
               <tbody className="divide-y">
                 {(data?.data ?? []).map(order => <OrderRow key={order.id} order={order} />)}
                 {(data?.data ?? []).length === 0 && (
-                  <tr><td colSpan={8} className="py-12 text-center text-muted-foreground">No hay órdenes de compra</td></tr>
+                  <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">No hay órdenes de compra</td></tr>
                 )}
               </tbody>
             </table>
@@ -1454,9 +1634,93 @@ function OrdersTab() {
   );
 }
 
+/* ─── Cuentas por Pagar Tab ──────────────────────────────────────────────── */
+function PayableTab() {
+  const [page, setPage] = useState(1);
+  const [payOrder, setPayOrder] = useState<PayableOrder | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['purchases-payable', page],
+    queryFn: async () => (await api.get<{ data: PayableOrder[]; pagination: { total: number; totalPages: number } }>(
+      `/purchases/payable?page=${page}&limit=20`
+    )).data,
+  });
+
+  const totalOutstanding = (data?.data ?? []).reduce((s, o) => s + o.outstanding, 0);
+
+  return (
+    <div className="space-y-4">
+      {(data?.data.length ?? 0) > 0 && (
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Total pendiente a proveedores</span>
+            <span className="text-xl font-bold text-destructive">{formatCurrency(totalOutstanding)}</span>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        {isLoading ? <div className="py-12 text-center text-muted-foreground">Cargando...</div> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50 text-left">
+                  <th className="px-4 py-3 font-medium">N° Orden</th>
+                  <th className="px-4 py-3 font-medium">Proveedor</th>
+                  <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3 font-medium">Fecha</th>
+                  <th className="px-4 py-3 font-medium text-right">Total</th>
+                  <th className="px-4 py-3 font-medium text-right">Pagado</th>
+                  <th className="px-4 py-3 font-medium text-right">Pendiente</th>
+                  <th className="px-4 py-3 w-28" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {(data?.data ?? []).map(o => (
+                  <tr key={o.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-3 font-medium">{o.orderNumber}</td>
+                    <td className="px-4 py-3">{o.supplier.businessName}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant={PAYMENT_STATUS_VARIANT[o.paymentStatus] ?? 'default'}>
+                        {PAYMENT_STATUS_LABELS[o.paymentStatus] ?? o.paymentStatus}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{formatDateTime(o.createdAt)}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(o.totalAmount)}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{formatCurrency(o.paidAmount)}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-destructive">{formatCurrency(o.outstanding)}</td>
+                    <td className="px-4 py-3">
+                      <Button size="sm" onClick={() => setPayOrder(o)}>Pagar</Button>
+                    </td>
+                  </tr>
+                ))}
+                {(data?.data ?? []).length === 0 && (
+                  <tr><td colSpan={8} className="py-12 text-center text-muted-foreground">No hay compras pendientes de pago 🎉</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {data && data.pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
+            <span>Total: {data.pagination.total}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+              <span className="self-center">Pág. {page} / {data.pagination.totalPages}</span>
+              <Button variant="outline" size="sm" disabled={page === data.pagination.totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {payOrder && <PayPurchaseModal order={payOrder} onClose={() => setPayOrder(null)} onPaid={() => setPayOrder(null)} />}
+    </div>
+  );
+}
+
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function PurchasesPage() {
-  const [tab, setTab] = useState<'orders' | 'suppliers'>('orders');
+  const [tab, setTab] = useState<'orders' | 'payable' | 'suppliers'>('orders');
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -1466,7 +1730,7 @@ export function PurchasesPage() {
       </div>
 
       <div className="flex gap-1 border-b">
-        {([['orders', FileText, 'Órdenes de Compra'], ['suppliers', Truck, 'Proveedores']] as const).map(([key, Icon, label]) => (
+        {([['orders', FileText, 'Órdenes de Compra'], ['payable', Clock, 'Cuentas por Pagar'], ['suppliers', Truck, 'Proveedores']] as const).map(([key, Icon, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn('flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px',
               tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
@@ -1475,7 +1739,7 @@ export function PurchasesPage() {
         ))}
       </div>
 
-      {tab === 'orders' ? <OrdersTab /> : <SuppliersTab />}
+      {tab === 'orders' ? <OrdersTab /> : tab === 'payable' ? <PayableTab /> : <SuppliersTab />}
     </div>
   );
 }

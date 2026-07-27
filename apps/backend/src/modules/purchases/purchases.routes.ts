@@ -63,6 +63,19 @@ router.get('/export', async (req: Request, res: Response, next: NextFunction) =>
   } catch (err) { next(err); }
 });
 
+// Cuentas por pagar — debe ir antes de "/:id" para no ser tapada por esa ruta.
+router.get('/payable', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { supplierId, page, limit } = z.object({
+      supplierId: z.string().uuid().optional(),
+      page: z.coerce.number().min(1).default(1),
+      limit: z.coerce.number().min(1).max(100).default(20),
+    }).parse(req.query);
+    const result = await purchasesService.listPayable({ supplierId, page, limit });
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const order = await purchasesService.getOrder(req.params.id);
@@ -103,9 +116,14 @@ router.post('/:id/cancel', authorizeMinRole('SUPERVISOR'), async (req: Request, 
   } catch (err) { next(err); }
 });
 
+const paymentSchema = z.object({
+  paid: z.boolean(),
+  method: z.enum(['CASH', 'YAPE', 'PLIN', 'TRANSFER', 'DEBIT_CARD', 'CREDIT_CARD', 'OTHER']).optional(),
+}).optional();
+
 router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { items, notes } = z.object({
+    const { items, notes, payment } = z.object({
       items: z.array(z.object({
         productId: z.string().uuid(),
         receivedQty: z.coerce.number().min(0),
@@ -115,10 +133,25 @@ router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, 
         expiryDate: z.coerce.date().optional(),
       })).min(1),
       notes: z.string().optional(),
+      payment: paymentSchema,
     }).parse(req.body);
 
-    const receipt = await purchasesService.receiveOrder(req.params.id, req.user!.sub, items as Parameters<typeof purchasesService.receiveOrder>[2], notes);
+    const receipt = await purchasesService.receiveOrder(req.params.id, req.user!.sub, items as Parameters<typeof purchasesService.receiveOrder>[2], notes, payment);
     res.status(201).json({ success: true, data: receipt });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/pay', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { amount, method, reference, notes } = z.object({
+      amount: z.coerce.number().positive(),
+      method: z.enum(['CASH', 'YAPE', 'PLIN', 'TRANSFER', 'DEBIT_CARD', 'CREDIT_CARD', 'OTHER']),
+      reference: z.string().optional(),
+      notes: z.string().optional(),
+    }).parse(req.body);
+
+    const order = await purchasesService.payOrder(req.params.id, req.user!.sub, amount, method, reference, notes);
+    res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });
 
@@ -139,6 +172,7 @@ router.post('/direct', authorizeMinRole('WAREHOUSE'), async (req: Request, res: 
         batchNumber: z.string().optional(),
         expiryDate: z.coerce.date().optional(),
       })).min(1),
+      payment: paymentSchema,
     }).parse(req.body);
 
     const order = await purchasesService.createDirectPurchase(req.user!.sub, data);

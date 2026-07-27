@@ -7,7 +7,7 @@ export type TreasuryAccount = 'CASH' | 'YAPE' | 'PLIN';
 // Los gastos/movimientos con un método distinto a Yape o Plin salen de la
 // cuenta de efectivo por defecto — solo esas dos billeteras tienen cuenta
 // propia dentro de Caja General.
-function methodToAccount(method?: string): TreasuryAccount {
+export function methodToAccount(method?: string): TreasuryAccount {
   return method === 'YAPE' || method === 'PLIN' ? method : 'CASH';
 }
 

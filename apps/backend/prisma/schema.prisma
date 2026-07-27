@@ -68,6 +68,12 @@ enum PurchaseOrderStatus {
   CANCELLED
 }
 
+enum PurchasePaymentStatus {
+  PAID
+  PARTIAL
+  CREDIT
+}
+
 enum SaleStatus {
   COMPLETED
   CANCELLED
@@ -182,6 +188,7 @@ model User {
   treasuryMovements         TreasuryMovement[]
   expenses                  Expense[]
   recurringExpenseTemplates RecurringExpenseTemplate[]
+  supplierPayments          SupplierPayment[]
 
   @@index([email])
   @@index([username])
@@ -558,15 +565,20 @@ model StockAlert {
 // =============================================================================
 
 model PurchaseOrder {
-  id              String              @id @default(uuid())
-  orderNumber     String              @unique @map("order_number")
-  supplierId      String              @map("supplier_id")
-  userId          String              @map("user_id")
-  approvedById    String?             @map("approved_by_id")
-  status          PurchaseOrderStatus @default(DRAFT)
-  expectedDate    DateTime?           @map("expected_date")
-  receivedDate    DateTime?           @map("received_date")
-  subtotal        Decimal             @db.Decimal(12, 2)
+  id              String                @id @default(uuid())
+  orderNumber     String                @unique @map("order_number")
+  supplierId      String                @map("supplier_id")
+  userId          String                @map("user_id")
+  approvedById    String?               @map("approved_by_id")
+  status          PurchaseOrderStatus   @default(DRAFT)
+  // Cuánto de esta compra ya salió de Caja General vs. cuánto queda como
+  // deuda con el proveedor (cuenta por pagar). PAID/PARTIAL/CREDIT se derivan
+  // de paidAmount vs. totalAmount cada vez que se registra un pago.
+  paymentStatus   PurchasePaymentStatus @default(CREDIT) @map("payment_status")
+  paidAmount      Decimal               @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  expectedDate    DateTime?             @map("expected_date")
+  receivedDate    DateTime?             @map("received_date")
+  subtotal        Decimal               @db.Decimal(12, 2)
   taxAmount       Decimal             @map("tax_amount") @db.Decimal(12, 2)
   totalAmount     Decimal             @map("total_amount") @db.Decimal(12, 2)
   notes           String?
@@ -648,6 +660,7 @@ model PurchaseReceiptItem {
 model SupplierPayment {
   id              String        @id @default(uuid())
   purchaseOrderId String        @map("purchase_order_id")
+  userId          String        @map("user_id")
   amount          Decimal       @db.Decimal(12, 2)
   method          PaymentMethod
   reference       String?
@@ -655,6 +668,7 @@ model SupplierPayment {
   notes           String?
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
 
   @@index([purchaseOrderId])
   @@map("supplier_payments")
