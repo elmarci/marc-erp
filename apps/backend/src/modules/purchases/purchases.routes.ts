@@ -90,6 +90,7 @@ router.post('/', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Respo
       expectedDate: z.coerce.date().optional(),
       notes: z.string().optional(),
       supplierInvoice: z.string().optional(),
+      includeTax: z.boolean().default(false),
       items: z.array(z.object({
         productId: z.string().uuid(),
         orderedQty: z.coerce.number().positive(),
@@ -164,6 +165,7 @@ router.post('/direct', authorizeMinRole('WAREHOUSE'), async (req: Request, res: 
       documentNumber: z.string().optional(),
       date: z.coerce.date().optional(),
       notes: z.string().optional(),
+      includeTax: z.boolean().default(false),
       items: z.array(z.object({
         productId: z.string().uuid(),
         quantity: z.coerce.number().positive(),

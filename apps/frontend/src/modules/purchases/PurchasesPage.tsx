@@ -402,6 +402,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const debouncedSearch = useDebouncedValue(search, 300);
   const [lines, setLines] = useState<DirectLine[]>([]);
   const [payment, setPayment] = useState({ paid: true, method: 'CASH' });
+  const [includeTax, setIncludeTax] = useState(false);
 
   const { data: suppliers } = useQuery({
     queryKey: ['suppliers-all'],
@@ -458,7 +459,9 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
     return Number(l.unitCost) || 0;
   };
 
-  const total = lines.reduce((s, l) => s + effQty(l) * effUnitCost(l), 0);
+  const subtotal = lines.reduce((s, l) => s + effQty(l) * effUnitCost(l), 0);
+  const taxAmount = includeTax ? subtotal * 0.18 : 0;
+  const total = subtotal + taxAmount;
   const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0);
 
   const mutation = useMutation({
@@ -467,6 +470,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
       documentNumber: documentNumber || undefined,
       date: date ? new Date(`${date}T12:00:00`).toISOString() : undefined,
       notes: notes || undefined,
+      includeTax,
       items: lines.map(l => ({
         productId: l.productId,
         quantity: effQty(l),
@@ -634,8 +638,20 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
 
           {lines.length > 0 && (
             <>
-              <div className="flex justify-end text-lg font-bold border-t pt-3">
-                Total: {formatCurrency(total)}
+              <div className="border-t pt-3 space-y-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer w-fit ml-auto">
+                  <input type="checkbox" checked={includeTax} onChange={e => setIncludeTax(e.target.checked)} className="h-4 w-4 rounded border-input" />
+                  Sumar IGV 18% (solo si el proveedor factura y lo desglosa aparte)
+                </label>
+                {includeTax && (
+                  <>
+                    <div className="flex justify-end text-sm text-muted-foreground">Subtotal: {formatCurrency(subtotal)}</div>
+                    <div className="flex justify-end text-sm text-muted-foreground">IGV (18%): {formatCurrency(taxAmount)}</div>
+                  </>
+                )}
+                <div className="flex justify-end text-lg font-bold">
+                  Total: {formatCurrency(total)}
+                </div>
               </div>
               <PaymentStatusPicker paid={payment.paid} method={payment.method} onChange={setPayment} amountLabel={formatCurrency(total)} />
             </>
@@ -662,6 +678,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [items, setItems] = useState<Array<{ productId: string; name: string; orderedQty: number; unitCost: number }>>([]);
+  const [includeTax, setIncludeTax] = useState(false);
 
   const { data: suppliers } = useQuery({
     queryKey: ['suppliers-all'],
@@ -712,11 +729,13 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const updateItem = (idx: number, field: 'orderedQty' | 'unitCost', val: number) =>
     setItems(v => v.map((i, n) => n === idx ? { ...i, [field]: val } : i));
 
-  const total = items.reduce((s, i) => s + i.orderedQty * i.unitCost, 0);
+  const subtotal = items.reduce((s, i) => s + i.orderedQty * i.unitCost, 0);
+  const taxAmount = includeTax ? subtotal * 0.18 : 0;
+  const total = subtotal + taxAmount;
 
   const mutation = useMutation({
     mutationFn: () => api.post('/purchases', {
-      supplierId, expectedDate: expectedDate || undefined, notes,
+      supplierId, expectedDate: expectedDate || undefined, notes, includeTax,
       items: items.map(i => ({ productId: i.productId, orderedQty: i.orderedQty, unitCost: i.unitCost })),
     }),
     onSuccess: () => {
@@ -829,17 +848,31 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
               </tbody>
               <tfoot>
                 <tr className="border-t">
-                  <td colSpan={3} className="py-2 text-right font-semibold">Subtotal (sin IGV)</td>
-                  <td className="py-2 text-right font-bold">{formatCurrency(total)}</td>
+                  <td colSpan={3} className="py-2 text-right font-semibold">Subtotal</td>
+                  <td className="py-2 text-right font-bold">{formatCurrency(subtotal)}</td>
                   <td />
                 </tr>
+                {includeTax && (
+                  <tr>
+                    <td colSpan={3} className="py-1 text-right text-muted-foreground text-xs">IGV (18%)</td>
+                    <td className="py-1 text-right text-muted-foreground text-xs">{formatCurrency(taxAmount)}</td>
+                    <td />
+                  </tr>
+                )}
                 <tr>
-                  <td colSpan={3} className="py-1 text-right text-muted-foreground text-xs">Total con IGV 18%</td>
-                  <td className="py-1 text-right text-muted-foreground text-xs">{formatCurrency(total * 1.18)}</td>
+                  <td colSpan={3} className="py-2 text-right font-bold">Total</td>
+                  <td className="py-2 text-right font-bold">{formatCurrency(total)}</td>
                   <td />
                 </tr>
               </tfoot>
             </table>
+          )}
+
+          {items.length > 0 && (
+            <label className="flex items-center gap-2 text-sm cursor-pointer w-fit ml-auto">
+              <input type="checkbox" checked={includeTax} onChange={e => setIncludeTax(e.target.checked)} className="h-4 w-4 rounded border-input" />
+              Sumar IGV 18% (solo si el proveedor factura y lo desglosa aparte)
+            </label>
           )}
         </div>
 

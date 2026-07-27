@@ -91,6 +91,7 @@ export class PurchasesService {
     expectedDate?: Date;
     notes?: string;
     supplierInvoice?: string;
+    includeTax?: boolean;
     items: Array<{ productId: string; orderedQty: number; unitCost: number }>;
   }) {
     const supplier = await prisma.supplier.findFirst({ where: { id: data.supplierId, deletedAt: null } });
@@ -100,7 +101,9 @@ export class PurchasesService {
     for (const item of data.items) {
       subtotal += item.orderedQty * item.unitCost;
     }
-    const taxAmount = subtotal * 0.18;
+    // Muchos proveedores (mercados, abastos) no facturan ni desglosan IGV —
+    // el costo unitario ya ES el total pagado, así que el IGV es opcional.
+    const taxAmount = data.includeTax ? subtotal * 0.18 : 0;
     const totalAmount = subtotal + taxAmount;
 
     const order = await prisma.purchaseOrder.create({
@@ -381,6 +384,7 @@ export class PurchasesService {
     documentNumber?: string;
     date?: Date;
     notes?: string;
+    includeTax?: boolean;
     items: DirectPurchaseItemInput[];
     payment?: PurchasePaymentInput;
   }) {
@@ -392,7 +396,10 @@ export class PurchasesService {
     for (const item of data.items) {
       if (!item.isBonus) subtotal += item.quantity * item.unitCost;
     }
-    const taxAmount = subtotal * 0.18;
+    // Igual que en las órdenes de compra: el IGV es opcional, porque casi
+    // siempre este flujo se usa para compras sin factura (mercado/abastos)
+    // donde el costo ingresado ya es el total real pagado.
+    const taxAmount = data.includeTax ? subtotal * 0.18 : 0;
     const totalAmount = subtotal + taxAmount;
     const now = data.date ?? new Date();
 
