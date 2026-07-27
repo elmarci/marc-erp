@@ -73,16 +73,21 @@ export class ReportsService {
         orderBy: { _sum: { subtotal: 'desc' } },
         take: 10,
       }),
-      // Ventas últimos 7 días (para gráfica) — agrupar por fecha en zona Lima
+      // Ventas últimos 7 días (para gráfica) — agrupar por fecha en zona Lima.
+      // created_at es un timestamp SIN zona horaria que igual guarda la hora
+      // UTC (ver CURRENT_TIMESTAMP con session timezone = UTC) — hay que
+      // reinterpretarlo como UTC primero, o "AT TIME ZONE 'America/Lima'" lo
+      // toma como si YA fuera hora Lima y lo desplaza para el lado contrario
+      // (sumando en vez de restando 5 horas).
       prisma.$queryRaw<{ date: string; total: number; count: bigint }[]>`
         SELECT
-          TO_CHAR(created_at AT TIME ZONE 'America/Lima', 'YYYY-MM-DD') as date,
+          TO_CHAR(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', 'YYYY-MM-DD') as date,
           SUM(total_amount)::float as total,
           COUNT(*)::bigint as count
         FROM sales
         WHERE status = 'COMPLETED'
           AND created_at >= NOW() - INTERVAL '7 days'
-        GROUP BY TO_CHAR(created_at AT TIME ZONE 'America/Lima', 'YYYY-MM-DD')
+        GROUP BY TO_CHAR(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', 'YYYY-MM-DD')
         ORDER BY date ASC
       `,
       // Ventas recientes
@@ -181,7 +186,7 @@ export class ReportsService {
       // Por período — agrupar en zona Lima para evitar desfase UTC
       prisma.$queryRaw<{ period: string; total: number; count: bigint }[]>`
         SELECT
-          TO_CHAR(created_at AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
+          TO_CHAR(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
           SUM(total_amount)::float as total,
           COUNT(*)::bigint as count
         FROM sales
@@ -338,7 +343,7 @@ export class ReportsService {
       `,
       prisma.$queryRaw<{ period: string; revenue: number; cost: number }[]>`
         SELECT
-          TO_CHAR(s.created_at AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
+          TO_CHAR(s.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
           SUM(si.subtotal)::float as revenue,
           SUM(si.quantity * COALESCE(si.cost_price, 0))::float as cost
         FROM sale_items si
