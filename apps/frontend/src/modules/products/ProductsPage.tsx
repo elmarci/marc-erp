@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Package, Edit, MoreVertical, AlertTriangle, Barcode, Trash2 } from 'lucide-react';
+import { Plus, Search, Package, Edit, MoreVertical, AlertTriangle, Barcode, Trash2, Printer, X } from 'lucide-react';
+import JsBarcode from 'jsbarcode';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,8 +24,158 @@ interface Product {
   minStock: number;
   status: string;
   imageUrl: string | null;
+  isBulk?: boolean;
   category: { name: string };
   brand: { name: string } | null;
+}
+
+/* ─── Impresión de catálogo de códigos de barra ──────────────────────────── */
+function barcodeSvgMarkup(value: string): string {
+  try {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    JsBarcode(svg, value, { format: 'CODE128', width: 2, height: 45, displayValue: true, fontSize: 13, margin: 4 });
+    return svg.outerHTML;
+  } catch {
+    return `<p style="font-size:11px">${value}</p>`;
+  }
+}
+
+function printBarcodeCatalog(products: Array<{ name: string; barcode: string; salePrice: number }>) {
+  const win = window.open('', '_blank', 'width=800,height=900');
+  if (!win) return;
+  const cards = products.map(p => `
+    <div class="card">
+      <p class="name">${p.name}</p>
+      ${barcodeSvgMarkup(p.barcode)}
+      <p class="price">S/ ${Number(p.salePrice).toFixed(2)}</p>
+    </div>`).join('');
+  win.document.write(`<html><head><title>Catálogo de códigos de barra</title>
+    <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family: Arial, sans-serif; padding: 12px; }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+      .card { border: 1px dashed #999; border-radius: 6px; padding: 8px; text-align: center; page-break-inside: avoid; }
+      .name { font-size: 12px; font-weight: bold; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .price { font-size: 13px; font-weight: bold; margin-top: 2px; }
+      svg { max-width: 100%; }
+    </style></head><body>
+    <div class="grid">${cards}</div>
+    </body></html>`);
+  win.document.close(); win.focus(); win.print();
+}
+
+function BarcodeCatalogModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const [onlyMissing, setOnlyMissing] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const { data: allProducts, isLoading } = useQuery({
+    queryKey: ['products-barcode-catalog'],
+    queryFn: async () => (await api.get<{ data: Product[] }>('/products?limit=100')).data.data,
+  });
+
+  const filtered = (allProducts ?? []).filter(p => {
+    if (onlyMissing && p.barcode) return false;
+    if (debouncedSearch && !p.name.toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
+    return true;
+  });
+
+  const toggle = (id: string) => setSelected(v => {
+    const next = new Set(v);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const toggleAll = () => setSelected(v =>
+    v.size === filtered.length ? new Set() : new Set(filtered.map(p => p.id)));
+
+  const generateMutation = useMutation({
+    mutationFn: (productIds: string[]) => api.post<{ data: Array<{ id: string; barcode: string }> }>('/products/generate-barcodes-bulk', { productIds }),
+  });
+
+  const handlePrint = async () => {
+    const chosen = (allProducts ?? []).filter(p => selected.has(p.id));
+    const needCodes = chosen.filter(p => !p.barcode).map(p => p.id);
+
+    let generated: Array<{ id: string; barcode: string }> = [];
+    if (needCodes.length > 0) {
+      try {
+        generated = (await generateMutation.mutateAsync(needCodes)).data.data;
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['products-barcode-catalog'] });
+      } catch (err) {
+        toast.error(getErrorMessage(err));
+        return;
+      }
+    }
+    const codeById = new Map(generated.map(g => [g.id, g.barcode]));
+    const toPrint = chosen.map(p => ({
+      name: p.name,
+      salePrice: p.salePrice,
+      barcode: p.barcode ?? codeById.get(p.id) ?? '',
+    })).filter(p => p.barcode);
+
+    if (toPrint.length === 0) { toast.error('No hay productos seleccionados con código.'); return; }
+    printBarcodeCatalog(toPrint);
+    toast.success(`Catálogo generado con ${toPrint.length} producto(s).`);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-bold flex items-center gap-2"><Barcode className="h-5 w-5 text-primary" />Imprimir catálogo de códigos</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Elige productos sin código (por ejemplo, a granel) — se les asigna uno interno automáticamente al imprimir.
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+
+        <div className="p-5 space-y-3 border-b">
+          <Input startIcon={<Search className="h-4 w-4" />} placeholder="Buscar producto..." value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="flex items-center justify-between text-sm">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={onlyMissing} onChange={e => setOnlyMissing(e.target.checked)} className="h-4 w-4 rounded border-input" />
+              Solo productos sin código de barras
+            </label>
+            <button onClick={toggleAll} className="text-primary hover:underline">
+              {selected.size === filtered.length && filtered.length > 0 ? 'Deseleccionar todos' : `Seleccionar todos (${filtered.length})`}
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1 divide-y">
+          {isLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Cargando productos...</div>
+          ) : filtered.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground text-sm">No hay productos que coincidan.</div>
+          ) : filtered.map(p => (
+            <label key={p.id} className="flex items-center gap-3 px-5 py-2.5 cursor-pointer hover:bg-muted/30">
+              <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} className="h-4 w-4 rounded border-input" />
+              <span className="flex-1 text-sm">{p.name}</span>
+              {p.isBulk && <Badge variant="secondary" className="text-xs">Granel</Badge>}
+              {p.barcode ? (
+                <span className="text-xs font-mono text-muted-foreground">{p.barcode}</span>
+              ) : (
+                <span className="text-xs text-amber-600">Sin código — se generará</span>
+              )}
+            </label>
+          ))}
+        </div>
+
+        <div className="border-t p-5 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handlePrint} loading={generateMutation.isPending} disabled={selected.size === 0}>
+            <Printer className="mr-2 h-4 w-4" />Generar e imprimir ({selected.size})
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function ProductsPage() {
@@ -35,6 +186,7 @@ export function ProductsPage() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const page = parseInt(searchParams.get('page') ?? '1');
   const lowStock = searchParams.get('lowStock') === 'true';
+  const [showBarcodeCatalog, setShowBarcodeCatalog] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', debouncedSearch, page, lowStock],
@@ -63,6 +215,15 @@ export function ProductsPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const generateBarcodeMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/products/${id}/generate-barcode`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Código de barras interno generado.');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   const products = data?.data ?? [];
   const pagination = data?.pagination;
 
@@ -87,14 +248,22 @@ export function ProductsPage() {
           </p>
         </div>
         {hasMinRole('WAREHOUSE') && (
-          <Link to="/products/new">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Nuevo Producto
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowBarcodeCatalog(true)}>
+              <Printer className="mr-2 h-4 w-4" />
+              Imprimir catálogo de códigos
             </Button>
-          </Link>
+            <Link to="/products/new">
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Nuevo Producto
+              </Button>
+            </Link>
+          </div>
         )}
       </div>
+
+      {showBarcodeCatalog && <BarcodeCatalogModal onClose={() => setShowBarcodeCatalog(false)} />}
 
       {/* Filtros */}
       <div className="flex gap-3">
@@ -197,6 +366,13 @@ export function ProductsPage() {
                       <td data-label="Acciones" className="px-4 py-3 text-center">
                         {hasMinRole('WAREHOUSE') && (
                           <div className="flex justify-center gap-1">
+                            {!product.barcode && (
+                              <Button variant="ghost" size="icon-sm" title="Generar código de barras interno"
+                                onClick={() => generateBarcodeMutation.mutate(product.id)}
+                                loading={generateBarcodeMutation.isPending && generateBarcodeMutation.variables === product.id}>
+                                <Barcode className="h-4 w-4" />
+                              </Button>
+                            )}
                             <Link to={`/products/${product.id}/edit`}>
                               <Button variant="ghost" size="icon-sm">
                                 <Edit className="h-4 w-4" />

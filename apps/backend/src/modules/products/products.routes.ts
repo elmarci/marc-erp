@@ -184,4 +184,21 @@ router.post('/:id/adjust-stock', authorizeMinRole('WAREHOUSE'), async (req: Requ
   } catch (err) { next(err); }
 });
 
+// Código interno (prefijo 20, EAN-13 válido) para imprimir y pegar en
+// productos a granel u otros que no traen código de fábrica.
+router.post('/:id/generate-barcode', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const product = await productsService.generateBarcode(req.params.id);
+    res.json({ success: true, data: product });
+  } catch (err) { next(err); }
+});
+
+router.post('/generate-barcodes-bulk', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { productIds } = z.object({ productIds: z.array(z.string().uuid()).optional() }).parse(req.body);
+    const results = await productsService.generateBarcodesBulk(productIds);
+    res.json({ success: true, data: results });
+  } catch (err) { next(err); }
+});
+
 export default router;
