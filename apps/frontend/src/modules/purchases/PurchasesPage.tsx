@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
@@ -353,29 +353,103 @@ function printPurchaseReceipt(order: OrderDetail) {
   win.document.close(); win.focus(); win.print();
 }
 
-/* ─── Selector Pagado/Crédito + método (reutilizado en Registrar/Recibir) ── */
-function PaymentStatusPicker({ paid, method, onChange, amountLabel }: {
-  paid: boolean; method: string; onChange: (v: { paid: boolean; method: string }) => void; amountLabel?: string;
+/* ─── Fuente y forma de pago (reutilizado en Registrar/Recibir/Pagar) ────── */
+interface PaymentLeg { amount: number; method: string; cashSessionId?: string; }
+
+// Cajas del día con sesión abierta ahora mismo — para poder elegir "de qué
+// caja sale el dinero" en vez de asumir siempre Caja General.
+function useOpenCashSessions() {
+  return useQuery({
+    queryKey: ['cash-registers-open-sessions'],
+    queryFn: async () => {
+      const res = await api.get<{ data: Array<{
+        id: string; name: string;
+        sessions: Array<{ id: string; user: { firstName: string; lastName: string } }>;
+      }> }>('/cash/registers');
+      return res.data.data
+        .filter(r => r.sessions.length > 0)
+        .map(r => ({ cashSessionId: r.sessions[0].id, label: `Caja del día — ${r.name} (${r.sessions[0].user.firstName})` }));
+    },
+    staleTime: 15_000,
+  });
+}
+
+function legsSum(legs: PaymentLeg[]) {
+  return legs.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+}
+
+function legsMatch(legs: PaymentLeg[], total: number) {
+  return legs.length > 0 && legs.every(l => l.amount > 0) && Math.abs(legsSum(legs) - total) <= 0.01;
+}
+
+function PaymentLegsEditor({ total, legs, onChange }: {
+  total: number; legs: PaymentLeg[]; onChange: (legs: PaymentLeg[]) => void;
+}) {
+  const { data: openSessions = [] } = useOpenCashSessions();
+  const remaining = total - legsSum(legs);
+
+  const updateLeg = (idx: number, patch: Partial<PaymentLeg>) =>
+    onChange(legs.map((l, i) => i === idx ? { ...l, ...patch } : l));
+
+  return (
+    <div className="space-y-2">
+      {legs.map((leg, idx) => (
+        <div key={idx} className="flex items-center gap-2">
+          <Input type="number" min={0} step={0.01} value={leg.amount}
+            onChange={e => updateLeg(idx, { amount: Number(e.target.value) })}
+            className="h-9 w-24 shrink-0" />
+          <select value={leg.method}
+            onChange={e => updateLeg(idx, { method: e.target.value, cashSessionId: undefined })}
+            className="flex h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          {leg.method === 'CASH' && (
+            <select value={leg.cashSessionId ?? ''}
+              onChange={e => updateLeg(idx, { cashSessionId: e.target.value || undefined })}
+              className="flex h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">Caja General</option>
+              {openSessions.map(s => <option key={s.cashSessionId} value={s.cashSessionId}>{s.label}</option>)}
+            </select>
+          )}
+          {legs.length > 1 && (
+            <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
+              onClick={() => onChange(legs.filter((_, i) => i !== idx))}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      ))}
+      <div className="flex items-center justify-between pt-1">
+        <Button type="button" variant="outline" size="sm"
+          onClick={() => onChange([...legs, { amount: Math.max(0, remaining), method: 'CASH' }])}>
+          + Agregar otra forma de pago
+        </Button>
+        <span className={cn('text-xs font-medium', Math.abs(remaining) > 0.01 ? 'text-destructive' : 'text-success')}>
+          {Math.abs(remaining) > 0.01 ? `Falta ${formatCurrency(remaining)}` : 'Cuadra ✓'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PaymentStatusPicker({ paid, legs, total, onChange }: {
+  paid: boolean; legs: PaymentLeg[]; total: number;
+  onChange: (v: { paid: boolean; legs: PaymentLeg[] }) => void;
 }) {
   return (
     <div className="rounded-lg border p-3 space-y-2">
-      <label className="block text-sm font-medium">¿Cómo se paga esta compra?{amountLabel ? ` (${amountLabel})` : ''}</label>
+      <label className="mb-1 block text-sm font-medium">¿Cómo se paga esta compra? ({formatCurrency(total)})</label>
       <div className="flex gap-2">
         <Button type="button" size="sm" variant={paid ? 'default' : 'outline'} className="flex-1"
-          onClick={() => onChange({ paid: true, method })}>
+          onClick={() => onChange({ paid: true, legs: legs.length ? legs : [{ amount: total, method: 'CASH' }] })}>
           Pagado ahora
         </Button>
         <Button type="button" size="sm" variant={!paid ? 'destructive' : 'outline'} className="flex-1"
-          onClick={() => onChange({ paid: false, method })}>
+          onClick={() => onChange({ paid: false, legs })}>
           Crédito (pendiente)
         </Button>
       </div>
-      {paid && (
-        <select value={method} onChange={e => onChange({ paid, method: e.target.value })}
-          className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-      )}
+      {paid && <PaymentLegsEditor total={total} legs={legs} onChange={l => onChange({ paid: true, legs: l })} />}
       {!paid && (
         <p className="text-xs text-muted-foreground">
           Queda como cuenta por pagar al proveedor. Puedes saldarla luego desde la pestaña "Cuentas por Pagar".
@@ -401,7 +475,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [lines, setLines] = useState<DirectLine[]>([]);
-  const [payment, setPayment] = useState({ paid: true, method: 'CASH' });
+  const [payment, setPayment] = useState<{ paid: boolean; legs: PaymentLeg[] }>({ paid: true, legs: [{ amount: 0, method: 'CASH' }] });
   const [includeTax, setIncludeTax] = useState(false);
 
   const { data: suppliers } = useQuery({
@@ -462,7 +536,18 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const subtotal = lines.reduce((s, l) => s + effQty(l) * effUnitCost(l), 0);
   const taxAmount = includeTax ? subtotal * 0.18 : 0;
   const total = subtotal + taxAmount;
-  const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0);
+
+  // Si solo hay una forma de pago, la mantenemos igualada al total mientras
+  // se editan las líneas — si el usuario ya fraccionó el pago, no la tocamos
+  // (que ajuste él mismo, así no le "corregimos" un split intencional).
+  useEffect(() => {
+    setPayment(p => p.legs.length === 1 && p.legs[0].amount !== total
+      ? { ...p, legs: [{ ...p.legs[0], amount: total }] }
+      : p);
+  }, [total]);
+
+  const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0)
+    && (!payment.paid || total === 0 || legsMatch(payment.legs, total));
 
   const mutation = useMutation({
     mutationFn: () => api.post<{ data: OrderDetail }>('/purchases/direct', {
@@ -484,8 +569,10 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
       queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-movements'] });
       toast.success(payment.paid
-        ? 'Compra registrada y pagada — stock, costo y Caja General actualizados.'
+        ? 'Compra registrada y pagada — stock, costo y caja actualizados.'
         : 'Compra registrada como crédito — queda en Cuentas por Pagar.');
       onCreated(res.data.data);
     },
@@ -653,7 +740,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                   Total: {formatCurrency(total)}
                 </div>
               </div>
-              <PaymentStatusPicker paid={payment.paid} method={payment.method} onChange={setPayment} amountLabel={formatCurrency(total)} />
+              <PaymentStatusPicker paid={payment.paid} legs={payment.legs} total={total} onChange={setPayment} />
             </>
           )}
         </div>
@@ -1067,8 +1154,16 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
   const [scan, setScan] = useState('');
   const [bonusSearch, setBonusSearch] = useState('');
   const debouncedBonusSearch = useDebouncedValue(bonusSearch, 300);
-  const [payment, setPayment] = useState({ paid: true, method: 'CASH' });
+  const [payment, setPayment] = useState<{ paid: boolean; legs: PaymentLeg[] }>({ paid: true, legs: [{ amount: 0, method: 'CASH' }] });
   const receiptTotal = items.reduce((s, i) => s + (i.isBonus ? 0 : i.receivedQty * i.unitCost), 0);
+
+  useEffect(() => {
+    setPayment(p => p.legs.length === 1 && p.legs[0].amount !== receiptTotal
+      ? { ...p, legs: [{ ...p.legs[0], amount: receiptTotal }] }
+      : p);
+  }, [receiptTotal]);
+
+  const canSubmitPayment = !payment.paid || receiptTotal === 0 || legsMatch(payment.legs, receiptTotal);
 
   const { data: bonusResults } = useQuery({
     queryKey: ['products-search', debouncedBonusSearch],
@@ -1109,8 +1204,10 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
       queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
       queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
       queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-movements'] });
       toast.success(payment.paid
-        ? 'Mercadería recibida y pagada — stock y Caja General actualizados.'
+        ? 'Mercadería recibida y pagada — stock y caja actualizados.'
         : 'Mercadería recibida como crédito — queda en Cuentas por Pagar.');
       onReceived();
     },
@@ -1187,12 +1284,12 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
           </div>
 
           {receiptTotal > 0 && (
-            <PaymentStatusPicker paid={payment.paid} method={payment.method} onChange={setPayment} amountLabel={formatCurrency(receiptTotal)} />
+            <PaymentStatusPicker paid={payment.paid} legs={payment.legs} total={receiptTotal} onChange={setPayment} />
           )}
         </div>
         <div className="border-t p-5 flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => mutation.mutate()} loading={mutation.isPending}>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!canSubmitPayment}>
             <PackageCheck className="mr-2 h-4 w-4" />Confirmar recepción
           </Button>
         </div>
@@ -1208,25 +1305,37 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
 }) {
   const outstanding = order.totalAmount - order.paidAmount;
   const [amount, setAmount] = useState(outstanding.toFixed(2));
-  const [method, setMethod] = useState('CASH');
+  const [legs, setLegs] = useState<PaymentLeg[]>([{ amount: outstanding, method: 'CASH' }]);
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const queryClient = useQueryClient();
 
+  const amountNum = Number(amount) || 0;
+
+  // Igual que en Registrar/Recibir: mientras haya una sola forma de pago, se
+  // mantiene igualada al monto a pagar — si ya se fraccionó, no se toca.
+  useEffect(() => {
+    setLegs(l => l.length === 1 && l[0].amount !== amountNum ? [{ ...l[0], amount: amountNum }] : l);
+  }, [amountNum]);
+
   const mutation = useMutation({
     mutationFn: () => api.post(`/purchases/${order.id}/pay`, {
-      amount: Number(amount), method, reference: reference || undefined, notes: notes || undefined,
+      legs, reference: reference || undefined, notes: notes || undefined,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
       queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
       queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
-      toast.success('Pago registrado — descontado de Caja General.');
+      queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-movements'] });
+      toast.success('Pago registrado.');
       onPaid();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
+
+  const canSubmit = amountNum > 0 && amountNum <= outstanding + 0.009 && legsMatch(legs, amountNum);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -1244,11 +1353,8 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
             <Input type="number" min={0.01} max={outstanding} step={0.01} value={amount} onChange={e => setAmount(e.target.value)} className="text-right font-bold" />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Método</label>
-            <select value={method} onChange={e => setMethod(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+            <label className="mb-1 block text-sm font-medium">¿De dónde sale el dinero?</label>
+            <PaymentLegsEditor total={amountNum} legs={legs} onChange={setLegs} />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">Referencia (opcional)</label>
@@ -1261,8 +1367,7 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
         </div>
         <div className="border-t p-5 flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => mutation.mutate()} loading={mutation.isPending}
-            disabled={!amount || Number(amount) <= 0 || Number(amount) > outstanding + 0.009}>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!canSubmit}>
             Confirmar pago
           </Button>
         </div>

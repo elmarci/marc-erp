@@ -13,9 +13,18 @@ interface DirectPurchaseItemInput {
   expiryDate?: Date;
 }
 
+export interface PurchasePaymentLeg {
+  amount: number;
+  method: string;
+  // Solo aplica con method === 'CASH': si viene una sesión de caja abierta,
+  // el dinero sale del cajón físico de esa caja (afecta su arqueo). Si se
+  // omite, sale de Caja General (Treasury) — igual que antes de esta función.
+  cashSessionId?: string;
+}
+
 interface PurchasePaymentInput {
   paid: boolean;
-  method?: string;
+  legs?: PurchasePaymentLeg[];
 }
 
 export class PurchasesService {
@@ -143,25 +152,48 @@ export class PurchasesService {
 
   /**
    * Aplica un pago (parcial o total) contra el saldo pendiente de una compra
-   * ya recibida, y lo retira de Caja General en la misma transacción — así
-   * el dinero sale de la cuenta correcta (efectivo/Yape/Plin) en el momento
-   * exacto en que realmente se le paga al proveedor, no cuando se registra
-   * la mercadería.
+   * ya recibida, en la misma transacción — así el dinero sale de la cuenta
+   * correcta en el momento exacto en que realmente se le paga al proveedor,
+   * no cuando se registra la mercadería.
+   *
+   * Cada "leg" retira de una fuente distinta: si es efectivo y trae una
+   * sesión de caja abierta, sale del cajón físico de esa caja (afecta su
+   * arqueo del día); si no, sale de Caja General (Treasury). Esto permite
+   * pagar todo desde la caja del día, todo desde Caja General, o fraccionado
+   * entre ambas y distintos métodos (efectivo/Yape/Plin) a la vez.
    */
-  private async applyPurchasePayment(
+  private async applyPurchasePaymentLegs(
     tx: Prisma.TransactionClient,
     orderId: string,
     totalAmount: number,
-    amount: number,
-    method: string | undefined,
+    legs: PurchasePaymentLeg[],
     userId: string,
     description: string,
   ) {
+    const amount = legs.reduce((sum, l) => sum + l.amount, 0);
     if (amount <= 0) return;
 
-    await treasuryService.recordMovementInTx(
-      tx, 'WITHDRAWAL', amount, description, userId, 'PURCHASE', orderId, methodToAccount(method),
-    );
+    for (const leg of legs) {
+      if (leg.amount <= 0) continue;
+
+      let cashSession = null;
+      if (leg.method === 'CASH' && leg.cashSessionId) {
+        cashSession = await tx.cashSession.findFirst({ where: { id: leg.cashSessionId, status: 'OPEN' } });
+      }
+
+      if (cashSession) {
+        await tx.cashMovement.create({
+          data: {
+            cashSessionId: cashSession.id, type: 'WITHDRAWAL', amount: leg.amount, reason: description,
+            referenceType: 'PURCHASE', referenceId: orderId,
+          },
+        });
+      } else {
+        await treasuryService.recordMovementInTx(
+          tx, 'WITHDRAWAL', leg.amount, description, userId, 'PURCHASE', orderId, methodToAccount(leg.method),
+        );
+      }
+    }
 
     const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
     const newPaidAmount = Number(order.paidAmount) + amount;
@@ -361,8 +393,15 @@ export class PurchasesService {
       });
 
       if (payment?.paid && receiptTotal > 0) {
-        await this.applyPurchasePayment(
-          tx, orderId, Number(order.totalAmount), receiptTotal, payment.method, userId,
+        const legs = payment.legs ?? [];
+        const legsSum = legs.reduce((sum, l) => sum + l.amount, 0);
+        if (Math.abs(legsSum - receiptTotal) > 0.01) {
+          throw new BusinessError(
+            `La suma de las formas de pago (S/ ${legsSum.toFixed(2)}) no coincide con el total a pagar (S/ ${receiptTotal.toFixed(2)}).`,
+          );
+        }
+        await this.applyPurchasePaymentLegs(
+          tx, orderId, Number(order.totalAmount), legs, userId,
           `Pago de compra: OC ${order.orderNumber}`,
         );
       }
@@ -462,8 +501,15 @@ export class PurchasesService {
       }
 
       if (data.payment?.paid && totalAmount > 0) {
-        await this.applyPurchasePayment(
-          tx, order.id, totalAmount, totalAmount, data.payment.method, userId,
+        const legs = data.payment.legs ?? [];
+        const legsSum = legs.reduce((sum, l) => sum + l.amount, 0);
+        if (Math.abs(legsSum - totalAmount) > 0.01) {
+          throw new BusinessError(
+            `La suma de las formas de pago (S/ ${legsSum.toFixed(2)}) no coincide con el total a pagar (S/ ${totalAmount.toFixed(2)}).`,
+          );
+        }
+        await this.applyPurchasePaymentLegs(
+          tx, order.id, totalAmount, legs, userId,
           `Pago de compra: OC ${order.orderNumber}`,
         );
       }
@@ -519,9 +565,14 @@ export class PurchasesService {
     if (movements.length === 0) throw new BusinessError('No se encontraron movimientos de esta compra para revertir.');
 
     // Si ya se le había pagado algo a este proveedor por esta compra, ese
-    // dinero tiene que volver a Caja General — si no, quedaría retirado para
-    // siempre por una compra que ya no existe.
-    const paidMovements = await prisma.treasuryMovement.findMany({
+    // dinero tiene que volver — si no, quedaría retirado para siempre por una
+    // compra que ya no existe. Puede haber salido de Caja General o de una
+    // caja del día específica (según cómo se pagó), así que hay que revisar
+    // ambas fuentes.
+    const paidTreasuryMovements = await prisma.treasuryMovement.findMany({
+      where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
+    });
+    const paidCashMovements = await prisma.cashMovement.findMany({
       where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
     });
 
@@ -557,11 +608,33 @@ export class PurchasesService {
         });
       }
 
-      for (const pm of paidMovements) {
+      for (const pm of paidTreasuryMovements) {
         await treasuryService.recordMovementInTx(
           tx, 'DEPOSIT', Number(pm.amount), `Reversión pago (compra anulada): OC ${order.orderNumber}`,
           userId, 'PURCHASE_VOID', orderId, pm.account,
         );
+      }
+
+      for (const cm of paidCashMovements) {
+        // Si esa caja sigue abierta, el dinero vuelve a su cajón físico
+        // (mismo arqueo del que salió). Si ya se cerró, no se le puede tocar
+        // el conteo — se deposita a Caja General para no perder el dinero.
+        const session = await tx.cashSession.findUnique({ where: { id: cm.cashSessionId } });
+        if (session?.status === 'OPEN') {
+          await tx.cashMovement.create({
+            data: {
+              cashSessionId: cm.cashSessionId, type: 'DEPOSIT', amount: cm.amount,
+              reason: `Reversión pago (compra anulada): OC ${order.orderNumber}`,
+              referenceType: 'PURCHASE_VOID', referenceId: orderId,
+            },
+          });
+        } else {
+          await treasuryService.recordMovementInTx(
+            tx, 'DEPOSIT', Number(cm.amount),
+            `Reversión pago (compra anulada, caja ya cerrada): OC ${order.orderNumber}`,
+            userId, 'PURCHASE_VOID', orderId, 'CASH',
+          );
+        }
       }
 
       await tx.purchaseOrder.update({
@@ -570,7 +643,7 @@ export class PurchasesService {
       });
     });
 
-    if (paidMovements.length > 0) emitEvent('erp:cash-updated');
+    if (paidTreasuryMovements.length > 0 || paidCashMovements.length > 0) emitEvent('erp:cash-updated');
 
     return this.getOrder(orderId);
   }
@@ -605,11 +678,16 @@ export class PurchasesService {
 
   /**
    * Registra el pago (total o parcial) de una compra a crédito ya recibida
-   * — retira de Caja General en el momento real en que sale el dinero,
-   * usando el registro histórico (SupplierPayment) para trazabilidad.
+   * — retira de la fuente elegida en cada "leg" (caja del día o Caja General,
+   * y puede fraccionarse entre varias) en el momento real en que sale el
+   * dinero, usando el registro histórico (SupplierPayment) para trazabilidad.
    */
-  async payOrder(orderId: string, userId: string, amount: number, method: string, reference?: string, notes?: string) {
+  async payOrder(orderId: string, userId: string, legs: PurchasePaymentLeg[], reference?: string, notes?: string) {
+    const amount = legs.reduce((sum, l) => sum + l.amount, 0);
     if (amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
+    if (legs.some((l) => l.amount <= 0)) {
+      throw new BusinessError('Cada forma de pago debe tener un monto mayor a 0.');
+    }
 
     const order = await prisma.purchaseOrder.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundError('Orden de compra');
@@ -624,11 +702,13 @@ export class PurchasesService {
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.supplierPayment.create({
-        data: { purchaseOrderId: orderId, userId, amount, method: method as never, reference, notes },
-      });
-      await this.applyPurchasePayment(
-        tx, orderId, Number(order.totalAmount), amount, method, userId,
+      for (const leg of legs) {
+        await tx.supplierPayment.create({
+          data: { purchaseOrderId: orderId, userId, amount: leg.amount, method: leg.method as never, reference, notes },
+        });
+      }
+      await this.applyPurchasePaymentLegs(
+        tx, orderId, Number(order.totalAmount), legs, userId,
         `Pago a proveedor: OC ${order.orderNumber}`,
       );
     });

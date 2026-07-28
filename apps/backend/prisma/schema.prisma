@@ -844,6 +844,10 @@ model CashMovement {
   amount        Decimal  @db.Decimal(10, 2)
   reason        String
   notes         String?
+  // Permite rastrear de dónde vino este movimiento (ej. "PURCHASE" + orderId)
+  // para poder revertirlo con exactitud si esa operación se anula después.
+  referenceType String?  @map("reference_type")
+  referenceId   String?  @map("reference_id")
   createdAt     DateTime @default(now()) @map("created_at")
 
   cashSession CashSession @relation(fields: [cashSessionId], references: [id])

@@ -117,9 +117,17 @@ router.post('/:id/cancel', authorizeMinRole('SUPERVISOR'), async (req: Request, 
   } catch (err) { next(err); }
 });
 
+const paymentLegSchema = z.object({
+  amount: z.coerce.number().positive(),
+  method: z.enum(['CASH', 'YAPE', 'PLIN', 'TRANSFER', 'DEBIT_CARD', 'CREDIT_CARD', 'OTHER']),
+  // Solo tiene efecto con method === 'CASH': ata el retiro a esa sesión de
+  // caja (caja del día) en vez de Caja General.
+  cashSessionId: z.string().uuid().optional(),
+});
+
 const paymentSchema = z.object({
   paid: z.boolean(),
-  method: z.enum(['CASH', 'YAPE', 'PLIN', 'TRANSFER', 'DEBIT_CARD', 'CREDIT_CARD', 'OTHER']).optional(),
+  legs: z.array(paymentLegSchema).optional(),
 }).optional();
 
 router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
@@ -144,14 +152,13 @@ router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, 
 
 router.post('/:id/pay', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { amount, method, reference, notes } = z.object({
-      amount: z.coerce.number().positive(),
-      method: z.enum(['CASH', 'YAPE', 'PLIN', 'TRANSFER', 'DEBIT_CARD', 'CREDIT_CARD', 'OTHER']),
+    const { legs, reference, notes } = z.object({
+      legs: z.array(paymentLegSchema).min(1),
       reference: z.string().optional(),
       notes: z.string().optional(),
     }).parse(req.body);
 
-    const order = await purchasesService.payOrder(req.params.id, req.user!.sub, amount, method, reference, notes);
+    const order = await purchasesService.payOrder(req.params.id, req.user!.sub, legs, reference, notes);
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });
