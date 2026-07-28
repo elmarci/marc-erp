@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Wallet, Plus, Minus, X, ChevronDown, ChevronUp, TrendingUp,
-  TrendingDown, Clock, CheckCircle, ArrowDownUp, ShoppingCart, Printer, FileSpreadsheet,
+  TrendingDown, Clock, CheckCircle, ArrowDownUp, ShoppingCart, Printer, FileSpreadsheet, PackageOpen,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -320,6 +320,119 @@ function CloseSessionModal({
 }
 
 /* ─── Active Session Panel ──────────────────────────────────────────────── */
+/* ─── Garantía de envase (cobrar/devolver) ───────────────────────────────── */
+interface DepositProductRow {
+  productId: string; name: string; barcode: string | null;
+  depositAmount: number; outstandingQty: number; outstandingAmount: number;
+}
+
+function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [action, setAction] = useState<'charge' | 'return'>('charge');
+  const [productId, setProductId] = useState('');
+  const [quantity, setQuantity] = useState('1');
+  const [method, setMethod] = useState('CASH');
+  const [notes, setNotes] = useState('');
+
+  const { data } = useQuery({
+    queryKey: ['bottle-deposits-outstanding'],
+    queryFn: async () => (await api.get<{ data: DepositProductRow[] }>('/bottle-deposits')).data.data,
+  });
+
+  const product = (data ?? []).find(p => p.productId === productId);
+  const amount = product ? Number(quantity || 0) * product.depositAmount : 0;
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/bottle-deposits/${action === 'charge' ? 'charge' : 'return'}`, {
+      productId, quantity: Number(quantity), method, cashSessionId, notes: notes || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bottle-deposits-outstanding'] });
+      queryClient.invalidateQueries({ queryKey: ['bottle-deposits-totals'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-summary', cashSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['cash-movements', cashSessionId] });
+      toast.success(action === 'charge' ? 'Garantía cobrada.' : 'Garantía devuelta.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const maxQty = action === 'return' ? (product?.outstandingQty ?? 0) : undefined;
+  const canSubmit = !!productId && Number(quantity) > 0 && (action === 'charge' || Number(quantity) <= (maxQty ?? 0));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-5">
+          <h2 className="text-lg font-bold flex items-center gap-2"><PackageOpen className="h-5 w-5 text-primary" />Garantía de envase</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="flex gap-2">
+            <Button size="sm" className="flex-1" variant={action === 'charge' ? 'default' : 'outline'}
+              onClick={() => setAction('charge')}>Cobrar</Button>
+            <Button size="sm" className="flex-1" variant={action === 'return' ? 'success' : 'outline'}
+              onClick={() => setAction('return')}>Devolver</Button>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Producto (envase)</label>
+            <select value={productId} onChange={e => { setProductId(e.target.value); setQuantity('1'); }}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">Seleccionar...</option>
+              {(data ?? []).filter(p => action === 'charge' || p.outstandingQty > 0).map(p => (
+                <option key={p.productId} value={p.productId}>
+                  {p.name} — S/{p.depositAmount.toFixed(2)}/u{action === 'return' ? ` (pendiente: ${p.outstandingQty})` : ''}
+                </option>
+              ))}
+            </select>
+            {action === 'charge' && (data ?? []).length === 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ningún producto tiene garantía configurada — agrégala editando el producto (campo "Garantía de envase").
+              </p>
+            )}
+            {action === 'return' && (data ?? []).every(p => p.outstandingQty === 0) && (
+              <p className="mt-1 text-xs text-muted-foreground">No hay garantías pendientes de devolver.</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Cantidad</label>
+              <Input type="number" min={1} max={maxQty} step={1} value={quantity} onChange={e => setQuantity(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Método</label>
+              <select value={method} onChange={e => setMethod(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {Object.entries(PAYMENT_METHOD_LABELS).filter(([k]) => k !== 'CREDIT').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {product && (
+            <p className="text-sm text-right font-bold">
+              {action === 'charge' ? 'A cobrar: ' : 'A devolver: '}{formatCurrency(amount)}
+            </p>
+          )}
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Notas (opcional)</label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ej: cliente Juan, ticket #123..." />
+          </div>
+        </div>
+        <div className="border-t p-5 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!canSubmit}>
+            Confirmar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ActiveSessionPanel({ session }: { session: CashSession }) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
@@ -328,6 +441,7 @@ function ActiveSessionPanel({ session }: { session: CashSession }) {
   const [movAmount, setMovAmount] = useState('');
   const [movReason, setMovReason] = useState('');
   const [showClose, setShowClose] = useState(false);
+  const [showDeposit, setShowDeposit] = useState(false);
 
   const { data: summary } = useQuery({
     queryKey: ['cash-summary', session.id],
@@ -452,6 +566,11 @@ function ActiveSessionPanel({ session }: { session: CashSession }) {
                 </Button>
               </div>
 
+              {/* Garantía de envase — aparte de una venta, no es ingreso */}
+              <Button variant="outline" size="sm" className="w-full" onClick={() => setShowDeposit(true)}>
+                <PackageOpen className="mr-1.5 h-3.5 w-3.5" />Cobrar / devolver garantía de envase
+              </Button>
+
               {/* Tabs movimientos / ventas */}
               <div>
                 <div className="flex gap-1 mb-3 border-b">
@@ -504,6 +623,7 @@ function ActiveSessionPanel({ session }: { session: CashSession }) {
           onClosed={() => { setShowClose(false); setExpanded(false); }}
         />
       )}
+      {showDeposit && <BottleDepositModal cashSessionId={session.id} onClose={() => setShowDeposit(false)} />}
     </>
   );
 }
@@ -855,7 +975,13 @@ function TreasuryPanel() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
+  const [showBottleDeposit, setShowBottleDeposit] = useState(false);
   const [tab, setTab] = useState<'movimientos' | 'gastos' | 'recurrentes'>('movimientos');
+
+  const { data: depositsOutstanding } = useQuery({
+    queryKey: ['bottle-deposits-totals'],
+    queryFn: async () => (await api.get<{ totals: { outstandingQty: number; outstandingAmount: number } }>('/bottle-deposits')).data.totals,
+  });
 
   const { data: balances } = useQuery({
     queryKey: ['treasury-balance'],
@@ -919,9 +1045,20 @@ function TreasuryPanel() {
             <Button variant="destructive" onClick={() => setShowExpense(true)}>
               <Minus className="mr-1.5 h-4 w-4" />Registrar Gasto
             </Button>
+            <Button variant="outline" onClick={() => setShowBottleDeposit(true)}>
+              <PackageOpen className="mr-1.5 h-4 w-4" />Garantía de envase
+            </Button>
           </div>
+          {depositsOutstanding && depositsOutstanding.outstandingQty > 0 && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Pendiente por devolver en garantías: <span className="font-semibold text-foreground">{formatCurrency(depositsOutstanding.outstandingAmount)}</span>
+              {' '}({depositsOutstanding.outstandingQty} envase{depositsOutstanding.outstandingQty !== 1 ? 's' : ''}) — no incluido en el saldo de arriba
+            </p>
+          )}
         </CardContent>
       </Card>
+
+      {showBottleDeposit && <BottleDepositModal onClose={() => setShowBottleDeposit(false)} />}
 
       <div className="flex gap-1 border-b">
         {([['movimientos', 'Movimientos'], ['gastos', 'Gastos'], ['recurrentes', 'Gastos recurrentes']] as const).map(([key, label]) => (

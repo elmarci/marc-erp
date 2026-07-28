@@ -47,6 +47,7 @@ const createSchema = z.object({
   trackBatch: z.boolean().default(false),
   isBulk: z.boolean().default(false),
   bulkUnit: z.string().optional().nullable(),
+  bottleDeposit: z.number().min(0).default(0),
   imageUrl: z.union([z.string().url(), z.literal('')]).optional().nullable(),
 });
 

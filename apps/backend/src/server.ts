@@ -35,6 +35,7 @@ import promotionsRoutes from './modules/promotions/promotions.routes';
 import couponsRoutes from './modules/coupons/coupons.routes';
 import treasuryRoutes from './modules/treasury/treasury.routes';
 import { treasuryService } from './modules/treasury/treasury.service';
+import bottleDepositsRoutes from './modules/bottle-deposits/bottle-deposits.routes';
 
 const app = express();
 const httpServer = createServer(app);
@@ -140,6 +141,7 @@ app.use(`${API_PREFIX}/store/auth`, storeAuthRoutes);
 app.use(`${API_PREFIX}/promotions`, promotionsRoutes);
 app.use(`${API_PREFIX}/coupons`, couponsRoutes);
 app.use(`${API_PREFIX}/treasury`, treasuryRoutes);
+app.use(`${API_PREFIX}/bottle-deposits`, bottleDepositsRoutes);
 
 // ─── Swagger docs ────────────────────────────────────────────────────────────
 if (env.NODE_ENV === 'development') {

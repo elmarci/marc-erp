@@ -24,6 +24,7 @@ const schema = z.object({
   description: z.string().optional(),
   isBulk: z.boolean().default(false),
   bulkUnit: z.string().optional(),
+  bottleDeposit: z.coerce.number().min(0).default(0),
   imageUrl: z.string().optional(),
 });
 
@@ -92,6 +93,7 @@ export function ProductFormPage() {
         description: (p['description'] as string) ?? '',
         isBulk: Boolean(p['isBulk']),
         bulkUnit: (p['bulkUnit'] as string) ?? '',
+        bottleDeposit: Number(p['bottleDeposit'] ?? 0),
         imageUrl: (p['imageUrl'] as string) ?? '',
       });
     }
@@ -233,6 +235,16 @@ export function ProductFormPage() {
                   <p className="text-xs text-muted-foreground mt-1">El precio de venta es por esta unidad. Ej: S/ 3.50 / kg</p>
                 </div>
               )}
+            </div>
+
+            {/* Garantía de envase retornable */}
+            <div className="rounded-lg border p-4 space-y-2">
+              <label className="mb-1 block text-sm font-medium">Garantía de envase (S/)</label>
+              <Input {...register('bottleDeposit')} type="number" step="0.10" min="0" className="max-w-[160px]" />
+              <p className="text-xs text-muted-foreground">
+                Si el cliente no trae su botella vacía, se le cobra esto aparte de la venta (no es ingreso, se le
+                devuelve cuando la traiga). Déjalo en 0 si este producto no maneja envase retornable.
+              </p>
             </div>
 
             <div>

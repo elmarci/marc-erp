@@ -24,6 +24,7 @@ export interface CreateProductInput {
   trackBatch?: boolean;
   isBulk?: boolean;
   bulkUnit?: string | null;
+  bottleDeposit?: number;
   imageUrl?: string | null;
 }
 
@@ -88,6 +89,7 @@ export class ProductsService {
         trackBatch: input.trackBatch ?? false,
         isBulk: input.isBulk ?? false,
         bulkUnit: input.bulkUnit,
+        bottleDeposit: input.bottleDeposit ?? 0,
         imageUrl: input.imageUrl,
       },
       include: { category: true, brand: true, supplier: true },
@@ -281,6 +283,7 @@ export class ProductsService {
         trackBatch: input.trackBatch,
         isBulk: input.isBulk,
         bulkUnit: input.bulkUnit,
+        bottleDeposit: input.bottleDeposit,
         imageUrl: input.imageUrl,
         status: input.status,
       },

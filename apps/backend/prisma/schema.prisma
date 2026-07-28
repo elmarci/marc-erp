@@ -189,6 +189,7 @@ model User {
   expenses                  Expense[]
   recurringExpenseTemplates RecurringExpenseTemplate[]
   supplierPayments          SupplierPayment[]
+  bottleDepositMovements    BottleDepositMovement[]
 
   @@index([email])
   @@index([username])
@@ -404,6 +405,10 @@ model Product {
   trackBatch     Boolean       @default(false) @map("track_batch")
   isBulk         Boolean       @default(false) @map("is_bulk")
   bulkUnit       String?       @map("bulk_unit") // "kg", "g", "L", "unidad"
+  // Garantía por envase retornable (ej. S/1 por botella) — 0 significa que
+  // este producto no maneja envase con garantía. Independiente de la venta:
+  // se cobra/devuelve por su cuenta, nunca como parte del ticket de venta.
+  bottleDeposit  Decimal       @default(0) @map("bottle_deposit") @db.Decimal(10, 2)
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
   deletedAt      DateTime?     @map("deleted_at")
@@ -422,6 +427,7 @@ model Product {
   batches            Batch[]
   promotionItems     PromotionProduct[]
   supplierProducts   SupplierProduct[]
+  bottleDepositMovements BottleDepositMovement[]
 
   @@index([barcode])
   @@index([internalCode])
@@ -777,12 +783,43 @@ model CashSession {
   // Cuadre de billeteras digitales (Yape, Plin) al cerrar caja — separado del
   // efectivo porque cada método es su propia "cuenta" en Caja General.
   reconciliations CashSessionReconciliation[]
+  bottleDepositMovements BottleDepositMovement[]
 
   @@index([cashRegisterId])
   @@index([userId])
   @@index([status])
   @@index([openedAt])
   @@map("cash_sessions")
+}
+
+enum BottleDepositType {
+  CHARGED
+  RETURNED
+}
+
+// Garantía de envase retornable: dinero que el cliente deja en prenda por la
+// botella y que se le devuelve cuando la trae de vuelta. NO es parte de la
+// venta (no es ingreso ni afecta stock/margen) — es un pasivo aparte que se
+// cobra y se devuelve por su cuenta, con su propio rastro en Caja General.
+model BottleDepositMovement {
+  id            String            @id @default(uuid())
+  productId     String            @map("product_id")
+  type          BottleDepositType
+  quantity      Int
+  amount        Decimal           @db.Decimal(10, 2)
+  method        PaymentMethod
+  cashSessionId String?           @map("cash_session_id")
+  userId        String            @map("user_id")
+  notes         String?
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  product     Product      @relation(fields: [productId], references: [id])
+  cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+
+  @@index([productId])
+  @@index([cashSessionId])
+  @@map("bottle_deposit_movements")
 }
 
 model CashSessionReconciliation {
