@@ -15,6 +15,7 @@ import { OpenSessionModal } from '@/modules/pos/OpenSessionModal';
 import { usePosStore } from '@/stores/posStore';
 import { useAuthStore } from '@/stores/authStore';
 import { downloadExcel } from '@/lib/exportExcel';
+import { printThermalHtml } from '@/lib/printThermal';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface CashRegister { id: string; name: string }
@@ -63,12 +64,7 @@ function printArqueo(summary: SessionSummary, reconciliations: DigitalReconcilia
   const s = summary.session;
   const sm = summary.summary;
   const diff = Number(s.difference ?? 0);
-  const win = window.open('', '_blank', 'width=320,height=700');
-  if (!win) return;
-  win.document.write(`<html><head><title>Arqueo ${s.cashRegister.name}</title>
-  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:12px;width:280px;padding:8px}
-  .c{text-align:center}.b{font-weight:bold}.line{border-top:1px dashed #000;margin:4px 0}
-  .row{display:flex;justify-content:space-between}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
+  const body = `
   <p class="c b" style="font-size:14px">ARQUEO DE CAJA</p>
   <p class="c">${s.cashRegister.name}</p>
   <div class="line"></div>
@@ -85,19 +81,18 @@ function printArqueo(summary: SessionSummary, reconciliations: DigitalReconcilia
   <div class="line"></div>
   <div class="row b"><span>Efectivo esperado:</span><span>S/ ${Number(s.expectedAmount ?? sm.netCash).toFixed(2)}</span></div>
   ${s.closingAmount != null ? `<div class="row b"><span>Contado:</span><span>S/ ${Number(s.closingAmount).toFixed(2)}</span></div>` : ''}
-  ${s.difference != null ? `<div class="row b ${diff >= 0 ? 'green' : 'red'}"><span>Diferencia:</span><span>${diff >= 0 ? '+' : ''}S/ ${diff.toFixed(2)}</span></div>` : ''}
+  ${s.difference != null ? `<div class="row b"><span>Diferencia:</span><span>${diff >= 0 ? '+' : ''}S/ ${diff.toFixed(2)}</span></div>` : ''}
   ${reconciliations.map((r) => {
     const rd = Number(r.difference);
     return `<div class="line"></div>
     <div class="row b"><span>${PAYMENT_METHOD_LABELS[r.method] ?? r.method} esperado:</span><span>S/ ${Number(r.expectedAmount).toFixed(2)}</span></div>
     <div class="row"><span>Confirmado:</span><span>S/ ${Number(r.countedAmount).toFixed(2)}</span></div>
-    <div class="row b ${rd >= 0 ? 'green' : 'red'}"><span>Diferencia:</span><span>${rd >= 0 ? '+' : ''}S/ ${rd.toFixed(2)}</span></div>`;
+    <div class="row b"><span>Diferencia:</span><span>${rd >= 0 ? '+' : ''}S/ ${rd.toFixed(2)}</span></div>`;
   }).join('')}
   <div class="line"></div>
   <div class="row"><span>Total transacciones:</span><span>${sm.totalTransactions}</span></div>
-  <p class="c" style="margin-top:8px">ERP Minimarket</p>
-  </body></html>`);
-  win.document.close(); win.focus(); win.print(); win.close();
+  <p class="c" style="margin-top:8px">ERP Minimarket</p>`;
+  printThermalHtml(`Arqueo ${s.cashRegister.name}`, body);
 }
 
 /* ─── Sub-components ────────────────────────────────────────────────────── */

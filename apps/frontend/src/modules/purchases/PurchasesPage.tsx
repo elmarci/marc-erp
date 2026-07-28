@@ -14,6 +14,7 @@ import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatCost, formatDateTime, cn } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { printThermalHtml } from '@/lib/printThermal';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface Supplier {
@@ -323,20 +324,14 @@ function SupplierCatalogModal({ supplier, onClose }: { supplier: Supplier; onClo
 
 /* ─── Print de comprobante de compra ─────────────────────────────────────── */
 function printPurchaseReceipt(order: OrderDetail) {
-  const win = window.open('', '_blank', 'width=380,height=700');
-  if (!win) return;
   const rows = order.items.map(i => `
     <tr>
-      <td style="padding:4px 0">${i.product.name}${i.isBonus ? ' <b>(bonif.)</b>' : ''}</td>
-      <td style="padding:4px 0;text-align:center">${Number(i.orderedQty).toLocaleString('es-PE', { maximumFractionDigits: 3 })}</td>
-      <td style="padding:4px 0;text-align:right">${i.isBonus ? 'GRATIS' : formatCost(i.unitCost)}</td>
-      <td style="padding:4px 0;text-align:right">S/ ${Number(i.subtotal).toFixed(2)}</td>
+      <td>${i.product.name}${i.isBonus ? ' <b>(bonif.)</b>' : ''}</td>
+      <td style="text-align:center">${Number(i.orderedQty).toLocaleString('es-PE', { maximumFractionDigits: 3 })}</td>
+      <td style="text-align:right">${i.isBonus ? 'GRATIS' : formatCost(i.unitCost)}</td>
+      <td style="text-align:right">S/ ${Number(i.subtotal).toFixed(2)}</td>
     </tr>`).join('');
-  win.document.write(`<html><head><title>Compra ${order.orderNumber}</title>
-    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:12px;width:320px;padding:10px}
-    .c{text-align:center}.b{font-weight:bold}.line{border-top:1px dashed #000;margin:6px 0}
-    table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;border-bottom:1px solid #000}
-    .row{display:flex;justify-content:space-between}</style></head><body>
+  const body = `
     <p class="c b" style="font-size:14px">COMPROBANTE DE COMPRA</p>
     <p class="c">${order.orderNumber}</p>
     <div class="line"></div>
@@ -348,9 +343,8 @@ function printPurchaseReceipt(order: OrderDetail) {
     <tbody>${rows}</tbody></table>
     <div class="line"></div>
     <div class="row b" style="font-size:14px"><span>TOTAL:</span><span>S/ ${Number(order.totalAmount).toFixed(2)}</span></div>
-    <p class="c" style="margin-top:10px">MARC ERP</p>
-    </body></html>`);
-  win.document.close(); win.focus(); win.print();
+    <p class="c" style="margin-top:10px">MARC ERP</p>`;
+  printThermalHtml(`Compra ${order.orderNumber}`, body);
 }
 
 /* ─── Fuente y forma de pago (reutilizado en Registrar/Recibir/Pagar) ────── */
