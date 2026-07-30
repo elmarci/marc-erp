@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Wallet, Plus, Minus, X, ChevronDown, ChevronUp, TrendingUp,
@@ -37,10 +37,13 @@ interface SessionSummary {
     expectedAmount: number | null; difference: number | null;
     cashRegister: { name: string }; cashier: { firstName: string; lastName: string };
   };
+  reconciliations?: DigitalReconciliation[];
   summary: {
     totalTransactions: number; totalSales: number;
     salesByMethod: Record<string, number>;
     totalWithdrawals: number; totalDeposits: number; netCash: number;
+    debtPayments: number; otherDeposits: number;
+    purchasePayments: number; otherWithdrawals: number;
   };
 }
 
@@ -64,6 +67,10 @@ function printArqueo(summary: SessionSummary, reconciliations: DigitalReconcilia
   const s = summary.session;
   const sm = summary.summary;
   const diff = Number(s.difference ?? 0);
+  // Diferencial total = suma de los +/- de cada método por separado (efectivo
+  // + cada billetera digital) — así "-2 en efectivo, +2 en Yape" se ve como
+  // lo que realmente es (un posible mal registro de método, no una pérdida).
+  const totalDiff = diff + reconciliations.reduce((s2, r) => s2 + Number(r.difference), 0);
   const body = `
   <p class="c b" style="font-size:14px">ARQUEO DE CAJA</p>
   <p class="c">${s.cashRegister.name}</p>
@@ -76,8 +83,10 @@ function printArqueo(summary: SessionSummary, reconciliations: DigitalReconcilia
   ${Object.entries(sm.salesByMethod).map(([m, v]) =>
     `<div class="row"><span>Ventas ${PAYMENT_METHOD_LABELS[m] ?? m}:</span><span>S/ ${Number(v).toFixed(2)}</span></div>`
   ).join('')}
-  ${sm.totalDeposits > 0 ? `<div class="row"><span>Depósitos:</span><span>+S/ ${sm.totalDeposits.toFixed(2)}</span></div>` : ''}
-  ${sm.totalWithdrawals > 0 ? `<div class="row"><span>Retiros:</span><span>-S/ ${sm.totalWithdrawals.toFixed(2)}</span></div>` : ''}
+  ${sm.debtPayments > 0 ? `<div class="row"><span>Cobro de cuentas:</span><span>+S/ ${sm.debtPayments.toFixed(2)}</span></div>` : ''}
+  ${sm.otherDeposits > 0 ? `<div class="row"><span>Otros depósitos:</span><span>+S/ ${sm.otherDeposits.toFixed(2)}</span></div>` : ''}
+  ${sm.purchasePayments > 0 ? `<div class="row"><span>Pago a proveedores:</span><span>-S/ ${sm.purchasePayments.toFixed(2)}</span></div>` : ''}
+  ${sm.otherWithdrawals > 0 ? `<div class="row"><span>Otros retiros:</span><span>-S/ ${sm.otherWithdrawals.toFixed(2)}</span></div>` : ''}
   <div class="line"></div>
   <div class="row b"><span>Efectivo esperado:</span><span>S/ ${Number(s.expectedAmount ?? sm.netCash).toFixed(2)}</span></div>
   ${s.closingAmount != null ? `<div class="row b"><span>Contado:</span><span>S/ ${Number(s.closingAmount).toFixed(2)}</span></div>` : ''}
@@ -89,6 +98,9 @@ function printArqueo(summary: SessionSummary, reconciliations: DigitalReconcilia
     <div class="row"><span>Confirmado:</span><span>S/ ${Number(r.countedAmount).toFixed(2)}</span></div>
     <div class="row b"><span>Diferencia:</span><span>${rd >= 0 ? '+' : ''}S/ ${rd.toFixed(2)}</span></div>`;
   }).join('')}
+  ${s.difference != null && reconciliations.length > 0 ? `
+  <div class="line"></div>
+  <div class="row b" style="font-size:13px"><span>DIFERENCIAL TOTAL:</span><span>${totalDiff >= 0 ? '+' : ''}S/ ${totalDiff.toFixed(2)}</span></div>` : ''}
   <div class="line"></div>
   <div class="row"><span>Total transacciones:</span><span>${sm.totalTransactions}</span></div>
   <p class="c" style="margin-top:8px">ERP Minimarket</p>`;
@@ -164,6 +176,13 @@ function CloseSessionModal({
   const missingDigitalCounts =
     (expectedYape > 0 && yapeCounted === '') || (expectedPlin > 0 && plinCounted === '');
 
+  // Diferencial total = suma de los +/- de cada método por separado — un
+  // -2 en efectivo y +2 en Yape se ve como lo que realmente es (posible
+  // pago mal registrado, no una pérdida real), en vez de mostrarlos sueltos.
+  const hasDigital = expectedYape > 0 || expectedPlin > 0;
+  const totalDiff = diff + (expectedYape > 0 ? yapeDiff : 0) + (expectedPlin > 0 ? plinDiff : 0);
+  const readyForTotalDiff = !!closingAmount && !missingDigitalCounts;
+
   const mutation = useMutation({
     mutationFn: () => api.post(`/cash/sessions/${sessionId}/close`, { closingAmount: counted, toTreasury, digitalCounts }),
     onSuccess: (res) => {
@@ -184,14 +203,14 @@ function CloseSessionModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between border-b p-5">
           <h2 className="text-lg font-bold">Cierre de Caja</h2>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="overflow-y-auto p-5 space-y-4">
           {/* Resumen previo al cierre */}
           <div className="rounded-lg bg-muted p-4 space-y-2 text-sm">
             <div className="flex justify-between">
@@ -202,16 +221,28 @@ function CloseSessionModal({
               <span>Ventas efectivo</span>
               <span>+{formatCurrency(summary.summary.salesByMethod['CASH'] ?? 0)}</span>
             </div>
-            {summary.summary.totalDeposits > 0 && (
+            {summary.summary.debtPayments > 0 && (
               <div className="flex justify-between text-success">
-                <span>Depósitos</span>
-                <span>+{formatCurrency(summary.summary.totalDeposits)}</span>
+                <span>Cobro de cuentas</span>
+                <span>+{formatCurrency(summary.summary.debtPayments)}</span>
               </div>
             )}
-            {summary.summary.totalWithdrawals > 0 && (
+            {summary.summary.otherDeposits > 0 && (
+              <div className="flex justify-between text-success">
+                <span>Otros depósitos</span>
+                <span>+{formatCurrency(summary.summary.otherDeposits)}</span>
+              </div>
+            )}
+            {summary.summary.purchasePayments > 0 && (
               <div className="flex justify-between text-destructive">
-                <span>Retiros</span>
-                <span>-{formatCurrency(summary.summary.totalWithdrawals)}</span>
+                <span>Pago a proveedores</span>
+                <span>-{formatCurrency(summary.summary.purchasePayments)}</span>
+              </div>
+            )}
+            {summary.summary.otherWithdrawals > 0 && (
+              <div className="flex justify-between text-destructive">
+                <span>Otros retiros</span>
+                <span>-{formatCurrency(summary.summary.otherWithdrawals)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold border-t pt-2">
@@ -297,6 +328,17 @@ function CloseSessionModal({
               )}
             </div>
           )}
+
+          {/* Diferencial total — solo tiene sentido combinar métodos cuando
+              hay más de uno en juego (efectivo + alguna billetera digital). */}
+          {hasDigital && readyForTotalDiff && (
+            <div className={cn('rounded-lg border-2 p-4 text-center', totalDiff === 0 ? 'border-success bg-success/10' : totalDiff > 0 ? 'border-blue-500 bg-blue-500/10' : 'border-destructive bg-destructive/10')}>
+              <p className="text-sm text-muted-foreground">Diferencial total (todos los métodos)</p>
+              <p className={cn('text-2xl font-bold', totalDiff === 0 ? 'text-success' : totalDiff > 0 ? 'text-blue-600' : 'text-destructive')}>
+                {totalDiff >= 0 ? '+' : ''}{formatCurrency(totalDiff)}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="border-t p-5">
@@ -358,12 +400,12 @@ function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between border-b p-5">
           <h2 className="text-lg font-bold flex items-center gap-2"><PackageOpen className="h-5 w-5 text-primary" />Garantía de envase</h2>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
-        <div className="p-5 space-y-3">
+        <div className="overflow-y-auto p-5 space-y-3">
           <div className="flex gap-2">
             <Button size="sm" className="flex-1" variant={action === 'charge' ? 'default' : 'outline'}
               onClick={() => setAction('charge')}>Cobrar</Button>
@@ -533,6 +575,30 @@ function ActiveSessionPanel({ session }: { session: CashSession }) {
                 </div>
               )}
 
+              {/* Esperado al cierre — para saber antes de tiempo cuánto debe
+                  cuadrar cada método, sin tener que abrir "Cerrar caja". */}
+              {summary && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1.5">
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wide">Esperado al cierre</p>
+                  <div className="flex justify-between text-sm">
+                    <span>Efectivo</span>
+                    <span className="font-bold">{formatCurrency(summary.summary.netCash)}</span>
+                  </div>
+                  {(summary.summary.salesByMethod['YAPE'] ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Yape</span>
+                      <span className="font-bold">{formatCurrency(summary.summary.salesByMethod['YAPE'])}</span>
+                    </div>
+                  )}
+                  {(summary.summary.salesByMethod['PLIN'] ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Plin</span>
+                      <span className="font-bold">{formatCurrency(summary.summary.salesByMethod['PLIN'])}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Agregar movimiento */}
               <div className="rounded-lg border p-3 space-y-3">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Registrar movimiento</p>
@@ -627,6 +693,7 @@ function ActiveSessionPanel({ session }: { session: CashSession }) {
 function HistoryPanel() {
   const [page, setPage] = useState(1);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   const { data } = useQuery({
     queryKey: ['cash-sessions', 'CLOSED', page],
@@ -640,7 +707,19 @@ function HistoryPanel() {
     enabled: !!selectedSession,
   });
 
+  // El detalle se renderiza después de la tabla — sin esto queda fuera de
+  // vista y hay que bajar a buscarlo manualmente cada vez que se abre.
+  useEffect(() => {
+    if (selectedSession && summary) {
+      detailRef.current?.scrollIntoView({ block: 'start' });
+    }
+  }, [selectedSession, summary]);
+
   const sessions = data?.data ?? [];
+  const reconciliations = summary?.reconciliations ?? [];
+  const totalDiff = summary?.session.difference != null
+    ? Number(summary.session.difference) + reconciliations.reduce((s, r) => s + Number(r.difference), 0)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -716,11 +795,11 @@ function HistoryPanel() {
 
       {/* Detalle de sesión histórica */}
       {selectedSession && summary && (
-        <Card>
+        <Card ref={detailRef}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Detalle — {summary.session.cashRegister.name}</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => printArqueo(summary)}>
+              <Button variant="outline" size="sm" onClick={() => printArqueo(summary, reconciliations)}>
                 <Printer className="mr-1.5 h-3.5 w-3.5" />Imprimir arqueo
               </Button>
             </div>
@@ -736,16 +815,31 @@ function HistoryPanel() {
                     <span className="text-success">+{formatCurrency(v)}</span>
                   </div>
                 ))}
-                {summary.summary.totalDeposits > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Depósitos</span><span className="text-success">+{formatCurrency(summary.summary.totalDeposits)}</span></div>}
-                {summary.summary.totalWithdrawals > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Retiros</span><span className="text-destructive">-{formatCurrency(summary.summary.totalWithdrawals)}</span></div>}
+                {summary.summary.debtPayments > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Cobro de cuentas</span><span className="text-success">+{formatCurrency(summary.summary.debtPayments)}</span></div>}
+                {summary.summary.otherDeposits > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Otros depósitos</span><span className="text-success">+{formatCurrency(summary.summary.otherDeposits)}</span></div>}
+                {summary.summary.purchasePayments > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Pago a proveedores</span><span className="text-destructive">-{formatCurrency(summary.summary.purchasePayments)}</span></div>}
+                {summary.summary.otherWithdrawals > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Otros retiros</span><span className="text-destructive">-{formatCurrency(summary.summary.otherWithdrawals)}</span></div>}
                 <div className="flex justify-between font-bold border-t pt-2"><span>Esperado</span><span>{formatCurrency(summary.session.expectedAmount ?? 0)}</span></div>
                 <div className="flex justify-between font-bold"><span>Contado</span><span>{formatCurrency(summary.session.closingAmount ?? 0)}</span></div>
                 {summary.session.difference != null && (() => {
                   const d = Number(summary.session.difference);
                   return <div className={cn('flex justify-between font-bold', d === 0 ? 'text-success' : d > 0 ? 'text-blue-600' : 'text-destructive')}>
-                    <span>Diferencia</span><span>{d >= 0 ? '+' : ''}{formatCurrency(d)}</span>
+                    <span>Diferencia efectivo</span><span>{d >= 0 ? '+' : ''}{formatCurrency(d)}</span>
                   </div>;
                 })()}
+                {reconciliations.map(r => {
+                  const rd = Number(r.difference);
+                  return (
+                    <div key={r.method} className={cn('flex justify-between', rd === 0 ? 'text-success' : rd > 0 ? 'text-blue-600' : 'text-destructive')}>
+                      <span>Diferencia {PAYMENT_METHOD_LABELS[r.method] ?? r.method}</span><span>{rd >= 0 ? '+' : ''}{formatCurrency(rd)}</span>
+                    </div>
+                  );
+                })}
+                {totalDiff != null && reconciliations.length > 0 && (
+                  <div className={cn('flex justify-between font-bold border-t pt-2', totalDiff === 0 ? 'text-success' : totalDiff > 0 ? 'text-blue-600' : 'text-destructive')}>
+                    <span>Diferencial total</span><span>{totalDiff >= 0 ? '+' : ''}{formatCurrency(totalDiff)}</span>
+                  </div>
+                )}
               </div>
               <div className="space-y-2 text-sm">
                 <p className="font-semibold text-muted-foreground uppercase text-xs tracking-wide">Estadísticas</p>
@@ -805,13 +899,13 @@ function DepositModal({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl p-6">
-        <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 pb-4">
           <h2 className="text-lg font-bold">Registrar Depósito</h2>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
-        <div className="space-y-4">
+        <div className="overflow-y-auto px-6 pb-6 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-sm font-medium">Monto (S/)</label>
@@ -861,13 +955,13 @@ function ExpenseModal({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl p-6">
-        <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 pb-4">
           <h2 className="text-lg font-bold">Registrar Gasto</h2>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
-        <div className="space-y-4">
+        <div className="overflow-y-auto px-6 pb-6 space-y-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium">Categoría</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)}
@@ -923,13 +1017,13 @@ function RecurringTemplateModal({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl p-6">
-        <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 pb-4">
           <h2 className="text-lg font-bold">Nuevo Gasto Recurrente</h2>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
-        <div className="space-y-4">
+        <div className="overflow-y-auto px-6 pb-6 space-y-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium">Categoría</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)}

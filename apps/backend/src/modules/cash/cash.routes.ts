@@ -141,7 +141,7 @@ router.post('/sessions/:id/movements', authorizeMinRole('CASHIER'), async (req: 
       notes: z.string().optional(),
     }).parse(req.body);
 
-    const movement = await cashService.addMovement(req.params.id, type, amount, reason, notes);
+    const movement = await cashService.addMovement(req.params.id, type, amount, reason, req.user!.sub, notes);
     res.status(201).json({ success: true, data: movement });
   } catch (err) { next(err); }
 });

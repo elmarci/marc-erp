@@ -185,18 +185,36 @@ export class CashService {
     type: 'WITHDRAWAL' | 'DEPOSIT',
     amount: number,
     reason: string,
+    userId: string,
     notes?: string,
   ) {
     const session = await prisma.cashSession.findFirst({
       where: { id: sessionId, status: 'OPEN' },
+      include: { cashRegister: true },
     });
     if (!session) throw new NotFoundError('Sesión de caja activa');
 
     if (amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
 
-    return prisma.cashMovement.create({
-      data: { cashSessionId: sessionId, type, amount, reason, notes },
+    // Este efectivo entra o sale físicamente del cajón, así que Caja General
+    // debe reflejarlo al instante (mismo criterio que fromTreasury/toTreasury
+    // en apertura/cierre): un "Depósito" a la caja del día sale de Caja
+    // General, un "Retiro" de la caja del día entra a Caja General.
+    const movement = await prisma.$transaction(async (tx) => {
+      const created = await tx.cashMovement.create({
+        data: { cashSessionId: sessionId, type, amount, reason, notes },
+      });
+      await treasuryService.recordMovementInTx(
+        tx,
+        type === 'DEPOSIT' ? 'WITHDRAWAL' : 'DEPOSIT',
+        amount,
+        `${type === 'DEPOSIT' ? 'Depósito a' : 'Retiro de'} caja (${session.cashRegister.name}): ${reason}`,
+        userId, 'CASH_SESSION_MOVEMENT', sessionId, 'CASH',
+      );
+      return created;
     });
+    emitEvent('erp:cash-updated');
+    return movement;
   }
 
   async getSessionSummary(sessionId: string) {
@@ -224,6 +242,19 @@ export class CashService {
       .filter((m) => m.type === 'DEPOSIT')
       .reduce((s, m) => s + Number(m.amount), 0);
 
+    // Desglose para que el arqueo diga qué fue cada movimiento en vez de un
+    // "Depósito"/"Retiro" genérico — un cobro de deuda o un pago a proveedor
+    // ya quedan marcados con su referenceType al crearse.
+    const debtPayments = session.movements
+      .filter((m) => m.type === 'DEPOSIT' && m.referenceType === 'DEBT_PAYMENT')
+      .reduce((s, m) => s + Number(m.amount), 0);
+    const otherDeposits = totalDeposits - debtPayments;
+
+    const purchasePayments = session.movements
+      .filter((m) => m.type === 'WITHDRAWAL' && m.referenceType === 'PURCHASE')
+      .reduce((s, m) => s + Number(m.amount), 0);
+    const otherWithdrawals = totalWithdrawals - purchasePayments;
+
     return {
       session: {
         id: session.id,
@@ -237,12 +268,17 @@ export class CashService {
         expectedAmount: session.expectedAmount,
         difference: session.difference,
       },
+      reconciliations: session.reconciliations,
       summary: {
         totalTransactions,
         totalSales,
         salesByMethod,
         totalWithdrawals,
         totalDeposits,
+        debtPayments,
+        otherDeposits,
+        purchasePayments,
+        otherWithdrawals,
         netCash: Number(session.openingAmount) + (salesByMethod['CASH'] ?? 0) + totalDeposits - totalWithdrawals,
       },
     };

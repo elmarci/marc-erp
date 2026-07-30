@@ -66,9 +66,9 @@ export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl animate-fade-in p-6">
-        <div className="flex items-center justify-between mb-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 pb-5">
           <div className="flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
               <Wallet className="h-5 w-5 text-primary" />
@@ -81,7 +81,7 @@ export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
 
-        <div className="space-y-4">
+        <div className="overflow-y-auto px-6 pb-6 space-y-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium">Caja</label>
             <select

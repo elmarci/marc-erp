@@ -242,7 +242,10 @@ router.post('/:id/payments', async (req: Request, res: Response, next: NextFunct
         // Efectivo dentro de una sesión abierta: espera al cierre de esa
         // caja para no contar el mismo billete dos veces en Caja General.
         await tx.cashMovement.create({
-          data: { cashSessionId: cashSession.id, type: 'DEPOSIT', amount: totalPaid, reason: description, notes },
+          data: {
+            cashSessionId: cashSession.id, type: 'DEPOSIT', amount: totalPaid, reason: description, notes,
+            referenceType: 'DEBT_PAYMENT', referenceId: customer.id,
+          },
         });
       } else {
         // Sin sesión que lo cuadre (Yape/Plin, o efectivo cobrado fuera de

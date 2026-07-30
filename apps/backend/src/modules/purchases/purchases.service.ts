@@ -402,7 +402,7 @@ export class PurchasesService {
         }
         await this.applyPurchasePaymentLegs(
           tx, orderId, Number(order.totalAmount), legs, userId,
-          `Pago de compra: OC ${order.orderNumber}`,
+          `Pago de compra: OC ${order.orderNumber} — ${order.supplier.businessName}`,
         );
       }
 
@@ -510,7 +510,7 @@ export class PurchasesService {
         }
         await this.applyPurchasePaymentLegs(
           tx, order.id, totalAmount, legs, userId,
-          `Pago de compra: OC ${order.orderNumber}`,
+          `Pago de compra: OC ${order.orderNumber} — ${supplier.businessName}`,
         );
       }
 
@@ -549,7 +549,10 @@ export class PurchasesService {
   }
 
   async voidPurchase(orderId: string, userId: string, reason: string) {
-    const order = await prisma.purchaseOrder.findUnique({ where: { id: orderId } });
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id: orderId },
+      include: { supplier: { select: { businessName: true } } },
+    });
     if (!order) throw new NotFoundError('Orden de compra');
     if (order.status !== 'RECEIVED') throw new BusinessError('Solo se pueden anular compras que ya fueron recibidas por completo.');
     if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
@@ -610,7 +613,8 @@ export class PurchasesService {
 
       for (const pm of paidTreasuryMovements) {
         await treasuryService.recordMovementInTx(
-          tx, 'DEPOSIT', Number(pm.amount), `Reversión pago (compra anulada): OC ${order.orderNumber}`,
+          tx, 'DEPOSIT', Number(pm.amount),
+          `Reversión pago (compra anulada): OC ${order.orderNumber} — ${order.supplier.businessName}`,
           userId, 'PURCHASE_VOID', orderId, pm.account,
         );
       }
@@ -624,14 +628,14 @@ export class PurchasesService {
           await tx.cashMovement.create({
             data: {
               cashSessionId: cm.cashSessionId, type: 'DEPOSIT', amount: cm.amount,
-              reason: `Reversión pago (compra anulada): OC ${order.orderNumber}`,
+              reason: `Reversión pago (compra anulada): OC ${order.orderNumber} — ${order.supplier.businessName}`,
               referenceType: 'PURCHASE_VOID', referenceId: orderId,
             },
           });
         } else {
           await treasuryService.recordMovementInTx(
             tx, 'DEPOSIT', Number(cm.amount),
-            `Reversión pago (compra anulada, caja ya cerrada): OC ${order.orderNumber}`,
+            `Reversión pago (compra anulada, caja ya cerrada): OC ${order.orderNumber} — ${order.supplier.businessName}`,
             userId, 'PURCHASE_VOID', orderId, 'CASH',
           );
         }
@@ -689,7 +693,10 @@ export class PurchasesService {
       throw new BusinessError('Cada forma de pago debe tener un monto mayor a 0.');
     }
 
-    const order = await prisma.purchaseOrder.findUnique({ where: { id: orderId } });
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id: orderId },
+      include: { supplier: { select: { businessName: true } } },
+    });
     if (!order) throw new NotFoundError('Orden de compra');
     if (!['RECEIVED', 'PARTIALLY_RECEIVED'].includes(order.status)) {
       throw new BusinessError('Solo se pueden pagar compras que ya fueron recibidas.');
@@ -709,7 +716,7 @@ export class PurchasesService {
       }
       await this.applyPurchasePaymentLegs(
         tx, orderId, Number(order.totalAmount), legs, userId,
-        `Pago a proveedor: OC ${order.orderNumber}`,
+        `Pago a proveedor: OC ${order.orderNumber} — ${order.supplier.businessName}`,
       );
     });
 
