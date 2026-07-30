@@ -108,7 +108,7 @@ interface Offer {
   valueType: 'PERCENTAGE' | 'FIXED' | null;
   buyQuantity: number | null; getQuantity: number | null;
   isActive: boolean; storeBadge: string | null;
-  products: Array<{ product: { id: string; name: string; salePrice: number; barcode: string | null; currentStock: number; imageUrl: string | null; isBulk: boolean; bulkUnit: string | null; category: { name: string } } }>;
+  products: Array<{ quantity?: number; product: { id: string; name: string; salePrice: number; barcode: string | null; currentStock: number; imageUrl: string | null; isBulk: boolean; bulkUnit: string | null; category: { name: string } } }>;
 }
 
 interface HappyHourPromo {
@@ -198,6 +198,58 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
     toast.success(`${product.name} con oferta — ${formatCurrency(finalPrice)}`);
   };
 
+  // Combo de productos DISTINTOS a un precio total fijo — a diferencia de
+  // applyOffer(), aquí se agregan TODOS los componentes de una sola vez (el
+  // combo no existe si falta uno), y el descuento se reparte entre ellos en
+  // proporción a su precio normal para que la suma de subtotales dé
+  // exactamente el precio del combo.
+  const applyCombo = (offer: Offer) => {
+    const comboTotal = Number(offer.value);
+    const items = offer.products;
+    for (const { quantity, product } of items) {
+      const need = quantity ?? 1;
+      if (product.currentStock < need) {
+        toast.error(`No hay stock suficiente de "${product.name}" para este combo (necesita ${need}, disponible: ${product.currentStock}).`);
+        return;
+      }
+    }
+    const sumPrice = items.reduce((s, { quantity, product }) => s + Number(product.salePrice) * (quantity ?? 1), 0);
+    if (sumPrice <= 0) return;
+    const totalDiscount = Math.max(0, Math.round((sumPrice - comboTotal) * 100) / 100);
+
+    let assignedDiscount = 0;
+    let anyCapped = false;
+    items.forEach(({ quantity, product }, idx) => {
+      const qty = quantity ?? 1;
+      const orig = Number(product.salePrice);
+      const lineOriginal = orig * qty;
+      const lineDiscount = idx === items.length - 1
+        ? Math.round((totalDiscount - assignedDiscount) * 100) / 100
+        : Math.round((totalDiscount * (lineOriginal / sumPrice)) * 100) / 100;
+      assignedDiscount += lineDiscount;
+      const perUnitDiscount = Math.round((lineDiscount / qty) * 100) / 100;
+
+      const result = addItem({
+        productId: product.id,
+        name: `${product.name} (${offer.storeBadge ?? offer.name})`,
+        barcode: product.barcode,
+        quantity: qty,
+        unitPrice: orig,
+        originalPrice: orig,
+        discountAmount: perUnitDiscount,
+        discountPercent: 0,
+        stock: product.currentStock,
+      });
+      if (result.capped) anyCapped = true;
+    });
+
+    if (anyCapped) {
+      toast.warning('Stock limitado en algún producto del combo — se agregó lo disponible.');
+    } else {
+      toast.success(`${offer.name} agregado — ${formatCurrency(comboTotal)}`);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-lg rounded-2xl bg-card shadow-2xl flex flex-col max-h-[80vh]">
@@ -219,12 +271,39 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
                     {offer.type === 'PERCENTAGE_DISCOUNT' ? `${offer.value}% OFF` :
                      offer.type === 'FIXED_DISCOUNT' ? `S/ ${offer.value} OFF` :
                      offer.type === 'BUY_X_GET_Y' ? `Lleva ${offer.getQuantity ?? 3}, paga ${offer.buyQuantity ?? 2}` :
-                     offer.type === 'BUNDLE_PRICE' ? `${offer.getQuantity ?? '?'} x S/ ${offer.value}` : 'Precio especial'}
+                     offer.type === 'BUNDLE_PRICE' ? `${offer.getQuantity ?? '?'} x S/ ${offer.value}` :
+                     offer.type === 'COMBO' ? `Combo por ${formatCurrency(offer.value)}` : 'Precio especial'}
                   </p>
                 </div>
                 {offer.storeBadge && <Badge variant="success" className="text-xs">{offer.storeBadge}</Badge>}
               </div>
-              {offer.products.length > 0 && (
+              {offer.type === 'COMBO' && offer.products.length > 0 && (() => {
+                const sumPrice = offer.products.reduce((s, { quantity, product }) => s + Number(product.salePrice) * (quantity ?? 1), 0);
+                const missing = offer.products.filter(({ quantity, product }) => product.currentStock < (quantity ?? 1));
+                return (
+                  <div className="space-y-2">
+                    <div className="bg-muted/50 rounded-lg px-3 py-2 space-y-1">
+                      {offer.products.map(({ quantity, product }) => (
+                        <div key={product.id} className="flex items-center justify-between text-sm">
+                          <span>{product.name}{(quantity ?? 1) > 1 ? ` x${quantity}` : ''}</span>
+                          <span className="text-muted-foreground">{formatCurrency(Number(product.salePrice) * (quantity ?? 1))}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between text-sm font-bold border-t pt-1 mt-1">
+                        <span className="line-through text-muted-foreground font-normal">{formatCurrency(sumPrice)}</span>
+                        <span className="text-success">{formatCurrency(Number(offer.value))}</span>
+                      </div>
+                    </div>
+                    {missing.length > 0 && (
+                      <p className="text-xs text-destructive">Sin stock suficiente: {missing.map(m => m.product.name).join(', ')}</p>
+                    )}
+                    <Button size="sm" className="w-full" onClick={() => applyCombo(offer)} disabled={missing.length > 0}>
+                      Agregar combo
+                    </Button>
+                  </div>
+                );
+              })()}
+              {offer.type !== 'COMBO' && offer.products.length > 0 && (
                 <div className="space-y-2">
                   {offer.products.map(({ product }) => {
                     const orig = Number(product.salePrice);

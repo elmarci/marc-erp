@@ -1,6 +1,8 @@
 import { prisma } from '../../database/client';
 import { NotFoundError } from '../../utils/errors';
 
+interface ComboItemInput { productId: string; quantity: number }
+
 export class PromotionsService {
   async list(filters: { active?: boolean; page: number; limit: number }) {
     const where: Record<string, unknown> = {};
@@ -41,16 +43,21 @@ export class PromotionsService {
     isActive?: boolean; showInStore?: boolean;
     storeBadge?: string; storeImage?: string; priority?: number;
     productIds?: string[];
+    comboItems?: ComboItemInput[];
   }) {
-    const { productIds, ...promoData } = data;
+    const { productIds, comboItems, ...promoData } = data;
+    // COMBO usa comboItems (con cantidad por producto); los demás tipos
+    // siguen usando productIds simple (cantidad implícita = 1 cada uno).
+    const products = comboItems && comboItems.length > 0
+      ? comboItems.map(i => ({ productId: i.productId, quantity: i.quantity }))
+      : productIds?.map(productId => ({ productId }));
+
     return prisma.promotion.create({
       data: {
         ...promoData,
         type: promoData.type as never,
         valueType: promoData.valueType as never,
-        products: productIds ? {
-          create: productIds.map(productId => ({ productId })),
-        } : undefined,
+        products: products ? { create: products } : undefined,
       },
       include: {
         products: { include: { product: { select: { id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true } } } },
@@ -66,16 +73,20 @@ export class PromotionsService {
     isActive?: boolean; showInStore?: boolean;
     storeBadge?: string; storeImage?: string; priority?: number;
     productIds?: string[];
+    comboItems?: ComboItemInput[];
   }) {
     await this.get(id);
-    const { productIds, ...promoData } = data;
+    const { productIds, comboItems, ...promoData } = data;
+    const products = comboItems && comboItems.length > 0
+      ? comboItems.map(i => ({ productId: i.productId, quantity: i.quantity }))
+      : productIds?.map(productId => ({ productId }));
 
     // Update products if provided
-    if (productIds !== undefined) {
+    if (products !== undefined) {
       await prisma.promotionProduct.deleteMany({ where: { promotionId: id } });
-      if (productIds.length > 0) {
+      if (products.length > 0) {
         await prisma.promotionProduct.createMany({
-          data: productIds.map(productId => ({ promotionId: id, productId })),
+          data: products.map(p => ({ promotionId: id, ...p })),
         });
       }
     }

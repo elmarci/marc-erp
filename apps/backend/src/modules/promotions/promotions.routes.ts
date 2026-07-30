@@ -9,7 +9,8 @@ router.use(authenticate);
 const promoSchema = z.object({
   name: z.string().min(2),
   description: z.string().optional(),
-  type: z.enum(['PERCENTAGE_DISCOUNT', 'FIXED_DISCOUNT', 'BUY_X_GET_Y', 'BUNDLE_PRICE', 'HAPPY_HOUR']),
+  type: z.enum(['PERCENTAGE_DISCOUNT', 'FIXED_DISCOUNT', 'BUY_X_GET_Y', 'BUNDLE_PRICE', 'HAPPY_HOUR', 'COMBO']),
+  // COMBO: precio total del combo (no por unidad).
   value: z.coerce.number().min(0),
   // Solo HAPPY_HOUR — % o monto fijo.
   valueType: z.enum(['PERCENTAGE', 'FIXED']).optional(),
@@ -28,6 +29,12 @@ const promoSchema = z.object({
   storeImage: z.string().url().optional().or(z.literal('')),
   priority: z.coerce.number().default(0),
   productIds: z.array(z.string().uuid()).optional(),
+  // Solo type=COMBO — productos distintos que componen el combo, cada uno
+  // con su cantidad (ej. 2 panes + 1 leche).
+  comboItems: z.array(z.object({
+    productId: z.string().uuid(),
+    quantity: z.coerce.number().int().min(1),
+  })).min(2).optional(),
 });
 
 router.get('/active-now', async (_req: Request, res: Response, next: NextFunction) => {

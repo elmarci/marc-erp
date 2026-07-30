@@ -17,14 +17,15 @@ interface Offer {
   startTime: string | null; endTime: string | null; daysOfWeek: number[]
   startDate: string; endDate: string | null; isActive: boolean; showInStore: boolean
   storeBadge: string | null; storeImage: string | null; priority: number
-  products: Array<{ product: { id: string; name: string; imageUrl: string | null } }>
+  products: Array<{ quantity?: number; product: { id: string; name: string; imageUrl: string | null; salePrice?: number } }>
 }
 
 interface Product { id: string; name: string; salePrice: number }
 
 const TYPE_LABELS: Record<string, string> = {
   PERCENTAGE_DISCOUNT: 'Descuento %', FIXED_DISCOUNT: 'Descuento S/',
-  BUY_X_GET_Y: '2×1 / Lleva más', BUNDLE_PRICE: 'Precio paquete', HAPPY_HOUR: 'Hora feliz',
+  BUY_X_GET_Y: '2×1 / Lleva más', BUNDLE_PRICE: 'Precio paquete (mismo producto)',
+  COMBO: 'Combo (productos distintos)', HAPPY_HOUR: 'Hora feliz',
 }
 
 const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
@@ -49,7 +50,10 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     storeBadge: offer?.storeBadge ?? '',
     storeImage: offer?.storeImage ?? '',
     priority: String(offer?.priority ?? 0),
-    productIds: offer?.products.map(p => p.product.id) ?? [],
+    productIds: offer?.type !== 'COMBO' ? (offer?.products.map(p => p.product.id) ?? []) : [],
+    comboItems: offer?.type === 'COMBO'
+      ? offer.products.map(p => ({ productId: p.product.id, name: p.product.name, quantity: p.quantity ?? 1, salePrice: Number(p.product.salePrice ?? 0) }))
+      : ([] as Array<{ productId: string; name: string; quantity: number; salePrice: number }>),
   })
   const [productSearch, setProductSearch] = useState('')
   const debouncedProductSearch = useDebouncedValue(productSearch, 300)
@@ -61,7 +65,10 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
   })
 
   const isPack = form.type === 'BUY_X_GET_Y' || form.type === 'BUNDLE_PRICE'
+  const isCombo = form.type === 'COMBO'
   const isHappyHour = form.type === 'HAPPY_HOUR'
+
+  const comboSum = form.comboItems.reduce((s, i) => s + i.salePrice * i.quantity, 0)
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -85,6 +92,12 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
       } else {
         delete payload.valueType; delete payload.startTime; delete payload.endTime; delete payload.daysOfWeek
       }
+      if (isCombo) {
+        payload.comboItems = form.comboItems.map(i => ({ productId: i.productId, quantity: i.quantity }))
+        delete payload.productIds
+      } else {
+        delete payload.comboItems
+      }
       return offer ? api.put(`/promotions/${offer.id}`, payload) : api.post('/promotions', payload)
     },
     onSuccess: () => {
@@ -99,6 +112,15 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     if (!form.productIds.includes(p.id)) setForm(v => ({ ...v, productIds: [...v.productIds, p.id] }))
     setProductSearch('')
   }
+  const addComboProduct = (p: Product) => {
+    if (form.comboItems.some(i => i.productId === p.id)) return
+    setForm(v => ({ ...v, comboItems: [...v.comboItems, { productId: p.id, name: p.name, quantity: 1, salePrice: Number(p.salePrice) }] }))
+    setProductSearch('')
+  }
+  const updateComboQty = (productId: string, quantity: number) =>
+    setForm(v => ({ ...v, comboItems: v.comboItems.map(i => i.productId === productId ? { ...i, quantity } : i) }))
+  const removeComboProduct = (productId: string) =>
+    setForm(v => ({ ...v, comboItems: v.comboItems.filter(i => i.productId !== productId) }))
   const removeProduct = (id: string) => setForm(v => ({ ...v, productIds: v.productIds.filter(x => x !== id) }))
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(v => ({ ...v, [k]: e.target.value }))
@@ -123,12 +145,18 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
                 {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
-            {!isPack && !isHappyHour && (
+            {!isPack && !isHappyHour && !isCombo && (
               <div>
                 <label className="mb-1 block text-sm font-medium">
                   Valor {form.type === 'PERCENTAGE_DISCOUNT' ? '(%)' : '(S/)'}
                 </label>
                 <Input type="number" min={0} value={form.value} onChange={set('value')} placeholder="20" />
+              </div>
+            )}
+            {isCombo && (
+              <div>
+                <label className="mb-1 block text-sm font-medium">Precio total del combo (S/)</label>
+                <Input type="number" min={0} step={0.1} value={form.value} onChange={set('value')} placeholder="4.30" />
               </div>
             )}
             {form.type === 'BUNDLE_PRICE' && (
@@ -236,43 +264,91 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
           </div>
 
           {/* Products */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">Productos en la oferta *</label>
-            <p className="mb-1.5 text-xs text-muted-foreground">
-              Sin productos elegidos, la oferta no aparece ni se puede aplicar en el POS.
-            </p>
-            <div className="relative mb-2">
-              <Input placeholder="Buscar producto..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
-              {products && products.length > 0 && productSearch.length >= 2 && (
-                <div className="absolute z-10 w-full mt-1 border rounded-lg bg-popover shadow divide-y max-h-40 overflow-y-auto">
-                  {products.map(p => (
-                    <button key={p.id} onClick={() => addProduct(p)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
-                      <span>{p.name}</span>
-                      <span className="text-muted-foreground">{formatCurrency(p.salePrice)}</span>
-                    </button>
-                  ))}
-                </div>
+          {isCombo ? (
+            <div>
+              <label className="mb-1 block text-sm font-medium">Productos del combo * (mínimo 2 distintos)</label>
+              <p className="mb-1.5 text-xs text-muted-foreground">
+                Todos deben estar en el carrito juntos para que se aplique el precio del combo.
+              </p>
+              <div className="relative mb-2">
+                <Input placeholder="Buscar producto..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
+                {products && products.length > 0 && productSearch.length >= 2 && (
+                  <div className="absolute z-10 w-full mt-1 border rounded-lg bg-popover shadow divide-y max-h-40 overflow-y-auto">
+                    {products.map(p => (
+                      <button key={p.id} onClick={() => addComboProduct(p)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
+                        <span>{p.name}</span>
+                        <span className="text-muted-foreground">{formatCurrency(p.salePrice)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                {form.comboItems.map(i => (
+                  <div key={i.productId} className="flex items-center justify-between gap-2 rounded-lg border p-2">
+                    <span className="text-sm flex-1">{i.name}</span>
+                    <span className="text-xs text-muted-foreground">{formatCurrency(i.salePrice)} c/u</span>
+                    <Input type="number" min={1} value={i.quantity}
+                      onChange={e => updateComboQty(i.productId, Math.max(1, Number(e.target.value)))}
+                      className="h-8 w-16 text-center" />
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8"
+                      onClick={() => removeComboProduct(i.productId)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              {form.comboItems.length > 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Suma por separado: <span className="line-through">{formatCurrency(comboSum)}</span>
+                  {' '}→ Combo: <span className="font-bold text-success">{formatCurrency(Number(form.value) || 0)}</span>
+                  {comboSum > 0 && Number(form.value) > 0 && (
+                    <> (ahorro {formatCurrency(comboSum - Number(form.value))})</>
+                  )}
+                </p>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
-              {form.productIds.map(id => {
-                const p = offer?.products.find(op => op.product.id === id)
-                return (
-                  <Badge key={id} variant="secondary" className="gap-1">
-                    {p?.product.name ?? id.slice(0, 8)}
-                    <button onClick={() => removeProduct(id)}><X className="h-3 w-3" /></button>
-                  </Badge>
-                )
-              })}
+          ) : (
+            <div>
+              <label className="mb-1 block text-sm font-medium">Productos en la oferta *</label>
+              <p className="mb-1.5 text-xs text-muted-foreground">
+                Sin productos elegidos, la oferta no aparece ni se puede aplicar en el POS.
+              </p>
+              <div className="relative mb-2">
+                <Input placeholder="Buscar producto..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
+                {products && products.length > 0 && productSearch.length >= 2 && (
+                  <div className="absolute z-10 w-full mt-1 border rounded-lg bg-popover shadow divide-y max-h-40 overflow-y-auto">
+                    {products.map(p => (
+                      <button key={p.id} onClick={() => addProduct(p)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
+                        <span>{p.name}</span>
+                        <span className="text-muted-foreground">{formatCurrency(p.salePrice)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {form.productIds.map(id => {
+                  const p = offer?.products.find(op => op.product.id === id)
+                  return (
+                    <Badge key={id} variant="secondary" className="gap-1">
+                      {p?.product.name ?? id.slice(0, 8)}
+                      <button onClick={() => removeProduct(id)}><X className="h-3 w-3" /></button>
+                    </Badge>
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
         <div className="border-t p-5 flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={
             !form.name ||
-            form.productIds.length === 0 ||
+            (!isCombo && form.productIds.length === 0) ||
+            (isCombo && (form.comboItems.length < 2 || !form.value)) ||
             (form.type === 'PERCENTAGE_DISCOUNT' && !form.value) ||
             (form.type === 'FIXED_DISCOUNT' && !form.value) ||
             (form.type === 'BUNDLE_PRICE' && (!form.value || !form.getQuantity)) ||
@@ -348,6 +424,7 @@ export function OffersPage() {
                        offer.type === 'BUNDLE_PRICE' ? `${offer.getQuantity ?? '?'} x ${formatCurrency(offer.value)}` :
                        offer.type === 'BUY_X_GET_Y' ? `Paga ${offer.buyQuantity ?? '?'}, lleva ${offer.getQuantity ?? '?'}` :
                        offer.type === 'HAPPY_HOUR' ? (offer.valueType === 'FIXED' ? formatCurrency(offer.value) : `${offer.value}%`) :
+                       offer.type === 'COMBO' ? `${offer.products.length} productos = ${formatCurrency(offer.value)}` :
                        formatCurrency(offer.value)}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">

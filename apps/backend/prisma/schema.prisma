@@ -128,6 +128,11 @@ enum PromotionType {
   BUY_X_GET_Y
   BUNDLE_PRICE
   HAPPY_HOUR
+  // Combo de varios productos DISTINTOS a un precio total fijo (ej. pan +
+  // huevo + leche = S/4.30) — a diferencia de BUNDLE_PRICE, que es N
+  // unidades del MISMO producto. Usa PromotionProduct.quantity por cada
+  // producto del combo; "value" en Promotion es el precio total del combo.
+  COMBO
 }
 
 // Solo aplica a HAPPY_HOUR — los demás tipos ya implican su propia semántica
@@ -1114,6 +1119,10 @@ model Promotion {
 model PromotionProduct {
   promotionId String @map("promotion_id")
   productId   String @map("product_id")
+  // Solo tiene sentido para type=COMBO: cuántas unidades de ESTE producto
+  // entran en el combo (ej. 2 panes + 1 leche). Para los demás tipos de
+  // oferta se ignora (siempre 1).
+  quantity    Int    @default(1)
 
   promotion Promotion @relation(fields: [promotionId], references: [id])
   product   Product   @relation(fields: [productId], references: [id])
