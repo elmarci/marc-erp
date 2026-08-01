@@ -642,7 +642,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
               return (
               <button
                 key={product.id}
-                onClick={() => handleAddProduct(product)}
+                onClick={(e) => { handleAddProduct(product); e.currentTarget.blur(); }}
                 disabled={product.currentStock <= 0}
                 className={cn(
                   'relative flex flex-col rounded-xl border p-2.5 text-left transition-all',

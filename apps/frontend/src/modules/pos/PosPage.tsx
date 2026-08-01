@@ -83,6 +83,11 @@ export function PosPage() {
 
       if (e.key === 'Enter') {
         if (barcodeBuffer.current.length >= 3) {
+          // El Enter del lector no debe "activar" un botón que haya quedado
+          // enfocado (ej. el último producto tocado en pantalla) — si no,
+          // ese producto se suma de nuevo por accidente además del escaneado.
+          e.preventDefault();
+          (document.activeElement as HTMLElement | null)?.blur();
           handleBarcodeScanned(barcodeBuffer.current);
         }
         barcodeBuffer.current = '';
