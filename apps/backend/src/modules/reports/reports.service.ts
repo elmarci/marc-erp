@@ -286,6 +286,9 @@ export class ReportsService {
   }
 
   async getTopProducts(range: DateRange, limit = 20) {
+    // COUNT(...)::int, no ::bigint — pg-node representa bigint como JS
+    // BigInt, y JSON.stringify no sabe serializarlo (rompía este endpoint
+    // con "Do not know how to serialize a BigInt" apenas había resultados).
     return prisma.$queryRaw<{
       product_id: string;
       name: string;
@@ -293,7 +296,7 @@ export class ReportsService {
       category: string;
       quantity: number;
       revenue: number;
-      transactions: bigint;
+      transactions: number;
     }[]>`
       SELECT
         p.id as product_id,
@@ -302,7 +305,7 @@ export class ReportsService {
         c.name as category,
         SUM(si.quantity)::float as quantity,
         SUM(si.subtotal)::float as revenue,
-        COUNT(DISTINCT si.sale_id)::bigint as transactions
+        COUNT(DISTINCT si.sale_id)::int as transactions
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id
       JOIN products p ON si.product_id = p.id
