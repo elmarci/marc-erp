@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
   PackageCheck, Truck, Clock, FileText, X, ScanBarcode, Sparkles, ArrowLeft,
-  BookOpen, Star, Trash2, FileSpreadsheet,
+  BookOpen, Star, Trash2, FileSpreadsheet, Undo2, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -1370,11 +1370,97 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
   );
 }
 
+/* ─── Corregir producto de una línea recibida ────────────────────────────── */
+function CorrectItemModal({ order, item, onClose, onCorrected }: {
+  order: { id: string; orderNumber: string };
+  item: { productId: string; name: string };
+  onClose: () => void; onCorrected: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const [toProduct, setToProduct] = useState<{ id: string; name: string } | null>(null);
+  const [reason, setReason] = useState('');
+  const queryClient = useQueryClient();
+
+  const { data: results } = useQuery({
+    queryKey: ['products-search', debouncedSearch],
+    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; barcode: string | null }> }>(`/products?q=${debouncedSearch}&limit=10`)).data.data,
+    enabled: debouncedSearch.length >= 2,
+  });
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/purchases/${order.id}/correct-item`, {
+      fromProductId: item.productId, toProductId: toProduct!.id, reason,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(`Corregido — ahora es "${toProduct!.name}".`);
+      onCorrected();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-bold">Corregir producto</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{order.orderNumber} · Registrado como: {item.name}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="overflow-y-auto p-5 space-y-3">
+          <p className="text-sm text-muted-foreground">
+            El stock y costo que se cargaron a "{item.name}" se revierten, y se le aplican en su lugar al producto correcto que elijas abajo.
+          </p>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Producto correcto</label>
+            {toProduct ? (
+              <div className="flex items-center justify-between rounded-lg border p-2.5 text-sm">
+                <span className="font-medium">{toProduct.name}</span>
+                <button onClick={() => setToProduct(null)} className="text-muted-foreground hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
+              </div>
+            ) : (
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input className="pl-9" placeholder="Buscar el producto correcto..." value={search}
+                  onChange={e => setSearch(e.target.value)} autoFocus />
+                {results && results.length > 0 && search.length >= 2 && (
+                  <div className="absolute z-10 w-full border rounded-lg mt-1 divide-y max-h-40 overflow-y-auto bg-popover shadow-lg">
+                    {results.filter(p => p.id !== item.productId).map(p => (
+                      <button key={p.id} onClick={() => { setToProduct(p); setSearch(''); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted">{p.name}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Motivo</label>
+            <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: se recibió mal, era el otro producto" />
+          </div>
+        </div>
+        <div className="border-t p-5 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!toProduct || reason.trim().length < 3}>
+            Confirmar corrección
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Order Row ─────────────────────────────────────────────────────────── */
 function OrderRow({ order }: { order: PurchaseOrder }) {
   const [expanded, setExpanded] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
   const [showPay, setShowPay] = useState(false);
+  const [correctingItem, setCorrectingItem] = useState<{ productId: string; name: string } | null>(null);
   const queryClient = useQueryClient();
 
   const { data: detail } = useQuery({
@@ -1405,6 +1491,25 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
+
+  const revertPaymentMutation = useMutation({
+    mutationFn: (reason: string) => api.post(`/purchases/${order.id}/revert-payment`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
+      queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-movements'] });
+      toast.success('Pago revertido — el dinero volvió a Caja General y la orden quedó a crédito.');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const handleRevertPayment = () => {
+    const reason = window.prompt('Motivo de la corrección (ej: se marcó pagada por error, en realidad es a crédito):');
+    if (reason) revertPaymentMutation.mutate(reason);
+  };
 
   const handleVoid = async () => {
     try {
@@ -1481,6 +1586,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                     <th className="py-1 font-medium text-center">Recibido</th>
                     <th className="py-1 font-medium text-right">Costo unit.</th>
                     <th className="py-1 font-medium text-right">Subtotal</th>
+                    {!detail.voidedAt && <th className="py-1" />}
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -1496,6 +1602,19 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                       </td>
                       <td className="py-1.5 text-right">{item.isBonus ? 'GRATIS' : formatCost(item.unitCost)}</td>
                       <td className="py-1.5 text-right font-medium">{formatCurrency(item.subtotal)}</td>
+                      {!detail.voidedAt && (
+                        <td className="py-1.5 text-right">
+                          {item.receivedQty > 0 && (
+                            <button
+                              title="Corregir producto de esta línea (se recibió mal)"
+                              className="text-muted-foreground hover:text-primary"
+                              onClick={() => setCorrectingItem({ productId: item.product.id, name: item.product.name })}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1525,9 +1644,16 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                       ))}
                     </div>
                   )}
-                  {detail.paymentStatus !== 'PAID' && (
-                    <Button size="sm" onClick={() => setShowPay(true)}>Registrar pago</Button>
-                  )}
+                  <div className="flex gap-2">
+                    {detail.paymentStatus !== 'PAID' && (
+                      <Button size="sm" onClick={() => setShowPay(true)}>Registrar pago</Button>
+                    )}
+                    {detail.paymentStatus !== 'CREDIT' && !detail.voidedAt && (
+                      <Button size="sm" variant="outline" onClick={handleRevertPayment} loading={revertPaymentMutation.isPending}>
+                        <Undo2 className="mr-1.5 h-3.5 w-3.5" />Revertir pago (era a crédito)
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1554,6 +1680,15 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
           order={detail}
           onClose={() => setShowReceive(false)}
           onReceived={() => setShowReceive(false)}
+        />
+      )}
+
+      {correctingItem && (
+        <CorrectItemModal
+          order={order}
+          item={correctingItem}
+          onClose={() => setCorrectingItem(null)}
+          onCorrected={() => setCorrectingItem(null)}
         />
       )}
     </>

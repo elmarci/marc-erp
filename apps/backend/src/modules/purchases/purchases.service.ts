@@ -571,13 +571,19 @@ export class PurchasesService {
     // dinero tiene que volver — si no, quedaría retirado para siempre por una
     // compra que ya no existe. Puede haber salido de Caja General o de una
     // caja del día específica (según cómo se pagó), así que hay que revisar
-    // ambas fuentes.
-    const paidTreasuryMovements = await prisma.treasuryMovement.findMany({
-      where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
-    });
-    const paidCashMovements = await prisma.cashMovement.findMany({
-      where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
-    });
+    // ambas fuentes. Si el pago ya se revirtió antes (revertPurchasePayment
+    // dejó paidAmount en 0), no hay nada pendiente que devolver — evita
+    // devolver el mismo dinero dos veces.
+    const paidTreasuryMovements = Number(order.paidAmount) > 0
+      ? await prisma.treasuryMovement.findMany({
+        where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
+      })
+      : [];
+    const paidCashMovements = Number(order.paidAmount) > 0
+      ? await prisma.cashMovement.findMany({
+        where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
+      })
+      : [];
 
     await prisma.$transaction(async (tx) => {
       for (const m of movements) {
@@ -649,6 +655,184 @@ export class PurchasesService {
 
     if (paidTreasuryMovements.length > 0 || paidCashMovements.length > 0) emitEvent('erp:cash-updated');
 
+    return this.getOrder(orderId);
+  }
+
+  /**
+   * Corrige un error de registro donde una compra se marcó como pagada
+   * (efectivo/Yape/etc.) cuando en realidad quedó a crédito — sin tocar
+   * stock ni costo, que ya se aplicaron correctamente y pueden tener ventas
+   * encima. Revierte solo el dinero: le devuelve a Caja General (o a la caja
+   * del día, si de ahí salió) lo que se había retirado, borra cualquier pago
+   * registrado en Cuentas por Pagar, y deja la orden en CREDIT con saldo
+   * pendiente completo, tal como debió quedar desde el inicio.
+   */
+  async revertPurchasePayment(orderId: string, userId: string, reason: string) {
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id: orderId },
+      include: { supplier: { select: { businessName: true } } },
+    });
+    if (!order) throw new NotFoundError('Orden de compra');
+    if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
+    if (Number(order.paidAmount) <= 0) throw new BusinessError('Esta compra no tiene ningún pago registrado.');
+
+    const paidTreasuryMovements = await prisma.treasuryMovement.findMany({
+      where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
+    });
+    const paidCashMovements = await prisma.cashMovement.findMany({
+      where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      for (const pm of paidTreasuryMovements) {
+        await treasuryService.recordMovementInTx(
+          tx, 'DEPOSIT', Number(pm.amount),
+          `Reversión de pago (corrección — ${reason}): OC ${order.orderNumber} — ${order.supplier.businessName}`,
+          userId, 'PURCHASE_PAYMENT_REVERT', orderId, pm.account,
+        );
+      }
+
+      for (const cm of paidCashMovements) {
+        const session = await tx.cashSession.findUnique({ where: { id: cm.cashSessionId } });
+        if (session?.status === 'OPEN') {
+          await tx.cashMovement.create({
+            data: {
+              cashSessionId: cm.cashSessionId, type: 'DEPOSIT', amount: cm.amount,
+              reason: `Reversión de pago (corrección — ${reason}): OC ${order.orderNumber} — ${order.supplier.businessName}`,
+              referenceType: 'PURCHASE_PAYMENT_REVERT', referenceId: orderId,
+            },
+          });
+        } else {
+          await treasuryService.recordMovementInTx(
+            tx, 'DEPOSIT', Number(cm.amount),
+            `Reversión de pago (corrección, caja ya cerrada): OC ${order.orderNumber} — ${order.supplier.businessName}`,
+            userId, 'PURCHASE_PAYMENT_REVERT', orderId, 'CASH',
+          );
+        }
+      }
+
+      // Los pagos contra saldo pendiente (Cuentas por Pagar) también quedan
+      // sin efecto — ya se devolvió el dinero arriba, dejarlos crearía un
+      // historial de "pagos" que en realidad nunca ocurrieron.
+      await tx.supplierPayment.deleteMany({ where: { purchaseOrderId: orderId } });
+
+      await tx.purchaseOrder.update({
+        where: { id: orderId },
+        data: { paidAmount: 0, paymentStatus: 'CREDIT' },
+      });
+    });
+
+    emitEvent('erp:cash-updated');
+    return this.getOrder(orderId);
+  }
+
+  /**
+   * Corrige una recepción donde se eligió el producto equivocado (ej. se
+   * recibió "Mayonesa 8g" cuando en realidad era "Mayonesa 50g"), sin
+   * necesidad de anular toda la orden ni las demás líneas correctas.
+   * Revierte el stock/costo del producto equivocado (misma matemática que
+   * anular, pero solo para esa línea) y aplica la misma cantidad/costo al
+   * producto correcto.
+   */
+  async correctReceivedProduct(orderId: string, userId: string, fromProductId: string, toProductId: string, reason: string) {
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id: orderId },
+      include: { supplier: { select: { businessName: true } } },
+    });
+    if (!order) throw new NotFoundError('Orden de compra');
+    if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
+    if (fromProductId === toProductId) throw new BusinessError('Selecciona un producto distinto al que ya está registrado.');
+
+    const toProduct = await prisma.product.findUnique({ where: { id: toProductId } });
+    if (!toProduct) throw new NotFoundError('Producto correcto');
+
+    const orderItem = await prisma.purchaseOrderItem.findFirst({
+      where: { purchaseOrderId: orderId, productId: fromProductId },
+    });
+    if (!orderItem) throw new BusinessError('Esta orden no tiene ninguna línea de ese producto.');
+
+    // Más nuevo primero — si hubiera más de una recepción de este producto en
+    // esta orden, cada una se revierte contra el costo que tenía justo antes
+    // de ella (igual criterio que anular compra).
+    const movements = await prisma.inventoryMovement.findMany({
+      where: { referenceType: 'PURCHASE', referenceId: orderId, productId: fromProductId, type: 'PURCHASE_IN' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (movements.length === 0) throw new BusinessError('Esta orden no tiene mercadería recibida de ese producto.');
+
+    // Si ese producto tuvo OTRA compra o ajuste después de este, el
+    // promedio ponderado ya avanzó sobre esos datos — revertir aquí
+    // dejaría el costo actual mal calculado. Más seguro bloquear que
+    // adivinar.
+    const laterMovements = await prisma.inventoryMovement.findMany({
+      where: {
+        productId: fromProductId,
+        type: { in: ['PURCHASE_IN', 'PURCHASE_VOID', 'ADJUSTMENT_IN', 'ADJUSTMENT_OUT'] },
+        createdAt: { gt: movements[0].createdAt },
+      },
+    });
+    if (laterMovements.length > 0) {
+      throw new BusinessError('Este producto tuvo otra compra o ajuste de stock después de esta orden — no se puede corregir automáticamente sin arriesgar el costo promedio. Contacta soporte para revisarlo a mano.');
+    }
+
+    const totalQty = movements.reduce((s, m) => s + Number(m.quantity), 0);
+    const fromProduct = await prisma.product.findUnique({ where: { id: fromProductId } });
+    if (!fromProduct || Number(fromProduct.currentStock) < totalQty) {
+      throw new BusinessError(
+        `No se puede corregir: el stock actual de "${fromProduct?.name ?? fromProductId}" (${fromProduct ? Number(fromProduct.currentStock) : 0}) es menor a la cantidad de esta compra (${totalQty}) — probablemente ya se vendió de más sin contar con esta corrección.`,
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      for (const m of movements) {
+        const product = await tx.product.findUnique({ where: { id: fromProductId } });
+        if (!product) continue;
+
+        const stockBefore = Number(product.currentStock);
+        const stockAfter = stockBefore - Number(m.quantity);
+        const avgCostAfter = m.avgCostBefore != null ? Number(m.avgCostBefore) : Number(product.costPrice);
+
+        await tx.product.update({
+          where: { id: fromProductId },
+          data: { currentStock: stockAfter, costPrice: avgCostAfter },
+        });
+
+        await tx.inventoryMovement.create({
+          data: {
+            productId: fromProductId,
+            type: 'PURCHASE_VOID',
+            quantity: -Number(m.quantity),
+            quantityBefore: stockBefore,
+            quantityAfter: stockAfter,
+            unitCost: m.unitCost,
+            avgCostBefore: Number(product.costPrice),
+            avgCostAfter,
+            referenceType: 'PURCHASE',
+            referenceId: orderId,
+            userId,
+            notes: `Corrección de producto OC ${order.orderNumber} — ${reason} (pasó a "${toProduct.name}")`,
+          },
+        });
+
+        await this.applyPurchaseLine(tx, {
+          productId: toProductId, quantity: Number(m.quantity), unitCost: Number(m.unitCost), isBonus: orderItem.isBonus,
+        }, {
+          userId, supplierId: order.supplierId, referenceId: orderId,
+          notes: `Corrección de producto OC ${order.orderNumber} — ${reason} (era "${fromProduct.name}")`,
+        });
+      }
+
+      await tx.purchaseOrderItem.updateMany({
+        where: { purchaseOrderId: orderId, productId: fromProductId },
+        data: { productId: toProductId },
+      });
+      await tx.purchaseReceiptItem.updateMany({
+        where: { receipt: { purchaseOrderId: orderId }, productId: fromProductId },
+        data: { productId: toProductId },
+      });
+    });
+
+    emitEvent('erp:cash-updated');
     return this.getOrder(orderId);
   }
 

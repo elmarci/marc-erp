@@ -204,4 +204,28 @@ router.post('/:id/void', authorizeMinRole('SUPERVISOR'), async (req: Request, re
   } catch (err) { next(err); }
 });
 
+// Corrige una compra que se registró pagada (efectivo/Yape/etc.) cuando en
+// realidad quedó a crédito — sin tocar stock ni costo.
+router.post('/:id/revert-payment', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { reason } = z.object({ reason: z.string().min(3, 'Indica el motivo de la corrección.') }).parse(req.body);
+    const order = await purchasesService.revertPurchasePayment(req.params.id, req.user!.sub, reason);
+    res.json({ success: true, data: order });
+  } catch (err) { next(err); }
+});
+
+// Corrige una línea recibida con el producto equivocado, sin anular el
+// resto de la orden.
+router.post('/:id/correct-item', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { fromProductId, toProductId, reason } = z.object({
+      fromProductId: z.string().uuid(),
+      toProductId: z.string().uuid(),
+      reason: z.string().min(3, 'Indica el motivo de la corrección.'),
+    }).parse(req.body);
+    const order = await purchasesService.correctReceivedProduct(req.params.id, req.user!.sub, fromProductId, toProductId, reason);
+    res.json({ success: true, data: order });
+  } catch (err) { next(err); }
+});
+
 export default router;
