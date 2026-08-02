@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserCheck, Search, Plus, X, DollarSign, Star, FileSpreadsheet } from 'lucide-react';
+import { UserCheck, Search, Plus, X, DollarSign, Star, FileSpreadsheet, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -365,6 +365,7 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
   const [salesPage, setSalesPage] = useState(1);
   const [showPayment, setShowPayment] = useState(false);
   const [activeTab, setActiveTab] = useState<'sales' | 'debt'>('sales');
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
 
   const { data: salesData } = useQuery({
     queryKey: ['customer-sales', customer.id, salesPage],
@@ -379,7 +380,10 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
   const { data: debtPayments } = useQuery({
     queryKey: ['customer-debt-payments', customer.id],
     queryFn: async () => {
-      const res = await api.get<{ data: Array<{ id: string; amount: number; method: string; notes: string | null; paidAt: string; sale: { saleNumber: string } | null }> }>(`/customers/${customer.id}/debt-payments`);
+      const res = await api.get<{ data: Array<{
+        groupId: string; amount: number; method: string; notes: string | null; paidAt: string;
+        allocations: Array<{ id: string; saleId: string | null; saleNumber: string | null; amount: number }>;
+      }> }>(`/customers/${customer.id}/debt-payments`);
       return res.data.data;
     },
     enabled: activeTab === 'debt',
@@ -513,19 +517,46 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
                 <p className="text-center text-sm text-muted-foreground py-6">Sin pagos de deuda registrados</p>
               ) : (
                 <div className="divide-y border rounded-lg">
-                  {debtPayments.map(p => (
-                    <div key={p.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                      <div>
-                        <p className="font-medium">
-                          {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
-                          {p.sale && <span className="text-muted-foreground font-normal"> · aplicado a {p.sale.saleNumber}</span>}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{formatDateTime(p.paidAt)}</p>
-                        {p.notes && <p className="text-xs text-muted-foreground italic">{p.notes}</p>}
+                  {debtPayments.map(p => {
+                    const isExpanded = expandedGroup === p.groupId;
+                    const isMultiple = p.allocations.length > 1;
+                    return (
+                      <div key={p.groupId}>
+                        <button
+                          type="button"
+                          onClick={() => isMultiple && setExpandedGroup(isExpanded ? null : p.groupId)}
+                          className={cn('flex w-full items-center justify-between px-4 py-3 text-sm text-left', isMultiple && 'cursor-pointer hover:bg-muted/50')}
+                        >
+                          <div>
+                            <p className="font-medium flex items-center gap-1.5">
+                              {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                              {isMultiple ? (
+                                <span className="text-muted-foreground font-normal"> · aplicado a {p.allocations.length} ventas</span>
+                              ) : p.allocations[0]?.saleNumber ? (
+                                <span className="text-muted-foreground font-normal"> · aplicado a {p.allocations[0].saleNumber}</span>
+                              ) : null}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{formatDateTime(p.paidAt)}</p>
+                            {p.notes && <p className="text-xs text-muted-foreground italic">{p.notes}</p>}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-success">{formatCurrency(p.amount)}</p>
+                            {isMultiple && (isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />)}
+                          </div>
+                        </button>
+                        {isMultiple && isExpanded && (
+                          <div className="bg-muted/30 px-4 py-2 space-y-1">
+                            {p.allocations.map(a => (
+                              <div key={a.id} className="flex items-center justify-between text-xs text-muted-foreground pl-4">
+                                <span>{a.saleNumber ?? '—'}</span>
+                                <span>{formatCurrency(a.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <p className="font-bold text-success">{formatCurrency(p.amount)}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

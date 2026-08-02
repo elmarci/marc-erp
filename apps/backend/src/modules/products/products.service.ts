@@ -38,6 +38,7 @@ export interface SearchProductsQuery {
   supplierId?: string;
   status?: ProductStatus;
   lowStock?: boolean;
+  isBulk?: boolean;
   page: number;
   limit: number;
   sortBy?: 'name' | 'salePrice' | 'currentStock' | 'createdAt';
@@ -114,7 +115,7 @@ export class ProductsService {
   }
 
   async search(query: SearchProductsQuery) {
-    const { q, categoryId, supplierId, status, lowStock, page, limit, sortBy = 'name', sortOrder = 'asc' } = query;
+    const { q, categoryId, supplierId, status, lowStock, isBulk, page, limit, sortBy = 'name', sortOrder = 'asc' } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProductWhereInput = {
@@ -123,6 +124,7 @@ export class ProductsService {
       ...(categoryId ? { categoryId } : {}),
       ...(supplierId ? { supplierId } : {}),
       ...(lowStock ? { currentStock: { lte: prisma.product.fields.minStock } } : {}),
+      ...(isBulk !== undefined ? { isBulk } : {}),
       ...(q
         ? {
             OR: [

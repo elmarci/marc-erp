@@ -2,7 +2,7 @@ import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
 import { treasuryService, methodToAccount } from '../treasury/treasury.service';
 import { emitEvent } from '../../config/socket';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
 interface DirectPurchaseItemInput {
   productId: string;
@@ -33,12 +33,37 @@ export class PurchasesService {
     return `OC-${String(count + 1).padStart(6, '0')}`;
   }
 
-  async listOrders(filters: { status?: string; supplierId?: string; page: number; limit: number }) {
-    const where: Record<string, unknown> = {};
-    if (filters.status) where['status'] = filters.status;
-    if (filters.supplierId) where['supplierId'] = filters.supplierId;
+  private buildOrdersWhere(filters: {
+    status?: string; supplierId?: string; search?: string; dateFrom?: Date; dateTo?: Date;
+  }): Prisma.PurchaseOrderWhereInput {
+    const where: Prisma.PurchaseOrderWhereInput = {};
+    if (filters.status) where.status = filters.status as PurchaseOrderStatus;
+    if (filters.supplierId) where.supplierId = filters.supplierId;
+    if (filters.dateFrom || filters.dateTo) {
+      where.createdAt = {
+        ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+        ...(filters.dateTo ? { lte: filters.dateTo } : {}),
+      };
+    }
+    if (filters.search) {
+      where.OR = [
+        { orderNumber: { contains: filters.search, mode: 'insensitive' } },
+        { supplierInvoice: { contains: filters.search, mode: 'insensitive' } },
+        { supplier: { businessName: { contains: filters.search, mode: 'insensitive' } } },
+      ];
+    }
+    return where;
+  }
 
-    const [data, total] = await Promise.all([
+  async listOrders(filters: {
+    status?: string; supplierId?: string; search?: string; dateFrom?: Date; dateTo?: Date;
+    page: number; limit: number; sortBy?: 'createdAt' | 'totalAmount' | 'orderNumber'; sortOrder?: 'asc' | 'desc';
+  }) {
+    const where = this.buildOrdersWhere(filters);
+    const sortBy = filters.sortBy ?? 'createdAt';
+    const sortOrder = filters.sortOrder ?? 'desc';
+
+    const [data, total, aggregate] = await Promise.all([
       prisma.purchaseOrder.findMany({
         where,
         include: {
@@ -46,21 +71,27 @@ export class PurchasesService {
           user: { select: { firstName: true, lastName: true } },
           _count: { select: { items: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortBy]: sortOrder },
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
       }),
       prisma.purchaseOrder.count({ where }),
+      prisma.purchaseOrder.aggregate({ where, _sum: { totalAmount: true, paidAmount: true } }),
     ]);
 
-    return { data, pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) } };
+    return {
+      data,
+      pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
+      totals: {
+        totalAmount: Number(aggregate._sum.totalAmount ?? 0),
+        paidAmount: Number(aggregate._sum.paidAmount ?? 0),
+      },
+    };
   }
 
   // Mismos filtros que listOrders(), sin paginar — para exportar a Excel.
-  async exportOrders(filters: { status?: string; supplierId?: string }) {
-    const where: Record<string, unknown> = {};
-    if (filters.status) where['status'] = filters.status;
-    if (filters.supplierId) where['supplierId'] = filters.supplierId;
+  async exportOrders(filters: { status?: string; supplierId?: string; search?: string; dateFrom?: Date; dateTo?: Date }) {
+    const where = this.buildOrdersWhere(filters);
 
     return prisma.purchaseOrder.findMany({
       where,
@@ -71,6 +102,55 @@ export class PurchasesService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  // Liquidación consolidada de pagos a un proveedor en un rango de fechas —
+  // agrupa todos los SupplierPayment (uno por cada vez que se pagó una OC)
+  // para poder entregarle al proveedor un resumen de lo que se le ha pagado.
+  async getSupplierSettlement(filters: { supplierId: string; dateFrom?: Date; dateTo?: Date }) {
+    const supplier = await prisma.supplier.findUnique({ where: { id: filters.supplierId } });
+    if (!supplier) throw new NotFoundError('Proveedor');
+
+    const payments = await prisma.supplierPayment.findMany({
+      where: {
+        purchaseOrder: { supplierId: filters.supplierId },
+        ...(filters.dateFrom || filters.dateTo
+          ? { paidAt: { ...(filters.dateFrom ? { gte: filters.dateFrom } : {}), ...(filters.dateTo ? { lte: filters.dateTo } : {}) } }
+          : {}),
+      },
+      include: {
+        purchaseOrder: { select: { orderNumber: true, totalAmount: true, supplierInvoice: true } },
+        user: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: { paidAt: 'asc' },
+    });
+
+    const totalsByMethod: Record<string, number> = {};
+    let grandTotal = 0;
+    for (const p of payments) {
+      const amount = Number(p.amount);
+      totalsByMethod[p.method] = (totalsByMethod[p.method] ?? 0) + amount;
+      grandTotal += amount;
+    }
+
+    return {
+      supplier: { id: supplier.id, businessName: supplier.businessName, taxId: supplier.taxId },
+      payments: payments.map((p) => ({
+        id: p.id,
+        paidAt: p.paidAt,
+        amount: Number(p.amount),
+        method: p.method,
+        reference: p.reference,
+        notes: p.notes,
+        orderNumber: p.purchaseOrder.orderNumber,
+        orderTotal: Number(p.purchaseOrder.totalAmount),
+        supplierInvoice: p.purchaseOrder.supplierInvoice,
+        user: `${p.user.firstName} ${p.user.lastName}`,
+      })),
+      totalsByMethod,
+      grandTotal,
+      count: payments.length,
+    };
   }
 
   async getOrder(id: string) {

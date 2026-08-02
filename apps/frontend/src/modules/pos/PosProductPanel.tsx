@@ -391,13 +391,17 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
   );
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['pos-products', search, selectedCategory],
+    queryKey: ['pos-products', search, selectedCategory, bulkOnly],
     queryFn: async () => {
       const params = new URLSearchParams({
-        limit: '48',
+        // A granel puede tener más de 48 productos en el catálogo — sin este
+        // límite ampliado, el filtro se quedaba solo con los primeros 48
+        // productos (orden alfabético) y "perdía" los que caían después.
+        limit: bulkOnly ? '500' : '48',
         status: 'ACTIVE',
         ...(search ? { q: search } : {}),
         ...(selectedCategory ? { categoryId: selectedCategory } : {}),
+        ...(bulkOnly ? { isBulk: 'true' } : {}),
       });
       const res = await api.get<{ data: Product[] }>(`/products?${params}`);
       return res.data.data;
@@ -405,7 +409,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
     staleTime: 30000,
   });
 
-  const products = bulkOnly ? (productsData ?? []).filter((p) => p.isBulk) : (productsData ?? []);
+  const products = productsData ?? [];
 
   // Hora Feliz automática — se recalcula solo cada minuto para que el
   // descuento entre y salga sin que el cajero tenga que hacer nada.

@@ -12,26 +12,43 @@ const STATUS_LABELS: Record<string, string> = {
   SENT: 'Enviada', PARTIALLY_RECEIVED: 'Parcial', RECEIVED: 'Recibida', CANCELLED: 'Cancelada',
 };
 
+const listFiltersSchema = z.object({
+  status: z.string().optional(),
+  supplierId: z.string().uuid().optional(),
+  search: z.string().optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+});
+
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { status, supplierId, page, limit } = z.object({
-      status: z.string().optional(),
-      supplierId: z.string().uuid().optional(),
+    const { status, supplierId, search, dateFrom, dateTo, page, limit, sortBy, sortOrder } = listFiltersSchema.extend({
       page: z.coerce.number().min(1).default(1),
       limit: z.coerce.number().min(1).max(100).default(20),
+      sortBy: z.enum(['createdAt', 'totalAmount', 'orderNumber']).optional(),
+      sortOrder: z.enum(['asc', 'desc']).optional(),
     }).parse(req.query);
-    const result = await purchasesService.listOrders({ status, supplierId, page, limit });
+    const result = await purchasesService.listOrders({ status, supplierId, search, dateFrom, dateTo, page, limit, sortBy, sortOrder });
     res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.get('/settlements', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { supplierId, dateFrom, dateTo } = z.object({
+      supplierId: z.string().uuid(),
+      dateFrom: z.coerce.date().optional(),
+      dateTo: z.coerce.date().optional(),
+    }).parse(req.query);
+    const result = await purchasesService.getSupplierSettlement({ supplierId, dateFrom, dateTo });
+    res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
 
 router.get('/export', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { status, supplierId } = z.object({
-      status: z.string().optional(),
-      supplierId: z.string().uuid().optional(),
-    }).parse(req.query);
-    const orders = await purchasesService.exportOrders({ status, supplierId });
+    const { status, supplierId, search, dateFrom, dateTo } = listFiltersSchema.parse(req.query);
+    const orders = await purchasesService.exportOrders({ status, supplierId, search, dateFrom, dateTo });
 
     await sendExcel(res, 'compras.xlsx', 'Órdenes de Compra', [
       { header: 'N° Orden', key: 'orderNumber', width: 14 },

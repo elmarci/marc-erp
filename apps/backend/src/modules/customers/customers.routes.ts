@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../../database/client';
 import { authenticate } from '../../middleware/auth';
 import { Prisma } from '@prisma/client';
@@ -225,11 +226,16 @@ router.post('/:id/payments', async (req: Request, res: Response, next: NextFunct
       cashSession = await prisma.cashSession.findFirst({ where: { id: cashSessionId, status: 'OPEN' } });
     }
 
+    // Un solo pago puede aplicarse a varias ventas (allocations) — todas las
+    // filas creadas acá comparten este id para poder mostrarlas agrupadas
+    // como "un pago" en vez de una fila suelta por cada venta.
+    const groupId = uuidv4();
+
     const updatedCustomer = await prisma.$transaction(async (tx) => {
       for (const p of payments) {
         await tx.sale.update({ where: { id: p.saleId }, data: { paidAmount: { increment: p.amount } } });
         await tx.customerDebtPayment.create({
-          data: { customerId: req.params.id, saleId: p.saleId, amount: p.amount, method, notes },
+          data: { customerId: req.params.id, saleId: p.saleId, amount: p.amount, method, notes, groupId },
         });
       }
 
@@ -283,7 +289,31 @@ router.get('/:id/debt-payments', async (req: Request, res: Response, next: NextF
       orderBy: { paidAt: 'desc' },
       include: { sale: { select: { saleNumber: true } } },
     });
-    res.json({ success: true, data: payments });
+
+    // Agrupa las filas que vienen del mismo pago (mismo groupId) para que el
+    // cliente vea "un pago de S/X" con el detalle de a qué ventas se aplicó,
+    // en vez de una fila repetida por cada venta. Los registros anteriores a
+    // este campo (groupId null) no tienen con qué agruparse — cada uno queda
+    // como su propio grupo de una sola venta.
+    const groups = new Map<string, typeof payments>();
+    for (const p of payments) {
+      const key = p.groupId ?? p.id;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(p);
+    }
+
+    const grouped = Array.from(groups.entries())
+      .map(([groupId, rows]) => ({
+        groupId,
+        paidAt: rows[0].paidAt,
+        method: rows[0].method,
+        notes: rows[0].notes,
+        amount: rows.reduce((s, r) => s + Number(r.amount), 0),
+        allocations: rows.map((r) => ({ id: r.id, saleId: r.saleId, saleNumber: r.sale?.saleNumber ?? null, amount: Number(r.amount) })),
+      }))
+      .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+
+    res.json({ success: true, data: grouped });
   } catch (err) { next(err); }
 });
 

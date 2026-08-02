@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
   PackageCheck, Truck, Clock, FileText, X, ScanBarcode, Sparkles, ArrowLeft,
-  BookOpen, Star, Trash2, FileSpreadsheet, Undo2, Pencil,
+  BookOpen, Star, Trash2, FileSpreadsheet, Undo2, Pencil, Receipt,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -1794,31 +1794,83 @@ function SuppliersTab() {
 /* ─── Orders Tab ────────────────────────────────────────────────────────── */
 function OrdersTab() {
   const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sort, setSort] = useState('createdAt:desc');
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [justRegistered, setJustRegistered] = useState<OrderDetail | null>(null);
   const queryClient = useQueryClient();
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const [sortBy, sortOrder] = sort.split(':');
+
+  const queryString = () => {
+    const params = new URLSearchParams({ limit: '20' });
+    if (statusFilter) params.set('status', statusFilter);
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    // El input type="date" da solo la fecha (medianoche) — sumamos el resto
+    // del día para que "Hasta" incluya las compras registradas ese mismo día.
+    if (dateTo) params.set('dateTo', `${dateTo}T23:59:59.999`);
+    if (sortBy) params.set('sortBy', sortBy);
+    if (sortOrder) params.set('sortOrder', sortOrder);
+    return params;
+  };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['purchases', statusFilter, page],
-    queryFn: async () => (await api.get<{ data: PurchaseOrder[]; pagination: { total: number; totalPages: number } }>(
-      `/purchases?page=${page}&limit=20${statusFilter ? `&status=${statusFilter}` : ''}`
-    )).data,
+    queryKey: ['purchases', statusFilter, debouncedSearch, dateFrom, dateTo, sort, page],
+    queryFn: async () => {
+      const params = queryString();
+      params.set('page', String(page));
+      return (await api.get<{
+        data: PurchaseOrder[];
+        pagination: { total: number; totalPages: number };
+        totals: { totalAmount: number; paidAmount: number };
+      }>(`/purchases?${params}`)).data;
+    },
   });
+
+  const hasFilters = !!(statusFilter || debouncedSearch || dateFrom || dateTo);
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="N° orden, factura o proveedor..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            className="w-64 pl-9"
+          />
+        </div>
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <option value="">Todos los estados</option>
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-40" title="Desde" />
+        <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-40" title="Hasta" />
+        <select value={sort} onChange={e => setSort(e.target.value)}
+          className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <option value="createdAt:desc">Más recientes</option>
+          <option value="createdAt:asc">Más antiguas</option>
+          <option value="totalAmount:desc">Mayor total</option>
+          <option value="totalAmount:asc">Menor total</option>
+          <option value="orderNumber:desc">N° orden (desc)</option>
+          <option value="orderNumber:asc">N° orden (asc)</option>
+        </select>
+        {hasFilters && (
+          <Button variant="ghost" size="sm" onClick={() => { setStatusFilter(''); setSearch(''); setDateFrom(''); setDateTo(''); setPage(1); }}>
+            <X className="mr-1 h-3.5 w-3.5" />Limpiar
+          </Button>
+        )}
         <div className="flex-1" />
         <Button variant="outline"
-          onClick={() => downloadExcel(`/purchases/export${statusFilter ? `?status=${statusFilter}` : ''}`, 'compras.xlsx')}>
+          onClick={() => downloadExcel(`/purchases/export?${queryString()}`, 'compras.xlsx')}>
           <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
         </Button>
         <Button variant="outline" onClick={() => setShowSuggest(true)}
@@ -1832,6 +1884,15 @@ function OrdersTab() {
           <PackageCheck className="mr-2 h-4 w-4" />Registrar Compra
         </Button>
       </div>
+
+      {data && (
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <span>{data.pagination.total} {data.pagination.total === 1 ? 'orden' : 'órdenes'}</span>
+          <span className="font-medium text-foreground">Total: {formatCurrency(data.totals.totalAmount)}</span>
+          <span>Pagado: {formatCurrency(data.totals.paidAmount)}</span>
+          <span>Pendiente: {formatCurrency(data.totals.totalAmount - data.totals.paidAmount)}</span>
+        </div>
+      )}
 
       <Card>
         {isLoading ? <div className="py-12 text-center text-muted-foreground">Cargando...</div> : (
@@ -1985,9 +2046,166 @@ function PayableTab() {
   );
 }
 
+/* ─── Liquidaciones (pagos consolidados a proveedor) Tab ────────────────── */
+interface SettlementPayment {
+  id: string; paidAt: string; amount: number; method: string;
+  reference: string | null; notes: string | null;
+  orderNumber: string; orderTotal: number; supplierInvoice: string | null; user: string;
+}
+interface Settlement {
+  supplier: { id: string; businessName: string; taxId: string | null };
+  payments: SettlementPayment[];
+  totalsByMethod: Record<string, number>;
+  grandTotal: number;
+  count: number;
+}
+
+function printSettlement(s: Settlement, dateFrom: string, dateTo: string) {
+  const rangeLabel = dateFrom || dateTo ? `${dateFrom || '...'} a ${dateTo || '...'}` : 'Todo el historial';
+  const rows = s.payments.map(p => `
+    <tr>
+      <td>${formatDateTime(p.paidAt)}</td>
+      <td>${p.orderNumber}</td>
+      <td>${PAYMENT_METHOD_LABELS[p.method] ?? p.method}</td>
+      <td style="text-align:right">${formatCurrency(p.amount)}</td>
+    </tr>`).join('');
+  const methodRows = Object.entries(s.totalsByMethod)
+    .map(([m, amt]) => `<div class="row"><span>${PAYMENT_METHOD_LABELS[m] ?? m}</span><span>${formatCurrency(amt)}</span></div>`)
+    .join('');
+  printThermalHtml('Liquidación de Pagos', `
+    <p class="c b">LIQUIDACIÓN DE PAGOS</p>
+    <p class="c">${s.supplier.businessName}</p>
+    ${s.supplier.taxId ? `<p class="c">RUC: ${s.supplier.taxId}</p>` : ''}
+    <p class="c">${rangeLabel}</p>
+    <div class="line"></div>
+    <table><thead><tr><th>Fecha</th><th>OC</th><th>Método</th><th style="text-align:right">Monto</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="line"></div>
+    ${methodRows}
+    <div class="row b"><span>TOTAL (${s.count} pagos)</span><span>${formatCurrency(s.grandTotal)}</span></div>
+  `);
+}
+
+function SettlementsTab() {
+  const [supplierId, setSupplierId] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [runFilters, setRunFilters] = useState<{ supplierId: string; dateFrom: string; dateTo: string } | null>(null);
+
+  const { data: suppliers } = useQuery({
+    queryKey: ['suppliers-all'],
+    queryFn: async () => (await api.get<{ data: Supplier[] }>('/suppliers?limit=200')).data.data,
+  });
+
+  const { data: settlement, isLoading, isFetching } = useQuery({
+    queryKey: ['purchase-settlement', runFilters],
+    queryFn: async () => {
+      const params = new URLSearchParams({ supplierId: runFilters!.supplierId });
+      if (runFilters!.dateFrom) params.set('dateFrom', runFilters!.dateFrom);
+      if (runFilters!.dateTo) params.set('dateTo', `${runFilters!.dateTo}T23:59:59.999`);
+      return (await api.get<{ data: Settlement }>(`/purchases/settlements?${params}`)).data.data;
+    },
+    enabled: !!runFilters,
+  });
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Genera un resumen consolidado de todos los pagos hechos a un proveedor en un rango de fechas — útil para
+        cuadrar cuentas o entregarle una liquidación.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Proveedor</label>
+          <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
+            className="flex h-10 w-64 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">Selecciona un proveedor...</option>
+            {(suppliers ?? []).map(s => <option key={s.id} value={s.id}>{s.businessName}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Desde</label>
+          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-40" />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Hasta</label>
+          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-40" />
+        </div>
+        <Button disabled={!supplierId} loading={isFetching}
+          onClick={() => setRunFilters({ supplierId, dateFrom, dateTo })}>
+          Generar liquidación
+        </Button>
+      </div>
+
+      {isLoading && <div className="py-12 text-center text-muted-foreground">Cargando...</div>}
+
+      {settlement && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>{settlement.supplier.businessName}</CardTitle>
+              {settlement.supplier.taxId && <p className="text-sm text-muted-foreground">RUC: {settlement.supplier.taxId}</p>}
+            </div>
+            <Button variant="outline" onClick={() => printSettlement(settlement, dateFrom, dateTo)}>
+              <FileText className="mr-2 h-4 w-4" />Imprimir
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {settlement.payments.length === 0 ? (
+              <p className="py-8 text-center text-muted-foreground">No hay pagos registrados a este proveedor en el rango seleccionado.</p>
+            ) : (
+              <>
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50 text-left">
+                        <th className="px-4 py-2 font-medium">Fecha</th>
+                        <th className="px-4 py-2 font-medium">Orden</th>
+                        <th className="px-4 py-2 font-medium">Factura</th>
+                        <th className="px-4 py-2 font-medium">Método</th>
+                        <th className="px-4 py-2 font-medium">Referencia</th>
+                        <th className="px-4 py-2 font-medium">Registrado por</th>
+                        <th className="px-4 py-2 font-medium text-right">Monto</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {settlement.payments.map(p => (
+                        <tr key={p.id}>
+                          <td className="px-4 py-2">{formatDateTime(p.paidAt)}</td>
+                          <td className="px-4 py-2">{p.orderNumber}</td>
+                          <td className="px-4 py-2">{p.supplierInvoice ?? '—'}</td>
+                          <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</td>
+                          <td className="px-4 py-2">{p.reference ?? '—'}</td>
+                          <td className="px-4 py-2">{p.user}</td>
+                          <td className="px-4 py-2 text-right font-medium">{formatCurrency(p.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-6 border-t pt-4 text-sm">
+                  {Object.entries(settlement.totalsByMethod).map(([m, amt]) => (
+                    <span key={m} className="text-muted-foreground">
+                      {PAYMENT_METHOD_LABELS[m] ?? m}: <span className="font-medium text-foreground">{formatCurrency(amt)}</span>
+                    </span>
+                  ))}
+                  <span className="text-base font-bold">
+                    Total ({settlement.count} {settlement.count === 1 ? 'pago' : 'pagos'}): {formatCurrency(settlement.grandTotal)}
+                  </span>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function PurchasesPage() {
-  const [tab, setTab] = useState<'orders' | 'payable' | 'suppliers'>('orders');
+  const [tab, setTab] = useState<'orders' | 'payable' | 'suppliers' | 'settlements'>('orders');
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -1997,7 +2215,12 @@ export function PurchasesPage() {
       </div>
 
       <div className="flex gap-1 border-b">
-        {([['orders', FileText, 'Órdenes de Compra'], ['payable', Clock, 'Cuentas por Pagar'], ['suppliers', Truck, 'Proveedores']] as const).map(([key, Icon, label]) => (
+        {([
+          ['orders', FileText, 'Órdenes de Compra'],
+          ['payable', Clock, 'Cuentas por Pagar'],
+          ['settlements', Receipt, 'Liquidaciones'],
+          ['suppliers', Truck, 'Proveedores'],
+        ] as const).map(([key, Icon, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn('flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px',
               tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
@@ -2006,7 +2229,7 @@ export function PurchasesPage() {
         ))}
       </div>
 
-      {tab === 'orders' ? <OrdersTab /> : tab === 'payable' ? <PayableTab /> : <SuppliersTab />}
+      {tab === 'orders' ? <OrdersTab /> : tab === 'payable' ? <PayableTab /> : tab === 'settlements' ? <SettlementsTab /> : <SuppliersTab />}
     </div>
   );
 }

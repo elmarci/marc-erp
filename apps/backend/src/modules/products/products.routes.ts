@@ -57,8 +57,9 @@ const searchSchema = z.object({
   supplierId: z.string().uuid().optional(),
   status: z.nativeEnum(ProductStatus).optional(),
   lowStock: z.coerce.boolean().optional(),
+  isBulk: z.coerce.boolean().optional(),
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(25),
+  limit: z.coerce.number().min(1).max(500).default(25),
   sortBy: z.enum(['name', 'salePrice', 'currentStock', 'createdAt']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
 });

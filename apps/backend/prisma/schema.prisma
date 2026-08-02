@@ -1168,12 +1168,20 @@ model CustomerDebtPayment {
   method     String
   notes      String?
   paidAt     DateTime @default(now()) @map("paid_at")
+  // Cuando un cliente paga su cuenta, un solo pago puede aplicarse a varias
+  // ventas a la vez — cada aplicación queda como su propia fila (una por
+  // venta), pero comparten este id para poder mostrarlas agrupadas como
+  // "un pago" en vez de una fila suelta por cada venta. Nullable porque los
+  // registros creados antes de este campo no lo tienen (se tratan como su
+  // propio grupo de 1).
+  groupId    String?  @map("group_id")
 
   customer Customer @relation(fields: [customerId], references: [id])
   sale     Sale?    @relation(fields: [saleId], references: [id])
 
   @@index([customerId])
   @@index([saleId])
+  @@index([groupId])
   @@map("customer_debt_payments")
 }
 
