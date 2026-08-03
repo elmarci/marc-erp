@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Package, Edit, MoreVertical, AlertTriangle, Barcode, Trash2, Printer, X } from 'lucide-react';
+import { Plus, Search, Package, Edit, AlertTriangle, Barcode, Trash2, Printer, X, ArrowUpDown, CheckSquare, Square } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatCost, cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -25,8 +25,51 @@ interface Product {
   status: string;
   imageUrl: string | null;
   isBulk?: boolean;
-  category: { name: string };
+  category: { id: string; name: string; parent?: { name: string } | null };
   brand: { name: string } | null;
+}
+
+interface CategoryNode {
+  id: string;
+  name: string;
+  children?: Array<{ id: string; name: string }>;
+}
+
+const STATUS_OPTIONS = [
+  { value: '', label: 'Todos los estados' },
+  { value: 'ACTIVE', label: 'Activo' },
+  { value: 'INACTIVE', label: 'Inactivo' },
+  { value: 'DISCONTINUED', label: 'Descontinuado' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'name', label: 'Nombre' },
+  { value: 'salePrice', label: 'Precio' },
+  { value: 'currentStock', label: 'Stock' },
+  { value: 'createdAt', label: 'Más reciente' },
+];
+
+/* ─── Selector de categoría (árbol con subcategorías) ────────────────────── */
+function CategoryTreeSelect({ categories, value, onChange, allowEmpty = true, emptyLabel = 'Todas las categorías' }: {
+  categories: CategoryNode[]; value: string; onChange: (id: string) => void;
+  allowEmpty?: boolean; emptyLabel?: string;
+}) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}
+      className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {allowEmpty && <option value="">{emptyLabel}</option>}
+      {categories.map((c) => (
+        c.children && c.children.length > 0 ? (
+          <optgroup key={c.id} label={c.name}>
+            <option value={c.id}>{c.name} (general)</option>
+            {c.children.map((ch) => <option key={ch.id} value={ch.id}>— {ch.name}</option>)}
+          </optgroup>
+        ) : (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        )
+      ))}
+    </select>
+  );
 }
 
 /* ─── Impresión de catálogo de códigos de barra ──────────────────────────── */
@@ -178,6 +221,38 @@ function BarcodeCatalogModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+/* ─── Barra de acciones masivas ──────────────────────────────────────────── */
+function BulkActionBar({ count, categories, onAssignCategory, onSetStatus, onClear, loading }: {
+  count: number; categories: CategoryNode[];
+  onAssignCategory: (categoryId: string) => void;
+  onSetStatus: (status: string) => void;
+  onClear: () => void;
+  loading: boolean;
+}) {
+  const [bulkCategoryId, setBulkCategoryId] = useState('');
+
+  return (
+    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-xl border bg-primary/5 border-primary/20 px-4 py-3">
+      <span className="text-sm font-semibold">{count} seleccionado{count !== 1 ? 's' : ''}</span>
+      <div className="flex items-center gap-2">
+        <CategoryTreeSelect categories={categories} value={bulkCategoryId} onChange={setBulkCategoryId}
+          emptyLabel="Asignar categoría..." />
+        <Button size="sm" disabled={!bulkCategoryId || loading} loading={loading}
+          onClick={() => { onAssignCategory(bulkCategoryId); setBulkCategoryId(''); }}>
+          Aplicar
+        </Button>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Button size="sm" variant="outline" disabled={loading} onClick={() => onSetStatus('ACTIVE')}>Activar</Button>
+        <Button size="sm" variant="outline" disabled={loading} onClick={() => onSetStatus('INACTIVE')}>Desactivar</Button>
+      </div>
+      <Button size="sm" variant="ghost" className="ml-auto" onClick={onClear}>
+        <X className="mr-1.5 h-3.5 w-3.5" />Cancelar selección
+      </Button>
+    </div>
+  );
+}
+
 export function ProductsPage() {
   const queryClient = useQueryClient();
   const { hasMinRole } = useAuthStore();
@@ -186,16 +261,30 @@ export function ProductsPage() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const page = parseInt(searchParams.get('page') ?? '1');
   const lowStock = searchParams.get('lowStock') === 'true';
+  const categoryId = searchParams.get('categoryId') ?? '';
+  const status = searchParams.get('status') ?? '';
+  const sortBy = searchParams.get('sortBy') ?? 'name';
+  const sortOrder = searchParams.get('sortOrder') ?? 'asc';
+  const limit = searchParams.get('limit') ?? '25';
   const [showBarcodeCatalog, setShowBarcodeCatalog] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const { data: categories } = useQuery({
+    queryKey: ['categories'],
+    queryFn: async () => (await api.get<{ data: CategoryNode[] }>('/products/categories')).data.data,
+  });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', debouncedSearch, page, lowStock],
+    queryKey: ['products', debouncedSearch, page, lowStock, categoryId, status, sortBy, sortOrder, limit],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
-        limit: '25',
+        limit,
+        sortBy, sortOrder,
         ...(debouncedSearch ? { q: debouncedSearch } : {}),
         ...(lowStock ? { lowStock: 'true' } : {}),
+        ...(categoryId ? { categoryId } : {}),
+        ...(status ? { status } : {}),
       });
       const res = await api.get<{ data: Product[]; pagination: { total: number; totalPages: number } }>(
         `/products?${params}`,
@@ -203,6 +292,13 @@ export function ProductsPage() {
       return res.data;
     },
   });
+
+  const products = data?.data ?? [];
+  const pagination = data?.pagination;
+
+  // La selección se limpia cada vez que cambian los filtros o la página —
+  // evita aplicar una acción masiva a productos que ya no están a la vista.
+  useEffect(() => { setSelected(new Set()); }, [debouncedSearch, page, lowStock, categoryId, status, sortBy, sortOrder, limit]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete<{ data: { deleted?: boolean; discontinued?: boolean } }>(`/products/${id}`),
@@ -224,8 +320,34 @@ export function ProductsPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const products = data?.data ?? [];
-  const pagination = data?.pagination;
+  const bulkMutation = useMutation({
+    mutationFn: (payload: { categoryId?: string; status?: string }) =>
+      api.patch<{ data: { updated: number } }>('/products/bulk', { productIds: [...selected], ...payload }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(`${res.data.data.updated} producto(s) actualizado(s).`);
+      setSelected(new Set());
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const setParam = (key: string, value: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value); else next.delete(key);
+      next.set('page', '1');
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => setSelected((v) =>
+    v.size === products.length ? new Set() : new Set(products.map((p) => p.id)));
+
+  const toggleSelect = (id: string) => setSelected((v) => {
+    const next = new Set(v);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const handleSearch = (q: string) => {
     setSearch(q);
@@ -266,14 +388,29 @@ export function ProductsPage() {
       {showBarcodeCatalog && <BarcodeCatalogModal onClose={() => setShowBarcodeCatalog(false)} />}
 
       {/* Filtros */}
-      <div className="flex gap-3">
-        <div className="flex-1">
+      <div className="flex flex-wrap gap-3">
+        <div className="flex-1 min-w-[220px]">
           <Input
             startIcon={<Search className="h-4 w-4" />}
             placeholder="Buscar por nombre, código de barras o código interno..."
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
           />
+        </div>
+        <CategoryTreeSelect categories={categories ?? []} value={categoryId} onChange={(v) => setParam('categoryId', v)} />
+        <select value={status} onChange={(e) => setParam('status', e.target.value)}
+          className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <div className="flex items-center gap-1">
+          <select value={sortBy} onChange={(e) => setParam('sortBy', e.target.value)}
+            className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <Button variant="outline" size="icon" title={sortOrder === 'asc' ? 'Ascendente' : 'Descendente'}
+            onClick={() => setParam('sortOrder', sortOrder === 'asc' ? 'desc' : 'asc')}>
+            <ArrowUpDown className="h-4 w-4" />
+          </Button>
         </div>
         <Button
           variant={lowStock ? 'default' : 'outline'}
@@ -282,6 +419,7 @@ export function ProductsPage() {
               const next = new URLSearchParams(prev);
               if (lowStock) next.delete('lowStock');
               else next.set('lowStock', 'true');
+              next.set('page', '1');
               return next;
             });
           }}
@@ -289,7 +427,23 @@ export function ProductsPage() {
           <AlertTriangle className="mr-2 h-4 w-4" />
           Stock Bajo
         </Button>
+        {(categoryId || status || lowStock || search) && (
+          <Button variant="ghost" onClick={() => { setSearch(''); setSearchParams({}); }}>
+            <X className="mr-1.5 h-3.5 w-3.5" />Limpiar filtros
+          </Button>
+        )}
       </div>
+
+      {selected.size > 0 && (
+        <BulkActionBar
+          count={selected.size}
+          categories={categories ?? []}
+          loading={bulkMutation.isPending}
+          onAssignCategory={(catId) => bulkMutation.mutate({ categoryId: catId })}
+          onSetStatus={(s) => bulkMutation.mutate({ status: s })}
+          onClear={() => setSelected(new Set())}
+        />
+      )}
 
       {/* Tabla de productos */}
       <Card>
@@ -311,6 +465,13 @@ export function ProductsPage() {
               <table className="data-table w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
+                    <th className="px-4 py-3 text-left font-medium w-8">
+                      <button onClick={toggleSelectAll} title="Seleccionar todos en esta página">
+                        {selected.size === products.length && products.length > 0
+                          ? <CheckSquare className="h-4 w-4 text-primary" />
+                          : <Square className="h-4 w-4 text-muted-foreground" />}
+                      </button>
+                    </th>
                     <th className="px-4 py-3 text-left font-medium">Producto</th>
                     <th className="px-4 py-3 text-left font-medium col-md">Categoría</th>
                     <th className="px-4 py-3 text-right font-medium col-lg">Costo</th>
@@ -322,7 +483,15 @@ export function ProductsPage() {
                 </thead>
                 <tbody className="divide-y">
                   {products.map((product) => (
-                    <tr key={product.id} className="hover:bg-muted/30 transition-colors">
+                    <tr key={product.id}
+                      className={cn('hover:bg-muted/30 transition-colors', selected.has(product.id) && 'bg-primary/5')}>
+                      <td className="px-4 py-3">
+                        <button onClick={() => toggleSelect(product.id)}>
+                          {selected.has(product.id)
+                            ? <CheckSquare className="h-4 w-4 text-primary" />
+                            : <Square className="h-4 w-4 text-muted-foreground" />}
+                        </button>
+                      </td>
                       <td data-label="Producto" className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-muted overflow-hidden">
@@ -343,7 +512,14 @@ export function ProductsPage() {
                           </div>
                         </div>
                       </td>
-                      <td data-label="Categoría" className="px-4 py-3 text-muted-foreground col-md">{product.category.name}</td>
+                      <td data-label="Categoría" className="px-4 py-3 text-muted-foreground col-md">
+                        {product.category.parent ? (
+                          <span className="flex items-center gap-1">
+                            <span className="text-xs opacity-60">{product.category.parent.name} ›</span>
+                            {product.category.name}
+                          </span>
+                        ) : product.category.name}
+                      </td>
                       <td data-label="Costo" className="px-4 py-3 text-right col-lg">{formatCost(product.costPrice)}</td>
                       <td data-label="Precio" className="px-4 py-3 text-right font-semibold">{formatCurrency(product.salePrice)}</td>
                       <td data-label="Stock" className="px-4 py-3 text-right">

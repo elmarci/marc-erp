@@ -142,7 +142,7 @@ export class ProductsService {
       prisma.product.findMany({
         where,
         include: {
-          category: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true, parent: { select: { name: true } } } },
           brand: { select: { id: true, name: true } },
         },
         skip,
@@ -294,6 +294,27 @@ export class ProductsService {
 
     await redis.del('products:search:*');
     return updated;
+  }
+
+  // Reasignar categoría y/o estado a muchos productos a la vez — pensado
+  // para reorganizar el catálogo en subcategorías nuevas sin editar producto
+  // por producto.
+  async bulkUpdate(productIds: string[], data: { categoryId?: string; status?: ProductStatus }) {
+    if (data.categoryId) {
+      const category = await prisma.category.findUnique({ where: { id: data.categoryId } });
+      if (!category) throw new NotFoundError('Categoría');
+    }
+
+    const result = await prisma.product.updateMany({
+      where: { id: { in: productIds }, deletedAt: null },
+      data: {
+        ...(data.categoryId ? { categoryId: data.categoryId } : {}),
+        ...(data.status ? { status: data.status } : {}),
+      },
+    });
+
+    await redis.del('products:search:*');
+    return { updated: result.count };
   }
 
   async softDelete(id: string) {

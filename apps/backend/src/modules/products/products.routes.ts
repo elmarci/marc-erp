@@ -127,6 +127,18 @@ router.post('/', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Respon
   } catch (err) { next(err); }
 });
 
+router.patch('/bulk', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { productIds, categoryId, status } = z.object({
+      productIds: z.array(z.string().uuid()).min(1),
+      categoryId: z.string().uuid().optional(),
+      status: z.nativeEnum(ProductStatus).optional(),
+    }).refine((v) => v.categoryId || v.status, { message: 'Debe indicar categoryId o status.' }).parse(req.body);
+    const result = await productsService.bulkUpdate(productIds, { categoryId, status });
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 router.patch('/:id', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const input: Parameters<typeof productsService.update>[1] =
