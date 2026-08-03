@@ -118,10 +118,21 @@ export class ProductsService {
     const { q, categoryId, supplierId, status, lowStock, isBulk, page, limit, sortBy = 'name', sortOrder = 'asc' } = query;
     const skip = (page - 1) * limit;
 
+    // Si la categoría filtrada tiene subcategorías, hay que incluir también
+    // sus productos — las categorías "generales" (padre) casi nunca tienen
+    // productos asignados directamente, todo vive en las subcategorías.
+    let categoryFilter: Prisma.ProductWhereInput = {};
+    if (categoryId) {
+      const children = await prisma.category.findMany({
+        where: { parentId: categoryId }, select: { id: true },
+      });
+      categoryFilter = { categoryId: children.length > 0 ? { in: [categoryId, ...children.map(c => c.id)] } : categoryId };
+    }
+
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
       ...(status ? { status } : { status: { not: 'DISCONTINUED' } }),
-      ...(categoryId ? { categoryId } : {}),
+      ...categoryFilter,
       ...(supplierId ? { supplierId } : {}),
       ...(lowStock ? { currentStock: { lte: prisma.product.fields.minStock } } : {}),
       ...(isBulk !== undefined ? { isBulk } : {}),

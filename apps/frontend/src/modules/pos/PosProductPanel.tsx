@@ -27,6 +27,7 @@ interface Category {
   id: string;
   name: string;
   slug: string;
+  children?: Category[];
 }
 
 interface PosProductPanelProps {
@@ -365,6 +366,7 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
 export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelProps) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   // Los productos a granel no tienen código de barras — el cajero no puede
   // simplemente escanearlos, así que este atajo les da acceso rápido sin
   // tener que buscarlos por nombre uno por uno (menestras, pan, fruta, etc.).
@@ -390,8 +392,15 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
     [],
   );
 
+  // La subcategoría manda si está elegida; si no, se filtra por la general
+  // (el backend ya expande la general a todas sus subcategorías).
+  const activeCategoryId = selectedSubcategory ?? selectedCategory;
+
+  const activeCategoryNode = categories?.find((c) => c.id === selectedCategory);
+  const subcategories = activeCategoryNode?.children ?? [];
+
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['pos-products', search, selectedCategory, bulkOnly],
+    queryKey: ['pos-products', search, activeCategoryId, bulkOnly],
     queryFn: async () => {
       const params = new URLSearchParams({
         // A granel puede tener más de 48 productos en el catálogo — sin este
@@ -400,7 +409,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
         limit: bulkOnly ? '500' : '48',
         status: 'ACTIVE',
         ...(search ? { q: search } : {}),
-        ...(selectedCategory ? { categoryId: selectedCategory } : {}),
+        ...(activeCategoryId ? { categoryId: activeCategoryId } : {}),
         ...(bulkOnly ? { isBulk: 'true' } : {}),
       });
       const res = await api.get<{ data: Product[] }>(`/products?${params}`);
@@ -594,35 +603,61 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
 
       {/* Filtros de categoría */}
       {categories && categories.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto border-b px-3 py-2">
-          <Button
-            variant={selectedCategory === null ? 'default' : 'outline'}
-            size="sm"
-            className="shrink-0 h-7 text-xs"
-            onClick={() => setSelectedCategory(null)}
-          >
-            Todos
-          </Button>
-          <Button
-            variant={bulkOnly ? 'default' : 'outline'}
-            size="sm"
-            className={cn('shrink-0 h-7 text-xs gap-1', bulkOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
-            onClick={() => setBulkOnly((v) => !v)}
-            title="Productos a granel — sin código de barras, acceso rápido"
-          >
-            <Scale className="h-3 w-3" />A granel
-          </Button>
-          {categories.map((cat) => (
+        <div className="border-b">
+          <div className="flex gap-2 overflow-x-auto px-3 py-2">
             <Button
-              key={cat.id}
-              variant={selectedCategory === cat.id ? 'default' : 'outline'}
+              variant={selectedCategory === null ? 'default' : 'outline'}
               size="sm"
               className="shrink-0 h-7 text-xs"
-              onClick={() => setSelectedCategory(cat.id)}
+              onClick={() => { setSelectedCategory(null); setSelectedSubcategory(null); }}
             >
-              {cat.name}
+              Todos
             </Button>
-          ))}
+            <Button
+              variant={bulkOnly ? 'default' : 'outline'}
+              size="sm"
+              className={cn('shrink-0 h-7 text-xs gap-1', bulkOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
+              onClick={() => setBulkOnly((v) => !v)}
+              title="Productos a granel — sin código de barras, acceso rápido"
+            >
+              <Scale className="h-3 w-3" />A granel
+            </Button>
+            {categories.map((cat) => (
+              <Button
+                key={cat.id}
+                variant={selectedCategory === cat.id ? 'default' : 'outline'}
+                size="sm"
+                className="shrink-0 h-7 text-xs"
+                onClick={() => { setSelectedCategory(cat.id); setSelectedSubcategory(null); }}
+              >
+                {cat.name}
+              </Button>
+            ))}
+          </div>
+          {/* Subcategorías de la categoría general seleccionada */}
+          {subcategories.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto px-3 pb-2">
+              <Button
+                variant={selectedSubcategory === null ? 'secondary' : 'ghost'}
+                size="sm"
+                className="shrink-0 h-6 text-[11px]"
+                onClick={() => setSelectedSubcategory(null)}
+              >
+                Todas
+              </Button>
+              {subcategories.map((sub) => (
+                <Button
+                  key={sub.id}
+                  variant={selectedSubcategory === sub.id ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="shrink-0 h-6 text-[11px]"
+                  onClick={() => setSelectedSubcategory(sub.id)}
+                >
+                  {sub.name}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
