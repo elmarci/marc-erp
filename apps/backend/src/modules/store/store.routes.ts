@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { storeService } from './store.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
+import { storeAuthMiddleware } from './store-auth.routes';
 
 const router = Router();
 
@@ -9,14 +10,22 @@ const router = Router();
 
 router.get('/products', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { search, categoryId, page, limit } = z.object({
+    const { search, categoryId, excludeId, page, limit } = z.object({
       search: z.string().optional(),
       categoryId: z.string().uuid().optional(),
+      excludeId: z.string().uuid().optional(),
       page: z.coerce.number().min(1).default(1),
       limit: z.coerce.number().min(1).max(100).default(24),
     }).parse(req.query);
-    const result = await storeService.getProducts({ search, categoryId, page, limit });
+    const result = await storeService.getProducts({ search, categoryId, excludeId, page, limit });
     res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.get('/products/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await storeService.getProductById(req.params.id);
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
@@ -34,7 +43,7 @@ router.get('/offers', async (_req: Request, res: Response, next: NextFunction) =
   } catch (err) { next(err); }
 });
 
-router.post('/orders', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = z.object({
       customerName: z.string().min(2),
@@ -55,7 +64,10 @@ router.post('/orders', async (req: Request, res: Response, next: NextFunction) =
       })).min(1),
     }).parse(req.body);
 
-    const order = await storeService.createOrder(data);
+    // storeAuthMiddleware es opcional (no bloquea invitados) — si hay sesión,
+    // el pedido queda enlazado a la cuenta para su historial y beneficios.
+    const storeCustomerId = (req as Request & { customerId?: string }).customerId;
+    const order = await storeService.createOrder({ ...data, storeCustomerId });
     res.status(201).json({ success: true, data: order });
   } catch (err) { next(err); }
 });

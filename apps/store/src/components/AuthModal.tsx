@@ -49,44 +49,44 @@ export function AuthModal({ onClose, initialMode = 'login' }: Props) {
   const isLoading = loginMutation.isPending || registerMutation.isPending
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden slide-up">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden slide-up">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-white/10">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <div>
-            <h2 className="font-bold text-white text-lg">
+            <h2 className="font-bold text-gray-900 text-lg">
               {mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
             </h2>
-            <p className="text-white/40 text-xs mt-0.5">
+            <p className="text-gray-400 text-xs mt-0.5">
               {mode === 'login' ? 'Accede a tus pedidos y preferencias' : 'Regístrate para mejores beneficios'}
             </p>
           </div>
-          <button onClick={onClose} className="h-8 w-8 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center transition-colors">
-            <X className="h-4 w-4 text-white/60" />
+          <button onClick={onClose} className="h-8 w-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors">
+            <X className="h-4 w-4 text-gray-500" />
           </button>
         </div>
 
         <div className="p-5 space-y-3">
           {mode === 'register' && (
             <div className="relative">
-              <User className="absolute left-3.5 top-3.5 h-4 w-4 text-white/30" />
+              <User className="absolute left-3.5 top-3.5 h-4 w-4 text-gray-300" />
               <input value={form.name} onChange={set('name')} placeholder="Tu nombre completo"
-                className="w-full bg-white/5 border border-white/10 focus:border-green-400 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-white/30 outline-none transition-colors" />
+                className="w-full bg-gray-50 border border-gray-200 focus:border-brand-blue-400 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors" />
             </div>
           )}
 
           <div className="relative">
-            <Phone className="absolute left-3.5 top-3.5 h-4 w-4 text-white/30" />
+            <Phone className="absolute left-3.5 top-3.5 h-4 w-4 text-gray-300" />
             <input value={form.phone} onChange={set('phone')} placeholder="Teléfono (987 654 321)" type="tel"
-              className="w-full bg-white/5 border border-white/10 focus:border-green-400 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-white/30 outline-none transition-colors" />
+              className="w-full bg-gray-50 border border-gray-200 focus:border-brand-blue-400 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors" />
           </div>
 
           <div className="relative">
-            <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-white/30" />
+            <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-gray-300" />
             <input value={form.password} onChange={set('password')} placeholder="Contraseña"
               type={showPass ? 'text' : 'password'}
-              className="w-full bg-white/5 border border-white/10 focus:border-green-400 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-white/30 outline-none transition-colors" />
-            <button onClick={() => setShowPass(!showPass)} className="absolute right-3.5 top-3.5 text-white/30 hover:text-white/60">
+              className="w-full bg-gray-50 border border-gray-200 focus:border-brand-blue-400 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors" />
+            <button onClick={() => setShowPass(!showPass)} className="absolute right-3.5 top-3.5 text-gray-300 hover:text-gray-500">
               {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
@@ -94,23 +94,23 @@ export function AuthModal({ onClose, initialMode = 'login' }: Props) {
           <button
             disabled={isLoading}
             onClick={() => mode === 'login' ? loginMutation.mutate() : registerMutation.mutate()}
-            className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
+            className="w-full bg-brand-blue-600 hover:bg-brand-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
             {isLoading
-              ? <div className="h-4 w-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+              ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               : <>{mode === 'login' ? 'Ingresar' : 'Crear cuenta'}<ArrowRight className="h-4 w-4" /></>
             }
           </button>
 
-          <div className="flex items-center gap-3 text-xs text-white/20">
-            <div className="flex-1 h-px bg-white/10" />o<div className="flex-1 h-px bg-white/10" />
+          <div className="flex items-center gap-3 text-xs text-gray-300">
+            <div className="flex-1 h-px bg-gray-200" />o<div className="flex-1 h-px bg-gray-200" />
           </div>
 
           <button onClick={() => setMode(m => m === 'login' ? 'register' : 'login')}
-            className="w-full py-2.5 border border-white/10 hover:border-white/20 rounded-xl text-sm text-white/50 hover:text-white transition-colors">
+            className="w-full py-2.5 border border-gray-200 hover:border-gray-300 rounded-xl text-sm text-gray-600 hover:text-gray-900 transition-colors">
             {mode === 'login' ? '¿Sin cuenta? Regístrate gratis' : '¿Ya tienes cuenta? Inicia sesión'}
           </button>
 
-          <button onClick={onClose} className="w-full text-xs text-white/20 hover:text-white/40 py-1 transition-colors">
+          <button onClick={onClose} className="w-full text-xs text-gray-300 hover:text-gray-500 py-1 transition-colors">
             Continuar como invitado →
           </button>
         </div>

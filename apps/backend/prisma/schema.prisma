@@ -711,9 +711,10 @@ model Customer {
   updatedAt      DateTime     @updatedAt @map("updated_at")
   deletedAt      DateTime?    @map("deleted_at")
 
-  sales        Sale[]
-  debtPayments CustomerDebtPayment[]
-  coupons      Coupon[]
+  sales          Sale[]
+  debtPayments   CustomerDebtPayment[]
+  coupons        Coupon[]
+  storeAccounts  StoreCustomer[]
 
   @@index([taxId])
   @@index([phone])
@@ -1196,14 +1197,21 @@ model StoreCustomer {
   email        String?  @unique
   passwordHash String   @map("password_hash")
   isActive     Boolean  @default(true) @map("is_active")
+  // Cada cuenta de la tienda online tiene su ficha espejo en el módulo
+  // Clientes del ERP — así las compras online cuentan para el historial,
+  // puntos de fidelización, etc. igual que un cliente atendido en tienda.
+  // Nullable porque las cuentas creadas antes de este campo no lo tienen.
+  customerId   String?  @map("customer_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  customer  Customer?      @relation(fields: [customerId], references: [id])
   orders    StoreOrder[]
   addresses StoreAddress[]
 
   @@index([phone])
   @@index([email])
+  @@index([customerId])
   @@map("store_customers")
 }
 

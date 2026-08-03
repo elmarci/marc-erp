@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ShoppingCart, ShoppingBag, Plus, Minus, Scale, X } from 'lucide-react'
 import { useCartStore } from '../cartStore'
 import type { Product } from '../api'
@@ -42,58 +43,58 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4"
       onClick={onClose}>
-      <div className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl slide-up"
+      <div className="w-full max-w-sm bg-white border border-gray-200 rounded-2xl shadow-2xl slide-up"
         onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <Scale className="h-4 w-4 text-green-400" />
+            <Scale className="h-4 w-4 text-brand-blue-600" />
             <div>
-              <p className="font-bold text-white text-sm">{product.name}</p>
-              <p className="text-white/40 text-xs">S/ {price.toFixed(2)} / {unit}</p>
+              <p className="font-bold text-gray-900 text-sm">{product.name}</p>
+              <p className="text-gray-400 text-xs">S/ {price.toFixed(2)} / {unit}</p>
             </div>
           </div>
-          <button onClick={onClose} className="h-7 w-7 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center transition-colors">
-            <X className="h-3.5 w-3.5 text-white/60" />
+          <button onClick={onClose} className="h-7 w-7 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors">
+            <X className="h-3.5 w-3.5 text-gray-500" />
           </button>
         </div>
 
         <div className="p-4 space-y-4">
           <div>
-            <label className="text-sm text-white/60 mb-2 block">
-              Cantidad ({unit}) <span className="text-white/30">· disponible: {product.currentStock} {unit}</span>
+            <label className="text-sm text-gray-600 mb-2 block">
+              Cantidad ({unit}) <span className="text-gray-400">· disponible: {product.currentStock} {unit}</span>
             </label>
             <input type="number" min={0.01} max={product.currentStock} step={0.01} value={qty} onChange={e => setQty(e.target.value)}
               placeholder={`Ej: 0.5 ${unit}`} autoFocus
-              className="w-full bg-white/5 border border-white/10 focus:border-green-400 rounded-xl px-4 py-3 text-lg font-bold text-white text-center placeholder-white/20 outline-none transition-colors" />
+              className="w-full bg-gray-50 border border-gray-200 focus:border-brand-blue-400 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 text-center placeholder-gray-300 outline-none transition-colors" />
           </div>
 
           {/* Presets */}
           <div className="flex flex-wrap gap-2">
             {presets.map(p => (
               <button key={p} onClick={() => setQty(p)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${qty === p ? 'bg-green-500 text-black' : 'bg-white/5 hover:bg-white/10 text-white/60'}`}>
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${qty === p ? 'bg-brand-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}>
                 {p} {unit}
               </button>
             ))}
           </div>
 
           {qty && parseFloat(qty) > 0 && (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3 text-center">
-              <p className="text-white/50 text-xs mb-0.5">Total a cobrar</p>
-              <p className="text-2xl font-black text-green-400">S/ {total.toFixed(2)}</p>
-              <p className="text-white/30 text-xs">{qty} {unit} × S/ {price.toFixed(2)}</p>
+            <div className="bg-brand-green-50 border border-brand-green-200 rounded-xl p-3 text-center">
+              <p className="text-gray-500 text-xs mb-0.5">Total a cobrar</p>
+              <p className="text-2xl font-black text-brand-green-700">S/ {total.toFixed(2)}</p>
+              <p className="text-gray-400 text-xs">{qty} {unit} × S/ {price.toFixed(2)}</p>
             </div>
           )}
 
           <div className="flex gap-3">
             <button onClick={onClose}
-              className="flex-1 py-3 border border-white/10 hover:border-white/20 rounded-xl text-sm text-white/50 hover:text-white transition-colors">
+              className="flex-1 py-3 border border-gray-200 hover:border-gray-300 rounded-xl text-sm text-gray-500 hover:text-gray-700 transition-colors">
               Cancelar
             </button>
             <button onClick={handleAdd} disabled={!qty || parseFloat(qty) <= 0}
-              className="flex-1 py-3 bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold rounded-xl flex items-center justify-center gap-2 transition-colors">
+              className="flex-1 py-3 bg-brand-blue-600 hover:bg-brand-blue-700 disabled:opacity-40 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors">
               <ShoppingCart className="h-4 w-4" />Agregar
             </button>
           </div>
@@ -107,12 +108,16 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
 export function ProductCard({ product }: { product: Product }) {
   const { addItem, updateQuantity, items, openCart } = useCartStore()
   const [showBulk, setShowBulk] = useState(false)
+  const navigate = useNavigate()
   const cartItem = items.find(i => i.product.id === product.id)
   const qty = cartItem?.quantity ?? 0
   const outOfStock = product.currentStock <= 0
   const lowStock = !outOfStock && product.currentStock <= 5
 
-  const handleAdd = () => {
+  const goToProduct = () => navigate(`/producto/${product.id}`)
+
+  const handleAdd = (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (outOfStock) return
     if (product.isBulk) { setShowBulk(true); return }
     const result = addItem(product)
@@ -127,37 +132,36 @@ export function ProductCard({ product }: { product: Product }) {
 
   return (
     <>
-      <div onClick={outOfStock ? undefined : handleAdd}
-        className={`group relative bg-zinc-900 border rounded-2xl overflow-hidden transition-all duration-200 select-none
-          ${outOfStock ? 'opacity-60 cursor-not-allowed border-white/5' :
-            'hover:bg-zinc-800 border-white/5 hover:border-green-500/30 cursor-pointer active:scale-95'}`}>
+      <div onClick={goToProduct}
+        className={`group relative bg-white border rounded-2xl overflow-hidden transition-all duration-200 select-none cursor-pointer
+          ${outOfStock ? 'opacity-60 border-gray-100' : 'border-gray-200 hover:border-brand-blue-300 hover:shadow-md'}`}>
 
         {/* Imagen */}
-        <div className="relative aspect-square overflow-hidden bg-zinc-800">
+        <div className="relative aspect-square overflow-hidden bg-gray-50">
           {product.imageUrl
             ? <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-            : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-10 w-10 text-white/10" /></div>
+            : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-10 w-10 text-gray-200" /></div>
           }
 
           {/* Badges */}
           {product.isBulk && (
-            <div className="absolute top-2 left-2 flex items-center gap-1 bg-zinc-900/80 border border-white/10 rounded-full px-2 py-0.5">
-              <Scale className="h-3 w-3 text-green-400" />
-              <span className="text-[10px] text-white/60 font-medium">por {product.bulkUnit ?? 'kg'}</span>
+            <div className="absolute top-2 left-2 flex items-center gap-1 bg-white/90 border border-gray-200 rounded-full px-2 py-0.5">
+              <Scale className="h-3 w-3 text-brand-blue-600" />
+              <span className="text-[10px] text-gray-600 font-medium">por {product.bulkUnit ?? 'kg'}</span>
             </div>
           )}
           {lowStock && !product.isBulk && (
-            <span className="absolute top-2 left-2 bg-amber-500 text-black text-xs font-bold px-2 py-0.5 rounded-full">
+            <span className="absolute top-2 left-2 bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
               Últimas {product.currentStock}
             </span>
           )}
           {outOfStock && (
-            <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-              <span className="bg-black/80 text-white text-sm font-bold px-3 py-1.5 rounded-full">Agotado</span>
+            <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+              <span className="bg-gray-900/80 text-white text-sm font-bold px-3 py-1.5 rounded-full">Agotado</span>
             </div>
           )}
           {qty > 0 && (
-            <div className="absolute top-2 right-2 h-6 w-6 bg-green-500 text-black text-xs font-black rounded-full flex items-center justify-center shadow-lg">
+            <div className="absolute top-2 right-2 h-6 w-6 bg-brand-blue-600 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg">
               {qty}
             </div>
           )}
@@ -165,31 +169,32 @@ export function ProductCard({ product }: { product: Product }) {
 
         {/* Info */}
         <div className="p-3">
-          <p className="text-xs text-white/40 mb-0.5">{product.category.name}</p>
-          <p className="font-semibold text-sm line-clamp-2 leading-tight mb-2">{product.name}</p>
+          <p className="text-xs text-gray-400 mb-0.5">{product.category.name}</p>
+          <p className="font-semibold text-sm text-gray-900 line-clamp-2 leading-tight mb-2">{product.name}</p>
 
           <div className="flex items-center justify-between gap-2">
             <div>
-              <span className="text-green-400 font-bold text-lg">S/ {Number(product.salePrice).toFixed(2)}</span>
-              {product.isBulk && <span className="text-white/30 text-xs ml-1">/{product.bulkUnit ?? 'kg'}</span>}
+              <span className="text-brand-green-700 font-bold text-lg">S/ {Number(product.salePrice).toFixed(2)}</span>
+              {product.isBulk && <span className="text-gray-400 text-xs ml-1">/{product.bulkUnit ?? 'kg'}</span>}
             </div>
 
             {qty > 0 && !product.isBulk ? (
               <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                 <button onClick={() => updateQuantity(product.id, qty - 1)}
-                  className="h-7 w-7 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors">
-                  <Minus className="h-3 w-3" />
+                  className="h-7 w-7 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors">
+                  <Minus className="h-3 w-3 text-gray-600" />
                 </button>
-                <span className="w-5 text-center text-sm font-bold">{qty}</span>
+                <span className="w-5 text-center text-sm font-bold text-gray-900">{qty}</span>
                 <button onClick={() => addItem(product)} disabled={qty >= product.currentStock}
-                  className="h-7 w-7 bg-green-500 hover:bg-green-400 disabled:opacity-30 disabled:hover:bg-green-500 text-black rounded-full flex items-center justify-center transition-colors">
+                  className="h-7 w-7 bg-brand-blue-600 hover:bg-brand-blue-700 disabled:opacity-30 disabled:hover:bg-brand-blue-600 text-white rounded-full flex items-center justify-center transition-colors">
                   <Plus className="h-3 w-3" />
                 </button>
               </div>
             ) : (
-              <div className={`h-8 w-8 text-black rounded-full flex items-center justify-center transition-colors pointer-events-none ${outOfStock ? 'bg-white/10' : 'bg-green-500 group-hover:bg-green-400'}`}>
+              <button onClick={outOfStock ? undefined : handleAdd} disabled={outOfStock}
+                className={`h-8 w-8 text-white rounded-full flex items-center justify-center transition-colors ${outOfStock ? 'bg-gray-200 cursor-not-allowed' : 'bg-brand-blue-600 group-hover:bg-brand-blue-700'}`}>
                 {product.isBulk ? <Scale className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
-              </div>
+              </button>
             )}
           </div>
         </div>

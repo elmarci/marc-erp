@@ -24,14 +24,20 @@ export interface Product {
   description: string | null
   isBulk?: boolean
   bulkUnit?: string | null
-  category: { id: string; name: string }
+  category: { id: string; name: string; parent?: { id: string; name: string } | null }
 }
 
-export interface Category {
+export interface CategoryChild {
   id: string
   name: string
   description: string | null
+  imageUrl: string | null
+  sortOrder: number
   _count: { products: number }
+}
+
+export interface Category extends CategoryChild {
+  children: CategoryChild[]
 }
 
 export interface Offer {
@@ -48,6 +54,25 @@ export interface Offer {
   products: Array<{
     product: { id: string; name: string; salePrice: number; imageUrl: string | null }
   }>
+}
+
+export interface StoreAddress {
+  id: string
+  label: string
+  address: string
+  district: string
+  reference: string | null
+  isDefault: boolean
+}
+
+export interface StoreProfile {
+  id: string
+  name: string
+  phone: string
+  email: string | null
+  createdAt: string
+  loyaltyPoints: number
+  addresses: StoreAddress[]
 }
 
 export interface StoreOrder {
@@ -80,6 +105,9 @@ export const storeApi = {
   getProducts: (params?: Record<string, string | number>) =>
     api.get<{ data: Product[]; pagination: { total: number; totalPages: number; page: number } }>('/store/products', { params }),
 
+  getProduct: (id: string) =>
+    api.get<{ data: Product }>(`/store/products/${id}`),
+
   getCategories: () =>
     api.get<{ data: Category[] }>('/store/categories'),
 
@@ -99,4 +127,19 @@ export const storeApi = {
 
   trackOrders: (phone: string) =>
     api.get<{ data: StoreOrder[] }>(`/store/orders/track/${phone}`),
+
+  getProfile: () =>
+    api.get<{ data: StoreProfile }>('/store/auth/profile'),
+
+  updateProfile: (data: { name?: string; email?: string }) =>
+    api.put<{ data: StoreProfile }>('/store/auth/profile', data),
+
+  addAddress: (data: { label: string; address: string; district: string; reference?: string; isDefault?: boolean }) =>
+    api.post<{ data: StoreAddress }>('/store/auth/addresses', data),
+
+  deleteAddress: (id: string) =>
+    api.delete(`/store/auth/addresses/${id}`),
+
+  setDefaultAddress: (id: string) =>
+    api.patch<{ data: StoreAddress }>(`/store/auth/addresses/${id}/default`),
 }

@@ -8,6 +8,26 @@ const CUSTOMER_JWT_SECRET = env.JWT_SECRET + '_customer';
 const TOKEN_EXPIRES = '30d';
 
 export class StoreAuthService {
+  // Busca un Customer del ERP por teléfono; si no existe lo crea. Así toda
+  // cuenta de la tienda online tiene su espejo en el módulo Clientes del ERP
+  // — mismo teléfono, mismo historial de compras, mismos puntos.
+  private async findOrCreateErpCustomer(name: string, phone: string, email?: string) {
+    const existing = await prisma.customer.findFirst({ where: { phone } });
+    if (existing) return existing.id;
+
+    const [firstName, ...rest] = name.trim().split(/\s+/);
+    const created = await prisma.customer.create({
+      data: {
+        firstName: firstName || name,
+        lastName: rest.join(' ') || null,
+        phone, email,
+        type: 'REGULAR',
+        notes: 'Creado automáticamente al registrarse en la tienda online.',
+      },
+    });
+    return created.id;
+  }
+
   async register(data: {
     name: string; phone: string; email?: string; password: string;
   }) {
@@ -20,8 +40,9 @@ export class StoreAuthService {
     }
 
     const passwordHash = await bcrypt.hash(data.password, 10);
+    const customerId = await this.findOrCreateErpCustomer(data.name, data.phone, data.email);
     const customer = await prisma.storeCustomer.create({
-      data: { name: data.name, phone: data.phone, email: data.email, passwordHash },
+      data: { name: data.name, phone: data.phone, email: data.email, passwordHash, customerId },
     });
 
     const token = this.generateToken(customer.id);
@@ -41,6 +62,14 @@ export class StoreAuthService {
     const valid = await bcrypt.compare(password, customer.passwordHash);
     if (!valid) throw new BusinessError('Teléfono/correo o contraseña incorrectos.');
 
+    // Backfill: cuentas creadas antes de vincularse con el ERP todavía no
+    // tienen customerId — se enlazan la primera vez que inician sesión.
+    if (!customer.customerId) {
+      const customerId = await this.findOrCreateErpCustomer(customer.name, customer.phone, customer.email ?? undefined);
+      await prisma.storeCustomer.update({ where: { id: customer.id }, data: { customerId } });
+      customer.customerId = customerId;
+    }
+
     const token = this.generateToken(customer.id);
     return { customer: this.safeCustomer(customer), token };
   }
@@ -48,10 +77,17 @@ export class StoreAuthService {
   async getProfile(customerId: string) {
     const customer = await prisma.storeCustomer.findUnique({
       where: { id: customerId },
-      include: { addresses: { orderBy: { isDefault: 'desc' } } },
+      include: {
+        addresses: { orderBy: { isDefault: 'desc' } },
+        customer: { select: { loyaltyPoints: true } },
+      },
     });
     if (!customer) throw new NotFoundError('Cliente');
-    return { ...this.safeCustomer(customer), addresses: customer.addresses };
+    return {
+      ...this.safeCustomer(customer),
+      addresses: customer.addresses,
+      loyaltyPoints: customer.customer?.loyaltyPoints ?? 0,
+    };
   }
 
   async updateProfile(customerId: string, data: { name?: string; email?: string }) {

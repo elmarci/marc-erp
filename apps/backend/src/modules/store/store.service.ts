@@ -2,12 +2,13 @@ import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
 import { emitEvent } from '../../config/socket';
 import { redis } from '../../config/redis';
+import { getSettingValues } from '../../utils/settings';
 
 export class StoreService {
 
   /* ── Catálogo público ─────────────────────────────────────────────────── */
   async getProducts(filters: {
-    search?: string; categoryId?: string; page: number; limit: number;
+    search?: string; categoryId?: string; excludeId?: string; page: number; limit: number;
   }) {
     const where: Record<string, unknown> = {
       deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 },
@@ -18,7 +19,18 @@ export class StoreService {
         { barcode: { contains: filters.search } },
       ];
     }
-    if (filters.categoryId) where['categoryId'] = filters.categoryId;
+    if (filters.categoryId) {
+      // Si la categoría tiene subcategorías, filtrar también por sus productos
+      // — así "Bebidas" muestra lo que está en "Gaseosas", "Jugos", etc. sin
+      // que el cliente tenga que entrar a cada subcategoría por separado.
+      const children = await prisma.category.findMany({
+        where: { parentId: filters.categoryId }, select: { id: true },
+      });
+      where['categoryId'] = children.length > 0
+        ? { in: [filters.categoryId, ...children.map(c => c.id)] }
+        : filters.categoryId;
+    }
+    if (filters.excludeId) where['id'] = { not: filters.excludeId };
 
     const [data, total] = await Promise.all([
       prisma.product.findMany({
@@ -41,16 +53,53 @@ export class StoreService {
     };
   }
 
+  async getProductById(id: string) {
+    const product = await prisma.product.findFirst({
+      where: { id, deletedAt: null, status: 'ACTIVE' },
+      select: {
+        id: true, name: true, barcode: true, salePrice: true,
+        currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
+        category: {
+          select: {
+            id: true, name: true,
+            parent: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    if (!product) throw new NotFoundError('Producto');
+    return { ...product, salePrice: Number(product.salePrice) };
+  }
+
   async getCategories() {
     const categories = await prisma.category.findMany({
       where: { isActive: true },
       select: {
-        id: true, name: true, description: true,
+        id: true, name: true, description: true, imageUrl: true, parentId: true, sortOrder: true,
         _count: { select: { products: { where: { deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 } } } } },
       },
-      orderBy: { name: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
-    return categories.filter(c => c._count.products > 0);
+
+    const byParent = new Map<string, typeof categories>();
+    for (const c of categories) {
+      const key = c.parentId ?? '';
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key)!.push(c);
+    }
+
+    // Solo se listan subcategorías con productos propios — de lo contrario
+    // el cliente ve una lista de filtros que no traen nada al tocarlos.
+    const topLevel = (byParent.get('') ?? []).map(cat => {
+      const children = (byParent.get(cat.id) ?? [])
+        .filter(child => child._count.products > 0)
+        .map(({ parentId: _parentId, ...child }) => child);
+      const totalCount = cat._count.products + children.reduce((s, ch) => s + ch._count.products, 0);
+      const { parentId: _parentId, ...rest } = cat;
+      return { ...rest, _count: { products: totalCount }, children };
+    });
+
+    return topLevel.filter(c => c._count.products > 0);
   }
 
   async getActiveOffers() {
@@ -80,6 +129,7 @@ export class StoreService {
     deliveryType: 'DELIVERY' | 'PICKUP';
     address?: string; district?: string; reference?: string; notes?: string;
     paymentMethod: 'YAPE' | 'PLIN' | 'CASH';
+    storeCustomerId?: string;
     items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) {
     // Extraer IDs reales
@@ -165,6 +215,7 @@ export class StoreService {
         reference: data.reference,
         notes: data.notes,
         paymentMethod: data.paymentMethod,
+        storeCustomerId: data.storeCustomerId,
         subtotal,
         deliveryCost,
         total,
@@ -239,6 +290,17 @@ export class StoreService {
     };
     const paymentMethod = paymentMethodMap[order.paymentMethod] ?? 'CASH';
 
+    // Si el pedido lo hizo un cliente registrado, la venta queda a su nombre
+    // en el ERP — mismo historial y puntos que una compra hecha en tienda.
+    let customerId: string | null = null;
+    if (order.storeCustomerId) {
+      const storeCustomer = await prisma.storeCustomer.findUnique({ where: { id: order.storeCustomerId } });
+      customerId = storeCustomer?.customerId ?? null;
+    }
+    const loyaltyConfig = customerId ? await getSettingValues(['loyalty_points_per_sol']) : {};
+    const pointsPerSol = Number(loyaltyConfig['loyalty_points_per_sol'] ?? 1);
+    const pointsEarned = customerId ? Math.floor(Number(order.total) * pointsPerSol) : 0;
+
     return prisma.$transaction(async (tx) => {
       // Fetch products and validate stock
       const productIds = order.items.map(i => i.productId);
@@ -278,12 +340,14 @@ export class StoreService {
           cashSessionId,
           cashierId: userId,
           createdById: userId,
+          customerId,
           documentType: 'NOTA_VENTA',
           subtotal: netAmount,
           taxAmount,
           totalAmount: subtotal,
           discountAmount: 0,
           status: 'COMPLETED',
+          pointsEarned,
           notes: `Pedido web ${order.orderNumber} — ${order.deliveryType === 'DELIVERY' ? 'Delivery' : 'Recojo en tienda'}`,
           items: {
             create: saleItems,
@@ -296,6 +360,13 @@ export class StoreService {
           },
         },
       });
+
+      if (customerId && pointsEarned > 0) {
+        await tx.customer.update({
+          where: { id: customerId },
+          data: { loyaltyPoints: { increment: pointsEarned } },
+        });
+      }
 
       // Decrement stock + inventory movements
       for (const item of order.items) {
