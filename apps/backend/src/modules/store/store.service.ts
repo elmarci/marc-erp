@@ -53,6 +53,54 @@ export class StoreService {
     };
   }
 
+  // "Más vendidos" real, no solo los primeros N alfabéticamente — se basa en
+  // unidades vendidas (ventas de tienda física + web) en los últimos 30 días.
+  // Si no hay suficiente historial (tienda nueva, producto recién creado) se
+  // completa con los productos activos más recientes para nunca mostrar menos
+  // de `limit` productos.
+  async getFeaturedProducts(limit = 8) {
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+
+    const topSelling = await prisma.saleItem.groupBy({
+      by: ['productId'],
+      where: { sale: { status: 'COMPLETED', createdAt: { gte: since } } },
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: limit * 2, // margen por si algunos ya no están activos / sin stock
+    });
+
+    const baseWhere = { deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 } } as const;
+    const productSelect = {
+      id: true, name: true, barcode: true, salePrice: true,
+      currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
+      category: { select: { id: true, name: true } },
+    } as const;
+
+    const topIds = topSelling.map(t => t.productId);
+    const bestSellers = topIds.length > 0
+      ? await prisma.product.findMany({ where: { id: { in: topIds }, ...baseWhere }, select: productSelect })
+      : [];
+    const bestSellersOrdered = topIds
+      .map(id => bestSellers.find(p => p.id === id))
+      .filter((p): p is NonNullable<typeof p> => !!p)
+      .slice(0, limit);
+
+    let result = bestSellersOrdered;
+    if (result.length < limit) {
+      const excludeIds = result.map(p => p.id);
+      const fillers = await prisma.product.findMany({
+        where: { ...baseWhere, id: { notIn: excludeIds } },
+        select: productSelect,
+        orderBy: { createdAt: 'desc' },
+        take: limit - result.length,
+      });
+      result = [...result, ...fillers];
+    }
+
+    return result.map(p => ({ ...p, salePrice: Number(p.salePrice) }));
+  }
+
   async getProductById(id: string) {
     const product = await prisma.product.findFirst({
       where: { id, deletedAt: null, status: 'ACTIVE' },
@@ -96,10 +144,28 @@ export class StoreService {
         .map(({ parentId: _parentId, ...child }) => child);
       const totalCount = cat._count.products + children.reduce((s, ch) => s + ch._count.products, 0);
       const { parentId: _parentId, ...rest } = cat;
-      return { ...rest, _count: { products: totalCount }, children };
+      return { ...rest, _count: { products: totalCount }, children, childIds: children.map(c => c.id) };
     });
 
-    return topLevel.filter(c => c._count.products > 0);
+    const visible = topLevel.filter(c => c._count.products > 0);
+
+    // La categoría casi nunca tiene su propia foto cargada — se usa la de un
+    // producto representativo (con imagen) dentro de ella para que la grilla
+    // de "Categorías" no se vea genérica en el home.
+    const withImages = await Promise.all(visible.map(async ({ childIds, ...cat }) => {
+      if (cat.imageUrl) return cat;
+      const sample = await prisma.product.findFirst({
+        where: {
+          categoryId: { in: [cat.id, ...childIds] },
+          deletedAt: null, status: 'ACTIVE', imageUrl: { not: null },
+        },
+        select: { imageUrl: true },
+        orderBy: { updatedAt: 'desc' },
+      });
+      return { ...cat, imageUrl: sample?.imageUrl ?? null };
+    }));
+
+    return withImages;
   }
 
   async getActiveOffers() {

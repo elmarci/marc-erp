@@ -19,6 +19,7 @@ import { StoreOrdersPage } from '@/modules/store-orders/StoreOrdersPage';
 import { CashPage } from '@/modules/cash/CashPage';
 import { UsersPage } from '@/modules/users/UsersPage';
 import { SettingsPage } from '@/modules/settings/SettingsPage';
+import { CategoriesPage } from '@/modules/categories/CategoriesPage';
 import { ChangePasswordPage } from '@/modules/auth/ChangePasswordPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="offers" element={<OffersPage />} />
           <Route path="store-orders" element={<StoreOrdersPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="categories" element={<CategoriesPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

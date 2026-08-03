@@ -15,6 +15,7 @@ import {
   Boxes,
   Tag,
   Store,
+  FolderTree,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { path: '/offers', label: 'Ofertas', icon: Tag, minRole: 'SUPERVISOR' },
   { path: '/reports', label: 'Reportes', icon: TrendingUp, minRole: 'SUPERVISOR' },
   { path: '/users', label: 'Usuarios', icon: Users, minRole: 'ADMIN' },
+  { path: '/categories', label: 'Categorías', icon: FolderTree, minRole: 'ADMIN' },
   { path: '/settings', label: 'Configuración', icon: Settings, minRole: 'ADMIN' },
 ];
 

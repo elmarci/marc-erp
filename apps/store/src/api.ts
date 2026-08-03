@@ -105,6 +105,9 @@ export const storeApi = {
   getProducts: (params?: Record<string, string | number>) =>
     api.get<{ data: Product[]; pagination: { total: number; totalPages: number; page: number } }>('/store/products', { params }),
 
+  getFeaturedProducts: (limit = 8) =>
+    api.get<{ data: Product[] }>('/store/products/featured', { params: { limit } }),
+
   getProduct: (id: string) =>
     api.get<{ data: Product }>(`/store/products/${id}`),
 

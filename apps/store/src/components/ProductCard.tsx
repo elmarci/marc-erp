@@ -134,7 +134,7 @@ export function ProductCard({ product }: { product: Product }) {
     <>
       <div onClick={goToProduct}
         className={`group relative bg-white border rounded-2xl overflow-hidden transition-all duration-200 select-none cursor-pointer
-          ${outOfStock ? 'opacity-60 border-gray-100' : 'border-gray-200 hover:border-brand-blue-300 hover:shadow-md'}`}>
+          ${outOfStock ? 'opacity-60 border-gray-100' : 'border-gray-200 hover:border-brand-blue-300 hover:shadow-lg hover:-translate-y-1'}`}>
 
         {/* Imagen */}
         <div className="relative aspect-square overflow-hidden bg-gray-50">

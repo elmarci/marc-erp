@@ -22,6 +22,14 @@ router.get('/products', async (req: Request, res: Response, next: NextFunction) 
   } catch (err) { next(err); }
 });
 
+router.get('/products/featured', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { limit } = z.object({ limit: z.coerce.number().min(1).max(20).default(8) }).parse(req.query);
+    const data = await storeService.getFeaturedProducts(limit);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 router.get('/products/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await storeService.getProductById(req.params.id);

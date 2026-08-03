@@ -38,7 +38,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
   const go = (i: number) => setIndex((i + offers.length) % offers.length)
 
   return (
-    <section className="max-w-7xl mx-auto px-4 pt-8">
+    <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-8">
       <div className="relative rounded-2xl overflow-hidden group"
         onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
         <div className="flex transition-transform duration-500 ease-out" style={{ transform: `translateX(-${index * 100}%)` }}>

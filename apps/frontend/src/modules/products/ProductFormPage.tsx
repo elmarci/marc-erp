@@ -39,7 +39,7 @@ export function ProductFormPage() {
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: async () => {
-      const res = await api.get<{ data: Array<{ id: string; name: string }> }>('/products/categories');
+      const res = await api.get<{ data: Array<{ id: string; name: string; children?: Array<{ id: string; name: string }> }> }>('/products/categories');
       return res.data.data;
     },
   });
@@ -186,7 +186,16 @@ export function ProductFormPage() {
               <label className="mb-1.5 block text-sm font-medium">Categoría *</label>
               <select {...register('categoryId')} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
                 <option value="">Seleccione...</option>
-                {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories?.map((c) => (
+                  c.children && c.children.length > 0 ? (
+                    <optgroup key={c.id} label={c.name}>
+                      <option value={c.id}>{c.name} (general)</option>
+                      {c.children.map((ch) => <option key={ch.id} value={ch.id}>— {ch.name}</option>)}
+                    </optgroup>
+                  ) : (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  )
+                ))}
               </select>
               {errors.categoryId && <p className="mt-1 text-xs text-destructive">{errors.categoryId.message}</p>}
             </div>

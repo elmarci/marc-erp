@@ -20,6 +20,14 @@ export default {
           },
         },
       },
+      keyframes: {
+        slideInLeft: { from: { transform: 'translateX(-100%)' }, to: { transform: 'translateX(0)' } },
+        fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+      },
+      animation: {
+        'slide-in-left': 'slideInLeft 0.25s ease-out',
+        'fade-in': 'fadeIn 0.2s ease-out',
+      },
     },
   },
   plugins: [],

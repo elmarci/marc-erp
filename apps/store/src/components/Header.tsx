@@ -1,11 +1,13 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { ShoppingCart, Search, Package, User, LogOut, Tag, ChevronDown } from 'lucide-react'
+import { ShoppingCart, Search, Package, User, LogOut, Tag, ChevronDown, Menu } from 'lucide-react'
 import { useCartStore, cartCount } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
 import { AuthModal } from './AuthModal'
+import { CategoryDrawer } from './CategoryDrawer'
+import { CategoryMegaMenu } from './CategoryMegaMenu'
 
 export function Header() {
   const items = useCartStore(s => s.items)
@@ -15,6 +17,7 @@ export function Header() {
   const [search, setSearch] = useState('')
   const [showAuth, setShowAuth] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const [showDrawer, setShowDrawer] = useState(false)
   const navigate = useNavigate()
 
   const { data: offersData } = useQuery({
@@ -30,12 +33,21 @@ export function Header() {
   return (
     <>
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center gap-4">
+        <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-3 sm:gap-4">
+
+          {/* Hamburguesa — solo mobile, en desktop ya está el dropdown de Categorías */}
+          <button onClick={() => setShowDrawer(true)} aria-label="Abrir menú de categorías"
+            className="md:hidden flex items-center justify-center h-9 w-9 shrink-0 rounded-full text-gray-500 hover:bg-gray-100 hover:text-brand-blue-600 transition-colors">
+            <Menu className="h-5 w-5" />
+          </button>
 
           {/* Logo */}
           <Link to="/" className="flex items-center shrink-0">
             <img src="/logo.png" alt="Minimarket Marc" className="h-8 sm:h-9 w-auto" />
           </Link>
+
+          {/* Categorías — dropdown, reemplaza la barra sólida anterior */}
+          <CategoryMegaMenu />
 
           {/* Search */}
           <form onSubmit={handleSearch} className="flex-1 max-w-xl">
@@ -106,6 +118,7 @@ export function Header() {
         </div>
       </header>
 
+      {showDrawer && <CategoryDrawer onClose={() => setShowDrawer(false)} />}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
     </>
   )
