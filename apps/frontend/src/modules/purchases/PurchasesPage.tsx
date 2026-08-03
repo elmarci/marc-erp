@@ -1370,15 +1370,17 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
   );
 }
 
-/* ─── Corregir producto de una línea recibida ────────────────────────────── */
+/* ─── Corregir una línea recibida (producto, costo y/o bonificación) ─────── */
 function CorrectItemModal({ order, item, onClose, onCorrected }: {
   order: { id: string; orderNumber: string };
-  item: { productId: string; name: string };
+  item: { productId: string; name: string; unitCost: number; isBonus: boolean };
   onClose: () => void; onCorrected: () => void;
 }) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [toProduct, setToProduct] = useState<{ id: string; name: string } | null>(null);
+  const [unitCost, setUnitCost] = useState(String(item.unitCost));
+  const [isBonus, setIsBonus] = useState(item.isBonus);
   const [reason, setReason] = useState('');
   const queryClient = useQueryClient();
 
@@ -1388,15 +1390,24 @@ function CorrectItemModal({ order, item, onClose, onCorrected }: {
     enabled: debouncedSearch.length >= 2,
   });
 
+  const unitCostNum = parseFloat(unitCost) || 0;
+  const costChanged = !isBonus && unitCostNum !== item.unitCost;
+  const bonusChanged = isBonus !== item.isBonus;
+  const hasChanges = !!toProduct || costChanged || bonusChanged;
+
   const mutation = useMutation({
     mutationFn: () => api.post(`/purchases/${order.id}/correct-item`, {
-      fromProductId: item.productId, toProductId: toProduct!.id, reason,
+      productId: item.productId,
+      ...(toProduct ? { toProductId: toProduct.id } : {}),
+      ...(costChanged ? { unitCost: unitCostNum } : {}),
+      ...(bonusChanged ? { isBonus } : {}),
+      reason,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(`Corregido — ahora es "${toProduct!.name}".`);
+      toast.success('Línea corregida.');
       onCorrected();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -1407,17 +1418,17 @@ function CorrectItemModal({ order, item, onClose, onCorrected }: {
       <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between border-b p-5">
           <div>
-            <h2 className="text-lg font-bold">Corregir producto</h2>
+            <h2 className="text-lg font-bold">Corregir línea</h2>
             <p className="text-xs text-muted-foreground mt-0.5">{order.orderNumber} · Registrado como: {item.name}</p>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
-        <div className="overflow-y-auto p-5 space-y-3">
+        <div className="overflow-y-auto p-5 space-y-4">
           <p className="text-sm text-muted-foreground">
-            El stock y costo que se cargaron a "{item.name}" se revierten, y se le aplican en su lugar al producto correcto que elijas abajo.
+            El stock, costo y lo que se le debe al proveedor se recalculan automáticamente con los valores que corrijas abajo.
           </p>
           <div>
-            <label className="mb-1 block text-sm font-medium">Producto correcto</label>
+            <label className="mb-1 block text-sm font-medium">Cambiar producto (opcional)</label>
             {toProduct ? (
               <div className="flex items-center justify-between rounded-lg border p-2.5 text-sm">
                 <span className="font-medium">{toProduct.name}</span>
@@ -1427,7 +1438,7 @@ function CorrectItemModal({ order, item, onClose, onCorrected }: {
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input className="pl-9" placeholder="Buscar el producto correcto..." value={search}
-                  onChange={e => setSearch(e.target.value)} autoFocus />
+                  onChange={e => setSearch(e.target.value)} />
                 {results && results.length > 0 && search.length >= 2 && (
                   <div className="absolute z-10 w-full border rounded-lg mt-1 divide-y max-h-40 overflow-y-auto bg-popover shadow-lg">
                     {results.filter(p => p.id !== item.productId).map(p => (
@@ -1439,14 +1450,25 @@ function CorrectItemModal({ order, item, onClose, onCorrected }: {
               </div>
             )}
           </div>
+          <div className="flex items-center gap-3 rounded-lg border p-3">
+            <input type="checkbox" id="correctIsBonus" checked={isBonus}
+              onChange={e => setIsBonus(e.target.checked)} className="h-4 w-4 rounded border-input" />
+            <label htmlFor="correctIsBonus" className="text-sm font-medium cursor-pointer">Es bonificación del proveedor (costo S/ 0.00)</label>
+          </div>
+          {!isBonus && (
+            <div>
+              <label className="mb-1 block text-sm font-medium">Costo unitario</label>
+              <Input type="number" min={0} step={0.01} value={unitCost} onChange={e => setUnitCost(e.target.value)} />
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-sm font-medium">Motivo</label>
-            <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: se recibió mal, era el otro producto" />
+            <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: se recibió mal, era bonificación del proveedor" autoFocus />
           </div>
         </div>
         <div className="border-t p-5 flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!toProduct || reason.trim().length < 3}>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!hasChanges || reason.trim().length < 3}>
             Confirmar corrección
           </Button>
         </div>
@@ -1460,7 +1482,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
   const [expanded, setExpanded] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
   const [showPay, setShowPay] = useState(false);
-  const [correctingItem, setCorrectingItem] = useState<{ productId: string; name: string } | null>(null);
+  const [correctingItem, setCorrectingItem] = useState<{ productId: string; name: string; unitCost: number; isBonus: boolean } | null>(null);
   const queryClient = useQueryClient();
 
   const { data: detail } = useQuery({
@@ -1606,9 +1628,12 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                         <td className="py-1.5 text-right">
                           {item.receivedQty > 0 && (
                             <button
-                              title="Corregir producto de esta línea (se recibió mal)"
+                              title="Corregir esta línea (producto, costo o bonificación)"
                               className="text-muted-foreground hover:text-primary"
-                              onClick={() => setCorrectingItem({ productId: item.product.id, name: item.product.name })}
+                              onClick={() => setCorrectingItem({
+                                productId: item.product.id, name: item.product.name,
+                                unitCost: Number(item.unitCost), isBonus: item.isBonus,
+                              })}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>

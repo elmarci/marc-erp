@@ -376,18 +376,31 @@ export class PurchasesService {
    * bonificación puede ser de un producto que nunca estuvo en la orden
    * original (ej. compras atún y te regalan mermelada), así que no siempre
    * hay una línea previa que incrementar.
+   *
+   * Si la línea ya existía (venía de la orden original), también hay que
+   * actualizar su costo/bonificación/subtotal a lo que realmente se recibió
+   * — antes solo se incrementaba receivedQty, así que si el almacenero
+   * marcaba "es bonificación" al recibir, esa corrección se perdía y la
+   * orden seguía cobrando el costo original cotizado (lo que le debía
+   * quedar al proveedor terminaba mal calculado).
    */
   private async upsertOrderItemReceipt(
     tx: Prisma.TransactionClient,
     orderId: string,
-    existingItems: Array<{ id: string; productId: string }>,
+    existingItems: Array<{ id: string; productId: string; receivedQty: Prisma.Decimal | number }>,
     item: { productId: string; receivedQty: number; unitCost: number; isBonus: boolean },
   ) {
     const existing = existingItems.find(oi => oi.productId === item.productId);
     if (existing) {
+      const newReceivedQty = Number(existing.receivedQty) + item.receivedQty;
       await tx.purchaseOrderItem.update({
         where: { id: existing.id },
-        data: { receivedQty: { increment: item.receivedQty } },
+        data: {
+          receivedQty: newReceivedQty,
+          unitCost: item.isBonus ? 0 : item.unitCost,
+          isBonus: item.isBonus,
+          subtotal: item.isBonus ? 0 : newReceivedQty * item.unitCost,
+        },
       });
     } else {
       await tx.purchaseOrderItem.create({
@@ -402,6 +415,31 @@ export class PurchasesService {
         },
       });
     }
+  }
+
+  /**
+   * Recalcula subtotal/IGV/total de la orden a partir de sus líneas — se usa
+   * después de recibir mercadería o de corregir una línea, para que "cuánto
+   * se le debe al proveedor" siempre refleje lo realmente recibido (costo y
+   * bonificación reales), no solo lo cotizado en la orden original.
+   */
+  private async recalcOrderTotals(tx: Prisma.TransactionClient, orderId: string) {
+    const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
+    const items = await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId: orderId } });
+
+    const newSubtotal = items.reduce((s, i) => s + Number(i.subtotal), 0);
+    const oldSubtotal = Number(order.subtotal);
+    const taxRatio = oldSubtotal > 0 ? Number(order.taxAmount) / oldSubtotal : 0;
+    const newTaxAmount = Math.round(newSubtotal * taxRatio * 100) / 100;
+    const newTotalAmount = Math.round((newSubtotal + newTaxAmount) * 100) / 100;
+
+    const paidAmount = Number(order.paidAmount);
+    const newPaymentStatus = paidAmount <= 0 ? 'CREDIT' : paidAmount >= newTotalAmount - 0.009 ? 'PAID' : 'PARTIAL';
+
+    await tx.purchaseOrder.update({
+      where: { id: orderId },
+      data: { subtotal: newSubtotal, taxAmount: newTaxAmount, totalAmount: newTotalAmount, paymentStatus: newPaymentStatus },
+    });
   }
 
   async receiveOrder(
@@ -462,6 +500,12 @@ export class PurchasesService {
         });
       }
 
+      // El total de la orden se recalcula desde las líneas ya actualizadas —
+      // así, si al recibir se marcó algo como bonificación o con otro costo,
+      // "cuánto se le debe al proveedor" queda reflejando la realidad y no
+      // lo originalmente cotizado.
+      await this.recalcOrderTotals(tx, orderId);
+
       const updatedItems = await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId: orderId } });
       const allReceived = updatedItems.every(i => Number(i.receivedQty) >= Number(i.orderedQty));
       const anyReceived = updatedItems.some(i => Number(i.receivedQty) > 0);
@@ -480,8 +524,9 @@ export class PurchasesService {
             `La suma de las formas de pago (S/ ${legsSum.toFixed(2)}) no coincide con el total a pagar (S/ ${receiptTotal.toFixed(2)}).`,
           );
         }
+        const freshOrder = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
         await this.applyPurchasePaymentLegs(
-          tx, orderId, Number(order.totalAmount), legs, userId,
+          tx, orderId, Number(freshOrder.totalAmount), legs, userId,
           `Pago de compra: OC ${order.orderNumber} — ${order.supplier.businessName}`,
         );
       }
@@ -807,35 +852,56 @@ export class PurchasesService {
   }
 
   /**
-   * Corrige una recepción donde se eligió el producto equivocado (ej. se
-   * recibió "Mayonesa 8g" cuando en realidad era "Mayonesa 50g"), sin
-   * necesidad de anular toda la orden ni las demás líneas correctas.
-   * Revierte el stock/costo del producto equivocado (misma matemática que
-   * anular, pero solo para esa línea) y aplica la misma cantidad/costo al
-   * producto correcto.
+   * Corrige una línea ya recibida: el producto, el costo unitario y/o si es
+   * bonificación — sin necesidad de anular toda la orden ni tocar las demás
+   * líneas correctas. Cubre casos como "se recibió mal el producto" (ej.
+   * "Mayonesa 8g" cuando era "Mayonesa 50g") y también "se marcó con costo
+   * cuando en realidad era una bonificación del proveedor" (o viceversa).
+   *
+   * Revierte el stock/costo de la línea tal como estaba (misma matemática
+   * que anular, pero solo para esta línea) y vuelve a aplicarlo con los
+   * valores corregidos. También recalcula el total de la orden — si el
+   * costo o la bonificación cambia, lo que se le debe al proveedor cambia
+   * con eso.
    */
-  async correctReceivedProduct(orderId: string, userId: string, fromProductId: string, toProductId: string, reason: string) {
+  async correctReceivedLine(
+    orderId: string,
+    userId: string,
+    productId: string,
+    reason: string,
+    changes: { toProductId?: string; unitCost?: number; isBonus?: boolean },
+  ) {
     const order = await prisma.purchaseOrder.findUnique({
       where: { id: orderId },
       include: { supplier: { select: { businessName: true } } },
     });
     if (!order) throw new NotFoundError('Orden de compra');
     if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
-    if (fromProductId === toProductId) throw new BusinessError('Selecciona un producto distinto al que ya está registrado.');
+
+    const toProductId = changes.toProductId ?? productId;
+
+    const orderItem = await prisma.purchaseOrderItem.findFirst({
+      where: { purchaseOrderId: orderId, productId },
+    });
+    if (!orderItem) throw new BusinessError('Esta orden no tiene ninguna línea de ese producto.');
+
+    const newUnitCost = changes.unitCost ?? Number(orderItem.unitCost);
+    const newIsBonus = changes.isBonus ?? orderItem.isBonus;
+    if (toProductId === productId && newUnitCost === Number(orderItem.unitCost) && newIsBonus === orderItem.isBonus) {
+      throw new BusinessError('No hay ningún cambio que aplicar — elige otro producto, costo o marca de bonificación.');
+    }
 
     const toProduct = await prisma.product.findUnique({ where: { id: toProductId } });
     if (!toProduct) throw new NotFoundError('Producto correcto');
 
-    const orderItem = await prisma.purchaseOrderItem.findFirst({
-      where: { purchaseOrderId: orderId, productId: fromProductId },
-    });
-    if (!orderItem) throw new BusinessError('Esta orden no tiene ninguna línea de ese producto.');
+    const fromProduct = await prisma.product.findUnique({ where: { id: productId } });
+    if (!fromProduct) throw new NotFoundError(`Producto ${productId}`);
 
     // Más nuevo primero — si hubiera más de una recepción de este producto en
     // esta orden, cada una se revierte contra el costo que tenía justo antes
     // de ella (igual criterio que anular compra).
     const movements = await prisma.inventoryMovement.findMany({
-      where: { referenceType: 'PURCHASE', referenceId: orderId, productId: fromProductId, type: 'PURCHASE_IN' },
+      where: { referenceType: 'PURCHASE', referenceId: orderId, productId, type: 'PURCHASE_IN' },
       orderBy: { createdAt: 'desc' },
     });
     if (movements.length === 0) throw new BusinessError('Esta orden no tiene mercadería recibida de ese producto.');
@@ -846,7 +912,7 @@ export class PurchasesService {
     // adivinar.
     const laterMovements = await prisma.inventoryMovement.findMany({
       where: {
-        productId: fromProductId,
+        productId,
         type: { in: ['PURCHASE_IN', 'PURCHASE_VOID', 'ADJUSTMENT_IN', 'ADJUSTMENT_OUT'] },
         createdAt: { gt: movements[0].createdAt },
       },
@@ -856,16 +922,21 @@ export class PurchasesService {
     }
 
     const totalQty = movements.reduce((s, m) => s + Number(m.quantity), 0);
-    const fromProduct = await prisma.product.findUnique({ where: { id: fromProductId } });
-    if (!fromProduct || Number(fromProduct.currentStock) < totalQty) {
+    if (Number(fromProduct.currentStock) < totalQty) {
       throw new BusinessError(
-        `No se puede corregir: el stock actual de "${fromProduct?.name ?? fromProductId}" (${fromProduct ? Number(fromProduct.currentStock) : 0}) es menor a la cantidad de esta compra (${totalQty}) — probablemente ya se vendió de más sin contar con esta corrección.`,
+        `No se puede corregir: el stock actual de "${fromProduct.name}" (${Number(fromProduct.currentStock)}) es menor a la cantidad de esta compra (${totalQty}) — probablemente ya se vendió de más sin contar con esta corrección.`,
       );
     }
 
+    const changeNotes: string[] = [];
+    if (toProductId !== productId) changeNotes.push(`producto → "${toProduct.name}"`);
+    if (newUnitCost !== Number(orderItem.unitCost)) changeNotes.push(`costo unit. → S/ ${newUnitCost.toFixed(2)}`);
+    if (newIsBonus !== orderItem.isBonus) changeNotes.push(newIsBonus ? 'ahora es bonificación' : 'ya no es bonificación');
+    const changeSummary = changeNotes.join(', ');
+
     await prisma.$transaction(async (tx) => {
       for (const m of movements) {
-        const product = await tx.product.findUnique({ where: { id: fromProductId } });
+        const product = await tx.product.findUnique({ where: { id: productId } });
         if (!product) continue;
 
         const stockBefore = Number(product.currentStock);
@@ -873,13 +944,13 @@ export class PurchasesService {
         const avgCostAfter = m.avgCostBefore != null ? Number(m.avgCostBefore) : Number(product.costPrice);
 
         await tx.product.update({
-          where: { id: fromProductId },
+          where: { id: productId },
           data: { currentStock: stockAfter, costPrice: avgCostAfter },
         });
 
         await tx.inventoryMovement.create({
           data: {
-            productId: fromProductId,
+            productId,
             type: 'PURCHASE_VOID',
             quantity: -Number(m.quantity),
             quantityBefore: stockBefore,
@@ -890,26 +961,42 @@ export class PurchasesService {
             referenceType: 'PURCHASE',
             referenceId: orderId,
             userId,
-            notes: `Corrección de producto OC ${order.orderNumber} — ${reason} (pasó a "${toProduct.name}")`,
+            notes: `Corrección de línea OC ${order.orderNumber} — ${reason} (${changeSummary})`,
           },
         });
 
         await this.applyPurchaseLine(tx, {
-          productId: toProductId, quantity: Number(m.quantity), unitCost: Number(m.unitCost), isBonus: orderItem.isBonus,
+          productId: toProductId, quantity: Number(m.quantity), unitCost: newUnitCost, isBonus: newIsBonus,
         }, {
           userId, supplierId: order.supplierId, referenceId: orderId,
-          notes: `Corrección de producto OC ${order.orderNumber} — ${reason} (era "${fromProduct.name}")`,
+          notes: `Corrección de línea OC ${order.orderNumber} — ${reason} (${changeSummary})`,
         });
       }
 
-      await tx.purchaseOrderItem.updateMany({
-        where: { purchaseOrderId: orderId, productId: fromProductId },
-        data: { productId: toProductId },
+      const newSubtotal = newIsBonus ? 0 : Number(orderItem.receivedQty) * newUnitCost;
+
+      await tx.purchaseOrderItem.update({
+        where: { id: orderItem.id },
+        data: {
+          productId: toProductId,
+          unitCost: newIsBonus ? 0 : newUnitCost,
+          isBonus: newIsBonus,
+          subtotal: newSubtotal,
+        },
       });
       await tx.purchaseReceiptItem.updateMany({
-        where: { receipt: { purchaseOrderId: orderId }, productId: fromProductId },
-        data: { productId: toProductId },
+        where: { receipt: { purchaseOrderId: orderId }, productId },
+        data: {
+          productId: toProductId,
+          unitCost: newIsBonus ? 0 : newUnitCost,
+          isBonus: newIsBonus,
+        },
       });
+
+      // Lo que se le debe al proveedor por esta orden depende de sus líneas
+      // — si esta corrección cambió el costo o la bonificación, el total
+      // adeudado también debe cambiar.
+      await this.recalcOrderTotals(tx, orderId);
     });
 
     emitEvent('erp:cash-updated');

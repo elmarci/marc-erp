@@ -231,16 +231,20 @@ router.post('/:id/revert-payment', authorizeMinRole('SUPERVISOR'), async (req: R
   } catch (err) { next(err); }
 });
 
-// Corrige una línea recibida con el producto equivocado, sin anular el
-// resto de la orden.
+// Corrige una línea ya recibida: producto, costo unitario y/o bonificación,
+// sin anular el resto de la orden.
 router.post('/:id/correct-item', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { fromProductId, toProductId, reason } = z.object({
-      fromProductId: z.string().uuid(),
-      toProductId: z.string().uuid(),
+    const { productId, toProductId, unitCost, isBonus, reason } = z.object({
+      productId: z.string().uuid(),
+      toProductId: z.string().uuid().optional(),
+      unitCost: z.coerce.number().min(0).optional(),
+      isBonus: z.boolean().optional(),
       reason: z.string().min(3, 'Indica el motivo de la corrección.'),
+    }).refine((v) => v.toProductId !== undefined || v.unitCost !== undefined || v.isBonus !== undefined, {
+      message: 'Cambia al menos el producto, el costo unitario o si es bonificación.',
     }).parse(req.body);
-    const order = await purchasesService.correctReceivedProduct(req.params.id, req.user!.sub, fromProductId, toProductId, reason);
+    const order = await purchasesService.correctReceivedLine(req.params.id, req.user!.sub, productId, reason, { toProductId, unitCost, isBonus });
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });
