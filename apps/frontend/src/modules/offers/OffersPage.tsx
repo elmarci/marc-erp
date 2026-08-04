@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Tag, Eye, EyeOff, Trash2, TrendingUp, ShoppingCart, DollarSign } from 'lucide-react'
+import { Plus, X, Tag, Eye, EyeOff, Trash2, TrendingUp, ShoppingCart, DollarSign, Image, Video, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +16,7 @@ interface Offer {
   buyQuantity: number | null; getQuantity: number | null
   startTime: string | null; endTime: string | null; daysOfWeek: number[]
   startDate: string; endDate: string | null; isActive: boolean; showInStore: boolean
-  storeBadge: string | null; storeImage: string | null; priority: number
+  storeBadge: string | null; storeImage: string | null; storeVideo: string | null; priority: number
   products: Array<{ quantity?: number; product: { id: string; name: string; imageUrl: string | null; salePrice?: number } }>
 }
 
@@ -49,6 +49,7 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     showInStore: offer?.showInStore ?? true,
     storeBadge: offer?.storeBadge ?? '',
     storeImage: offer?.storeImage ?? '',
+    storeVideo: offer?.storeVideo ?? '',
     priority: String(offer?.priority ?? 0),
     productIds: offer?.type !== 'COMBO' ? (offer?.products.map(p => p.product.id) ?? []) : [],
     comboItems: offer?.type === 'COMBO'
@@ -57,6 +58,32 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
   })
   const [productSearch, setProductSearch] = useState('')
   const debouncedProductSearch = useDebouncedValue(productSearch, 300)
+  const bannerImageInputRef = useRef<HTMLInputElement>(null)
+  const bannerVideoInputRef = useRef<HTMLInputElement>(null)
+
+  const bannerImageMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData()
+      body.append('image', file)
+      return api.post<{ data: { imageUrl: string } }>('/products/upload-image', body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    },
+    onSuccess: (res) => setForm(v => ({ ...v, storeImage: res.data.data.imageUrl })),
+    onError: (err) => toast.error(getErrorMessage(err)),
+  })
+
+  const bannerVideoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData()
+      body.append('video', file)
+      return api.post<{ data: { videoUrl: string } }>('/settings/upload-video', body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    },
+    onSuccess: (res) => setForm(v => ({ ...v, storeVideo: res.data.data.videoUrl })),
+    onError: (err) => toast.error(getErrorMessage(err)),
+  })
 
   const { data: products } = useQuery({
     queryKey: ['products-offer-search', debouncedProductSearch],
@@ -262,6 +289,62 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
               <span className="text-sm">Mostrar en tienda online</span>
             </label>
           </div>
+
+          {form.showInStore && (
+            <div className="space-y-3 rounded-lg border p-3">
+              <p className="text-sm font-medium">Banner del carrusel de ofertas</p>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Si subes un video, se reproduce en el carrusel en lugar de la imagen (más llamativo). La imagen
+                queda como respaldo si el navegador no puede reproducir el video.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Imagen</label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-16 w-24 items-center justify-center rounded-lg border border-dashed bg-muted overflow-hidden shrink-0">
+                      {form.storeImage ? (
+                        <img src={form.storeImage} alt="Banner" className="h-full w-full object-cover" />
+                      ) : (
+                        <Image className="h-5 w-5 text-muted-foreground/40" />
+                      )}
+                    </div>
+                    <input ref={bannerImageInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) bannerImageMutation.mutate(f); e.target.value = '' }} />
+                    <Button type="button" variant="outline" size="sm" loading={bannerImageMutation.isPending}
+                      onClick={() => bannerImageInputRef.current?.click()}>
+                      <Upload className="mr-1.5 h-3.5 w-3.5" />{form.storeImage ? 'Cambiar' : 'Subir'}
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Video (opcional)</label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-16 w-24 items-center justify-center rounded-lg border border-dashed bg-muted overflow-hidden shrink-0">
+                      {form.storeVideo ? (
+                        <video src={form.storeVideo} className="h-full w-full object-cover" muted loop autoPlay playsInline />
+                      ) : (
+                        <Video className="h-5 w-5 text-muted-foreground/40" />
+                      )}
+                    </div>
+                    <input ref={bannerVideoInputRef} type="file" accept="video/mp4,video/webm" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) bannerVideoMutation.mutate(f); e.target.value = '' }} />
+                    <div className="flex flex-col gap-1">
+                      <Button type="button" variant="outline" size="sm" loading={bannerVideoMutation.isPending}
+                        onClick={() => bannerVideoInputRef.current?.click()}>
+                        <Upload className="mr-1.5 h-3.5 w-3.5" />{form.storeVideo ? 'Cambiar' : 'Subir'}
+                      </Button>
+                      {form.storeVideo && (
+                        <button type="button" className="text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => setForm(v => ({ ...v, storeVideo: '' }))}>
+                          Quitar video
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Products */}
           {isCombo ? (

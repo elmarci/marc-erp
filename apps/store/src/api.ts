@@ -50,6 +50,7 @@ export interface Offer {
   getQuantity: number | null   // para BUY_X_GET_Y
   storeBadge: string | null
   storeImage: string | null
+  storeVideo: string | null
   endDate: string | null
   products: Array<{
     product: { id: string; name: string; salePrice: number; imageUrl: string | null }
@@ -116,6 +117,9 @@ export const storeApi = {
 
   getOffers: () =>
     api.get<{ data: Offer[] }>('/store/offers'),
+
+  getDisplaySettings: () =>
+    api.get<{ data: { heroVideoUrl: string | null; heroPosterUrl: string | null } }>('/store/display-settings'),
 
   createOrder: (data: {
     customerName: string; customerPhone: string; customerEmail?: string;

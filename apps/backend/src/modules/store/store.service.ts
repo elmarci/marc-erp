@@ -6,6 +6,15 @@ import { getSettingValues } from '../../utils/settings';
 
 export class StoreService {
 
+  /* ── Configuración de portada (hero) ──────────────────────────────────── */
+  async getDisplaySettings() {
+    const values = await getSettingValues(['store_hero_video_url', 'store_hero_poster_url']);
+    return {
+      heroVideoUrl: values['store_hero_video_url'] || null,
+      heroPosterUrl: values['store_hero_poster_url'] || null,
+    };
+  }
+
   /* ── Catálogo público ─────────────────────────────────────────────────── */
   async getProducts(filters: {
     search?: string; categoryId?: string; excludeId?: string; page: number; limit: number;

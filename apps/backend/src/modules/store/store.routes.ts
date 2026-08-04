@@ -8,6 +8,13 @@ const router = Router();
 
 // ── Rutas públicas (sin auth) ──────────────────────────────────────────────
 
+router.get('/display-settings', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await storeService.getDisplaySettings();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 router.get('/products', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { search, categoryId, excludeId, page, limit } = z.object({

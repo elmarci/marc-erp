@@ -27,6 +27,7 @@ const promoSchema = z.object({
   showInStore: z.boolean().default(false),
   storeBadge: z.string().optional(),
   storeImage: z.string().url().optional().or(z.literal('')),
+  storeVideo: z.string().url().optional().or(z.literal('')),
   priority: z.coerce.number().default(0),
   productIds: z.array(z.string().uuid()).optional(),
   // Solo type=COMBO — productos distintos que componen el combo, cada uno

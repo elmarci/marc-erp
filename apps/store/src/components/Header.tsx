@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ShoppingCart, Search, Package, User, LogOut, Tag, ChevronDown, Menu } from 'lucide-react'
 import { useCartStore, cartCount } from '../cartStore'
 import { useAuthStore } from '../authStore'
@@ -104,16 +105,24 @@ export function Header() {
               <Package className="h-5 w-5" />
             </Link>
 
-            <button onClick={openCart}
+            <motion.button onClick={openCart} whileTap={{ scale: 0.94 }}
               className="relative flex items-center gap-2 bg-brand-blue-600 hover:bg-brand-blue-700 text-white font-bold rounded-full px-4 py-2 text-sm transition-colors">
               <ShoppingCart className="h-4 w-4" />
               <span className="hidden sm:inline">Carrito</span>
-              {count > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-brand-green-500 text-white text-xs font-bold rounded-full flex items-center justify-center border-2 border-white">
-                  {count}
-                </span>
-              )}
-            </button>
+              <AnimatePresence>
+                {count > 0 && (
+                  <motion.span
+                    key={count}
+                    initial={{ scale: 0.4, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.4, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+                    className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-brand-green-500 text-white text-xs font-bold rounded-full flex items-center justify-center border-2 border-white">
+                    {count}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
           </div>
         </div>
       </header>

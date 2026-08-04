@@ -15,6 +15,7 @@ const router = Router();
 router.use(authenticate);
 
 const LOGO_DIR = path.join(process.cwd(), 'uploads', 'logo');
+const VIDEO_DIR = path.join(process.cwd(), 'uploads', 'videos');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -22,6 +23,21 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     if (!/^image\/(png|jpe?g|webp)$/.test(file.mimetype)) {
       cb(new ValidationError('El logo debe ser una imagen PNG, JPG o WEBP.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+// Sin transcodificación (no hay ffmpeg instalado) — se acepta el archivo tal
+// cual, por eso el límite de tamaño es más chico: un video de portada corto
+// (5-15s) en mp4/webm ya comprimido normalmente pesa bien por debajo de esto.
+const uploadVideo = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!/^video\/(mp4|webm)$/.test(file.mimetype)) {
+      cb(new ValidationError('El video debe ser formato MP4 o WEBM.'));
       return;
     }
     cb(null, true);
@@ -122,6 +138,24 @@ router.delete('/logo', authorizeMinRole('ADMIN'), async (_req: Request, res: Res
     await redis.del('settings:*');
 
     res.json({ success: true, data: setting });
+  } catch (err) { next(err); }
+});
+
+// Video corto para portada (hero) o banners de oferta — no está atado a
+// ninguna configuración en particular, solo sube el archivo y devuelve la
+// URL; quien llama decide dónde usarla (setting de hero, campo de una oferta).
+router.post('/upload-video', authorizeMinRole('ADMIN'), uploadVideo.single('video'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) throw new ValidationError('No se recibió ningún video.');
+
+    await fs.mkdir(VIDEO_DIR, { recursive: true });
+
+    const ext = req.file.mimetype === 'video/webm' ? 'webm' : 'mp4';
+    const filename = `${uuidv4()}.${ext}`;
+    await fs.writeFile(path.join(VIDEO_DIR, filename), req.file.buffer);
+
+    const videoUrl = `${req.protocol}://${req.get('host')}/uploads/videos/${filename}`;
+    res.json({ success: true, data: { videoUrl } });
   } catch (err) { next(err); }
 });
 

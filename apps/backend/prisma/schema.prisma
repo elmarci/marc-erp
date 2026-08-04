@@ -1104,6 +1104,7 @@ model Promotion {
   priority    Int           @default(0)
   showInStore Boolean       @default(false) @map("show_in_store")
   storeImage  String?       @map("store_image")
+  storeVideo  String?       @map("store_video")
   storeBadge  String?       @map("store_badge")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")

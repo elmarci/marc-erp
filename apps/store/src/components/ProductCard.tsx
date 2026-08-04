@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ShoppingCart, ShoppingBag, Plus, Minus, Scale, X } from 'lucide-react'
 import { useCartStore } from '../cartStore'
 import type { Product } from '../api'
@@ -43,9 +44,12 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4"
+    <motion.div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       onClick={onClose}>
-      <div className="w-full max-w-sm bg-white border border-gray-200 rounded-2xl shadow-2xl slide-up"
+      <motion.div className="w-full max-w-sm bg-white border border-gray-200 rounded-2xl shadow-2xl"
+        initial={{ y: 40, opacity: 0, scale: 0.96 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 24, opacity: 0, scale: 0.97 }}
+        transition={{ type: 'spring', stiffness: 340, damping: 28 }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
@@ -99,8 +103,8 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
@@ -132,9 +136,12 @@ export function ProductCard({ product }: { product: Product }) {
 
   return (
     <>
-      <div onClick={goToProduct}
-        className={`group relative bg-white border rounded-2xl overflow-hidden transition-all duration-200 select-none cursor-pointer
-          ${outOfStock ? 'opacity-60 border-gray-100' : 'border-gray-200 hover:border-brand-blue-300 hover:shadow-lg hover:-translate-y-1'}`}>
+      <motion.div onClick={goToProduct}
+        whileHover={outOfStock ? undefined : { y: -6 }}
+        whileTap={outOfStock ? undefined : { scale: 0.98 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 24 }}
+        className={`group relative bg-white border rounded-2xl overflow-hidden select-none cursor-pointer
+          ${outOfStock ? 'opacity-60 border-gray-100' : 'border-gray-200 hover:border-brand-blue-300 hover:shadow-lg'}`}>
 
         {/* Imagen */}
         <div className="relative aspect-square overflow-hidden bg-gray-50">
@@ -151,7 +158,7 @@ export function ProductCard({ product }: { product: Product }) {
             </div>
           )}
           {lowStock && !product.isBulk && (
-            <span className="absolute top-2 left-2 bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+            <span className="absolute top-2 left-2 bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
               Últimas {product.currentStock}
             </span>
           )}
@@ -160,11 +167,16 @@ export function ProductCard({ product }: { product: Product }) {
               <span className="bg-gray-900/80 text-white text-sm font-bold px-3 py-1.5 rounded-full">Agotado</span>
             </div>
           )}
-          {qty > 0 && (
-            <div className="absolute top-2 right-2 h-6 w-6 bg-brand-blue-600 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg">
-              {qty}
-            </div>
-          )}
+          <AnimatePresence>
+            {qty > 0 && (
+              <motion.div
+                initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+                className="absolute top-2 right-2 h-6 w-6 bg-brand-blue-600 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg">
+                {qty}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Info */}
@@ -198,9 +210,11 @@ export function ProductCard({ product }: { product: Product }) {
             )}
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      {showBulk && <BulkModal product={product} onClose={() => setShowBulk(false)} />}
+      <AnimatePresence>
+        {showBulk && <BulkModal product={product} onClose={() => setShowBulk(false)} />}
+      </AnimatePresence>
     </>
   )
 }
