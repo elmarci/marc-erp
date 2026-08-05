@@ -55,6 +55,65 @@ export interface ListSalesQuery {
   dateFrom?: Date;
   dateTo?: Date;
   status?: string;
+  search?: string;
+  paymentMethod?: PaymentMethod;
+  documentType?: DocumentType;
+  isCredit?: boolean;
+  minTotal?: number;
+  maxTotal?: number;
+  sortBy?: 'createdAt' | 'totalAmount' | 'saleNumber';
+  sortOrder?: 'asc' | 'desc';
+}
+
+function buildSalesOrderBy(sortBy?: ListSalesQuery['sortBy'], sortOrder?: ListSalesQuery['sortOrder']): Prisma.SaleOrderByWithRelationInput {
+  const order = sortOrder ?? 'desc';
+  if (sortBy === 'totalAmount') return { totalAmount: order };
+  if (sortBy === 'saleNumber') return { saleNumber: order };
+  return { createdAt: order };
+}
+
+function buildSalesWhere(query: Omit<ListSalesQuery, 'page' | 'limit' | 'sortBy' | 'sortOrder'>): Prisma.SaleWhereInput {
+  const { cashSessionId, cashierId, customerId, dateFrom, dateTo, status, search, paymentMethod, documentType, isCredit, minTotal, maxTotal } = query;
+
+  return {
+    ...(cashSessionId ? { cashSessionId } : {}),
+    ...(cashierId ? { cashierId } : {}),
+    ...(customerId ? { customerId } : {}),
+    ...(status ? { status: status as never } : {}),
+    ...(documentType ? { documentType } : {}),
+    ...(isCredit !== undefined ? { isCredit } : {}),
+    ...(paymentMethod ? { payments: { some: { method: paymentMethod } } } : {}),
+    ...(dateFrom || dateTo
+      ? {
+          createdAt: {
+            ...(dateFrom ? { gte: dateFrom } : {}),
+            ...(dateTo ? { lte: dateTo } : {}),
+          },
+        }
+      : {}),
+    ...((minTotal !== undefined || maxTotal !== undefined)
+      ? {
+          totalAmount: {
+            ...(minTotal !== undefined ? { gte: minTotal } : {}),
+            ...(maxTotal !== undefined ? { lte: maxTotal } : {}),
+          },
+        }
+      : {}),
+    ...(search
+      ? {
+          OR: [
+            { saleNumber: { contains: search, mode: 'insensitive' } },
+            { documentNumber: { contains: search, mode: 'insensitive' } },
+            { customer: { firstName: { contains: search, mode: 'insensitive' } } },
+            { customer: { lastName: { contains: search, mode: 'insensitive' } } },
+            { customer: { businessName: { contains: search, mode: 'insensitive' } } },
+            { customer: { taxId: { contains: search, mode: 'insensitive' } } },
+            { cashier: { firstName: { contains: search, mode: 'insensitive' } } },
+            { cashier: { lastName: { contains: search, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
+  };
 }
 
 export class SalesService {
@@ -386,34 +445,20 @@ export class SalesService {
   }
 
   async list(query: ListSalesQuery) {
-    const { page, limit, cashSessionId, cashierId, customerId, dateFrom, dateTo, status } = query;
+    const { page, limit, sortBy, sortOrder } = query;
     const skip = (page - 1) * limit;
-
-    const where: Prisma.SaleWhereInput = {
-      ...(cashSessionId ? { cashSessionId } : {}),
-      ...(cashierId ? { cashierId } : {}),
-      ...(customerId ? { customerId } : {}),
-      ...(status ? { status: status as never } : {}),
-      ...(dateFrom || dateTo
-        ? {
-            createdAt: {
-              ...(dateFrom ? { gte: dateFrom } : {}),
-              ...(dateTo ? { lte: dateTo } : {}),
-            },
-          }
-        : {}),
-    };
+    const where = buildSalesWhere(query);
 
     const [sales, total] = await prisma.$transaction([
       prisma.sale.findMany({
         where,
         include: {
           cashier: { select: { firstName: true, lastName: true } },
-          customer: { select: { firstName: true, lastName: true } },
+          customer: { select: { firstName: true, lastName: true, businessName: true } },
           payments: { select: { method: true, amount: true } },
           _count: { select: { items: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: buildSalesOrderBy(sortBy, sortOrder),
         skip,
         take: limit,
       }),
@@ -429,33 +474,65 @@ export class SalesService {
   // Mismos filtros que list(), pero sin paginar — para exportar a Excel el
   // total de ventas que calzan con los filtros, no solo la página visible.
   async exportList(query: Omit<ListSalesQuery, 'page' | 'limit'>) {
-    const { cashSessionId, cashierId, customerId, dateFrom, dateTo, status } = query;
-
-    const where: Prisma.SaleWhereInput = {
-      ...(cashSessionId ? { cashSessionId } : {}),
-      ...(cashierId ? { cashierId } : {}),
-      ...(customerId ? { customerId } : {}),
-      ...(status ? { status: status as never } : {}),
-      ...(dateFrom || dateTo
-        ? {
-            createdAt: {
-              ...(dateFrom ? { gte: dateFrom } : {}),
-              ...(dateTo ? { lte: dateTo } : {}),
-            },
-          }
-        : {}),
-    };
+    const where = buildSalesWhere(query);
 
     return prisma.sale.findMany({
       where,
       include: {
         cashier: { select: { firstName: true, lastName: true } },
-        customer: { select: { firstName: true, lastName: true } },
+        customer: { select: { firstName: true, lastName: true, businessName: true } },
         payments: { select: { method: true, amount: true } },
         _count: { select: { items: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: buildSalesOrderBy(query.sortBy, query.sortOrder),
     });
+  }
+
+  // KPIs resumidos para la barra de indicadores del listado — usa los mismos
+  // filtros que list()/exportList() para que "lo que ves es lo que resume".
+  async summary(query: Omit<ListSalesQuery, 'page' | 'limit' | 'sortBy' | 'sortOrder'>) {
+    const where = buildSalesWhere(query);
+    const completedWhere: Prisma.SaleWhereInput = { ...where, status: { in: ['COMPLETED', 'PARTIALLY_RETURNED'] } };
+
+    const [agg, byPaymentMethod, byStatus, creditAgg] = await Promise.all([
+      prisma.sale.aggregate({
+        where: completedWhere,
+        _sum: { totalAmount: true, discountAmount: true },
+        _count: { _all: true },
+        _avg: { totalAmount: true },
+      }),
+      prisma.salePayment.groupBy({
+        by: ['method'],
+        where: { sale: completedWhere },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      prisma.sale.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+      }),
+      prisma.sale.aggregate({
+        where: { ...completedWhere, isCredit: true },
+        _sum: { totalAmount: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    return {
+      total: Number(agg._sum.totalAmount ?? 0),
+      count: agg._count._all,
+      average: Number(agg._avg.totalAmount ?? 0),
+      discounts: Number(agg._sum.discountAmount ?? 0),
+      creditTotal: Number(creditAgg._sum.totalAmount ?? 0),
+      creditCount: creditAgg._count._all,
+      byPaymentMethod: byPaymentMethod.map((p) => ({
+        method: p.method,
+        total: Number(p._sum.amount ?? 0),
+        count: p._count._all,
+      })),
+      byStatus: byStatus.map((s) => ({ status: s.status, count: s._count._all })),
+    };
   }
 
   async void(id: string, reason: string, voidedById: string) {
@@ -625,6 +702,16 @@ export class SalesService {
     });
 
     return saleReturn;
+  }
+
+  // Lista de cajeros con al menos una venta registrada — para poblar el filtro
+  // sin exponer el listado completo de usuarios (esa ruta es solo admin).
+  async listCashiers() {
+    return prisma.user.findMany({
+      where: { salesAsCashier: { some: {} } },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    });
   }
 
   private async generateSaleNumber(): Promise<string> {

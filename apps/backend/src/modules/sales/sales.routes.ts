@@ -67,6 +67,14 @@ const listSchema = z.object({
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
   status: z.string().optional(),
+  search: z.string().trim().min(1).optional(),
+  paymentMethod: z.nativeEnum(PaymentMethod).optional(),
+  documentType: z.nativeEnum(DocumentType).optional(),
+  isCredit: z.coerce.boolean().optional(),
+  minTotal: z.coerce.number().min(0).optional(),
+  maxTotal: z.coerce.number().min(0).optional(),
+  sortBy: z.enum(['createdAt', 'totalAmount', 'saleNumber']).optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional(),
 });
 
 router.use(authenticate);
@@ -76,6 +84,21 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const query = listSchema.parse(req.query) as ListSalesQuery;
     const result = await salesService.list(query);
     res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.get('/summary', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const query = listSchema.omit({ page: true, limit: true, sortBy: true, sortOrder: true }).parse(req.query);
+    const summary = await salesService.summary(query);
+    res.json({ success: true, data: summary });
+  } catch (err) { next(err); }
+});
+
+router.get('/meta/cashiers', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const cashiers = await salesService.listCashiers();
+    res.json({ success: true, data: cashiers });
   } catch (err) { next(err); }
 });
 
@@ -103,7 +126,7 @@ router.get('/export', async (req: Request, res: Response, next: NextFunction) =>
       saleNumber: s.saleNumber,
       createdAt: s.createdAt.toLocaleString('es-PE'),
       cashier: `${s.cashier.firstName} ${s.cashier.lastName}`,
-      customer: s.customer ? `${s.customer.firstName} ${s.customer.lastName ?? ''}`.trim() : '',
+      customer: s.customer ? (s.customer.businessName || `${s.customer.firstName} ${s.customer.lastName ?? ''}`.trim()) : '',
       documentType: s.documentType,
       items: s._count.items,
       subtotal: Number(s.subtotal),
