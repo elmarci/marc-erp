@@ -56,12 +56,12 @@ export class ProductsService {
     input.sku = input.sku || null;
 
     if (input.barcode) {
-      const existing = await prisma.product.findUnique({ where: { barcode: input.barcode } });
+      const existing = await prisma.product.findFirst({ where: { barcode: input.barcode, deletedAt: null } });
       if (existing) throw new ConflictError(`El código de barras ${input.barcode} ya está registrado.`);
     }
 
     if (input.internalCode) {
-      const existing = await prisma.product.findUnique({ where: { internalCode: input.internalCode } });
+      const existing = await prisma.product.findFirst({ where: { internalCode: input.internalCode, deletedAt: null } });
       if (existing) throw new ConflictError(`El código interno ${input.internalCode} ya está registrado.`);
     }
 
@@ -269,9 +269,16 @@ export class ProductsService {
 
     if (input.barcode && input.barcode !== product.barcode) {
       const existing = await prisma.product.findFirst({
-        where: { barcode: input.barcode, id: { not: id } },
+        where: { barcode: input.barcode, id: { not: id }, deletedAt: null },
       });
       if (existing) throw new ConflictError(`El código de barras ${input.barcode} ya está registrado.`);
+    }
+
+    if (input.internalCode && input.internalCode !== product.internalCode) {
+      const existing = await prisma.product.findFirst({
+        where: { internalCode: input.internalCode, id: { not: id }, deletedAt: null },
+      });
+      if (existing) throw new ConflictError(`El código interno ${input.internalCode} ya está registrado.`);
     }
 
     const updated = await prisma.product.update({
@@ -342,9 +349,13 @@ export class ProductsService {
       return { discontinued: true };
     }
 
+    // Liberar barcode/internalCode/sku al eliminar — de lo contrario quedan
+    // "atrapados" en esta fila (la restricción unique de Postgres no distingue
+    // filas eliminadas lógicamente) y nadie puede volver a crear un producto
+    // con ese mismo código hasta que alguien los limpie a mano.
     await prisma.product.update({
       where: { id },
-      data: { deletedAt: new Date(), status: 'INACTIVE' },
+      data: { deletedAt: new Date(), status: 'INACTIVE', barcode: null, internalCode: null, sku: null },
     });
 
     return { deleted: true };
