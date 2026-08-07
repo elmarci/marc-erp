@@ -179,7 +179,13 @@ export function ProductFormPage() {
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Código Interno</label>
-                <Input {...register('internalCode')} placeholder="PROD0001" />
+                {isEdit ? (
+                  <Input {...register('internalCode')} placeholder="PRO001" />
+                ) : (
+                  <div className="flex h-10 items-center rounded-md border border-dashed bg-muted px-3 text-sm text-muted-foreground">
+                    Se asignará automáticamente (PROxxx)
+                  </div>
+                )}
               </div>
             </div>
             <div>

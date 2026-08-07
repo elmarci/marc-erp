@@ -410,6 +410,10 @@ model Product {
   trackBatch     Boolean       @default(false) @map("track_batch")
   isBulk         Boolean       @default(false) @map("is_bulk")
   bulkUnit       String?       @map("bulk_unit") // "kg", "g", "L", "unidad"
+  // Acceso rápido en el POS para productos sin código de barras (a granel u
+  // otros que no vienen con empaque) — el cajero los encuentra con un toque
+  // en vez de tener que buscarlos por nombre.
+  isFavorite     Boolean       @default(false) @map("is_favorite")
   // Garantía por envase retornable (ej. S/1 por botella) — 0 significa que
   // este producto no maneja envase con garantía. Independiente de la venta:
   // se cobra/devuelve por su cuenta, nunca como parte del ticket de venta.
@@ -440,6 +444,7 @@ model Product {
   @@index([categoryId])
   @@index([status])
   @@index([name])
+  @@index([isFavorite])
   @@map("products")
 }
 

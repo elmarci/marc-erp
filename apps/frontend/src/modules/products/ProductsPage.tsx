@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Package, Edit, AlertTriangle, Barcode, Trash2, Printer, X, ArrowUpDown, CheckSquare, Square } from 'lucide-react';
+import { Plus, Search, Package, Edit, AlertTriangle, Barcode, Trash2, Printer, X, ArrowUpDown, CheckSquare, Square, Star, FileText } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ interface Product {
   status: string;
   imageUrl: string | null;
   isBulk?: boolean;
+  isFavorite?: boolean;
   category: { id: string; name: string; parent?: { name: string } | null };
   brand: { name: string } | null;
 }
@@ -103,6 +104,54 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       svg { max-width: 100%; }
     </style></head><body>
     <div class="grid">${cards}</div>
+    </body></html>`);
+  win.document.close(); win.focus(); win.print();
+}
+
+/* ─── Impresión de lista de precios (A4, para dejar con los cajeros) ────── */
+function printPriceList(products: Array<{
+  name: string; internalCode: string | null; barcode: string | null; salePrice: number;
+  currentStock: number; category: { name: string; parent?: { name: string } | null };
+}>) {
+  const win = window.open('', '_blank', 'width=900,height=1000');
+  if (!win) return;
+  const rows = products.map((p, i) => `
+    <tr class="${i % 2 === 0 ? 'even' : ''}">
+      <td class="code">${p.internalCode ?? p.barcode ?? '—'}</td>
+      <td>${p.name}</td>
+      <td class="muted">${p.category.parent ? `${p.category.parent.name} › ${p.category.name}` : p.category.name}</td>
+      <td class="right price">S/ ${Number(p.salePrice).toFixed(2)}</td>
+      <td class="right">${p.currentStock}</td>
+    </tr>`).join('');
+  const now = new Date().toLocaleString('es-PE', { dateStyle: 'long', timeStyle: 'short' });
+  win.document.write(`<html><head><title>Lista de Precios</title>
+    <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      @page { size: A4; margin: 14mm 12mm; }
+      body { font-family: Arial, Helvetica, sans-serif; color:#111; }
+      header { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #111; padding-bottom:8px; margin-bottom:14px; }
+      h1 { font-size:20px; letter-spacing:.02em; }
+      .meta { font-size:11px; color:#555; text-align:right; line-height:1.5; }
+      table { width:100%; border-collapse:collapse; font-size:12px; }
+      thead th { text-align:left; background:#111; color:#fff; padding:7px 8px; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+      td { padding:5px 8px; border-bottom:1px solid #ddd; }
+      tr.even td { background:#f4f4f4; }
+      tbody tr { page-break-inside: avoid; }
+      .code { font-family: 'Courier New', monospace; font-weight:bold; white-space:nowrap; }
+      .right { text-align:right; }
+      .price { font-weight:bold; }
+      .muted { color:#666; }
+      footer { margin-top:12px; font-size:10px; color:#888; text-align:right; }
+    </style></head><body>
+    <header>
+      <h1>Lista de Precios</h1>
+      <div class="meta">Generado: ${now}<br/>${products.length} producto(s)</div>
+    </header>
+    <table>
+      <thead><tr><th>Código</th><th>Producto</th><th>Categoría</th><th class="right">Precio</th><th class="right">Stock</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <footer>ERP Minimarket</footer>
     </body></html>`);
   win.document.close(); win.focus(); win.print();
 }
@@ -261,12 +310,14 @@ export function ProductsPage() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const page = parseInt(searchParams.get('page') ?? '1');
   const lowStock = searchParams.get('lowStock') === 'true';
+  const favorite = searchParams.get('favorite') === 'true';
   const categoryId = searchParams.get('categoryId') ?? '';
   const status = searchParams.get('status') ?? '';
   const sortBy = searchParams.get('sortBy') ?? 'name';
   const sortOrder = searchParams.get('sortOrder') ?? 'asc';
   const limit = searchParams.get('limit') ?? '25';
   const [showBarcodeCatalog, setShowBarcodeCatalog] = useState(false);
+  const [printingList, setPrintingList] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const { data: categories } = useQuery({
@@ -275,7 +326,7 @@ export function ProductsPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', debouncedSearch, page, lowStock, categoryId, status, sortBy, sortOrder, limit],
+    queryKey: ['products', debouncedSearch, page, lowStock, favorite, categoryId, status, sortBy, sortOrder, limit],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
@@ -283,6 +334,7 @@ export function ProductsPage() {
         sortBy, sortOrder,
         ...(debouncedSearch ? { q: debouncedSearch } : {}),
         ...(lowStock ? { lowStock: 'true' } : {}),
+        ...(favorite ? { favorite: 'true' } : {}),
         ...(categoryId ? { categoryId } : {}),
         ...(status ? { status } : {}),
       });
@@ -298,7 +350,7 @@ export function ProductsPage() {
 
   // La selección se limpia cada vez que cambian los filtros o la página —
   // evita aplicar una acción masiva a productos que ya no están a la vista.
-  useEffect(() => { setSelected(new Set()); }, [debouncedSearch, page, lowStock, categoryId, status, sortBy, sortOrder, limit]);
+  useEffect(() => { setSelected(new Set()); }, [debouncedSearch, page, lowStock, favorite, categoryId, status, sortBy, sortOrder, limit]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete<{ data: { deleted?: boolean; discontinued?: boolean } }>(`/products/${id}`),
@@ -320,6 +372,13 @@ export function ProductsPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: ({ id, isFavorite }: { id: string; isFavorite: boolean }) =>
+      api.patch(`/products/${id}`, { isFavorite }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   const bulkMutation = useMutation({
     mutationFn: (payload: { categoryId?: string; status?: string }) =>
       api.patch<{ data: { updated: number } }>('/products/bulk', { productIds: [...selected], ...payload }),
@@ -330,6 +389,35 @@ export function ProductsPage() {
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
+
+  // Usa los mismos filtros que la lista, sin paginar, para que "lo que ves
+  // es lo que imprimes" (igual que el export de Ventas).
+  const handlePrintPriceList = async () => {
+    setPrintingList(true);
+    try {
+      const params = new URLSearchParams({
+        page: '1', limit: '5000', sortBy, sortOrder,
+        ...(debouncedSearch ? { q: debouncedSearch } : {}),
+        ...(lowStock ? { lowStock: 'true' } : {}),
+        ...(favorite ? { favorite: 'true' } : {}),
+        ...(categoryId ? { categoryId } : {}),
+        ...(status ? { status } : {}),
+      });
+      const res = await api.get<{ data: Product[] }>(`/products?${params}`);
+      if (res.data.data.length === 0) {
+        toast.error('No hay productos para imprimir con estos filtros.');
+        return;
+      }
+      printPriceList(res.data.data.map(p => ({
+        name: p.name, internalCode: p.internalCode, barcode: p.barcode,
+        salePrice: p.salePrice, currentStock: p.currentStock, category: p.category,
+      })));
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setPrintingList(false);
+    }
+  };
 
   const setParam = (key: string, value: string) => {
     setSearchParams((prev) => {
@@ -371,6 +459,11 @@ export function ProductsPage() {
         </div>
         {hasMinRole('WAREHOUSE') && (
           <div className="flex gap-2">
+            <Button variant="outline" onClick={handlePrintPriceList} loading={printingList}
+              title="Lista con código, precio y stock actual — para dejar impresa con los cajeros">
+              <FileText className="mr-2 h-4 w-4" />
+              Imprimir lista de precios
+            </Button>
             <Button variant="outline" onClick={() => setShowBarcodeCatalog(true)}>
               <Printer className="mr-2 h-4 w-4" />
               Imprimir catálogo de códigos
@@ -427,7 +520,24 @@ export function ProductsPage() {
           <AlertTriangle className="mr-2 h-4 w-4" />
           Stock Bajo
         </Button>
-        {(categoryId || status || lowStock || search) && (
+        <Button
+          variant={favorite ? 'default' : 'outline'}
+          className={cn(favorite && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
+          onClick={() => {
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              if (favorite) next.delete('favorite');
+              else next.set('favorite', 'true');
+              next.set('page', '1');
+              return next;
+            });
+          }}
+          title="Productos marcados como favoritos para acceso rápido en el POS"
+        >
+          <Star className="mr-2 h-4 w-4" />
+          Favoritos
+        </Button>
+        {(categoryId || status || lowStock || favorite || search) && (
           <Button variant="ghost" onClick={() => { setSearch(''); setSearchParams({}); }}>
             <X className="mr-1.5 h-3.5 w-3.5" />Limpiar filtros
           </Button>
@@ -502,7 +612,10 @@ export function ProductsPage() {
                             )}
                           </div>
                           <div>
-                            <p className="font-medium">{product.name}</p>
+                            <p className="font-medium flex items-center gap-1.5">
+                              {product.name}
+                              {product.isFavorite && <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />}
+                            </p>
                             {product.barcode && (
                               <div className="flex items-center gap-1 mt-0.5">
                                 <Barcode className="h-3 w-3 text-muted-foreground" />
@@ -542,6 +655,12 @@ export function ProductsPage() {
                       <td data-label="Acciones" className="px-4 py-3 text-center">
                         {hasMinRole('WAREHOUSE') && (
                           <div className="flex justify-center gap-1">
+                            <Button variant="ghost" size="icon-sm"
+                              title={product.isFavorite ? 'Quitar de favoritos (POS)' : 'Marcar como favorito (acceso rápido en POS)'}
+                              onClick={() => toggleFavoriteMutation.mutate({ id: product.id, isFavorite: !product.isFavorite })}
+                              loading={toggleFavoriteMutation.isPending && toggleFavoriteMutation.variables?.id === product.id}>
+                              <Star className={cn('h-4 w-4', product.isFavorite && 'fill-amber-400 text-amber-500')} />
+                            </Button>
                             {!product.barcode && (
                               <Button variant="ghost" size="icon-sm" title="Generar código de barras interno"
                                 onClick={() => generateBarcodeMutation.mutate(product.id)}

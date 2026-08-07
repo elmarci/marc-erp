@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Package, AlertCircle, Scale, Tag, X, Mic } from 'lucide-react';
+import { Search, Package, AlertCircle, Scale, Tag, X, Mic, Star } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,7 @@ interface Product {
   imageUrl: string | null;
   isBulk: boolean;
   bulkUnit: string | null;
+  isFavorite?: boolean;
   category: { name: string };
 }
 
@@ -371,6 +372,10 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
   // simplemente escanearlos, así que este atajo les da acceso rápido sin
   // tener que buscarlos por nombre uno por uno (menestras, pan, fruta, etc.).
   const [bulkOnly, setBulkOnly] = useState(false);
+  // Acceso rápido a los productos marcados como favoritos (típicamente los
+  // que no traen código de fábrica en su empaque) — evita tener que buscarlos
+  // por nombre uno por uno mientras el cliente espera.
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [bulkProduct, setBulkProduct] = useState<Product | null>(null);
   const [showOffers, setShowOffers] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -400,17 +405,18 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
   const subcategories = activeCategoryNode?.children ?? [];
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['pos-products', search, activeCategoryId, bulkOnly],
+    queryKey: ['pos-products', search, activeCategoryId, bulkOnly, favoriteOnly],
     queryFn: async () => {
       const params = new URLSearchParams({
         // A granel puede tener más de 48 productos en el catálogo — sin este
         // límite ampliado, el filtro se quedaba solo con los primeros 48
         // productos (orden alfabético) y "perdía" los que caían después.
-        limit: bulkOnly ? '500' : '48',
+        limit: bulkOnly || favoriteOnly ? '500' : '48',
         status: 'ACTIVE',
         ...(search ? { q: search } : {}),
         ...(activeCategoryId ? { categoryId: activeCategoryId } : {}),
         ...(bulkOnly ? { isBulk: 'true' } : {}),
+        ...(favoriteOnly ? { favorite: 'true' } : {}),
       });
       const res = await api.get<{ data: Product[] }>(`/products?${params}`);
       return res.data.data;
@@ -621,6 +627,15 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
               title="Productos a granel — sin código de barras, acceso rápido"
             >
               <Scale className="h-3 w-3" />A granel
+            </Button>
+            <Button
+              variant={favoriteOnly ? 'default' : 'outline'}
+              size="sm"
+              className={cn('shrink-0 h-7 text-xs gap-1', favoriteOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
+              onClick={() => setFavoriteOnly((v) => !v)}
+              title="Favoritos — acceso rápido a los productos más vendidos sin código de barras"
+            >
+              <Star className="h-3 w-3" />Favoritos
             </Button>
             {categories.map((cat) => (
               <Button

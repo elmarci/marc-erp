@@ -26,6 +26,7 @@ export interface CreateProductInput {
   bulkUnit?: string | null;
   bottleDeposit?: number;
   imageUrl?: string | null;
+  isFavorite?: boolean;
 }
 
 interface UpdateProductInput extends Partial<CreateProductInput> {
@@ -39,6 +40,7 @@ export interface SearchProductsQuery {
   status?: ProductStatus;
   lowStock?: boolean;
   isBulk?: boolean;
+  favorite?: boolean;
   page: number;
   limit: number;
   sortBy?: 'name' | 'salePrice' | 'currentStock' | 'createdAt';
@@ -63,6 +65,10 @@ export class ProductsService {
     if (input.internalCode) {
       const existing = await prisma.product.findFirst({ where: { internalCode: input.internalCode, deletedAt: null } });
       if (existing) throw new ConflictError(`El código interno ${input.internalCode} ya está registrado.`);
+    } else {
+      // Sin código interno indicado: se asigna el siguiente correlativo
+      // PROxxx automáticamente, para no depender de que alguien lo escriba.
+      input.internalCode = await this.nextInternalCode();
     }
 
     const category = await prisma.category.findUnique({ where: { id: input.categoryId } });
@@ -92,6 +98,7 @@ export class ProductsService {
         bulkUnit: input.bulkUnit,
         bottleDeposit: input.bottleDeposit ?? 0,
         imageUrl: input.imageUrl,
+        isFavorite: input.isFavorite ?? false,
       },
       include: { category: true, brand: true, supplier: true },
     });
@@ -114,8 +121,20 @@ export class ProductsService {
     return product;
   }
 
+  // Código interno correlativo (PRO001, PRO002...) — se calcula a partir del
+  // máximo ya usado en vez de contar filas, así no se rompe si alguno fue
+  // liberado (producto eliminado) y deja un hueco en la secuencia.
+  private async nextInternalCode(): Promise<string> {
+    const rows = await prisma.$queryRaw<{ max: number | null }[]>`
+      SELECT MAX(CAST(SUBSTRING(internal_code FROM 4) AS INTEGER)) as max
+      FROM products WHERE internal_code ~ '^PRO[0-9]+$'
+    `;
+    const next = (rows[0]?.max ?? 0) + 1;
+    return `PRO${String(next).padStart(3, '0')}`;
+  }
+
   async search(query: SearchProductsQuery) {
-    const { q, categoryId, supplierId, status, lowStock, isBulk, page, limit, sortBy = 'name', sortOrder = 'asc' } = query;
+    const { q, categoryId, supplierId, status, lowStock, isBulk, favorite, page, limit, sortBy = 'name', sortOrder = 'asc' } = query;
     const skip = (page - 1) * limit;
 
     // Si la categoría filtrada tiene subcategorías, hay que incluir también
@@ -136,6 +155,7 @@ export class ProductsService {
       ...(supplierId ? { supplierId } : {}),
       ...(lowStock ? { currentStock: { lte: prisma.product.fields.minStock } } : {}),
       ...(isBulk !== undefined ? { isBulk } : {}),
+      ...(favorite !== undefined ? { isFavorite: favorite } : {}),
       ...(q
         ? {
             OR: [
@@ -306,6 +326,7 @@ export class ProductsService {
         bottleDeposit: input.bottleDeposit,
         imageUrl: input.imageUrl,
         status: input.status,
+        isFavorite: input.isFavorite,
       },
       include: { category: true, brand: true },
     });

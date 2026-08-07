@@ -49,6 +49,7 @@ const createSchema = z.object({
   bulkUnit: z.string().optional().nullable(),
   bottleDeposit: z.number().min(0).default(0),
   imageUrl: z.union([z.string().url(), z.literal('')]).optional().nullable(),
+  isFavorite: z.boolean().optional(),
 });
 
 const searchSchema = z.object({
@@ -58,8 +59,9 @@ const searchSchema = z.object({
   status: z.nativeEnum(ProductStatus).optional(),
   lowStock: z.coerce.boolean().optional(),
   isBulk: z.coerce.boolean().optional(),
+  favorite: z.coerce.boolean().optional(),
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(500).default(25),
+  limit: z.coerce.number().min(1).max(5000).default(25),
   sortBy: z.enum(['name', 'salePrice', 'currentStock', 'createdAt']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
 });
