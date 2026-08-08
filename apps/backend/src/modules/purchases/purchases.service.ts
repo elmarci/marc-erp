@@ -903,7 +903,7 @@ export class PurchasesService {
     userId: string,
     productId: string,
     reason: string,
-    changes: { toProductId?: string; unitCost?: number; isBonus?: boolean },
+    changes: { toProductId?: string; unitCost?: number; isBonus?: boolean; quantity?: number },
   ) {
     const order = await prisma.purchaseOrder.findUnique({
       where: { id: orderId },
@@ -921,8 +921,15 @@ export class PurchasesService {
 
     const newUnitCost = changes.unitCost ?? Number(orderItem.unitCost);
     const newIsBonus = changes.isBonus ?? orderItem.isBonus;
-    if (toProductId === productId && newUnitCost === Number(orderItem.unitCost) && newIsBonus === orderItem.isBonus) {
-      throw new BusinessError('No hay ningún cambio que aplicar — elige otro producto, costo o marca de bonificación.');
+    const newQuantity = changes.quantity;
+    if (newQuantity !== undefined && newQuantity <= 0) {
+      throw new BusinessError('La cantidad debe ser mayor a 0.');
+    }
+    if (
+      toProductId === productId && newUnitCost === Number(orderItem.unitCost) && newIsBonus === orderItem.isBonus
+      && (newQuantity === undefined || newQuantity === Number(orderItem.receivedQty))
+    ) {
+      throw new BusinessError('No hay ningún cambio que aplicar — elige otro producto, cantidad, costo o marca de bonificación.');
     }
 
     const toProduct = await prisma.product.findUnique({ where: { id: toProductId } });
@@ -939,6 +946,13 @@ export class PurchasesService {
       orderBy: { createdAt: 'desc' },
     });
     if (movements.length === 0) throw new BusinessError('Esta orden no tiene mercadería recibida de ese producto.');
+
+    // Corregir la cantidad solo es seguro si hubo una única entrega de este
+    // producto en esta orden — con varias entregas no hay forma de saber a
+    // cuál de ellas pertenece el error sin más contexto.
+    if (newQuantity !== undefined && movements.length > 1) {
+      throw new BusinessError('Este producto se recibió en más de una entrega dentro de esta orden — la cantidad no se puede corregir automáticamente. Contacta soporte para revisarlo a mano.');
+    }
 
     // Si ese producto tuvo OTRA compra o ajuste después de este, el
     // promedio ponderado ya avanzó sobre esos datos — revertir aquí
@@ -964,6 +978,7 @@ export class PurchasesService {
 
     const changeNotes: string[] = [];
     if (toProductId !== productId) changeNotes.push(`producto → "${toProduct.name}"`);
+    if (newQuantity !== undefined && newQuantity !== Number(orderItem.receivedQty)) changeNotes.push(`cantidad → ${newQuantity}`);
     if (newUnitCost !== Number(orderItem.unitCost)) changeNotes.push(`costo unit. → S/ ${newUnitCost.toFixed(2)}`);
     if (newIsBonus !== orderItem.isBonus) changeNotes.push(newIsBonus ? 'ahora es bonificación' : 'ya no es bonificación');
     const changeSummary = changeNotes.join(', ');
@@ -1000,19 +1015,21 @@ export class PurchasesService {
         });
 
         await this.applyPurchaseLine(tx, {
-          productId: toProductId, quantity: Number(m.quantity), unitCost: newUnitCost, isBonus: newIsBonus,
+          productId: toProductId, quantity: newQuantity ?? Number(m.quantity), unitCost: newUnitCost, isBonus: newIsBonus,
         }, {
           userId, supplierId: order.supplierId, referenceId: orderId,
           notes: `Corrección de línea OC ${order.orderNumber} — ${reason} (${changeSummary})`,
         });
       }
 
-      const newSubtotal = newIsBonus ? 0 : Number(orderItem.receivedQty) * newUnitCost;
+      const finalReceivedQty = newQuantity ?? Number(orderItem.receivedQty);
+      const newSubtotal = newIsBonus ? 0 : finalReceivedQty * newUnitCost;
 
       await tx.purchaseOrderItem.update({
         where: { id: orderItem.id },
         data: {
           productId: toProductId,
+          receivedQty: finalReceivedQty,
           unitCost: newIsBonus ? 0 : newUnitCost,
           isBonus: newIsBonus,
           subtotal: newSubtotal,
@@ -1022,6 +1039,7 @@ export class PurchasesService {
         where: { receipt: { purchaseOrderId: orderId }, productId },
         data: {
           productId: toProductId,
+          receivedQty: finalReceivedQty,
           unitCost: newIsBonus ? 0 : newUnitCost,
           isBonus: newIsBonus,
         },

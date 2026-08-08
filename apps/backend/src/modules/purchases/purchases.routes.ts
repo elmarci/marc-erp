@@ -252,16 +252,17 @@ router.post('/:id/revert-payment', authorizeMinRole('SUPERVISOR'), async (req: R
 // sin anular el resto de la orden.
 router.post('/:id/correct-item', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { productId, toProductId, unitCost, isBonus, reason } = z.object({
+    const { productId, toProductId, quantity, unitCost, isBonus, reason } = z.object({
       productId: z.string().uuid(),
       toProductId: z.string().uuid().optional(),
+      quantity: z.coerce.number().positive().optional(),
       unitCost: z.coerce.number().min(0).optional(),
       isBonus: z.boolean().optional(),
       reason: z.string().min(3, 'Indica el motivo de la corrección.'),
-    }).refine((v) => v.toProductId !== undefined || v.unitCost !== undefined || v.isBonus !== undefined, {
-      message: 'Cambia al menos el producto, el costo unitario o si es bonificación.',
+    }).refine((v) => v.toProductId !== undefined || v.quantity !== undefined || v.unitCost !== undefined || v.isBonus !== undefined, {
+      message: 'Cambia al menos el producto, la cantidad, el costo unitario o si es bonificación.',
     }).parse(req.body);
-    const order = await purchasesService.correctReceivedLine(req.params.id, req.user!.sub, productId, reason, { toProductId, unitCost, isBonus });
+    const order = await purchasesService.correctReceivedLine(req.params.id, req.user!.sub, productId, reason, { toProductId, quantity, unitCost, isBonus });
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });

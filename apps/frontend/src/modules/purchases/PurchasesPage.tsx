@@ -1436,12 +1436,13 @@ function EditOrderItemModal({ order, item, onClose, onEdited }: {
 
 function CorrectItemModal({ order, item, onClose, onCorrected }: {
   order: { id: string; orderNumber: string };
-  item: { productId: string; name: string; unitCost: number; isBonus: boolean };
+  item: { productId: string; name: string; receivedQty: number; unitCost: number; isBonus: boolean };
   onClose: () => void; onCorrected: () => void;
 }) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [toProduct, setToProduct] = useState<{ id: string; name: string } | null>(null);
+  const [quantity, setQuantity] = useState(String(item.receivedQty));
   const [unitCost, setUnitCost] = useState(String(item.unitCost));
   const [isBonus, setIsBonus] = useState(item.isBonus);
   const [reason, setReason] = useState('');
@@ -1453,15 +1454,18 @@ function CorrectItemModal({ order, item, onClose, onCorrected }: {
     enabled: debouncedSearch.length >= 2,
   });
 
+  const quantityNum = parseFloat(quantity) || 0;
+  const quantityChanged = quantityNum > 0 && quantityNum !== item.receivedQty;
   const unitCostNum = parseFloat(unitCost) || 0;
   const costChanged = !isBonus && unitCostNum !== item.unitCost;
   const bonusChanged = isBonus !== item.isBonus;
-  const hasChanges = !!toProduct || costChanged || bonusChanged;
+  const hasChanges = !!toProduct || quantityChanged || costChanged || bonusChanged;
 
   const mutation = useMutation({
     mutationFn: () => api.post(`/purchases/${order.id}/correct-item`, {
       productId: item.productId,
       ...(toProduct ? { toProductId: toProduct.id } : {}),
+      ...(quantityChanged ? { quantity: quantityNum } : {}),
       ...(costChanged ? { unitCost: unitCostNum } : {}),
       ...(bonusChanged ? { isBonus } : {}),
       reason,
@@ -1513,6 +1517,13 @@ function CorrectItemModal({ order, item, onClose, onCorrected }: {
               </div>
             )}
           </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Cantidad recibida</label>
+            <Input type="number" min={0.001} step={0.001} value={quantity} onChange={e => setQuantity(e.target.value)} />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Solo se puede corregir si este producto se recibió en una única entrega dentro de esta orden.
+            </p>
+          </div>
           <div className="flex items-center gap-3 rounded-lg border p-3">
             <input type="checkbox" id="correctIsBonus" checked={isBonus}
               onChange={e => setIsBonus(e.target.checked)} className="h-4 w-4 rounded border-input" />
@@ -1545,7 +1556,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
   const [expanded, setExpanded] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
   const [showPay, setShowPay] = useState(false);
-  const [correctingItem, setCorrectingItem] = useState<{ productId: string; name: string; unitCost: number; isBonus: boolean } | null>(null);
+  const [correctingItem, setCorrectingItem] = useState<{ productId: string; name: string; receivedQty: number; unitCost: number; isBonus: boolean } | null>(null);
   const [editingItem, setEditingItem] = useState<{ id: string; name: string; orderedQty: number; unitCost: number } | null>(null);
   const queryClient = useQueryClient();
 
@@ -1712,7 +1723,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                               className="text-muted-foreground hover:text-primary"
                               onClick={() => setCorrectingItem({
                                 productId: item.product.id, name: item.product.name,
-                                unitCost: Number(item.unitCost), isBonus: item.isBonus,
+                                receivedQty: Number(item.receivedQty), unitCost: Number(item.unitCost), isBonus: item.isBonus,
                               })}
                             >
                               <Pencil className="h-3.5 w-3.5" />
