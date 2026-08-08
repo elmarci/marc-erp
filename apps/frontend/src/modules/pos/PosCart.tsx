@@ -13,7 +13,7 @@ interface Customer { id: string; firstName: string; lastName: string | null; pho
 interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
 
 function formatShortDate(iso: string) {
-  return new Date(iso).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
+  return new Date(iso).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', timeZone: 'America/Lima' });
 }
 
 /* ─── Cupón de descuento del cliente asignado ────────────────────────────── */

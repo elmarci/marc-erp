@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export function cn(...inputs: ClassValue[]) {
@@ -35,14 +35,34 @@ export function formatCost(
   return `${symbol} ${intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decPart.slice(0, end)}`;
 }
 
+// Fijado a hora de Lima explícitamente — si no, estas fechas se muestran en
+// la zona horaria del navegador/OS del cajero (o del servidor si se llaman
+// del lado backend), que no siempre está configurada en Perú.
+const limaDateFormatter = new Intl.DateTimeFormat('es-PE', {
+  timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric',
+});
+const limaDateTimeFormatter = new Intl.DateTimeFormat('es-PE', {
+  timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hour12: false,
+});
+
 export function formatDate(date: string | Date | null | undefined): string {
   if (!date) return '—';
-  return format(new Date(date), 'dd/MM/yyyy', { locale: es });
+  return limaDateFormatter.format(new Date(date));
 }
 
 export function formatDateTime(date: string | Date | null | undefined): string {
   if (!date) return '—';
-  return format(new Date(date), 'dd/MM/yyyy HH:mm', { locale: es });
+  return limaDateTimeFormatter.format(new Date(date)).replace(', ', ' ');
+}
+
+const limaISODateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' });
+
+// Fecha "YYYY-MM-DD" de HOY en Lima — a diferencia de `new Date().toISOString().split('T')[0]`
+// (que es UTC y se adelanta un día entre ~19:00 y medianoche hora de Lima),
+// esto sirve para prellenar inputs de fecha ("hoy") sin ese desfase.
+export function todayLimaDateString(): string {
+  return limaISODateFormatter.format(new Date());
 }
 
 export function formatTimeAgo(date: string | Date | null | undefined): string {
@@ -67,6 +87,13 @@ export function truncate(str: string, maxLen: number): string {
 
 export function generateBarcode(): string {
   return Math.random().toString().slice(2, 15).padEnd(13, '0');
+}
+
+// Un valor "escaneado" (por lector físico o tecleado rápido + Enter) es o
+// bien un código de fábrica numérico largo, o el código interno PROxxx que
+// ahora también se imprime como código de barras.
+export function looksLikeScannedCode(value: string): boolean {
+  return /^(\d{8,}|PRO\d+)$/i.test(value.trim());
 }
 
 export function getInitials(firstName: string, lastName?: string | null): string {

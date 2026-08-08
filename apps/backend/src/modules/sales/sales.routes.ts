@@ -4,6 +4,7 @@ import { PaymentMethod, DocumentType } from '@prisma/client';
 import { salesService, CreateSaleInput, ReturnSaleInput, ListSalesQuery } from './sales.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { sendExcel } from '../../utils/excel';
+import { limaDateFromParam, limaDateToParam } from '../../utils/timezone';
 
 const STATUS_LABELS: Record<string, string> = {
   COMPLETED: 'Completada', CANCELLED: 'Anulada', RETURNED: 'Devuelta', PARTIALLY_RETURNED: 'Devuelta parcial',
@@ -64,8 +65,8 @@ const listSchema = z.object({
   cashSessionId: z.string().uuid().optional(),
   cashierId: z.string().uuid().optional(),
   customerId: z.string().uuid().optional(),
-  dateFrom: z.coerce.date().optional(),
-  dateTo: z.coerce.date().optional(),
+  dateFrom: limaDateFromParam,
+  dateTo: limaDateToParam,
   status: z.string().optional(),
   search: z.string().trim().min(1).optional(),
   paymentMethod: z.nativeEnum(PaymentMethod).optional(),
@@ -124,7 +125,7 @@ router.get('/export', async (req: Request, res: Response, next: NextFunction) =>
       { header: 'Estado', key: 'status', width: 14 },
     ], sales.map((s) => ({
       saleNumber: s.saleNumber,
-      createdAt: s.createdAt.toLocaleString('es-PE'),
+      createdAt: s.createdAt.toLocaleString('es-PE', { timeZone: 'America/Lima' }),
       cashier: `${s.cashier.firstName} ${s.cashier.lastName}`,
       customer: s.customer ? (s.customer.businessName || `${s.customer.firstName} ${s.customer.lastName ?? ''}`.trim()) : '',
       documentType: s.documentType,

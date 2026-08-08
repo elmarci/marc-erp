@@ -6,6 +6,7 @@ import { redis } from '../../config/redis';
 import { emitEvent } from '../../config/socket';
 import { getSettingValues } from '../../utils/settings';
 import { couponsService } from '../coupons/coupons.service';
+import { nowInLima } from '../../utils/timezone';
 
 interface SaleItemInput {
   productId: string;
@@ -715,8 +716,11 @@ export class SalesService {
   }
 
   private async generateSaleNumber(): Promise<string> {
-    const today = new Date();
-    const prefix = `V${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+    // Fecha de Lima explícita, no la del proceso Node (en producción corre en
+    // UTC) — si no, el correlativo del día cambia ~5h antes/después de la
+    // medianoche real de Lima.
+    const { year, month, day } = nowInLima();
+    const prefix = `V${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`;
 
     const lastSale = await prisma.sale.findFirst({
       where: { saleNumber: { startsWith: prefix } },

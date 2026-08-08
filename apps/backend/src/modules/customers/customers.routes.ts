@@ -61,7 +61,7 @@ router.get('/export', async (req: Request, res: Response, next: NextFunction) =>
       currentBalance: Number(c.currentBalance),
       loyaltyPoints: c.loyaltyPoints,
       status: c.isActive ? 'Activo' : 'Inactivo',
-      createdAt: c.createdAt.toLocaleString('es-PE'),
+      createdAt: c.createdAt.toLocaleString('es-PE', { timeZone: 'America/Lima' }),
     })));
   } catch (err) { next(err); }
 });

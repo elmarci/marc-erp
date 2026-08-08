@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
-import { formatCurrency, formatCost, formatDateTime, cn } from '@/lib/utils';
+import { formatCurrency, formatCost, formatDateTime, cn, looksLikeScannedCode, todayLimaDateString } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { printThermalHtml } from '@/lib/printThermal';
@@ -464,7 +464,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayLimaDateString());
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -502,7 +502,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const handleScanKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
     const value = e.currentTarget.value.trim();
-    if (!/^\d{8,}$/.test(value)) return;
+    if (!looksLikeScannedCode(value)) return;
     try {
       const res = await api.get<{ data: Product }>(`/products/barcode/${value}`);
       addLine(res.data.data, Number(res.data.data.costPrice));
@@ -798,7 +798,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const handleScanKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
     const value = e.currentTarget.value.trim();
-    if (!/^\d{8,}$/.test(value)) return;
+    if (!looksLikeScannedCode(value)) return;
     try {
       const res = await api.get<{ data: Product }>(`/products/barcode/${value}`);
       addProduct(res.data.data);
@@ -1371,6 +1371,69 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
 }
 
 /* ─── Corregir una línea recibida (producto, costo y/o bonificación) ─────── */
+// Editar cantidad/costo de una línea ANTES de recibirla — para errores de
+// tipeo (ej. "1" en vez de "20") sin anular y rehacer toda la orden.
+function EditOrderItemModal({ order, item, onClose, onEdited }: {
+  order: { id: string; orderNumber: string };
+  item: { id: string; name: string; orderedQty: number; unitCost: number };
+  onClose: () => void; onEdited: () => void;
+}) {
+  const [orderedQty, setOrderedQty] = useState(String(item.orderedQty));
+  const [unitCost, setUnitCost] = useState(String(item.unitCost));
+  const queryClient = useQueryClient();
+
+  const qtyNum = parseFloat(orderedQty) || 0;
+  const costNum = parseFloat(unitCost) || 0;
+  const hasChanges = qtyNum !== item.orderedQty || costNum !== item.unitCost;
+
+  const mutation = useMutation({
+    mutationFn: () => api.patch(`/purchases/${order.id}/items/${item.id}`, { orderedQty: qtyNum, unitCost: costNum }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
+      toast.success('Línea actualizada.');
+      onEdited();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-bold">Editar línea</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{order.orderNumber} · {item.name}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Cantidad</label>
+              <Input type="number" min={0.001} step={0.001} value={orderedQty}
+                onChange={e => setOrderedQty(e.target.value)} autoFocus />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Costo unitario</label>
+              <Input type="number" min={0} step={0.01} value={unitCost} onChange={e => setUnitCost(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Nuevo subtotal: {formatCurrency(qtyNum * costNum)} — el total de la orden se recalcula automáticamente.
+          </p>
+        </div>
+        <div className="border-t p-5 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!hasChanges || qtyNum <= 0}>
+            Guardar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CorrectItemModal({ order, item, onClose, onCorrected }: {
   order: { id: string; orderNumber: string };
   item: { productId: string; name: string; unitCost: number; isBonus: boolean };
@@ -1483,6 +1546,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
   const [showReceive, setShowReceive] = useState(false);
   const [showPay, setShowPay] = useState(false);
   const [correctingItem, setCorrectingItem] = useState<{ productId: string; name: string; unitCost: number; isBonus: boolean } | null>(null);
+  const [editingItem, setEditingItem] = useState<{ id: string; name: string; orderedQty: number; unitCost: number } | null>(null);
   const queryClient = useQueryClient();
 
   const { data: detail } = useQuery({
@@ -1555,6 +1619,10 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
   const canReceive = ['APPROVED', 'SENT', 'PARTIALLY_RECEIVED'].includes(order.status);
   const canCancel = !['RECEIVED', 'CANCELLED'].includes(order.status);
   const canVoid = order.status === 'RECEIVED';
+  // Antes de recibir mercadería no hay stock/costo que revertir — se puede
+  // corregir cantidad/costo directo en la línea, sin pasar por "corregir
+  // línea recibida" (que sí revierte kardex).
+  const canEditItems = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'SENT'].includes(order.status);
 
   return (
     <>
@@ -1608,7 +1676,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                     <th className="py-1 font-medium text-center">Recibido</th>
                     <th className="py-1 font-medium text-right">Costo unit.</th>
                     <th className="py-1 font-medium text-right">Subtotal</th>
-                    {!detail.voidedAt && <th className="py-1" />}
+                    {(!detail.voidedAt || canEditItems) && <th className="py-1" />}
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -1624,9 +1692,21 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                       </td>
                       <td className="py-1.5 text-right">{item.isBonus ? 'GRATIS' : formatCost(item.unitCost)}</td>
                       <td className="py-1.5 text-right font-medium">{formatCurrency(item.subtotal)}</td>
-                      {!detail.voidedAt && (
+                      {(!detail.voidedAt || canEditItems) && (
                         <td className="py-1.5 text-right">
-                          {item.receivedQty > 0 && (
+                          {canEditItems && (
+                            <button
+                              title="Editar cantidad o costo de esta línea"
+                              className="text-muted-foreground hover:text-primary"
+                              onClick={() => setEditingItem({
+                                id: item.id, name: item.product.name,
+                                orderedQty: Number(item.orderedQty), unitCost: Number(item.unitCost),
+                              })}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          {!canEditItems && !detail.voidedAt && item.receivedQty > 0 && (
                             <button
                               title="Corregir esta línea (producto, costo o bonificación)"
                               className="text-muted-foreground hover:text-primary"
@@ -1714,6 +1794,15 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
           item={correctingItem}
           onClose={() => setCorrectingItem(null)}
           onCorrected={() => setCorrectingItem(null)}
+        />
+      )}
+
+      {editingItem && (
+        <EditOrderItemModal
+          order={order}
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onEdited={() => setEditingItem(null)}
         />
       )}
     </>

@@ -73,11 +73,14 @@ function CategoryTreeSelect({ categories, value, onChange, allowEmpty = true, em
   );
 }
 
-/* ─── Impresión de catálogo de códigos de barra ──────────────────────────── */
+/* ─── Impresión de etiquetas de precio (para pegar en el producto) ───────── */
 function barcodeSvgMarkup(value: string): string {
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    JsBarcode(svg, value, { format: 'CODE128', width: 2, height: 45, displayValue: true, fontSize: 13, margin: 4 });
+    JsBarcode(svg, value, {
+      format: 'CODE128', width: 1.8, height: 36, displayValue: true,
+      fontSize: 11, fontOptions: 'bold', margin: 0, textMargin: 3,
+    });
     return svg.outerHTML;
   } catch {
     return `<p style="font-size:11px">${value}</p>`;
@@ -85,23 +88,37 @@ function barcodeSvgMarkup(value: string): string {
 }
 
 function printBarcodeCatalog(products: Array<{ name: string; barcode: string; salePrice: number }>) {
-  const win = window.open('', '_blank', 'width=800,height=900');
+  const win = window.open('', '_blank', 'width=850,height=950');
   if (!win) return;
   const cards = products.map(p => `
     <div class="card">
+      <div class="accent"></div>
       <p class="name">${p.name}</p>
-      ${barcodeSvgMarkup(p.barcode)}
-      <p class="price">S/ ${Number(p.salePrice).toFixed(2)}</p>
+      <p class="price"><span class="currency">S/</span>${Number(p.salePrice).toFixed(2)}</p>
+      <div class="code">${barcodeSvgMarkup(p.barcode)}</div>
     </div>`).join('');
-  win.document.write(`<html><head><title>Catálogo de códigos de barra</title>
+  win.document.write(`<html><head><title>Etiquetas de precio</title>
     <style>
       * { margin:0; padding:0; box-sizing:border-box; }
-      body { font-family: Arial, sans-serif; padding: 12px; }
-      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-      .card { border: 1px dashed #999; border-radius: 6px; padding: 8px; text-align: center; page-break-inside: avoid; }
-      .name { font-size: 12px; font-weight: bold; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .price { font-size: 13px; font-weight: bold; margin-top: 2px; }
-      svg { max-width: 100%; }
+      @page { margin: 10mm; }
+      body { font-family: Arial, Helvetica, sans-serif; padding: 8px; background:#f2f2f2; }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+      .card {
+        position: relative; overflow: hidden;
+        border: 1px solid #ddd; border-radius: 12px; background: #fff;
+        text-align: center; page-break-inside: avoid;
+        padding: 13px 8px 10px;
+        display: flex; flex-direction: column; align-items: center; gap: 2px;
+      }
+      .accent { position: absolute; top: 0; left: 0; right: 0; height: 5px; background: hsl(128, 58%, 38%); }
+      .name {
+        font-size: 11.5px; font-weight: 700; color: #1a1a1a; text-transform: uppercase;
+        letter-spacing: .01em; line-height: 1.25; min-height: 2.5em; margin-top: 3px;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      }
+      .price { font-size: 27px; font-weight: 900; color: hsl(128, 58%, 30%); line-height: 1; margin: 3px 0 5px; }
+      .price .currency { font-size: 13px; font-weight: 700; vertical-align: top; margin-right: 2px; }
+      .code svg { max-width: 100%; height: auto; }
     </style></head><body>
     <div class="grid">${cards}</div>
     </body></html>`);

@@ -2,14 +2,9 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { reportsService } from './reports.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
+import { parseLimaDate } from '../../utils/timezone';
 
 const router = Router();
-
-// Parse dates as Lima time (UTC-5) to avoid timezone mismatch
-const parseLimaDate = (s: string, endOfDay = false) => {
-  const time = endOfDay ? 'T23:59:59' : 'T00:00:00';
-  return new Date(`${s}${time}-05:00`);
-};
 
 const dateRangeSchema = z.object({
   from: z.string().transform(s => parseLimaDate(s, false)),

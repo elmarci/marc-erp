@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { api, getErrorMessage } from '@/services/api'
-import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
+import { formatCurrency, formatDateTime, todayLimaDateString, cn } from '@/lib/utils'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 interface Offer {
@@ -43,7 +43,7 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     startTime: offer?.startTime ?? '14:00',
     endTime: offer?.endTime ?? '18:00',
     daysOfWeek: offer?.daysOfWeek ?? ([] as number[]),
-    startDate: offer?.startDate ? offer.startDate.split('T')[0] : new Date().toISOString().split('T')[0],
+    startDate: offer?.startDate ? offer.startDate.split('T')[0] : todayLimaDateString(),
     endDate: offer?.endDate ? offer.endDate.split('T')[0] : '',
     isActive: offer?.isActive ?? true,
     showInStore: offer?.showInStore ?? true,
@@ -516,8 +516,11 @@ export function OffersPage() {
                           {offer.startTime}–{offer.endTime} {offer.daysOfWeek.length > 0 ? offer.daysOfWeek.map(d => DAY_LABELS[d]).join(',') : 'Todos los días'}
                         </p>
                       )}
-                      <p>{new Date(offer.startDate).toLocaleDateString('es-PE')}</p>
-                      {offer.endDate && <p>→ {new Date(offer.endDate).toLocaleDateString('es-PE')}</p>}
+                      {/* startDate/endDate se guardan como fecha (sin hora) en UTC medianoche
+                          representando el día calendario de Lima — hay que leerlos en UTC, no
+                          en hora de Lima, o se corren un día para atrás. */}
+                      <p>{new Date(offer.startDate).toLocaleDateString('es-PE', { timeZone: 'UTC' })}</p>
+                      {offer.endDate && <p>→ {new Date(offer.endDate).toLocaleDateString('es-PE', { timeZone: 'UTC' })}</p>}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {offer.showInStore
@@ -581,7 +584,7 @@ function OfferPerformance({ offer }: { offer: Offer }) {
     queryFn: async () => {
       // Buscar ventas que incluyan productos de esta oferta en su período
       const from = offer.startDate.split('T')[0]
-      const to = offer.endDate ? offer.endDate.split('T')[0] : new Date().toISOString().split('T')[0]
+      const to = offer.endDate ? offer.endDate.split('T')[0] : todayLimaDateString()
       const productIds = offer.products.map(p => p.product.id)
       if (!productIds.length) return null
 

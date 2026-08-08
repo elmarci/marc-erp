@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/services/api';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, cn } from '@/lib/utils';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface SalesReport {
@@ -334,7 +334,7 @@ function InventoryTab() {
                   <div className="text-right">
                     <p className="font-medium">{p.current_stock} uds</p>
                     <p className="text-xs text-muted-foreground">
-                      {p.last_movement ? `Último: ${new Date(p.last_movement).toLocaleDateString('es-PE')}` : 'Sin movimiento'}
+                      {p.last_movement ? `Último: ${formatDate(p.last_movement)}` : 'Sin movimiento'}
                     </p>
                   </div>
                 </div>

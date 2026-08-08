@@ -3,6 +3,7 @@ import { NotFoundError, BusinessError } from '../../utils/errors';
 import { emitEvent } from '../../config/socket';
 import { redis } from '../../config/redis';
 import { getSettingValues } from '../../utils/settings';
+import { nowInLima } from '../../utils/timezone';
 
 export class StoreService {
 
@@ -402,11 +403,11 @@ export class StoreService {
       const netAmount = subtotal / (1 + taxRate);
       const taxAmount = subtotal - netAmount;
 
-      // Generate sale number
+      // Generate sale number — fecha de Lima explícita, no la del proceso
+      // Node (en producción corre en UTC).
       const saleCount = await tx.sale.count();
-      const year = new Date().getFullYear();
-      const month = String(new Date().getMonth() + 1).padStart(2, '0');
-      const saleNumber = `V${year}${month}${String(saleCount + 1).padStart(6, '0')}`;
+      const { year, month } = nowInLima();
+      const saleNumber = `V${year}${String(month).padStart(2, '0')}${String(saleCount + 1).padStart(6, '0')}`;
 
       // Create the sale
       const sale = await tx.sale.create({

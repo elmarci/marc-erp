@@ -15,6 +15,15 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/services/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 
+// Fijado a hora de Lima — sin esto, el encabezado y la hora de "ventas
+// recientes" se muestran en la zona horaria del navegador del cajero.
+const limaHeaderDateFmt = new Intl.DateTimeFormat('es-PE', {
+  timeZone: 'America/Lima', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+});
+const limaTimeFmt = new Intl.DateTimeFormat('es-PE', {
+  timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false,
+});
+
 interface DashboardData {
   kpis: {
     todaySales: { total: number; count: number };
@@ -124,7 +133,7 @@ export function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            {format(new Date(), "EEEE, d 'de' MMMM yyyy", { locale: es })}
+            {limaHeaderDateFmt.format(new Date())}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -275,7 +284,7 @@ export function DashboardPage() {
                     <div className="text-right">
                       <p className="text-sm font-bold">{formatCurrency(sale.totalAmount)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {format(new Date(sale.createdAt), 'HH:mm')}
+                        {limaTimeFmt.format(new Date(sale.createdAt))}
                       </p>
                     </div>
                   </Link>

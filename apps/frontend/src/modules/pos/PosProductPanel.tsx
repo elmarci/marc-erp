@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { usePosStore } from '@/stores/posStore';
 import { api } from '@/services/api';
-import { formatCurrency, cn, debounce } from '@/lib/utils';
+import { formatCurrency, cn, debounce, looksLikeScannedCode } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
@@ -570,8 +570,8 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
     // 300ms atrás y no reflejar el código recién escaneado).
     const value = e.currentTarget.value.trim();
     if (!value) return;
-    // Si parece código de barras (solo números, longitud >= 8), agregarlo directo a la venta
-    if (/^\d{8,}$/.test(value)) {
+    // Si parece un código escaneado (de fábrica o interno PROxxx), agregarlo directo a la venta
+    if (looksLikeScannedCode(value)) {
       onBarcodeSearch(value);
       setSearch('');
       e.currentTarget.value = '';

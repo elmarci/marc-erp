@@ -531,39 +531,19 @@ export class ProductsService {
   }
 
   /* ── Códigos de barra internos ────────────────────────────────────────────
-   * Prefijo "20" está reservado internacionalmente para uso interno/de
-   * circulación restringida (nunca lo usa un fabricante real), así que estos
-   * códigos jamás chocan con uno de fábrica y se leen con cualquier lector
-   * estándar como un EAN-13 más. */
-
-  private computeEan13CheckDigit(digits12: string): string {
-    let sum = 0;
-    for (let i = 0; i < 12; i++) {
-      const d = Number(digits12[i]);
-      sum += i % 2 === 0 ? d : d * 3;
-    }
-    return String((10 - (sum % 10)) % 10);
-  }
-
-  private async nextInternalBarcode(): Promise<string> {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const count = await prisma.product.count({ where: { barcode: { startsWith: '20' } } });
-      const seq = String(count + 1 + attempt).padStart(10, '0');
-      const first12 = `20${seq}`;
-      const candidate = `${first12}${this.computeEan13CheckDigit(first12)}`;
-      const existing = await prisma.product.findUnique({ where: { barcode: candidate } });
-      if (!existing) return candidate;
-    }
-    throw new BusinessError('No se pudo generar un código de barras único, intenta de nuevo.');
-  }
+   * Se usa directamente el código interno (PROxxx) como valor del código de
+   * barras — se imprime/lee como CODE128 (soporta letras y números), así que
+   * no hace falta inventar un número EAN-13 aparte: un solo código para
+   * buscar, escanear y mostrar en vez de mantener dos identificadores
+   * distintos por producto. */
 
   async generateBarcode(productId: string) {
     const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');
     if (product.barcode) throw new BusinessError('Este producto ya tiene un código de barras.');
 
-    const barcode = await this.nextInternalBarcode();
-    return prisma.product.update({ where: { id: productId }, data: { barcode } });
+    const barcode = product.internalCode ?? await this.nextInternalCode();
+    return prisma.product.update({ where: { id: productId }, data: { barcode, internalCode: barcode } });
   }
 
   /** Genera códigos para todos los productos sin barcode, o solo los indicados. */
@@ -571,11 +551,11 @@ export class ProductsService {
     const where: Prisma.ProductWhereInput = { deletedAt: null, barcode: null };
     if (productIds && productIds.length > 0) where.id = { in: productIds };
 
-    const products = await prisma.product.findMany({ where, select: { id: true, name: true } });
+    const products = await prisma.product.findMany({ where, select: { id: true, name: true, internalCode: true } });
     const results: { id: string; name: string; barcode: string }[] = [];
     for (const p of products) {
-      const barcode = await this.nextInternalBarcode();
-      await prisma.product.update({ where: { id: p.id }, data: { barcode } });
+      const barcode = p.internalCode ?? await this.nextInternalCode();
+      await prisma.product.update({ where: { id: p.id }, data: { barcode, internalCode: barcode } });
       results.push({ id: p.id, name: p.name, barcode });
     }
     return results;

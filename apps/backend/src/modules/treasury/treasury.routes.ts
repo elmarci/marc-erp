@@ -3,14 +3,7 @@ import { z } from 'zod';
 import { ExpenseCategory, PaymentMethod } from '@prisma/client';
 import { treasuryService } from './treasury.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
-
-// Mismo criterio que Reportes: una fecha "YYYY-MM-DD" sin hora, interpretada
-// en horario de Lima, y con endOfDay=true el filtro "hasta" incluye todo ese
-// día en vez de cortar justo a la medianoche.
-const parseLimaDate = (s: string, endOfDay = false) => {
-  const time = endOfDay ? 'T23:59:59' : 'T00:00:00';
-  return new Date(`${s}${time}-05:00`);
-};
+import { parseLimaDate } from '../../utils/timezone';
 
 const router = Router();
 

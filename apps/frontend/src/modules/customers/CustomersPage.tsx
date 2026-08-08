@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
-import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, formatDateTime, cn } from '@/lib/utils';
 import { usePosStore } from '@/stores/posStore';
 import { printDebtPaymentReceipt } from './printDebtPaymentReceipt';
 import { downloadExcel } from '@/lib/exportExcel';
@@ -447,7 +447,7 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
                 <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{customer.loyaltyPoints}</span>
               </div>
               {customer.notes && <p className="text-xs text-muted-foreground italic">"{customer.notes}"</p>}
-              <p className="text-xs text-muted-foreground">Cliente desde {new Date(customer.createdAt).toLocaleDateString('es-PE')}</p>
+              <p className="text-xs text-muted-foreground">Cliente desde {formatDate(customer.createdAt)}</p>
             </div>
           </div>
 

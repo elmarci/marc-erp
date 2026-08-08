@@ -1,7 +1,11 @@
 # ─── Base ─────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl tzdata
+# El código ya calcula fechas/horas de Lima explícitamente (ver
+# src/utils/timezone.ts), pero esto es un respaldo — sin TZ, Railway corre
+# los contenedores en UTC por defecto.
+ENV TZ=America/Lima
 
 # ─── Dependencies ────────────────────────────────────────────────────────────
 FROM base AS deps

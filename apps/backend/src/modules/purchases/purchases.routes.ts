@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { purchasesService } from './purchases.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { sendExcel } from '../../utils/excel';
+import { limaDateFromParam, limaDateToParam } from '../../utils/timezone';
 
 const router = Router();
 router.use(authenticate);
@@ -16,8 +17,8 @@ const listFiltersSchema = z.object({
   status: z.string().optional(),
   supplierId: z.string().uuid().optional(),
   search: z.string().optional(),
-  dateFrom: z.coerce.date().optional(),
-  dateTo: z.coerce.date().optional(),
+  dateFrom: limaDateFromParam,
+  dateTo: limaDateToParam,
 });
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
@@ -37,8 +38,8 @@ router.get('/settlements', async (req: Request, res: Response, next: NextFunctio
   try {
     const { supplierId, dateFrom, dateTo } = z.object({
       supplierId: z.string().uuid(),
-      dateFrom: z.coerce.date().optional(),
-      dateTo: z.coerce.date().optional(),
+      dateFrom: limaDateFromParam,
+      dateTo: limaDateToParam,
     }).parse(req.query);
     const result = await purchasesService.getSupplierSettlement({ supplierId, dateFrom, dateTo });
     res.json({ success: true, data: result });
@@ -67,9 +68,9 @@ router.get('/export', async (req: Request, res: Response, next: NextFunction) =>
       orderNumber: o.orderNumber,
       supplier: o.supplier.businessName,
       status: STATUS_LABELS[o.status] ?? o.status,
-      createdAt: o.createdAt.toLocaleString('es-PE'),
-      expectedDate: o.expectedDate ? o.expectedDate.toLocaleDateString('es-PE') : '',
-      receivedDate: o.receivedDate ? o.receivedDate.toLocaleDateString('es-PE') : '',
+      createdAt: o.createdAt.toLocaleString('es-PE', { timeZone: 'America/Lima' }),
+      expectedDate: o.expectedDate ? o.expectedDate.toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '',
+      receivedDate: o.receivedDate ? o.receivedDate.toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '',
       items: o._count.items,
       subtotal: Number(o.subtotal),
       taxAmount: Number(o.taxAmount),
@@ -123,6 +124,22 @@ router.post('/', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Respo
 router.post('/:id/approve', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const order = await purchasesService.approveOrder(req.params.id, req.user!.sub);
+    res.json({ success: true, data: order });
+  } catch (err) { next(err); }
+});
+
+// Corrige cantidad y/o costo cotizado de una línea antes de recibir la
+// mercadería (ej. error de tipeo) — sin anular y rehacer toda la orden.
+router.patch('/:id/items/:itemId', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = z.object({
+      orderedQty: z.coerce.number().positive().optional(),
+      unitCost: z.coerce.number().min(0).optional(),
+    }).refine((v) => v.orderedQty !== undefined || v.unitCost !== undefined, {
+      message: 'Debe indicar orderedQty o unitCost.',
+    }).parse(req.body);
+
+    const order = await purchasesService.updateOrderItem(req.params.id, req.params.itemId, data);
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });

@@ -184,8 +184,8 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
   });
 
   const date = new Date(data.createdAt);
-  const dateStr = date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const timeStr = date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Lima' });
+  const timeStr = date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -312,7 +312,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
                   <p style={{ fontSize: '11px' }}>{data.generatedCoupon.discountPercent}% de descuento en tu próxima compra</p>
                   <p className="bold" style={{ fontWeight: 'bold', fontSize: '14px', marginTop: '2px' }}>{data.generatedCoupon.code}</p>
                   <p style={{ fontSize: '9px', color: '#666' }}>
-                    Válido hasta {new Date(data.generatedCoupon.expiresAt).toLocaleDateString('es-PE')}
+                    Válido hasta {new Date(data.generatedCoupon.expiresAt).toLocaleDateString('es-PE', { timeZone: 'America/Lima' })}
                   </p>
                 </div>
               </>

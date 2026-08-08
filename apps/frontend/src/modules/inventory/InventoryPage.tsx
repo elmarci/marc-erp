@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
-import { formatCurrency, formatCost, formatDateTime, cn } from '@/lib/utils';
+import { formatCurrency, formatCost, formatDateTime, cn, looksLikeScannedCode } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
@@ -277,7 +277,7 @@ function BulkAdjustModal({ onClose }: { onClose: () => void }) {
   const handleScanKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
     const value = e.currentTarget.value.trim();
-    if (!/^\d{8,}$/.test(value)) return;
+    if (!looksLikeScannedCode(value)) return;
     try {
       const res = await api.get<{ data: { id: string; name: string; currentStock: number } }>(`/products/barcode/${value}`);
       addProduct(res.data.data);

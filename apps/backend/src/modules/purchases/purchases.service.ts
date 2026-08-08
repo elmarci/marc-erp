@@ -293,6 +293,40 @@ export class PurchasesService {
     });
   }
 
+  /**
+   * Corrige cantidad y/o costo cotizado de una línea ANTES de recibir la
+   * mercadería — para errores de tipeo (ej. "1" en vez de "20") sin tener que
+   * anular y rehacer toda la orden. Una vez que la orden tiene algo recibido,
+   * la línea ya no se puede tocar aquí (usa "corregir línea recibida", que sí
+   * revierte costo/stock con exactitud).
+   */
+  async updateOrderItem(orderId: string, itemId: string, data: { orderedQty?: number; unitCost?: number }) {
+    const order = await prisma.purchaseOrder.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundError('Orden de compra');
+    if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
+    if (!['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'SENT'].includes(order.status)) {
+      throw new BusinessError('Solo se puede editar la cantidad o costo de una orden que todavía no tiene mercadería recibida.');
+    }
+
+    const item = await prisma.purchaseOrderItem.findFirst({ where: { id: itemId, purchaseOrderId: orderId } });
+    if (!item) throw new NotFoundError('Línea de la orden');
+
+    const newQty = data.orderedQty ?? Number(item.orderedQty);
+    const newUnitCost = data.unitCost ?? Number(item.unitCost);
+    if (newQty <= 0) throw new BusinessError('La cantidad debe ser mayor a 0.');
+    if (newUnitCost < 0) throw new BusinessError('El costo unitario no puede ser negativo.');
+
+    await prisma.$transaction(async (tx) => {
+      await tx.purchaseOrderItem.update({
+        where: { id: itemId },
+        data: { orderedQty: newQty, unitCost: newUnitCost, subtotal: newQty * newUnitCost },
+      });
+      await this.recalcOrderTotals(tx, orderId);
+    });
+
+    return this.getOrder(orderId);
+  }
+
   async approveOrder(id: string, approverId: string) {
     const order = await prisma.purchaseOrder.findFirst({ where: { id, status: 'PENDING_APPROVAL' } });
     if (!order) throw new BusinessError('Solo se pueden aprobar órdenes en estado PENDING_APPROVAL.');

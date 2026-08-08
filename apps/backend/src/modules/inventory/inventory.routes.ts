@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { inventoryService } from './inventory.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { sendExcel } from '../../utils/excel';
+import { limaDateFromParam, limaDateToParam } from '../../utils/timezone';
 
 const router = Router();
 router.use(authenticate);
@@ -75,8 +76,8 @@ router.get('/movements', async (req: Request, res: Response, next: NextFunction)
     const { productId, type, from, to, page, limit } = z.object({
       productId: z.string().uuid().optional(),
       type: z.string().optional(),
-      from: z.coerce.date().optional(),
-      to: z.coerce.date().optional(),
+      from: limaDateFromParam,
+      to: limaDateToParam,
       page: z.coerce.number().min(1).default(1),
       limit: z.coerce.number().min(1).max(200).default(50),
     }).parse(req.query);
