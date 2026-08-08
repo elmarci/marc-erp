@@ -8,10 +8,19 @@ import './index.css';
 
 // Deja la app instalada para que siga cargando sin internet (solo activo en
 // el build de producción — devOptions.enabled=false en vite.config.ts).
-// autoUpdate: apenas hay una versión nueva se activa sola en el próximo
-// arranque, sin pedirle nada al cajero en medio de una venta.
+// autoUpdate activa la versión nueva sola, pero el navegador solo revisa si
+// hay una nueva versión al registrar el service worker (o sea, en la carga
+// de página) — una pestaña dejada abierta todo el día nunca se enteraba de
+// un deploy nuevo. Forzamos una revisión cada minuto para que el cambio
+// llegue solo, sin que el cajero tenga que cerrar y volver a abrir la app.
 if ('serviceWorker' in navigator) {
-  registerSW({ immediate: true });
+  registerSW({
+    immediate: true,
+    onRegisteredSW(_url, registration) {
+      if (!registration) return;
+      setInterval(() => registration.update(), 60 * 1000);
+    },
+  });
 }
 
 const queryClient = new QueryClient({
