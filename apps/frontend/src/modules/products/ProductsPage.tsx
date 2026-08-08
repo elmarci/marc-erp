@@ -331,6 +331,29 @@ function BarcodeCatalogModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+/* ─── Paginación (se repite arriba y abajo de la tabla para no obligar a
+     bajar hasta el final cada vez que se quiere cambiar de página) ────────── */
+function PaginationBar({ page, totalPages, onChange }: {
+  page: number; totalPages: number; onChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between rounded-xl border bg-card px-4 py-2.5">
+      <p className="text-sm text-muted-foreground">
+        Página {page} de {totalPages}
+      </p>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onChange(page - 1)}>
+          Anterior
+        </Button>
+        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onChange(page + 1)}>
+          Siguiente
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Barra de acciones masivas ──────────────────────────────────────────── */
 function BulkActionBar({ count, categories, onAssignCategory, onSetStatus, onClear, loading }: {
   count: number; categories: CategoryNode[];
@@ -508,6 +531,9 @@ export function ProductsPage() {
     return next;
   });
 
+  const goToPage = (p: number) =>
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('page', String(p)); return next; });
+
   const handleSearch = (q: string) => {
     setSearch(q);
     setSearchParams((prev) => {
@@ -628,6 +654,8 @@ export function ProductsPage() {
           onClear={() => setSelected(new Set())}
         />
       )}
+
+      {pagination && <PaginationBar page={page} totalPages={pagination.totalPages} onChange={goToPage} />}
 
       {/* Tabla de productos */}
       <Card>
@@ -763,24 +791,7 @@ export function ProductsPage() {
         </CardContent>
       </Card>
 
-      {/* Paginación */}
-      {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Página {page} de {pagination.totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1}
-              onClick={() => setSearchParams((p) => { const n = new URLSearchParams(p); n.set('page', String(page - 1)); return n; })}>
-              Anterior
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= pagination.totalPages}
-              onClick={() => setSearchParams((p) => { const n = new URLSearchParams(p); n.set('page', String(page + 1)); return n; })}>
-              Siguiente
-            </Button>
-          </div>
-        </div>
-      )}
+      {pagination && <PaginationBar page={page} totalPages={pagination.totalPages} onChange={goToPage} />}
     </div>
   );
 }

@@ -106,7 +106,10 @@ export function ProductFormPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product', id] });
       toast.success(isEdit ? 'Producto actualizado.' : 'Producto creado.');
-      navigate('/products');
+      // Vuelve a la página/filtros de donde vino (navigate(-1)) en vez de
+      // resetear siempre a /products — así no se pierde la página en la que
+      // estaba el cajero/admin al editar un producto en medio de una lista larga.
+      navigate(-1);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -114,7 +117,7 @@ export function ProductFormPage() {
   return (
     <div className="space-y-6 max-w-2xl animate-fade-in">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/products')}>
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <h1 className="text-2xl font-bold">{isEdit ? 'Editar Producto' : 'Nuevo Producto'}</h1>
@@ -268,7 +271,7 @@ export function ProductFormPage() {
                 className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => navigate('/products')}>Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => navigate(-1)}>Cancelar</Button>
               <Button type="submit" loading={mutation.isPending}>
                 <Save className="mr-2 h-4 w-4" />
                 {isEdit ? 'Guardar Cambios' : 'Crear Producto'}
