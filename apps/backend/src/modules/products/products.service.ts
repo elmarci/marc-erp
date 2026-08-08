@@ -43,7 +43,7 @@ export interface SearchProductsQuery {
   favorite?: boolean;
   page: number;
   limit: number;
-  sortBy?: 'name' | 'salePrice' | 'currentStock' | 'createdAt';
+  sortBy?: 'name' | 'salePrice' | 'currentStock' | 'createdAt' | 'category';
   sortOrder?: 'asc' | 'desc';
 }
 
@@ -169,6 +169,14 @@ export class ProductsService {
         : {}),
     };
 
+    // "Ordenar por categoría" usa el sortOrder lógico ya configurado en
+    // Categorías (Configuración > Categorías), no el alfabético — así el
+    // listado agrupa los productos en el mismo orden en que el negocio
+    // organiza sus góndolas/secciones.
+    const orderBy: Prisma.ProductOrderByWithRelationInput[] = sortBy === 'category'
+      ? [{ category: { sortOrder } }, { category: { name: 'asc' } }, { name: 'asc' }]
+      : [{ [sortBy]: sortOrder } as Prisma.ProductOrderByWithRelationInput];
+
     const [products, total] = await prisma.$transaction([
       prisma.product.findMany({
         where,
@@ -178,7 +186,7 @@ export class ProductsService {
         },
         skip,
         take: limit,
-        orderBy: { [sortBy]: sortOrder },
+        orderBy,
       }),
       prisma.product.count({ where }),
     ]);

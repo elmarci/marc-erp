@@ -44,6 +44,7 @@ const STATUS_OPTIONS = [
 ];
 
 const SORT_OPTIONS = [
+  { value: 'category', label: 'Categoría' },
   { value: 'name', label: 'Nombre' },
   { value: 'salePrice', label: 'Precio' },
   { value: 'currentStock', label: 'Stock' },
@@ -70,6 +71,49 @@ function CategoryTreeSelect({ categories, value, onChange, allowEmpty = true, em
         )
       ))}
     </select>
+  );
+}
+
+/* ─── Navegación por categorías (chips generales + subcategorías) ────────── */
+function CategoryChipNav({ categories, categoryId, onSelect }: {
+  categories: CategoryNode[]; categoryId: string; onSelect: (id: string) => void;
+}) {
+  if (categories.length === 0) return null;
+
+  // El id activo puede ser una categoría general o una subcategoría suya —
+  // en ambos casos hay que mostrar expandida la fila de subcategorías del padre.
+  const activeParent = categories.find((c) => c.id === categoryId)
+    ?? categories.find((c) => c.children?.some((ch) => ch.id === categoryId));
+  const subcategories = activeParent?.children ?? [];
+
+  return (
+    <div className="space-y-2 rounded-xl border bg-card p-3">
+      <div className="flex flex-wrap gap-2">
+        <Button variant={!categoryId ? 'default' : 'outline'} size="sm" onClick={() => onSelect('')}>
+          Todas
+        </Button>
+        {categories.map((cat) => (
+          <Button key={cat.id} variant={activeParent?.id === cat.id ? 'default' : 'outline'} size="sm"
+            onClick={() => onSelect(cat.id)}>
+            {cat.name}
+          </Button>
+        ))}
+      </div>
+      {subcategories.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 border-t pt-2">
+          <Button variant={categoryId === activeParent!.id ? 'secondary' : 'ghost'} size="sm" className="h-7 text-xs"
+            onClick={() => onSelect(activeParent!.id)}>
+            Todas
+          </Button>
+          {subcategories.map((sub) => (
+            <Button key={sub.id} variant={categoryId === sub.id ? 'secondary' : 'ghost'} size="sm" className="h-7 text-xs"
+              onClick={() => onSelect(sub.id)}>
+              {sub.name}
+            </Button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -299,7 +343,9 @@ function BulkActionBar({ count, categories, onAssignCategory, onSetStatus, onCle
 
   return (
     <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-xl border bg-primary/5 border-primary/20 px-4 py-3">
-      <span className="text-sm font-semibold">{count} seleccionado{count !== 1 ? 's' : ''}</span>
+      <span className="text-sm font-semibold" title="La selección se mantiene aunque cambies de página">
+        {count} seleccionado{count !== 1 ? 's' : ''}
+      </span>
       <div className="flex items-center gap-2">
         <CategoryTreeSelect categories={categories} value={bulkCategoryId} onChange={setBulkCategoryId}
           emptyLabel="Asignar categoría..." />
@@ -330,7 +376,7 @@ export function ProductsPage() {
   const favorite = searchParams.get('favorite') === 'true';
   const categoryId = searchParams.get('categoryId') ?? '';
   const status = searchParams.get('status') ?? '';
-  const sortBy = searchParams.get('sortBy') ?? 'name';
+  const sortBy = searchParams.get('sortBy') ?? 'category';
   const sortOrder = searchParams.get('sortOrder') ?? 'asc';
   const limit = searchParams.get('limit') ?? '25';
   const [showBarcodeCatalog, setShowBarcodeCatalog] = useState(false);
@@ -365,9 +411,10 @@ export function ProductsPage() {
   const products = data?.data ?? [];
   const pagination = data?.pagination;
 
-  // La selección se limpia cada vez que cambian los filtros o la página —
-  // evita aplicar una acción masiva a productos que ya no están a la vista.
-  useEffect(() => { setSelected(new Set()); }, [debouncedSearch, page, lowStock, favorite, categoryId, status, sortBy, sortOrder, limit]);
+  // La selección se limpia cuando cambian los filtros/orden (el conjunto de
+  // productos visibles cambia por completo), pero NO al cambiar de página —
+  // así se puede seleccionar productos de varias páginas para una acción masiva.
+  useEffect(() => { setSelected(new Set()); }, [debouncedSearch, lowStock, favorite, categoryId, status, sortBy, sortOrder, limit]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete<{ data: { deleted?: boolean; discontinued?: boolean } }>(`/products/${id}`),
@@ -445,8 +492,15 @@ export function ProductsPage() {
     });
   };
 
-  const toggleSelectAll = () => setSelected((v) =>
-    v.size === products.length ? new Set() : new Set(products.map((p) => p.id)));
+  // Selecciona/deselecciona solo los productos de la página actual, sin
+  // tocar los que ya estaban marcados en otras páginas.
+  const allOnPageSelected = products.length > 0 && products.every((p) => selected.has(p.id));
+  const toggleSelectAll = () => setSelected((v) => {
+    const next = new Set(v);
+    if (allOnPageSelected) products.forEach((p) => next.delete(p.id));
+    else products.forEach((p) => next.add(p.id));
+    return next;
+  });
 
   const toggleSelect = (id: string) => setSelected((v) => {
     const next = new Set(v);
@@ -497,6 +551,10 @@ export function ProductsPage() {
 
       {showBarcodeCatalog && <BarcodeCatalogModal onClose={() => setShowBarcodeCatalog(false)} />}
 
+      {/* Navegación por categorías: chips de categoría general + subcategorías,
+          igual al patrón ya usado en el POS, para no obligar a leer un <select>. */}
+      <CategoryChipNav categories={categories ?? []} categoryId={categoryId} onSelect={(v) => setParam('categoryId', v)} />
+
       {/* Filtros */}
       <div className="flex flex-wrap gap-3">
         <div className="flex-1 min-w-[220px]">
@@ -507,7 +565,6 @@ export function ProductsPage() {
             onChange={(e) => handleSearch(e.target.value)}
           />
         </div>
-        <CategoryTreeSelect categories={categories ?? []} value={categoryId} onChange={(v) => setParam('categoryId', v)} />
         <select value={status} onChange={(e) => setParam('status', e.target.value)}
           className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -594,7 +651,7 @@ export function ProductsPage() {
                   <tr className="border-b bg-muted/50">
                     <th className="px-4 py-3 text-left font-medium w-8">
                       <button onClick={toggleSelectAll} title="Seleccionar todos en esta página">
-                        {selected.size === products.length && products.length > 0
+                        {allOnPageSelected
                           ? <CheckSquare className="h-4 w-4 text-primary" />
                           : <Square className="h-4 w-4 text-muted-foreground" />}
                       </button>
