@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search, Package, Edit, AlertTriangle, Barcode, Trash2, Printer, X, ArrowUpDown, CheckSquare, Square, Star, FileText } from 'lucide-react';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
-import { formatCurrency, formatCost, cn } from '@/lib/utils';
+import { formatCurrency, formatCost, cn, looksLikeScannedCode } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
@@ -217,20 +217,38 @@ function printPriceList(products: Array<{
   win.document.close(); win.focus(); win.print();
 }
 
-function BarcodeCatalogModal({ onClose }: { onClose: () => void }) {
+function BarcodeCatalogModal({ onClose, categories }: { onClose: () => void; categories: CategoryNode[] }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
+  const [categoryId, setCategoryId] = useState('');
   const [onlyMissing, setOnlyMissing] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // Límite alto para traer TODO el catálogo de una vez — con el tope
+  // anterior (100) la mitad de los productos ni siquiera aparecían acá.
   const { data: allProducts, isLoading } = useQuery({
     queryKey: ['products-barcode-catalog'],
-    queryFn: async () => (await api.get<{ data: Product[] }>('/products?limit=100')).data.data,
+    queryFn: async () => (await api.get<{ data: Product[] }>('/products?limit=3000')).data.data,
   });
 
+  // Si se elige una categoría general, incluye sus subcategorías (mismo
+  // criterio que el resto del sistema) — si no, casi nunca hay productos
+  // asignados directo a la categoría padre.
+  const selectedCategoryIds = useMemo(() => {
+    if (!categoryId) return null;
+    const node = categories.find(c => c.id === categoryId);
+    const ids = new Set([categoryId, ...(node?.children?.map(c => c.id) ?? [])]);
+    return ids;
+  }, [categoryId, categories]);
+
+  // "Sin código" incluye tanto productos sin barcode como los que quedaron
+  // con un valor inválido (ej. el nombre del producto guardado por error en
+  // el pasado) — ambos casos necesitan que se les genere un código interno
+  // limpio tipo PROxxx.
   const filtered = (allProducts ?? []).filter(p => {
-    if (onlyMissing && p.barcode) return false;
+    if (onlyMissing && looksLikeScannedCode(p.barcode ?? '')) return false;
+    if (selectedCategoryIds && !selectedCategoryIds.has(p.category.id)) return false;
     if (debouncedSearch && !p.name.toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
     return true;
   });
@@ -250,7 +268,7 @@ function BarcodeCatalogModal({ onClose }: { onClose: () => void }) {
 
   const handlePrint = async () => {
     const chosen = (allProducts ?? []).filter(p => selected.has(p.id));
-    const needCodes = chosen.filter(p => !p.barcode).map(p => p.id);
+    const needCodes = chosen.filter(p => !looksLikeScannedCode(p.barcode ?? '')).map(p => p.id);
 
     let generated: Array<{ id: string; barcode: string }> = [];
     if (needCodes.length > 0) {
@@ -267,7 +285,7 @@ function BarcodeCatalogModal({ onClose }: { onClose: () => void }) {
     const toPrint = chosen.map(p => ({
       name: p.name,
       salePrice: p.salePrice,
-      barcode: p.barcode ?? codeById.get(p.id) ?? '',
+      barcode: (looksLikeScannedCode(p.barcode ?? '') ? p.barcode : null) ?? codeById.get(p.id) ?? '',
     })).filter(p => p.barcode);
 
     if (toPrint.length === 0) { toast.error('No hay productos seleccionados con código.'); return; }
@@ -282,18 +300,23 @@ function BarcodeCatalogModal({ onClose }: { onClose: () => void }) {
           <div>
             <h2 className="text-lg font-bold flex items-center gap-2"><Barcode className="h-5 w-5 text-primary" />Imprimir catálogo de códigos</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Elige productos sin código (por ejemplo, a granel) — se les asigna uno interno automáticamente al imprimir.
+              Marca productos sin código real (a granel, o con un código inválido guardado antes) — se les asigna un código interno PROxxx al imprimir.
             </p>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
 
         <div className="p-5 space-y-3 border-b">
-          <Input startIcon={<Search className="h-4 w-4" />} placeholder="Buscar producto..." value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Input startIcon={<Search className="h-4 w-4" />} placeholder="Buscar producto..." value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            <CategoryTreeSelect categories={categories} value={categoryId} onChange={setCategoryId} emptyLabel="Todas las categorías" />
+          </div>
           <div className="flex items-center justify-between text-sm">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer" title="Incluye productos sin código y los que tengan un código inválido (ej. texto en vez de un código real)">
               <input type="checkbox" checked={onlyMissing} onChange={e => setOnlyMissing(e.target.checked)} className="h-4 w-4 rounded border-input" />
-              Solo productos sin código de barras
+              Solo pendientes (sin código real)
             </label>
             <button onClick={toggleAll} className="text-primary hover:underline">
               {selected.size === filtered.length && filtered.length > 0 ? 'Deseleccionar todos' : `Seleccionar todos (${filtered.length})`}
@@ -305,19 +328,32 @@ function BarcodeCatalogModal({ onClose }: { onClose: () => void }) {
           {isLoading ? (
             <div className="py-8 text-center text-muted-foreground">Cargando productos...</div>
           ) : filtered.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground text-sm">No hay productos que coincidan.</div>
-          ) : filtered.map(p => (
+            <div className="py-8 text-center text-muted-foreground text-sm">
+              No hay productos que coincidan.
+              {onlyMissing && <span className="block mt-1">Prueba desmarcar "Solo pendientes" — puede que ya todos tengan código en esta vista.</span>}
+            </div>
+          ) : filtered.map(p => {
+            const hasRealCode = looksLikeScannedCode(p.barcode ?? '');
+            return (
             <label key={p.id} className="flex items-center gap-3 px-5 py-2.5 cursor-pointer hover:bg-muted/30">
               <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} className="h-4 w-4 rounded border-input" />
-              <span className="flex-1 text-sm">{p.name}</span>
+              <span className="flex-1 text-sm">
+                {p.name}
+                <span className="block text-xs text-muted-foreground">
+                  {p.category.parent ? `${p.category.parent.name} › ${p.category.name}` : p.category.name}
+                </span>
+              </span>
               {p.isBulk && <Badge variant="secondary" className="text-xs">Granel</Badge>}
-              {p.barcode ? (
+              {hasRealCode ? (
                 <span className="text-xs font-mono text-muted-foreground">{p.barcode}</span>
+              ) : p.barcode ? (
+                <span className="text-xs text-destructive" title={`Valor guardado actualmente: "${p.barcode}"`}>Código inválido — se corregirá</span>
               ) : (
                 <span className="text-xs text-amber-600">Sin código — se generará</span>
               )}
             </label>
-          ))}
+            );
+          })}
         </div>
 
         <div className="border-t p-5 flex gap-3 justify-end">
@@ -575,7 +611,7 @@ export function ProductsPage() {
         )}
       </div>
 
-      {showBarcodeCatalog && <BarcodeCatalogModal onClose={() => setShowBarcodeCatalog(false)} />}
+      {showBarcodeCatalog && <BarcodeCatalogModal onClose={() => setShowBarcodeCatalog(false)} categories={categories ?? []} />}
 
       {/* Navegación por categorías: chips de categoría general + subcategorías,
           igual al patrón ya usado en el POS, para no obligar a leer un <select>. */}
@@ -721,7 +757,13 @@ export function ProductsPage() {
                             {product.barcode && (
                               <div className="flex items-center gap-1 mt-0.5">
                                 <Barcode className="h-3 w-3 text-muted-foreground" />
-                                <span className="text-xs font-mono text-muted-foreground">{product.barcode}</span>
+                                {looksLikeScannedCode(product.barcode) ? (
+                                  <span className="text-xs font-mono text-muted-foreground">{product.barcode}</span>
+                                ) : (
+                                  <span className="text-xs text-destructive" title={`Valor guardado actualmente: "${product.barcode}"`}>
+                                    Código inválido
+                                  </span>
+                                )}
                               </div>
                             )}
                           </div>
@@ -763,7 +805,7 @@ export function ProductsPage() {
                               loading={toggleFavoriteMutation.isPending && toggleFavoriteMutation.variables?.id === product.id}>
                               <Star className={cn('h-4 w-4', product.isFavorite && 'fill-amber-400 text-amber-500')} />
                             </Button>
-                            {!product.barcode && (
+                            {!looksLikeScannedCode(product.barcode ?? '') && (
                               <Button variant="ghost" size="icon-sm" title="Generar código de barras interno"
                                 onClick={() => generateBarcodeMutation.mutate(product.id)}
                                 loading={generateBarcodeMutation.isPending && generateBarcodeMutation.variables === product.id}>

@@ -545,24 +545,35 @@ export class ProductsService {
    * buscar, escanear y mostrar en vez de mantener dos identificadores
    * distintos por producto. */
 
+  // Un código "real" es un código de fábrica (solo dígitos, 8+) o ya un
+  // interno estándar PROxxx — cualquier otra cosa (por ejemplo, un slug del
+  // nombre guardado por error en el pasado) se trata como "sin código" para
+  // que se pueda corregir, en vez de quedar bloqueado para siempre.
+  private looksLikeRealBarcode(code: string | null): boolean {
+    return !!code && /^(\d{8,}|PRO\d+)$/.test(code);
+  }
+
   async generateBarcode(productId: string) {
     const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');
-    if (product.barcode) throw new BusinessError('Este producto ya tiene un código de barras.');
+    if (this.looksLikeRealBarcode(product.barcode)) {
+      throw new BusinessError('Este producto ya tiene un código de barras.');
+    }
 
-    const barcode = product.internalCode ?? await this.nextInternalCode();
+    const barcode = /^PRO\d+$/.test(product.internalCode ?? '') ? product.internalCode! : await this.nextInternalCode();
     return prisma.product.update({ where: { id: productId }, data: { barcode, internalCode: barcode } });
   }
 
-  /** Genera códigos para todos los productos sin barcode, o solo los indicados. */
+  /** Genera códigos para todos los productos sin código real, o solo los indicados. */
   async generateBarcodesBulk(productIds?: string[]) {
-    const where: Prisma.ProductWhereInput = { deletedAt: null, barcode: null };
+    const where: Prisma.ProductWhereInput = { deletedAt: null };
     if (productIds && productIds.length > 0) where.id = { in: productIds };
 
-    const products = await prisma.product.findMany({ where, select: { id: true, name: true, internalCode: true } });
+    const candidates = await prisma.product.findMany({ where, select: { id: true, name: true, barcode: true, internalCode: true } });
     const results: { id: string; name: string; barcode: string }[] = [];
-    for (const p of products) {
-      const barcode = p.internalCode ?? await this.nextInternalCode();
+    for (const p of candidates) {
+      if (this.looksLikeRealBarcode(p.barcode)) continue;
+      const barcode = /^PRO\d+$/.test(p.internalCode ?? '') ? p.internalCode! : await this.nextInternalCode();
       await prisma.product.update({ where: { id: p.id }, data: { barcode, internalCode: barcode } });
       results.push({ id: p.id, name: p.name, barcode });
     }
