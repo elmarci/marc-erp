@@ -564,6 +564,15 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
     onResult: handleVoiceResult,
   });
 
+  // Al usar un filtro (categoría, subcategoría, a granel, favoritos) se borra
+  // la búsqueda por texto — si no, una búsqueda vieja ("limón") se sigue
+  // combinando con el filtro nuevo y puede no devolver ningún resultado
+  // aunque el filtro en sí sea correcto.
+  const clearSearch = () => {
+    setSearch('');
+    if (searchInputRef.current) searchInputRef.current.value = '';
+  };
+
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
     // Usar el valor actual del input, no el estado debounced (que puede ir
@@ -615,7 +624,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
               variant={selectedCategory === null ? 'default' : 'outline'}
               size="sm"
               className="shrink-0 h-7 text-xs"
-              onClick={() => { setSelectedCategory(null); setSelectedSubcategory(null); }}
+              onClick={() => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); }}
             >
               Todos
             </Button>
@@ -623,7 +632,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
               variant={bulkOnly ? 'default' : 'outline'}
               size="sm"
               className={cn('shrink-0 h-7 text-xs gap-1', bulkOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
-              onClick={() => setBulkOnly((v) => !v)}
+              onClick={() => { clearSearch(); setBulkOnly((v) => !v); }}
               title="Productos a granel — sin código de barras, acceso rápido"
             >
               <Scale className="h-3 w-3" />A granel
@@ -632,7 +641,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
               variant={favoriteOnly ? 'default' : 'outline'}
               size="sm"
               className={cn('shrink-0 h-7 text-xs gap-1', favoriteOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
-              onClick={() => setFavoriteOnly((v) => !v)}
+              onClick={() => { clearSearch(); setFavoriteOnly((v) => !v); }}
               title="Favoritos — acceso rápido a los productos más vendidos sin código de barras"
             >
               <Star className="h-3 w-3" />Favoritos
@@ -643,7 +652,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                 variant={selectedCategory === cat.id ? 'default' : 'outline'}
                 size="sm"
                 className="shrink-0 h-7 text-xs"
-                onClick={() => { setSelectedCategory(cat.id); setSelectedSubcategory(null); }}
+                onClick={() => { clearSearch(); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}
               >
                 {cat.name}
               </Button>
@@ -656,7 +665,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                 variant={selectedSubcategory === null ? 'secondary' : 'ghost'}
                 size="sm"
                 className="shrink-0 h-6 text-[11px]"
-                onClick={() => setSelectedSubcategory(null)}
+                onClick={() => { clearSearch(); setSelectedSubcategory(null); }}
               >
                 Todas
               </Button>
@@ -666,7 +675,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                   variant={selectedSubcategory === sub.id ? 'secondary' : 'ghost'}
                   size="sm"
                   className="shrink-0 h-6 text-[11px]"
-                  onClick={() => setSelectedSubcategory(sub.id)}
+                  onClick={() => { clearSearch(); setSelectedSubcategory(sub.id); }}
                 >
                   {sub.name}
                 </Button>
