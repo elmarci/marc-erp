@@ -20,6 +20,11 @@ export interface CreateExpenseInput {
   notes?: string;
   expenseDate?: Date;
   userId: string;
+  // Si se paga en efectivo (method === 'CASH') y se indica una sesión de caja
+  // abierta, el dinero sale físicamente de ese cajón (afecta su arqueo del
+  // día) en vez de salir directo de Caja General — mismo criterio que el
+  // pago de una compra desde caja (ver applyPurchasePaymentLegs).
+  cashSessionId?: string;
 }
 
 export interface CreateRecurringTemplateInput {
@@ -128,6 +133,11 @@ export class TreasuryService {
   async createExpense(input: CreateExpenseInput) {
     if (input.amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
 
+    // Efectivo + sesión de caja abierta → el retiro sale del cajón físico de
+    // esa caja (queda en su arqueo); cualquier otro caso sale directo de
+    // Caja General, en la cuenta que corresponda al método.
+    const isPhysicalCash = !input.method || input.method === 'CASH';
+
     return prisma.$transaction(async (tx) => {
       const expense = await tx.expense.create({
         data: {
@@ -141,10 +151,24 @@ export class TreasuryService {
           userId: input.userId,
         },
       });
-      await this.recordMovement(
-        tx, 'WITHDRAWAL', input.amount, `Gasto: ${input.description}`, input.userId, 'EXPENSE', expense.id,
-        methodToAccount(input.method),
-      );
+
+      const cashSession = isPhysicalCash && input.cashSessionId
+        ? await tx.cashSession.findFirst({ where: { id: input.cashSessionId, status: 'OPEN' } })
+        : null;
+
+      if (cashSession) {
+        await tx.cashMovement.create({
+          data: {
+            cashSessionId: cashSession.id, type: 'WITHDRAWAL', amount: input.amount,
+            reason: `Gasto: ${input.description}`, referenceType: 'EXPENSE', referenceId: expense.id,
+          },
+        });
+      } else {
+        await this.recordMovement(
+          tx, 'WITHDRAWAL', input.amount, `Gasto: ${input.description}`, input.userId, 'EXPENSE', expense.id,
+          methodToAccount(input.method),
+        );
+      }
       return expense;
     });
   }

@@ -43,8 +43,13 @@ interface SessionSummary {
     salesByMethod: Record<string, number>;
     totalWithdrawals: number; totalDeposits: number; netCash: number;
     debtPayments: number; otherDeposits: number;
-    purchasePayments: number; otherWithdrawals: number;
+    purchasePayments: number; expensePayments: number; otherWithdrawals: number;
   };
+}
+
+interface PayableOrder {
+  id: string; orderNumber: string; outstanding: number;
+  supplier: { businessName: string };
 }
 
 interface Movement {
@@ -86,6 +91,7 @@ function printArqueo(summary: SessionSummary, reconciliations: DigitalReconcilia
   ${sm.debtPayments > 0 ? `<div class="row"><span>Cobro de cuentas:</span><span>+S/ ${sm.debtPayments.toFixed(2)}</span></div>` : ''}
   ${sm.otherDeposits > 0 ? `<div class="row"><span>Otros depósitos:</span><span>+S/ ${sm.otherDeposits.toFixed(2)}</span></div>` : ''}
   ${sm.purchasePayments > 0 ? `<div class="row"><span>Pago a proveedores:</span><span>-S/ ${sm.purchasePayments.toFixed(2)}</span></div>` : ''}
+  ${sm.expensePayments > 0 ? `<div class="row"><span>Gastos pagados:</span><span>-S/ ${sm.expensePayments.toFixed(2)}</span></div>` : ''}
   ${sm.otherWithdrawals > 0 ? `<div class="row"><span>Otros retiros:</span><span>-S/ ${sm.otherWithdrawals.toFixed(2)}</span></div>` : ''}
   <div class="line"></div>
   <div class="row b"><span>Efectivo esperado:</span><span>S/ ${Number(s.expectedAmount ?? sm.netCash).toFixed(2)}</span></div>
@@ -472,13 +478,28 @@ function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string
 
 function ActiveSessionPanel({ session }: { session: CashSession }) {
   const queryClient = useQueryClient();
+  const { hasMinRole } = useAuthStore();
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<'movimientos' | 'ventas'>('movimientos');
   const [movType, setMovType] = useState<'WITHDRAWAL' | 'DEPOSIT'>('WITHDRAWAL');
+  // A dónde va un retiro: de vuelta a Caja General (simple transferencia),
+  // a pagar una orden de compra puntual, o a un gasto general — cada uno
+  // reutiliza el flujo ya existente (payOrder / createExpense) en vez de
+  // inventar una contabilidad nueva.
+  const [withdrawalDestino, setWithdrawalDestino] = useState<'CAJA_GENERAL' | 'OC' | 'GASTO'>('CAJA_GENERAL');
   const [movAmount, setMovAmount] = useState('');
   const [movReason, setMovReason] = useState('');
+  const [selectedOrderId, setSelectedOrderId] = useState('');
+  const [ocMethod, setOcMethod] = useState('CASH');
+  const [expenseCategory, setExpenseCategory] = useState('OTHER');
+  const [expenseMethod, setExpenseMethod] = useState('CASH');
   const [showClose, setShowClose] = useState(false);
   const [showDeposit, setShowDeposit] = useState(false);
+
+  const resetMovForm = () => {
+    setMovAmount(''); setMovReason(''); setSelectedOrderId('');
+    setOcMethod('CASH'); setExpenseCategory('OTHER'); setExpenseMethod('CASH');
+  };
 
   const { data: summary } = useQuery({
     queryKey: ['cash-summary', session.id],
@@ -499,6 +520,15 @@ function ActiveSessionPanel({ session }: { session: CashSession }) {
     enabled: expanded && tab === 'ventas',
   });
 
+  const { data: payableOrders } = useQuery({
+    queryKey: ['payable-orders-picker'],
+    queryFn: async () => (await api.get<{ data: PayableOrder[] }>('/purchases/payable?limit=50')).data.data,
+    enabled: expanded && movType === 'WITHDRAWAL' && withdrawalDestino === 'OC',
+  });
+  const selectedOrder = payableOrders?.find((o) => o.id === selectedOrderId);
+
+  // Depósito, y retiro "vuelve a Caja General" — transferencia simple entre
+  // el cajón y Caja General, siempre en efectivo (así funciona hoy).
   const movMutation = useMutation({
     mutationFn: () => api.post(`/cash/sessions/${session.id}/movements`, {
       type: movType, amount: parseFloat(movAmount), reason: movReason,
@@ -507,7 +537,47 @@ function ActiveSessionPanel({ session }: { session: CashSession }) {
       queryClient.invalidateQueries({ queryKey: ['cash-movements', session.id] });
       queryClient.invalidateQueries({ queryKey: ['cash-summary', session.id] });
       toast.success('Movimiento registrado.');
-      setMovAmount(''); setMovReason('');
+      resetMovForm();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // Retiro → pagar una orden de compra puntual: reutiliza el mismo endpoint
+  // que Compras — si el método es Efectivo, se ata a esta sesión (sale del
+  // cajón); si es Yape/Plin, sale directo de esa cuenta en Caja General.
+  const payOrderMutation = useMutation({
+    mutationFn: () => api.post(`/purchases/${selectedOrderId}/pay`, {
+      legs: [{
+        amount: parseFloat(movAmount), method: ocMethod,
+        cashSessionId: ocMethod === 'CASH' ? session.id : undefined,
+      }],
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cash-movements', session.id] });
+      queryClient.invalidateQueries({ queryKey: ['cash-summary', session.id] });
+      queryClient.invalidateQueries({ queryKey: ['payable-orders-picker'] });
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      toast.success('Pago a proveedor registrado.');
+      resetMovForm();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // Retiro → registrar un gasto general (luz, transporte, etc.) — mismo
+  // endpoint que la pantalla de Caja General, con la sesión atada cuando el
+  // método es Efectivo.
+  const expenseMutation = useMutation({
+    mutationFn: () => api.post('/treasury/expenses', {
+      category: expenseCategory, description: movReason, amount: parseFloat(movAmount),
+      method: expenseMethod, cashSessionId: expenseMethod === 'CASH' ? session.id : undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cash-movements', session.id] });
+      queryClient.invalidateQueries({ queryKey: ['cash-summary', session.id] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      toast.success('Gasto registrado.');
+      resetMovForm();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -605,26 +675,125 @@ function ActiveSessionPanel({ session }: { session: CashSession }) {
                 <div className="flex gap-2">
                   <Button size="sm" className="flex-1"
                     variant={movType === 'WITHDRAWAL' ? 'destructive' : 'outline'}
-                    onClick={() => setMovType('WITHDRAWAL')}>
+                    onClick={() => { setMovType('WITHDRAWAL'); resetMovForm(); }}>
                     <Minus className="mr-1.5 h-3.5 w-3.5" />Retiro
                   </Button>
                   <Button size="sm" className="flex-1"
                     variant={movType === 'DEPOSIT' ? 'success' : 'outline'}
-                    onClick={() => setMovType('DEPOSIT')}>
+                    onClick={() => { setMovType('DEPOSIT'); resetMovForm(); }}>
                     <Plus className="mr-1.5 h-3.5 w-3.5" />Depósito
                   </Button>
                 </div>
-                <div className="flex gap-2">
-                  <Input type="number" placeholder="Monto S/" value={movAmount}
-                    onChange={e => setMovAmount(e.target.value)} className="w-32" min={0} step={0.10} />
-                  <Input placeholder="Motivo (ej: pago proveedor)" value={movReason}
-                    onChange={e => setMovReason(e.target.value)} />
-                </div>
-                <Button size="sm" className="w-full" onClick={() => movMutation.mutate()}
-                  disabled={!movAmount || !movReason || parseFloat(movAmount) <= 0}
-                  loading={movMutation.isPending}>
-                  Registrar
-                </Button>
+
+                {movType === 'DEPOSIT' ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">💰 Este monto sale siempre de Caja General (efectivo).</p>
+                    <div className="flex gap-2">
+                      <Input type="number" placeholder="Monto S/" value={movAmount}
+                        onChange={e => setMovAmount(e.target.value)} className="w-32" min={0} step={0.10} />
+                      <Input placeholder="Motivo (ej: cambio para el día)" value={movReason}
+                        onChange={e => setMovReason(e.target.value)} />
+                    </div>
+                    <Button size="sm" className="w-full" onClick={() => movMutation.mutate()}
+                      disabled={!movAmount || !movReason || parseFloat(movAmount) <= 0}
+                      loading={movMutation.isPending}>
+                      Registrar depósito
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex gap-1.5">
+                      {([
+                        { value: 'CAJA_GENERAL' as const, label: 'Vuelve a Caja General' },
+                        { value: 'OC' as const, label: 'Pagar Orden de Compra' },
+                        ...(hasMinRole('SUPERVISOR') ? [{ value: 'GASTO' as const, label: 'Registrar Gasto' }] : []),
+                      ]).map(o => (
+                        <button key={o.value} onClick={() => { setWithdrawalDestino(o.value); resetMovForm(); }}
+                          className={cn('flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                            withdrawalDestino === o.value ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50')}>
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {withdrawalDestino === 'CAJA_GENERAL' && (
+                      <>
+                        <div className="flex gap-2">
+                          <Input type="number" placeholder="Monto S/" value={movAmount}
+                            onChange={e => setMovAmount(e.target.value)} className="w-32" min={0} step={0.10} />
+                          <Input placeholder="Detalle (ej: excedente de caja)" value={movReason}
+                            onChange={e => setMovReason(e.target.value)} />
+                        </div>
+                        <Button size="sm" className="w-full" variant="destructive" onClick={() => movMutation.mutate()}
+                          disabled={!movAmount || !movReason || parseFloat(movAmount) <= 0}
+                          loading={movMutation.isPending}>
+                          Registrar retiro
+                        </Button>
+                      </>
+                    )}
+
+                    {withdrawalDestino === 'OC' && (
+                      <>
+                        <select value={selectedOrderId} onChange={e => {
+                          const id = e.target.value;
+                          setSelectedOrderId(id);
+                          const o = payableOrders?.find(p => p.id === id);
+                          setMovAmount(o ? o.outstanding.toFixed(2) : '');
+                        }} className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm">
+                          <option value="">Selecciona una orden de compra...</option>
+                          {(payableOrders ?? []).map(o => (
+                            <option key={o.id} value={o.id}>
+                              {o.orderNumber} — {o.supplier.businessName} (debe S/ {o.outstanding.toFixed(2)})
+                            </option>
+                          ))}
+                        </select>
+                        {payableOrders?.length === 0 && (
+                          <p className="text-xs text-muted-foreground">No hay órdenes de compra pendientes de pago.</p>
+                        )}
+                        {selectedOrder && (
+                          <div className="flex gap-2">
+                            <Input type="number" placeholder="Monto S/" value={movAmount}
+                              onChange={e => setMovAmount(e.target.value)} className="w-32" min={0}
+                              max={selectedOrder.outstanding} step={0.10} />
+                            <select value={ocMethod} onChange={e => setOcMethod(e.target.value)}
+                              className="flex h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm">
+                              {Object.entries(PAYMENT_METHOD_LABELS).filter(([k]) => k !== 'CREDIT').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                            </select>
+                          </div>
+                        )}
+                        <Button size="sm" className="w-full" variant="destructive" onClick={() => payOrderMutation.mutate()}
+                          disabled={!selectedOrderId || !movAmount || parseFloat(movAmount) <= 0 || (!!selectedOrder && parseFloat(movAmount) > selectedOrder.outstanding + 0.009)}
+                          loading={payOrderMutation.isPending}>
+                          Pagar orden de compra
+                        </Button>
+                      </>
+                    )}
+
+                    {withdrawalDestino === 'GASTO' && (
+                      <>
+                        <select value={expenseCategory} onChange={e => setExpenseCategory(e.target.value)}
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm">
+                          {Object.entries(EXPENSE_CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                        <Input placeholder="Descripción del gasto" value={movReason}
+                          onChange={e => setMovReason(e.target.value)} />
+                        <div className="flex gap-2">
+                          <Input type="number" placeholder="Monto S/" value={movAmount}
+                            onChange={e => setMovAmount(e.target.value)} className="w-32" min={0} step={0.10} />
+                          <select value={expenseMethod} onChange={e => setExpenseMethod(e.target.value)}
+                            className="flex h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm">
+                            {Object.entries(PAYMENT_METHOD_LABELS).filter(([k]) => k !== 'CREDIT').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                          </select>
+                        </div>
+                        <Button size="sm" className="w-full" variant="destructive" onClick={() => expenseMutation.mutate()}
+                          disabled={!movAmount || !movReason || parseFloat(movAmount) <= 0}
+                          loading={expenseMutation.isPending}>
+                          Registrar gasto
+                        </Button>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* Garantía de envase — aparte de una venta, no es ingreso */}

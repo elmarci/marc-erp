@@ -75,7 +75,7 @@ router.get('/expenses/summary', async (req: Request, res: Response, next: NextFu
 
 router.post('/expenses', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { category, description, amount, method, reference, notes, expenseDate } = z.object({
+    const { category, description, amount, method, reference, notes, expenseDate, cashSessionId } = z.object({
       category: z.nativeEnum(ExpenseCategory),
       description: z.string().min(1),
       amount: z.number().positive(),
@@ -83,9 +83,12 @@ router.post('/expenses', async (req: Request, res: Response, next: NextFunction)
       reference: z.string().optional(),
       notes: z.string().optional(),
       expenseDate: z.string().transform((s) => parseLimaDate(s, false)).optional(),
+      // Solo tiene efecto con method === 'CASH': ata el gasto a esa sesión de
+      // caja (caja del día) en vez de Caja General.
+      cashSessionId: z.string().uuid().optional(),
     }).parse(req.body);
     const expense = await treasuryService.createExpense({
-      category, description, amount, method, reference, notes, expenseDate, userId: req.user!.sub,
+      category, description, amount, method, reference, notes, expenseDate, cashSessionId, userId: req.user!.sub,
     });
     res.status(201).json({ success: true, data: expense });
   } catch (err) { next(err); }

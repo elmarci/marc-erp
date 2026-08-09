@@ -253,7 +253,10 @@ export class CashService {
     const purchasePayments = session.movements
       .filter((m) => m.type === 'WITHDRAWAL' && m.referenceType === 'PURCHASE')
       .reduce((s, m) => s + Number(m.amount), 0);
-    const otherWithdrawals = totalWithdrawals - purchasePayments;
+    const expensePayments = session.movements
+      .filter((m) => m.type === 'WITHDRAWAL' && m.referenceType === 'EXPENSE')
+      .reduce((s, m) => s + Number(m.amount), 0);
+    const otherWithdrawals = totalWithdrawals - purchasePayments - expensePayments;
 
     return {
       session: {
@@ -278,6 +281,7 @@ export class CashService {
         debtPayments,
         otherDeposits,
         purchasePayments,
+        expensePayments,
         otherWithdrawals,
         netCash: Number(session.openingAmount) + (salesByMethod['CASH'] ?? 0) + totalDeposits - totalWithdrawals,
       },
