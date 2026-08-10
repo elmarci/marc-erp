@@ -119,66 +119,88 @@ function CategoryChipNav({ categories, categoryId, onSelect }: {
 }
 
 /* ─── Impresión de etiquetas de precio (para pegar en los portaprecios) ───
- * Tarjeta de ~5.2cm de alto (el alto típico de un portaprecios de anaquel):
- * logo circular + nombre + precio arriba, código de barras abajo. */
+ * Tarjeta de ~5.2cm de alto (el alto típico de un portaprecios de anaquel).
+ * Lo que más le importa al cliente — nombre y precio — ocupa casi toda la
+ * tarjeta; la marca queda como una placa chica y el código de barras es una
+ * franja delgada al pie (lo necesita el cajero, no el cliente). */
 function barcodeSvgMarkup(value: string): string {
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     JsBarcode(svg, value, {
-      format: 'CODE128', width: 1.6, height: 30, displayValue: true,
-      fontSize: 10, fontOptions: 'bold', margin: 0, textMargin: 3,
+      format: 'CODE128', width: 1.4, height: 22, displayValue: true,
+      fontSize: 9, fontOptions: 'bold', margin: 0, textMargin: 2,
     });
     return svg.outerHTML;
   } catch {
-    return `<p style="font-size:10px">${value}</p>`;
+    return `<p style="font-size:9px">${value}</p>`;
   }
 }
 
 function printBarcodeCatalog(products: Array<{ name: string; barcode: string; salePrice: number }>) {
   const win = window.open('', '_blank', 'width=900,height=950');
   if (!win) return;
-  const cards = products.map(p => `
+  const cards = products.map(p => {
+    const [intPart, centsPart] = Number(p.salePrice).toFixed(2).split('.');
+    return `
     <div class="card">
-      <div class="top">
-        <div class="logo"><img src="${MARC_LOGO_DATA_URI}" /></div>
-        <p class="name">${p.name}</p>
-        <div class="price"><sup>S/</sup>${Number(p.salePrice).toFixed(2)}</div>
+      <div class="accent"></div>
+      <div class="hero">
+        <div class="info">
+          <div class="brand"><div class="logo"><img src="${MARC_LOGO_DATA_URI}" /></div><span>Minimarket Marc</span></div>
+          <p class="name">${p.name}</p>
+        </div>
+        <div class="price">
+          <span class="currency">S/</span>
+          <span class="amount">${intPart}<span class="cents">.${centsPart}</span></span>
+        </div>
       </div>
       <div class="barcode">${barcodeSvgMarkup(p.barcode)}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   win.document.write(`<html><head><title>Etiquetas de precio</title>
     <style>
-      * { margin:0; padding:0; box-sizing:border-box; }
+      * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact; }
       @page { size: A4; margin: 8mm; }
       body { font-family: Arial, Helvetica, sans-serif; }
       .grid { display: flex; flex-wrap: wrap; gap: 3mm; }
       .card {
         width: 90mm; height: 52mm;
-        border: 1.5px solid #1e5fbf; border-radius: 4mm;
+        border-radius: 4mm; overflow: hidden;
+        border: 1px solid #d7dee8;
         page-break-inside: avoid;
-        padding: 3mm 4mm;
-        display: flex; flex-direction: column; justify-content: space-between;
+        display: flex; flex-direction: column;
       }
-      .top { display: flex; align-items: center; gap: 3mm; }
+      .accent { height: 2mm; background: linear-gradient(90deg, #22b04c, #1e5fbf); flex-shrink: 0; }
+      .hero { flex: 1; display: flex; min-height: 0; }
+      .info {
+        flex: 1; min-width: 0; padding: 2mm 3mm;
+        display: flex; flex-direction: column; justify-content: center; gap: 1.5mm;
+      }
+      .brand { display: flex; align-items: center; gap: 1.5mm; }
       .logo {
-        width: 17mm; height: 17mm; border-radius: 50%; overflow: hidden;
+        width: 8mm; height: 8mm; border-radius: 50%; overflow: hidden;
         position: relative; flex-shrink: 0; background: #fff;
       }
       .logo img { position: absolute; top: 0; right: 0; height: 100%; width: auto; }
+      .brand span { font-size: 7px; font-weight: 700; color: #8894a8; text-transform: uppercase; letter-spacing: .05em; }
       .name {
-        flex: 1; min-width: 0;
-        font-size: 12px; font-weight: 800; color: #1a2b4a; text-transform: uppercase;
-        line-height: 1.2; letter-spacing: .01em;
-        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+        font-size: 16px; font-weight: 900; color: #10203f; text-transform: uppercase;
+        line-height: 1.14; letter-spacing: .005em;
+        display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
       }
       .price {
-        flex-shrink: 0; background: linear-gradient(135deg, #1e5fbf, #2f74e0); color: #fff;
-        border-radius: 3mm; padding: 1.5mm 3mm; font-size: 19px; font-weight: 900;
-        white-space: nowrap; line-height: 1;
+        flex-shrink: 0; width: 33mm;
+        background: linear-gradient(160deg, #2166cc, #184a98);
+        color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
       }
-      .price sup { font-size: 9px; font-weight: 700; margin-right: 1px; }
-      .barcode { border-top: 1px dashed #cbd5e1; padding-top: 2mm; text-align: center; }
-      .barcode svg { max-width: 100%; height: auto; max-height: 15mm; }
+      .price .currency { font-size: 11px; font-weight: 800; letter-spacing: .04em; opacity: .9; }
+      .price .amount { font-size: 34px; font-weight: 900; line-height: 1; }
+      .price .cents { font-size: 15px; font-weight: 800; }
+      .barcode {
+        flex-shrink: 0; background: #f4f6f9; border-top: 1px solid #e3e8ef;
+        padding: 1mm 3mm; text-align: center;
+      }
+      .barcode svg { max-width: 100%; height: auto; max-height: 10mm; }
     </style></head><body>
     <div class="grid">${cards}</div>
     </body></html>`);
