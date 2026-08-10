@@ -119,10 +119,10 @@ function CategoryChipNav({ categories, categoryId, onSelect }: {
 }
 
 /* ─── Impresión de etiquetas de precio (para pegar en los portaprecios) ───
- * Tarjeta de ~5.2cm de alto (el alto típico de un portaprecios de anaquel).
- * Lo que más le importa al cliente — nombre y precio — ocupa casi toda la
- * tarjeta; la marca queda como una placa chica y el código de barras es una
- * franja delgada al pie (lo necesita el cajero, no el cliente). */
+ * Tarjeta de ~5.2cm de alto, siguiendo el modelo de etiqueta que ya usa la
+ * tienda: logo grande a la izquierda, nombre en dos niveles (tipo de
+ * producto arriba en grande, marca/variante abajo) y precio en una píldora
+ * azul — con el código de barras como franja delgada al pie. */
 function barcodeSvgMarkup(value: string): string {
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -136,23 +136,31 @@ function barcodeSvgMarkup(value: string): string {
   }
 }
 
+// La mayoría de productos del catálogo se llaman "Tipo Marca Variante"
+// (ej. "Leche Bonle Protección 390g", "Detergente Ariel 1kg") — separar la
+// primera palabra como título grande y el resto como subtítulo reproduce
+// el mismo efecto visual de "tipo de producto" + "presentación" de la
+// etiqueta de referencia, sin necesitar un campo nuevo en el producto.
+function splitProductName(name: string): { title: string; subtitle: string } {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length <= 1) return { title: name, subtitle: '' };
+  return { title: parts[0], subtitle: parts.slice(1).join(' ') };
+}
+
 function printBarcodeCatalog(products: Array<{ name: string; barcode: string; salePrice: number }>) {
   const win = window.open('', '_blank', 'width=900,height=950');
   if (!win) return;
   const cards = products.map(p => {
-    const [intPart, centsPart] = Number(p.salePrice).toFixed(2).split('.');
+    const { title, subtitle } = splitProductName(p.name);
     return `
     <div class="card">
-      <div class="accent"></div>
-      <div class="hero">
-        <div class="info">
-          <div class="brand"><div class="logo"><img src="${MARC_LOGO_DATA_URI}" /></div><span>Minimarket Marc</span></div>
-          <p class="name">${p.name}</p>
+      <div class="row">
+        <div class="logo"><img src="${MARC_LOGO_DATA_URI}" /></div>
+        <div class="name">
+          <p class="title${title.length > 9 ? ' long' : ''}">${title}</p>
+          ${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}
         </div>
-        <div class="price">
-          <span class="currency">S/</span>
-          <span class="amount">${intPart}<span class="cents">.${centsPart}</span></span>
-        </div>
+        <div class="price"><span class="currency">S/</span><span class="amount">${Number(p.salePrice).toFixed(2)}</span></div>
       </div>
       <div class="barcode">${barcodeSvgMarkup(p.barcode)}</div>
     </div>`;
@@ -166,41 +174,40 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       .card {
         width: 90mm; height: 52mm;
         border-radius: 4mm; overflow: hidden;
-        border: 1px solid #d7dee8;
+        border: 1.5px solid #b9c6e0; background: #fff;
         page-break-inside: avoid;
         display: flex; flex-direction: column;
       }
-      .accent { height: 2mm; background: linear-gradient(90deg, #22b04c, #1e5fbf); flex-shrink: 0; }
-      .hero { flex: 1; display: flex; min-height: 0; }
-      .info {
-        flex: 1; min-width: 0; padding: 2mm 3mm;
-        display: flex; flex-direction: column; justify-content: center; gap: 1.5mm;
+      .row {
+        flex: 1; min-height: 0; display: flex; align-items: center; gap: 3mm;
+        padding: 3mm 3mm 1mm;
       }
-      .brand { display: flex; align-items: center; gap: 1.5mm; }
       .logo {
-        width: 8mm; height: 8mm; border-radius: 50%; overflow: hidden;
+        width: 20mm; height: 20mm; border-radius: 50%; overflow: hidden;
         position: relative; flex-shrink: 0; background: #fff;
       }
       .logo img { position: absolute; top: 0; right: 0; height: 100%; width: auto; }
-      .brand span { font-size: 7px; font-weight: 700; color: #8894a8; text-transform: uppercase; letter-spacing: .05em; }
-      .name {
-        font-size: 16px; font-weight: 900; color: #10203f; text-transform: uppercase;
-        line-height: 1.14; letter-spacing: .005em;
-        display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+      .name { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1mm; }
+      .title {
+        font-size: 16px; font-weight: 900; color: #14203c; text-transform: uppercase;
+        line-height: 1.05; letter-spacing: .005em;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .title.long { font-size: 13.5px; }
+      .subtitle {
+        font-size: 12px; font-weight: 700; color: #3d4a63; text-transform: uppercase;
+        line-height: 1.2;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
       }
       .price {
-        flex-shrink: 0; width: 33mm;
-        background: linear-gradient(160deg, #2166cc, #184a98);
-        color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        flex-shrink: 0; background: linear-gradient(160deg, #2166cc, #184a98); color: #fff;
+        border-radius: 4mm; padding: 1.8mm 3mm;
+        display: flex; flex-direction: column; align-items: center; line-height: 1;
       }
-      .price .currency { font-size: 11px; font-weight: 800; letter-spacing: .04em; opacity: .9; }
-      .price .amount { font-size: 34px; font-weight: 900; line-height: 1; }
-      .price .cents { font-size: 15px; font-weight: 800; }
-      .barcode {
-        flex-shrink: 0; background: #f4f6f9; border-top: 1px solid #e3e8ef;
-        padding: 1mm 3mm; text-align: center;
-      }
-      .barcode svg { max-width: 100%; height: auto; max-height: 10mm; }
+      .price .currency { font-size: 9px; font-weight: 800; opacity: .85; }
+      .price .amount { font-size: 22px; font-weight: 900; }
+      .barcode { flex-shrink: 0; text-align: center; padding: 0 3mm 2mm; }
+      .barcode svg { max-width: 100%; height: auto; max-height: 11mm; }
     </style></head><body>
     <div class="grid">${cards}</div>
     </body></html>`);
