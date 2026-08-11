@@ -38,9 +38,11 @@ interface PosProductPanelProps {
 }
 
 /* ─── Bulk weight modal ───────────────────────────────────────────────────── */
-// Precisión de pesaje: la mayoría de balanzas de tienda marcan de 10 en 10
-// gramos, así que redondeamos el peso calculado a 3 decimales de kg (10g).
-const BULK_WEIGHT_STEP = 0.01;
+// Precisión de pesaje: 1 gramo (0.001 kg). Con pasos de 10g el peso
+// calculado podía desviar el cobro varios céntimos del monto pedido por el
+// cliente (ej. S/2 de un producto a S/24/kg terminaba en S/1.92) — a 1g el
+// desvío queda por debajo del céntimo para la enorme mayoría de precios.
+const BULK_WEIGHT_STEP = 0.001;
 
 function BulkModal({ product, onConfirm, onClose }: {
   product: Product;
@@ -56,10 +58,11 @@ function BulkModal({ product, onConfirm, onClose }: {
 
   // Modo "por monto": el cliente pide "2 soles de X" — calculamos el peso
   // exacto que hay que poner en la balanza para llegar a ese monto, en vez
-  // de que el cajero tenga que adivinar a ojo.
+  // de que el cajero tenga que adivinar a ojo. El toFixed corta el error de
+  // punto flotante que deja Math.round con pasos decimales (ej. 0.267000000004).
   const amountNum = parseFloat(amount);
   const computedQty = amountNum > 0 && price > 0
-    ? Math.round((amountNum / price) / BULK_WEIGHT_STEP) * BULK_WEIGHT_STEP
+    ? Number((Math.round((amountNum / price) / BULK_WEIGHT_STEP) * BULK_WEIGHT_STEP).toFixed(3))
     : 0;
 
   const finalQty = mode === 'monto' ? computedQty : parseFloat(qty);
