@@ -38,19 +38,36 @@ interface PosProductPanelProps {
 }
 
 /* ─── Bulk weight modal ───────────────────────────────────────────────────── */
+// Precisión de pesaje: la mayoría de balanzas de tienda marcan de 10 en 10
+// gramos, así que redondeamos el peso calculado a 3 decimales de kg (10g).
+const BULK_WEIGHT_STEP = 0.01;
+
 function BulkModal({ product, onConfirm, onClose }: {
   product: Product;
   onConfirm: (qty: number) => void;
   onClose: () => void;
 }) {
+  const isWeighable = product.bulkUnit === 'kg' || product.bulkUnit === 'g' || product.bulkUnit === 'L';
+  const [mode, setMode] = useState<'peso' | 'monto'>('peso');
   const [qty, setQty] = useState('');
+  const [amount, setAmount] = useState('');
   const unit = product.bulkUnit ?? 'unidad';
   const price = Number(product.salePrice);
-  const total = parseFloat(qty) * price;
 
-  const presets = unit === 'kg' || unit === 'g' || unit === 'L'
-    ? [0.25, 0.5, 0.75, 1, 1.5, 2]
-    : [1, 2, 3, 5, 10];
+  // Modo "por monto": el cliente pide "2 soles de X" — calculamos el peso
+  // exacto que hay que poner en la balanza para llegar a ese monto, en vez
+  // de que el cajero tenga que adivinar a ojo.
+  const amountNum = parseFloat(amount);
+  const computedQty = amountNum > 0 && price > 0
+    ? Math.round((amountNum / price) / BULK_WEIGHT_STEP) * BULK_WEIGHT_STEP
+    : 0;
+
+  const finalQty = mode === 'monto' ? computedQty : parseFloat(qty);
+  const total = (finalQty > 0 ? finalQty : 0) * price;
+
+  const weightPresets = [0.25, 0.5, 0.75, 1, 1.5, 2];
+  const countPresets = [1, 2, 3, 5, 10];
+  const amountPresets = [1, 2, 3, 5, 10];
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -66,36 +83,84 @@ function BulkModal({ product, onConfirm, onClose }: {
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
         <div className="p-5 space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Cantidad ({unit})</label>
-            <Input
-              type="number" min={0.01} step={0.01}
-              value={qty} onChange={e => setQty(e.target.value)}
-              placeholder={`Ej: 0.5 ${unit}`}
-              className="text-xl font-bold text-center" autoFocus
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {presets.map(p => (
-              <button key={p} onClick={() => setQty(String(p))}
-                className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full text-xs font-medium transition-colors">
-                {p} {unit}
+          {isWeighable && (
+            <div className="flex rounded-lg bg-muted p-1 text-sm font-medium">
+              <button
+                onClick={() => setMode('peso')}
+                className={cn('flex-1 rounded-md py-1.5 transition-colors', mode === 'peso' ? 'bg-card shadow-sm' : 'text-muted-foreground')}
+              >
+                Por peso
               </button>
-            ))}
-          </div>
-          {qty && parseFloat(qty) > 0 && (
+              <button
+                onClick={() => setMode('monto')}
+                className={cn('flex-1 rounded-md py-1.5 transition-colors', mode === 'monto' ? 'bg-card shadow-sm' : 'text-muted-foreground')}
+              >
+                Por monto (S/)
+              </button>
+            </div>
+          )}
+
+          {mode === 'peso' ? (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Cantidad ({unit})</label>
+                <Input
+                  type="number" min={0.01} step={0.01}
+                  value={qty} onChange={e => setQty(e.target.value)}
+                  placeholder={`Ej: 0.5 ${unit}`}
+                  className="text-xl font-bold text-center" autoFocus
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(isWeighable ? weightPresets : countPresets).map(p => (
+                  <button key={p} onClick={() => setQty(String(p))}
+                    className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full text-xs font-medium transition-colors">
+                    {p} {unit}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">El cliente quiere pagar (S/)</label>
+                <Input
+                  type="number" min={0.01} step={0.5}
+                  value={amount} onChange={e => setAmount(e.target.value)}
+                  placeholder="Ej: 2.00"
+                  className="text-xl font-bold text-center" autoFocus
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {amountPresets.map(p => (
+                  <button key={p} onClick={() => setAmount(String(p))}
+                    className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full text-xs font-medium transition-colors">
+                    S/ {p}
+                  </button>
+                ))}
+              </div>
+              {computedQty > 0 && (
+                <div className="rounded-lg border-2 border-primary bg-primary/10 p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Pon en la balanza</p>
+                  <p className="text-2xl font-black text-primary">{computedQty} {unit}</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {finalQty > 0 && (
             <div className="rounded-lg bg-primary/10 p-3 text-center">
               <p className="text-xs text-muted-foreground">Total a cobrar</p>
               <p className="text-2xl font-black text-primary">{formatCurrency(total)}</p>
-              <p className="text-xs text-muted-foreground">{qty} {unit} × {formatCurrency(price)}</p>
+              <p className="text-xs text-muted-foreground">{finalQty} {unit} × {formatCurrency(price)}</p>
             </div>
           )}
         </div>
         <div className="border-t p-4 flex gap-3">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
           <Button className="flex-1"
-            disabled={!qty || parseFloat(qty) <= 0}
-            onClick={() => { onConfirm(parseFloat(qty)); onClose(); }}>
+            disabled={!(finalQty > 0)}
+            onClick={() => { onConfirm(finalQty); onClose(); }}>
             Agregar al carrito
           </Button>
         </div>
