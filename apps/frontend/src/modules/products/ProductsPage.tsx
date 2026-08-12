@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Package, Edit, AlertTriangle, Barcode, Trash2, Printer, X, ArrowUpDown, CheckSquare, Square, Star, FileText } from 'lucide-react';
+import { Plus, Search, Package, Edit, AlertTriangle, Barcode, Trash2, Printer, X, ArrowUpDown, CheckSquare, Square, Star, FileText, Rocket } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ interface Product {
   imageUrl: string | null;
   isBulk?: boolean;
   isFavorite?: boolean;
+  storeFeatured?: boolean;
   category: { id: string; name: string; parent?: { name: string } | null };
   brand: { name: string } | null;
 }
@@ -547,6 +548,13 @@ export function ProductsPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const toggleStoreFeaturedMutation = useMutation({
+    mutationFn: ({ id, storeFeatured }: { id: string; storeFeatured: boolean }) =>
+      api.patch(`/products/${id}`, { storeFeatured }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   const bulkMutation = useMutation({
     mutationFn: (payload: { categoryId?: string; status?: string }) =>
       api.patch<{ data: { updated: number } }>('/products/bulk', { productIds: [...selected], ...payload }),
@@ -798,6 +806,7 @@ export function ProductsPage() {
                             <p className="font-medium flex items-center gap-1.5">
                               {product.name}
                               {product.isFavorite && <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />}
+                              {product.storeFeatured && <Rocket className="h-3.5 w-3.5 shrink-0 fill-blue-400 text-blue-600" />}
                             </p>
                             {product.barcode && (
                               <div className="flex items-center gap-1 mt-0.5">
@@ -849,6 +858,12 @@ export function ProductsPage() {
                               onClick={() => toggleFavoriteMutation.mutate({ id: product.id, isFavorite: !product.isFavorite })}
                               loading={toggleFavoriteMutation.isPending && toggleFavoriteMutation.variables?.id === product.id}>
                               <Star className={cn('h-4 w-4', product.isFavorite && 'fill-amber-400 text-amber-500')} />
+                            </Button>
+                            <Button variant="ghost" size="icon-sm"
+                              title={product.storeFeatured ? 'Quitar destacado de la tienda online' : 'Destacar en la tienda online (aparece primero en su categoría)'}
+                              onClick={() => toggleStoreFeaturedMutation.mutate({ id: product.id, storeFeatured: !product.storeFeatured })}
+                              loading={toggleStoreFeaturedMutation.isPending && toggleStoreFeaturedMutation.variables?.id === product.id}>
+                              <Rocket className={cn('h-4 w-4', product.storeFeatured && 'fill-blue-400 text-blue-600')} />
                             </Button>
                             {!looksLikeScannedCode(product.barcode ?? '') && (
                               <Button variant="ghost" size="icon-sm" title="Generar código de barras interno"

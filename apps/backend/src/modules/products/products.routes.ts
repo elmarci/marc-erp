@@ -50,6 +50,7 @@ const createSchema = z.object({
   bottleDeposit: z.number().min(0).default(0),
   imageUrl: z.union([z.string().url(), z.literal('')]).optional().nullable(),
   isFavorite: z.boolean().optional(),
+  storeFeatured: z.boolean().optional(),
 });
 
 const searchSchema = z.object({

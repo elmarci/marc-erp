@@ -50,7 +50,22 @@ export class StoreService {
           currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
           category: { select: { id: true, name: true } },
         },
-        orderBy: { name: 'asc' },
+        // storeFeatured primero (palanca manual del dueño), luego categoría
+        // padre e hija (el sort_order de las subcategorías solo es único
+        // dentro de su propio padre — hay que anclar primero al padre o
+        // "Lácteos" y "Gaseosas" quedan empatadas y se intercalan), luego
+        // familia de producto (sizeGroup) con tamaño ascendente dentro de
+        // cada familia — así "500ml" sale antes que "1.5L" del mismo
+        // producto en vez de ordenarse como texto ("1" < "5"). Los productos
+        // sin tamaño detectable (sizeValue null) van al final de su familia.
+        orderBy: [
+          { storeFeatured: 'desc' },
+          { category: { parent: { sortOrder: 'asc' } } },
+          { category: { sortOrder: 'asc' } },
+          { sizeGroup: 'asc' },
+          { sizeValue: { sort: 'asc', nulls: 'last' } },
+          { name: 'asc' },
+        ],
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
       }),

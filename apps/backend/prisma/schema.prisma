@@ -418,6 +418,14 @@ model Product {
   // este producto no maneja envase con garantía. Independiente de la venta:
   // se cobra/devuelve por su cuenta, nunca como parte del ticket de venta.
   bottleDeposit  Decimal       @default(0) @map("bottle_deposit") @db.Decimal(10, 2)
+  // Orden de la tienda online: por defecto se agrupa por familia (sizeGroup)
+  // y se ordena por tamaño ascendente (sizeValue, en ml o g) dentro de cada
+  // familia — ambos derivados del nombre en products.service.ts al crear o
+  // editar. storeFeatured es la única palanca manual: sube el producto al
+  // principio de su categoría en la tienda, sin tocar el resto del orden.
+  storeFeatured  Boolean       @default(false) @map("store_featured")
+  sizeGroup      String?       @map("size_group")
+  sizeValue      Float?        @map("size_value")
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
   deletedAt      DateTime?     @map("deleted_at")
@@ -445,6 +453,7 @@ model Product {
   @@index([status])
   @@index([name])
   @@index([isFavorite])
+  @@index([sizeGroup])
   @@map("products")
 }
 

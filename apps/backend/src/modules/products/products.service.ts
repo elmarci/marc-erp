@@ -2,6 +2,7 @@ import { ProductStatus, UnitOfMeasure, Prisma } from '@prisma/client';
 import { prisma } from '../../database/client';
 import { redis, CACHE_TTL } from '../../config/redis';
 import { NotFoundError, ConflictError, BusinessError } from '../../utils/errors';
+import { parseProductSize } from './product-size.util';
 
 export interface CreateProductInput {
   name: string;
@@ -27,6 +28,7 @@ export interface CreateProductInput {
   bottleDeposit?: number;
   imageUrl?: string | null;
   isFavorite?: boolean;
+  storeFeatured?: boolean;
 }
 
 interface UpdateProductInput extends Partial<CreateProductInput> {
@@ -74,6 +76,8 @@ export class ProductsService {
     const category = await prisma.category.findUnique({ where: { id: input.categoryId } });
     if (!category) throw new NotFoundError('Categoría');
 
+    const { sizeGroup, sizeValue } = parseProductSize(input.name);
+
     const product = await prisma.product.create({
       data: {
         name: input.name,
@@ -99,6 +103,9 @@ export class ProductsService {
         bottleDeposit: input.bottleDeposit ?? 0,
         imageUrl: input.imageUrl,
         isFavorite: input.isFavorite ?? false,
+        storeFeatured: input.storeFeatured ?? false,
+        sizeGroup,
+        sizeValue,
       },
       include: { category: true, brand: true, supplier: true },
     });
@@ -309,6 +316,13 @@ export class ProductsService {
       if (existing) throw new ConflictError(`El código interno ${input.internalCode} ya está registrado.`);
     }
 
+    // El nombre cambió (o es la primera vez que se recalcula porque el
+    // producto es de antes de este campo existir) — recomputamos familia y
+    // tamaño para que el orden de la tienda no quede desfasado del nombre.
+    const sizeFields = input.name !== undefined && input.name !== product.name
+      ? parseProductSize(input.name)
+      : {};
+
     const updated = await prisma.product.update({
       where: { id },
       data: {
@@ -335,6 +349,8 @@ export class ProductsService {
         imageUrl: input.imageUrl,
         status: input.status,
         isFavorite: input.isFavorite,
+        storeFeatured: input.storeFeatured,
+        ...sizeFields,
       },
       include: { category: true, brand: true },
     });
