@@ -21,6 +21,14 @@ const listFiltersSchema = z.object({
   dateTo: limaDateToParam,
 });
 
+const paymentLegSchema = z.object({
+  amount: z.coerce.number().positive(),
+  method: z.enum(['CASH', 'YAPE', 'PLIN', 'TRANSFER', 'DEBIT_CARD', 'CREDIT_CARD', 'OTHER']),
+  // Solo tiene efecto con method === 'CASH': ata el retiro a esa sesión de
+  // caja (caja del día) en vez de Caja General.
+  cashSessionId: z.string().uuid().optional(),
+});
+
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status, supplierId, search, dateFrom, dateTo, page, limit, sortBy, sortOrder } = listFiltersSchema.extend({
@@ -94,6 +102,84 @@ router.get('/payable', async (req: Request, res: Response, next: NextFunction) =
   } catch (err) { next(err); }
 });
 
+// Total real adeudado por proveedor (agrupado) — base de la vista nueva de
+// Cuentas por Pagar. También antes de "/:id".
+router.get('/payable-summary', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await purchasesService.getPayableSummary();
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+const payAmountSchema = z.object({
+  legs: z.array(paymentLegSchema).min(1),
+  reference: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+router.get('/suppliers/:supplierId/statement', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await purchasesService.getSupplierStatement(req.params.supplierId);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.post('/suppliers/:supplierId/pay', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { legs, reference, notes } = payAmountSchema.parse(req.body);
+    const result = await purchasesService.payToSupplier(req.params.supplierId, req.user!.sub, legs, reference, notes);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+// Pagadores (terceros que ponen el dinero de su bolsillo) — también antes de "/:id".
+router.get('/payers', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await purchasesService.listPayers();
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.post('/payers', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = z.object({
+      name: z.string().min(1),
+      phone: z.string().optional().nullable(),
+      notes: z.string().optional().nullable(),
+    }).parse(req.body);
+    const payer = await purchasesService.createPayer(data);
+    res.status(201).json({ success: true, data: payer });
+  } catch (err) { next(err); }
+});
+
+router.patch('/payers/:payerId', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = z.object({
+      name: z.string().min(1).optional(),
+      phone: z.string().optional().nullable(),
+      notes: z.string().optional().nullable(),
+      isActive: z.boolean().optional(),
+    }).parse(req.body);
+    const payer = await purchasesService.updatePayer(req.params.payerId, data);
+    res.json({ success: true, data: payer });
+  } catch (err) { next(err); }
+});
+
+router.get('/payers/:payerId/statement', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await purchasesService.getPayerStatement(req.params.payerId);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+router.post('/payers/:payerId/pay', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { legs, reference, notes } = payAmountSchema.parse(req.body);
+    const result = await purchasesService.payToPayer(req.params.payerId, req.user!.sub, legs, reference, notes);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const order = await purchasesService.getOrder(req.params.id);
@@ -149,14 +235,6 @@ router.post('/:id/cancel', authorizeMinRole('SUPERVISOR'), async (req: Request, 
     const order = await purchasesService.cancelOrder(req.params.id);
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
-});
-
-const paymentLegSchema = z.object({
-  amount: z.coerce.number().positive(),
-  method: z.enum(['CASH', 'YAPE', 'PLIN', 'TRANSFER', 'DEBIT_CARD', 'CREDIT_CARD', 'OTHER']),
-  // Solo tiene efecto con method === 'CASH': ata el retiro a esa sesión de
-  // caja (caja del día) en vez de Caja General.
-  cashSessionId: z.string().uuid().optional(),
 });
 
 const paymentSchema = z.object({
@@ -216,6 +294,9 @@ router.post('/direct', authorizeMinRole('WAREHOUSE'), async (req: Request, res: 
         expiryDate: z.coerce.date().optional(),
       })).min(1),
       payment: paymentSchema,
+      // Si esta compra la pagó un tercero de su bolsillo (no la empresa) —
+      // ver Payer en el schema. Es excluyente con `payment`.
+      payerId: z.string().uuid().optional(),
     }).parse(req.body);
 
     const order = await purchasesService.createDirectPurchase(req.user!.sub, data);

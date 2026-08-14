@@ -158,6 +158,7 @@ export class PurchasesService {
       where: { id },
       include: {
         supplier: true,
+        payer: { select: { id: true, name: true, phone: true } },
         user: { select: { firstName: true, lastName: true } },
         approvedBy: { select: { firstName: true, lastName: true } },
         voidedBy: { select: { firstName: true, lastName: true } },
@@ -169,6 +170,7 @@ export class PurchasesService {
           orderBy: { createdAt: 'desc' },
         },
         payments: { orderBy: { paidAt: 'desc' } },
+        payerRepayments: { orderBy: { paidAt: 'desc' } },
       },
     });
     if (!order) throw new NotFoundError('Orden de compra');
@@ -283,6 +285,208 @@ export class PurchasesService {
       where: { id: orderId },
       data: { paidAmount: newPaidAmount, paymentStatus: newStatus },
     });
+  }
+
+  /**
+   * Reparte un monto (posiblemente en varias formas de pago) entre una lista
+   * de saldos pendientes ordenados del más antiguo al más nuevo (FIFO) — el
+   * mecanismo detrás de "pagar un monto libre a un proveedor/pagador" que
+   * amortiza sus compras más viejas primero, en vez de tener que pagar orden
+   * por orden. Devuelve, por cada combinación (orden, forma de pago) que
+   * recibió algo, cuánto le tocó — así se puede generar el registro por
+   * orden (SupplierPayment/PayerRepayment) sin perder de qué método vino
+   * cada parte.
+   */
+  private allocatePaymentAcrossOrders(
+    orders: Array<{ id: string; outstanding: number }>,
+    legs: PurchasePaymentLeg[],
+  ): Array<{ orderId: string; legIndex: number; amount: number }> {
+    const allocations: Array<{ orderId: string; legIndex: number; amount: number }> = [];
+    let legIndex = 0;
+    let legRemaining = legs[0]?.amount ?? 0;
+
+    for (const order of orders) {
+      let need = order.outstanding;
+      while (need > 0.009 && legIndex < legs.length) {
+        const take = Math.min(need, legRemaining);
+        if (take > 0.009) {
+          allocations.push({ orderId: order.id, legIndex, amount: take });
+          need -= take;
+          legRemaining -= take;
+        }
+        if (legRemaining <= 0.009) {
+          legIndex++;
+          legRemaining = legs[legIndex]?.amount ?? 0;
+        }
+      }
+      if (legIndex >= legs.length && need > 0.009) break;
+    }
+    return allocations;
+  }
+
+  /**
+   * Pago "por monto" a un proveedor: en vez de elegir una OC puntual, se
+   * indica cuánto se le quiere pagar en total y el sistema lo reparte solo
+   * entre sus compras pendientes más antiguas (FIFO) hasta agotar el monto
+   * — así se puede simplemente "abonar S/500 a Distribuidora X" sin ir
+   * orden por orden. El dinero sale una sola vez por cada forma de pago (no
+   * se fragmenta el movimiento de caja por orden), pero cada OC tocada
+   * queda con su propio SupplierPayment para trazabilidad exacta.
+   */
+  async payToSupplier(supplierId: string, userId: string, legs: PurchasePaymentLeg[], reference?: string, notes?: string) {
+    const amount = legs.reduce((sum, l) => sum + l.amount, 0);
+    if (amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
+    if (legs.some((l) => l.amount <= 0)) {
+      throw new BusinessError('Cada forma de pago debe tener un monto mayor a 0.');
+    }
+
+    const supplier = await prisma.supplier.findFirst({ where: { id: supplierId, deletedAt: null } });
+    if (!supplier) throw new NotFoundError('Proveedor');
+
+    const openOrders = await prisma.purchaseOrder.findMany({
+      where: { supplierId, status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] }, paymentStatus: { not: 'PAID' } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, totalAmount: true, paidAmount: true },
+    });
+    const orders = openOrders.map((o) => ({ id: o.id, outstanding: Number(o.totalAmount) - Number(o.paidAmount) }));
+    const totalOutstanding = orders.reduce((s, o) => s + o.outstanding, 0);
+    if (totalOutstanding <= 0.009) throw new BusinessError('Este proveedor no tiene deuda pendiente.');
+    if (amount > totalOutstanding + 0.009) {
+      throw new BusinessError(`El monto excede la deuda total con este proveedor (S/ ${totalOutstanding.toFixed(2)}).`);
+    }
+
+    const allocations = this.allocatePaymentAcrossOrders(orders, legs);
+
+    await prisma.$transaction(async (tx) => {
+      const batch = await tx.supplierPaymentBatch.create({
+        data: { supplierId, userId, totalAmount: amount, reference, notes },
+      });
+
+      const byOrder = new Map<string, number>();
+      for (const a of allocations) {
+        await tx.supplierPayment.create({
+          data: {
+            purchaseOrderId: a.orderId, userId, amount: a.amount,
+            method: legs[a.legIndex].method as never, reference, notes, batchId: batch.id,
+          },
+        });
+        byOrder.set(a.orderId, (byOrder.get(a.orderId) ?? 0) + a.amount);
+      }
+
+      for (const [orderId, allocated] of byOrder) {
+        const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
+        const newPaidAmount = Number(order.paidAmount) + allocated;
+        const newStatus = newPaidAmount >= Number(order.totalAmount) - 0.009 ? 'PAID' : 'PARTIAL';
+        await tx.purchaseOrder.update({ where: { id: orderId }, data: { paidAmount: newPaidAmount, paymentStatus: newStatus } });
+      }
+
+      // El dinero sale UNA vez por cada forma de pago, por el monto real
+      // usado de esa forma — no se fragmenta el movimiento de caja por orden.
+      const usedPerLeg = new Map<number, number>();
+      for (const a of allocations) usedPerLeg.set(a.legIndex, (usedPerLeg.get(a.legIndex) ?? 0) + a.amount);
+
+      const description = `Pago a proveedor (por monto): ${supplier.businessName} — ${byOrder.size} orden(es)`;
+      for (const [legIndex, legAmount] of usedPerLeg) {
+        const leg = legs[legIndex];
+        let cashSession = null;
+        if (leg.method === 'CASH' && leg.cashSessionId) {
+          cashSession = await tx.cashSession.findFirst({ where: { id: leg.cashSessionId, status: 'OPEN' } });
+        }
+        if (cashSession) {
+          await tx.cashMovement.create({
+            data: {
+              cashSessionId: cashSession.id, type: 'WITHDRAWAL', amount: legAmount, reason: description,
+              referenceType: 'PURCHASE_PAYMENT_BATCH', referenceId: batch.id,
+            },
+          });
+        } else {
+          await treasuryService.recordMovementInTx(
+            tx, 'WITHDRAWAL', legAmount, description, userId, 'PURCHASE_PAYMENT_BATCH', batch.id, methodToAccount(leg.method),
+          );
+        }
+      }
+
+      return batch;
+    });
+
+    emitEvent('erp:cash-updated');
+    return this.getSupplierStatement(supplierId);
+  }
+
+  // Total real que se debe a CADA proveedor (no solo lo que aparece en la
+  // página actual de /payable) — la base de la "Cuentas por Pagar" agrupada.
+  async getPayableSummary() {
+    const openOrders = await prisma.purchaseOrder.findMany({
+      where: { status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] }, paymentStatus: { not: 'PAID' } },
+      select: {
+        supplierId: true, totalAmount: true, paidAmount: true, createdAt: true,
+        supplier: { select: { businessName: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const bySupplier = new Map<string, { supplierId: string; businessName: string; totalOwed: number; orderCount: number; oldestDate: Date }>();
+    for (const o of openOrders) {
+      const outstanding = Number(o.totalAmount) - Number(o.paidAmount);
+      const entry = bySupplier.get(o.supplierId);
+      if (entry) {
+        entry.totalOwed += outstanding;
+        entry.orderCount += 1;
+      } else {
+        bySupplier.set(o.supplierId, {
+          supplierId: o.supplierId, businessName: o.supplier.businessName,
+          totalOwed: outstanding, orderCount: 1, oldestDate: o.createdAt,
+        });
+      }
+    }
+
+    const suppliers = [...bySupplier.values()].sort((a, b) => b.totalOwed - a.totalOwed);
+    return { suppliers, grandTotal: suppliers.reduce((s, x) => s + x.totalOwed, 0) };
+  }
+
+  // "Estado de cuenta" real de un proveedor: qué se le debe, por qué compras
+  // (fechas y montos) y el historial reciente de pagos ya hechos — a
+  // diferencia de getSupplierSettlement (que solo muestra pagos pasados),
+  // esto responde "cuánto le debo y por qué" de una sola vez.
+  async getSupplierStatement(supplierId: string) {
+    const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+    if (!supplier) throw new NotFoundError('Proveedor');
+
+    const [openOrders, recentPayments] = await Promise.all([
+      prisma.purchaseOrder.findMany({
+        where: { supplierId, status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] }, paymentStatus: { not: 'PAID' } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, orderNumber: true, createdAt: true, receivedDate: true, totalAmount: true, paidAmount: true, supplierInvoice: true },
+      }),
+      prisma.supplierPayment.findMany({
+        where: { purchaseOrder: { supplierId } },
+        orderBy: { paidAt: 'desc' },
+        take: 30,
+        include: { purchaseOrder: { select: { orderNumber: true } }, user: { select: { firstName: true, lastName: true } } },
+      }),
+    ]);
+
+    const debts = openOrders.map((o) => ({
+      orderId: o.id,
+      orderNumber: o.orderNumber,
+      date: o.receivedDate ?? o.createdAt,
+      supplierInvoice: o.supplierInvoice,
+      totalAmount: Number(o.totalAmount),
+      paidAmount: Number(o.paidAmount),
+      outstanding: Number(o.totalAmount) - Number(o.paidAmount),
+    }));
+
+    return {
+      supplier: { id: supplier.id, businessName: supplier.businessName, taxId: supplier.taxId },
+      totalOwed: debts.reduce((s, d) => s + d.outstanding, 0),
+      debts,
+      recentPayments: recentPayments.map((p) => ({
+        id: p.id, paidAt: p.paidAt, amount: Number(p.amount), method: p.method,
+        reference: p.reference, notes: p.notes, batchId: p.batchId,
+        orderNumber: p.purchaseOrder.orderNumber,
+        user: `${p.user.firstName} ${p.user.lastName}`,
+      })),
+    };
   }
 
   private async trackSupplierProduct(supplierId: string, productId: string, price: number, confirmed = false) {
@@ -585,10 +789,20 @@ export class PurchasesService {
     includeTax?: boolean;
     items: DirectPurchaseItemInput[];
     payment?: PurchasePaymentInput;
+    // Si la puso un tercero de su bolsillo (ej. "mi papá compró y pagó al
+    // toque"), esta compra nace pagada al proveedor sin mover Caja General
+    // — en vez de eso abre una deuda de la empresa hacia ese pagador. No
+    // tiene sentido junto con `payment` (uno u otro, nunca ambos).
+    payerId?: string;
   }) {
     const supplier = await prisma.supplier.findFirst({ where: { id: data.supplierId, deletedAt: null } });
     if (!supplier) throw new NotFoundError('Proveedor');
     if (data.items.length === 0) throw new BusinessError('La compra debe tener al menos un producto.');
+
+    const payer = data.payerId
+      ? await prisma.payer.findFirst({ where: { id: data.payerId, deletedAt: null } })
+      : null;
+    if (data.payerId && !payer) throw new NotFoundError('Pagador');
 
     let subtotal = 0;
     for (const item of data.items) {
@@ -614,6 +828,9 @@ export class PurchasesService {
           subtotal,
           taxAmount,
           totalAmount,
+          // El proveedor ya cobró de mano del pagador — esta compra nace
+          // saldada con él, sin que haya salido nada de Caja General todavía.
+          ...(payer ? { payerId: payer.id, paymentStatus: 'PAID' as const, paidAmount: totalAmount } : {}),
           items: {
             create: data.items.map(i => ({
               productId: i.productId,
@@ -659,7 +876,7 @@ export class PurchasesService {
         });
       }
 
-      if (data.payment?.paid && totalAmount > 0) {
+      if (!payer && data.payment?.paid && totalAmount > 0) {
         const legs = data.payment.legs ?? [];
         const legsSum = legs.reduce((sum, l) => sum + l.amount, 0);
         if (Math.abs(legsSum - totalAmount) > 0.01) {
@@ -1125,6 +1342,158 @@ export class PurchasesService {
 
     emitEvent('erp:cash-updated');
     return this.getOrder(orderId);
+  }
+
+  /* ─── Pagadores (terceros que pusieron el dinero de una compra) ─────────── */
+
+  async listPayers() {
+    const payers = await prisma.payer.findMany({
+      where: { deletedAt: null },
+      orderBy: { name: 'asc' },
+    });
+    const orders = await prisma.purchaseOrder.findMany({
+      where: { payerId: { not: null }, voidedAt: null },
+      select: { payerId: true, totalAmount: true, payerReimbursedAmount: true },
+    });
+    const owedByPayer = new Map<string, number>();
+    for (const o of orders) {
+      const outstanding = Number(o.totalAmount) - Number(o.payerReimbursedAmount);
+      owedByPayer.set(o.payerId!, (owedByPayer.get(o.payerId!) ?? 0) + outstanding);
+    }
+    return payers.map((p) => ({ ...p, totalOwed: owedByPayer.get(p.id) ?? 0 }));
+  }
+
+  async createPayer(data: { name: string; phone?: string | null; notes?: string | null }) {
+    if (!data.name.trim()) throw new BusinessError('El nombre es obligatorio.');
+    return prisma.payer.create({ data: { name: data.name.trim(), phone: data.phone, notes: data.notes } });
+  }
+
+  async updatePayer(id: string, data: { name?: string; phone?: string | null; notes?: string | null; isActive?: boolean }) {
+    const payer = await prisma.payer.findFirst({ where: { id, deletedAt: null } });
+    if (!payer) throw new NotFoundError('Pagador');
+    return prisma.payer.update({ where: { id }, data });
+  }
+
+  // Mismo mecanismo de amortización FIFO que payToSupplier, pero contra las
+  // compras que este pagador pagó de su bolsillo y que la empresa todavía no le repuso.
+  async payToPayer(payerId: string, userId: string, legs: PurchasePaymentLeg[], reference?: string, notes?: string) {
+    const amount = legs.reduce((sum, l) => sum + l.amount, 0);
+    if (amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
+    if (legs.some((l) => l.amount <= 0)) {
+      throw new BusinessError('Cada forma de pago debe tener un monto mayor a 0.');
+    }
+
+    const payer = await prisma.payer.findFirst({ where: { id: payerId, deletedAt: null } });
+    if (!payer) throw new NotFoundError('Pagador');
+
+    const openOrders = await prisma.purchaseOrder.findMany({
+      where: { payerId, voidedAt: null, totalAmount: { gt: prisma.purchaseOrder.fields.payerReimbursedAmount } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, totalAmount: true, payerReimbursedAmount: true },
+    });
+    const orders = openOrders.map((o) => ({ id: o.id, outstanding: Number(o.totalAmount) - Number(o.payerReimbursedAmount) }));
+    const totalOutstanding = orders.reduce((s, o) => s + o.outstanding, 0);
+    if (totalOutstanding <= 0.009) throw new BusinessError('No hay compras pendientes de reponer a este pagador.');
+    if (amount > totalOutstanding + 0.009) {
+      throw new BusinessError(`El monto excede lo que se le debe a este pagador (S/ ${totalOutstanding.toFixed(2)}).`);
+    }
+
+    const allocations = this.allocatePaymentAcrossOrders(orders, legs);
+
+    await prisma.$transaction(async (tx) => {
+      const batch = await tx.payerRepaymentBatch.create({
+        data: { payerId, userId, totalAmount: amount, reference, notes },
+      });
+
+      const byOrder = new Map<string, number>();
+      for (const a of allocations) {
+        await tx.payerRepayment.create({
+          data: {
+            payerId, purchaseOrderId: a.orderId, userId, amount: a.amount,
+            method: legs[a.legIndex].method as never, reference, notes, batchId: batch.id,
+          },
+        });
+        byOrder.set(a.orderId, (byOrder.get(a.orderId) ?? 0) + a.amount);
+      }
+
+      for (const [orderId, allocated] of byOrder) {
+        const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
+        await tx.purchaseOrder.update({
+          where: { id: orderId },
+          data: { payerReimbursedAmount: Number(order.payerReimbursedAmount) + allocated },
+        });
+      }
+
+      const usedPerLeg = new Map<number, number>();
+      for (const a of allocations) usedPerLeg.set(a.legIndex, (usedPerLeg.get(a.legIndex) ?? 0) + a.amount);
+
+      const description = `Reposición a ${payer.name} — ${byOrder.size} compra(s)`;
+      for (const [legIndex, legAmount] of usedPerLeg) {
+        const leg = legs[legIndex];
+        let cashSession = null;
+        if (leg.method === 'CASH' && leg.cashSessionId) {
+          cashSession = await tx.cashSession.findFirst({ where: { id: leg.cashSessionId, status: 'OPEN' } });
+        }
+        if (cashSession) {
+          await tx.cashMovement.create({
+            data: {
+              cashSessionId: cashSession.id, type: 'WITHDRAWAL', amount: legAmount, reason: description,
+              referenceType: 'PAYER_REPAYMENT_BATCH', referenceId: batch.id,
+            },
+          });
+        } else {
+          await treasuryService.recordMovementInTx(
+            tx, 'WITHDRAWAL', legAmount, description, userId, 'PAYER_REPAYMENT_BATCH', batch.id, methodToAccount(leg.method),
+          );
+        }
+      }
+
+      return batch;
+    });
+
+    emitEvent('erp:cash-updated');
+    return this.getPayerStatement(payerId);
+  }
+
+  async getPayerStatement(payerId: string) {
+    const payer = await prisma.payer.findUnique({ where: { id: payerId } });
+    if (!payer) throw new NotFoundError('Pagador');
+
+    const [openOrders, recentRepayments] = await Promise.all([
+      prisma.purchaseOrder.findMany({
+        where: { payerId, voidedAt: null, totalAmount: { gt: prisma.purchaseOrder.fields.payerReimbursedAmount } },
+        orderBy: { createdAt: 'asc' },
+        include: { supplier: { select: { businessName: true } } },
+      }),
+      prisma.payerRepayment.findMany({
+        where: { payerId },
+        orderBy: { paidAt: 'desc' },
+        take: 30,
+        include: { purchaseOrder: { select: { orderNumber: true } }, user: { select: { firstName: true, lastName: true } } },
+      }),
+    ]);
+
+    const debts = openOrders.map((o) => ({
+      orderId: o.id,
+      orderNumber: o.orderNumber,
+      date: o.receivedDate ?? o.createdAt,
+      supplierName: o.supplier.businessName,
+      totalAmount: Number(o.totalAmount),
+      reimbursedAmount: Number(o.payerReimbursedAmount),
+      outstanding: Number(o.totalAmount) - Number(o.payerReimbursedAmount),
+    }));
+
+    return {
+      payer: { id: payer.id, name: payer.name, phone: payer.phone },
+      totalOwed: debts.reduce((s, d) => s + d.outstanding, 0),
+      debts,
+      recentRepayments: recentRepayments.map((p) => ({
+        id: p.id, paidAt: p.paidAt, amount: Number(p.amount), method: p.method,
+        reference: p.reference, notes: p.notes, batchId: p.batchId,
+        orderNumber: p.purchaseOrder.orderNumber,
+        user: `${p.user.firstName} ${p.user.lastName}`,
+      })),
+    };
   }
 }
 

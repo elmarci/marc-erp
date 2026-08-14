@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
   PackageCheck, Truck, Clock, FileText, X, ScanBarcode, Sparkles, ArrowLeft,
-  BookOpen, Star, Trash2, FileSpreadsheet, Undo2, Pencil, Receipt,
+  BookOpen, Star, Trash2, FileSpreadsheet, Undo2, Pencil, Receipt, HandCoins,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,13 @@ interface PurchaseOrder {
   supplier: { businessName: string };
   user: { firstName: string; lastName: string };
   _count: { items: number };
+}
+
+// Tercero que puso el dinero de su bolsillo para pagar una compra — distinto
+// del proveedor (quien vendió). Ver comentario del modelo Payer en el backend.
+interface Payer {
+  id: string; name: string; phone: string | null; notes: string | null;
+  isActive: boolean; totalOwed?: number;
 }
 
 interface OrderDetail extends PurchaseOrder {
@@ -471,10 +478,35 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const [lines, setLines] = useState<DirectLine[]>([]);
   const [payment, setPayment] = useState<{ paid: boolean; legs: PaymentLeg[] }>({ paid: true, legs: [{ amount: 0, method: 'CASH' }] });
   const [includeTax, setIncludeTax] = useState(false);
+  // "La empresa" (flujo normal, con caja) vs. un tercero que puso el dinero
+  // de su bolsillo — en ese caso la compra nace pagada al proveedor y se
+  // abre una deuda interna con ese pagador, sin tocar Caja General.
+  const [payerMode, setPayerMode] = useState(false);
+  const [payerId, setPayerId] = useState('');
+  const [showNewPayer, setShowNewPayer] = useState(false);
+  const [newPayerName, setNewPayerName] = useState('');
+  const [newPayerPhone, setNewPayerPhone] = useState('');
 
   const { data: suppliers } = useQuery({
     queryKey: ['suppliers-all'],
     queryFn: async () => (await api.get<{ data: Supplier[] }>('/suppliers?limit=200')).data.data,
+  });
+
+  const { data: payers } = useQuery({
+    queryKey: ['payers'],
+    queryFn: async () => (await api.get<{ data: Payer[] }>('/purchases/payers')).data.data,
+  });
+
+  const createPayerMutation = useMutation({
+    mutationFn: () => api.post<{ data: Payer }>('/purchases/payers', { name: newPayerName, phone: newPayerPhone || undefined }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['payers'] });
+      setPayerId(res.data.data.id);
+      setShowNewPayer(false);
+      setNewPayerName('');
+      setNewPayerPhone('');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const { data: catalog } = useQuery({
@@ -541,7 +573,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   }, [total]);
 
   const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0)
-    && (!payment.paid || total === 0 || legsMatch(payment.legs, total));
+    && (payerMode ? !!payerId : (!payment.paid || total === 0 || legsMatch(payment.legs, total)));
 
   const mutation = useMutation({
     mutationFn: () => api.post<{ data: OrderDetail }>('/purchases/direct', {
@@ -550,24 +582,29 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
       date: date ? new Date(`${date}T12:00:00`).toISOString() : undefined,
       notes: notes || undefined,
       includeTax,
+      payerId: payerId || undefined,
       items: lines.map(l => ({
         productId: l.productId,
         quantity: effQty(l),
         unitCost: effUnitCost(l),
         isBonus: l.isBonus,
       })),
-      payment,
+      payment: payerId ? undefined : payment,
     }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['purchases-payable-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['payers'] });
       queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
       queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
       queryClient.invalidateQueries({ queryKey: ['cash-movements'] });
-      toast.success(payment.paid
-        ? 'Compra registrada y pagada — stock, costo y caja actualizados.'
-        : 'Compra registrada como crédito — queda en Cuentas por Pagar.');
+      toast.success(payerId
+        ? 'Compra registrada — pagada al proveedor, queda pendiente reponer al pagador.'
+        : payment.paid
+          ? 'Compra registrada y pagada — stock, costo y caja actualizados.'
+          : 'Compra registrada como crédito — queda en Cuentas por Pagar.');
       onCreated(res.data.data);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -734,7 +771,56 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                   Total: {formatCurrency(total)}
                 </div>
               </div>
-              <PaymentStatusPicker paid={payment.paid} legs={payment.legs} total={total} onChange={setPayment} />
+
+              <div className="rounded-lg border p-3 space-y-2">
+                <label className="mb-1 block text-sm font-medium">¿Quién pagó esta compra?</label>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant={!payerMode ? 'default' : 'outline'} className="flex-1"
+                    onClick={() => { setPayerMode(false); setPayerId(''); setShowNewPayer(false); }}>
+                    La empresa
+                  </Button>
+                  <Button type="button" size="sm" variant={payerMode ? 'default' : 'outline'} className="flex-1"
+                    onClick={() => { setPayerMode(true); if (!payers || payers.length === 0) setShowNewPayer(true); }}>
+                    Un tercero (reponer luego)
+                  </Button>
+                </div>
+                {payerMode && !!payers?.length && (
+                  <select value={payerId} onChange={e => setPayerId(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <option value="">Seleccionar pagador...</option>
+                    {payers.map(p => <option key={p.id} value={p.id}>{p.name}{p.phone ? ` — ${p.phone}` : ''}</option>)}
+                  </select>
+                )}
+                {payerMode && payerId && (
+                  <p className="text-xs text-muted-foreground">
+                    La compra queda pagada al proveedor de inmediato (sin tocar Caja General) y se abre una
+                    deuda de <strong>{payers?.find(p => p.id === payerId)?.name}</strong> por {formatCurrency(total)},
+                    que se repone luego desde la pestaña "Pagadores".
+                  </p>
+                )}
+                {payerMode && showNewPayer && (
+                  <div className="rounded-md bg-muted/50 p-2 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input placeholder="Nombre *" value={newPayerName} onChange={e => setNewPayerName(e.target.value)} className="h-8" />
+                      <Input placeholder="Teléfono (opcional)" value={newPayerPhone} onChange={e => setNewPayerPhone(e.target.value)} className="h-8" />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      {!!payers?.length && <Button type="button" size="sm" variant="ghost" onClick={() => setShowNewPayer(false)}>Cancelar</Button>}
+                      <Button type="button" size="sm" disabled={!newPayerName.trim()} loading={createPayerMutation.isPending}
+                        onClick={() => createPayerMutation.mutate()}>
+                        Crear pagador
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {payerMode && !showNewPayer && (
+                  <button type="button" className="text-xs text-primary hover:underline" onClick={() => setShowNewPayer(true)}>
+                    + Nuevo pagador
+                  </button>
+                )}
+              </div>
+
+              {!payerMode && <PaymentStatusPicker paid={payment.paid} legs={payment.legs} total={total} onChange={setPayment} />}
             </>
           )}
         </div>
@@ -1345,6 +1431,80 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
           <div>
             <label className="mb-1 block text-sm font-medium">Monto a pagar</label>
             <Input type="number" min={0.01} max={outstanding} step={0.01} value={amount} onChange={e => setAmount(e.target.value)} className="text-right font-bold" />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">¿De dónde sale el dinero?</label>
+            <PaymentLegsEditor total={amountNum} legs={legs} onChange={setLegs} />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Referencia (opcional)</label>
+            <Input value={reference} onChange={e => setReference(e.target.value)} placeholder="N° operación, voucher..." />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Notas</label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones..." />
+          </div>
+        </div>
+        <div className="border-t p-5 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!canSubmit}>
+            Confirmar pago
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Pago "por monto" a un proveedor o pagador — amortiza sus compras más
+ * antiguas hasta agotar el monto, en vez de tener que pagar orden por orden. */
+function PayAmountModal({ title, subtitle, totalOwed, payUrl, invalidateKeys, onClose, onPaid }: {
+  title: string; subtitle: string; totalOwed: number; payUrl: string;
+  invalidateKeys: string[][];
+  onClose: () => void; onPaid: () => void;
+}) {
+  const [amount, setAmount] = useState(totalOwed.toFixed(2));
+  const [legs, setLegs] = useState<PaymentLeg[]>([{ amount: totalOwed, method: 'CASH' }]);
+  const [reference, setReference] = useState('');
+  const [notes, setNotes] = useState('');
+  const queryClient = useQueryClient();
+
+  const amountNum = Number(amount) || 0;
+
+  useEffect(() => {
+    setLegs(l => l.length === 1 && l[0].amount !== amountNum ? [{ ...l[0], amount: amountNum }] : l);
+  }, [amountNum]);
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(payUrl, { legs, reference: reference || undefined, notes: notes || undefined }),
+    onSuccess: () => {
+      invalidateKeys.forEach((k) => queryClient.invalidateQueries({ queryKey: k }));
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-movements'] });
+      toast.success('Pago registrado — repartido automáticamente entre las compras más antiguas.');
+      onPaid();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const canSubmit = amountNum > 0 && amountNum <= totalOwed + 0.009 && legsMatch(legs, amountNum);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-bold">{title}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle} · Total: {formatCurrency(totalOwed)}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Monto a pagar</label>
+            <Input type="number" min={0.01} max={totalOwed} step={0.01} value={amount} onChange={e => setAmount(e.target.value)} className="text-right font-bold" />
+            <p className="mt-1 text-xs text-muted-foreground">Se reparte solo entre las compras más antiguas hasta agotar el monto.</p>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">¿De dónde sale el dinero?</label>
@@ -2088,85 +2248,118 @@ function OrdersTab() {
 }
 
 /* ─── Cuentas por Pagar Tab ──────────────────────────────────────────────── */
-function PayableTab() {
-  const [page, setPage] = useState(1);
-  const [payOrder, setPayOrder] = useState<PayableOrder | null>(null);
+interface SupplierPayableSummary {
+  supplierId: string; businessName: string; totalOwed: number; orderCount: number; oldestDate: string;
+}
 
+// Detalle de las órdenes pendientes de UN proveedor — se pide solo cuando se
+// expande su fila, no de entrada (evita traer todo el detalle de golpe).
+function SupplierPayableDetail({ supplierId, onPayOrder }: { supplierId: string; onPayOrder: (o: PayableOrder) => void }) {
   const { data, isLoading } = useQuery({
-    queryKey: ['purchases-payable', page],
-    queryFn: async () => (await api.get<{ data: PayableOrder[]; pagination: { total: number; totalPages: number } }>(
-      `/purchases/payable?page=${page}&limit=20`
-    )).data,
+    queryKey: ['purchases-payable', supplierId],
+    queryFn: async () => (await api.get<{ data: PayableOrder[] }>(`/purchases/payable?supplierId=${supplierId}&limit=100`)).data.data,
   });
 
-  const totalOutstanding = (data?.data ?? []).reduce((s, o) => s + o.outstanding, 0);
+  if (isLoading) return <div className="py-4 text-center text-xs text-muted-foreground">Cargando...</div>;
+
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b text-left text-xs text-muted-foreground">
+          <th className="py-2 font-medium">N° Orden</th>
+          <th className="py-2 font-medium">Fecha</th>
+          <th className="py-2 font-medium text-right">Total</th>
+          <th className="py-2 font-medium text-right">Pagado</th>
+          <th className="py-2 font-medium text-right">Pendiente</th>
+          <th className="py-2 w-20" />
+        </tr>
+      </thead>
+      <tbody className="divide-y">
+        {(data ?? []).map((o) => (
+          <tr key={o.id}>
+            <td className="py-2 font-medium">{o.orderNumber}</td>
+            <td className="py-2 text-muted-foreground">{formatDateTime(o.createdAt)}</td>
+            <td className="py-2 text-right">{formatCurrency(o.totalAmount)}</td>
+            <td className="py-2 text-right text-muted-foreground">{formatCurrency(o.paidAmount)}</td>
+            <td className="py-2 text-right font-semibold text-destructive">{formatCurrency(o.outstanding)}</td>
+            <td className="py-2 text-right">
+              <Button size="sm" variant="outline" onClick={() => onPayOrder(o)}>Pagar esta</Button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function PayableTab() {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [payOrder, setPayOrder] = useState<PayableOrder | null>(null);
+  const [paySupplier, setPaySupplier] = useState<SupplierPayableSummary | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['purchases-payable-summary'],
+    queryFn: async () => (await api.get<{ data: { suppliers: SupplierPayableSummary[]; grandTotal: number } }>(
+      '/purchases/payable-summary'
+    )).data.data,
+  });
 
   return (
     <div className="space-y-4">
-      {(data?.data.length ?? 0) > 0 && (
+      {(data?.suppliers.length ?? 0) > 0 && (
         <Card>
           <CardContent className="p-4 flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Total pendiente a proveedores</span>
-            <span className="text-xl font-bold text-destructive">{formatCurrency(totalOutstanding)}</span>
+            <span className="text-xl font-bold text-destructive">{formatCurrency(data!.grandTotal)}</span>
           </CardContent>
         </Card>
       )}
 
       <Card>
         {isLoading ? <div className="py-12 text-center text-muted-foreground">Cargando...</div> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50 text-left">
-                  <th className="px-4 py-3 font-medium">N° Orden</th>
-                  <th className="px-4 py-3 font-medium">Proveedor</th>
-                  <th className="px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3 font-medium">Fecha</th>
-                  <th className="px-4 py-3 font-medium text-right">Total</th>
-                  <th className="px-4 py-3 font-medium text-right">Pagado</th>
-                  <th className="px-4 py-3 font-medium text-right">Pendiente</th>
-                  <th className="px-4 py-3 w-28" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {(data?.data ?? []).map(o => (
-                  <tr key={o.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3 font-medium">{o.orderNumber}</td>
-                    <td className="px-4 py-3">{o.supplier.businessName}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={PAYMENT_STATUS_VARIANT[o.paymentStatus] ?? 'default'}>
-                        {PAYMENT_STATUS_LABELS[o.paymentStatus] ?? o.paymentStatus}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatDateTime(o.createdAt)}</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(o.totalAmount)}</td>
-                    <td className="px-4 py-3 text-right text-muted-foreground">{formatCurrency(o.paidAmount)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-destructive">{formatCurrency(o.outstanding)}</td>
-                    <td className="px-4 py-3">
-                      <Button size="sm" onClick={() => setPayOrder(o)}>Pagar</Button>
-                    </td>
-                  </tr>
-                ))}
-                {(data?.data ?? []).length === 0 && (
-                  <tr><td colSpan={8} className="py-12 text-center text-muted-foreground">No hay compras pendientes de pago 🎉</td></tr>
+          <div className="divide-y">
+            {(data?.suppliers ?? []).map((s) => (
+              <div key={s.supplierId}>
+                <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 text-left"
+                  onClick={() => setExpanded(v => v === s.supplierId ? null : s.supplierId)}>
+                  <div className="flex items-center gap-2">
+                    {expanded === s.supplierId ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                    <div>
+                      <p className="font-medium">{s.businessName}</p>
+                      <p className="text-xs text-muted-foreground">{s.orderCount} compra(s) pendiente(s) · desde {formatDateTime(s.oldestDate)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-bold text-destructive">{formatCurrency(s.totalOwed)}</span>
+                    <Button size="sm" onClick={(e) => { e.stopPropagation(); setPaySupplier(s); }}>Pagar monto</Button>
+                  </div>
+                </button>
+                {expanded === s.supplierId && (
+                  <div className="px-4 pb-4 bg-muted/20">
+                    <SupplierPayableDetail supplierId={s.supplierId} onPayOrder={setPayOrder} />
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {data && data.pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>Total: {data.pagination.total}</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
-              <span className="self-center">Pág. {page} / {data.pagination.totalPages}</span>
-              <Button variant="outline" size="sm" disabled={page === data.pagination.totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
-            </div>
+              </div>
+            ))}
+            {(data?.suppliers ?? []).length === 0 && (
+              <div className="py-12 text-center text-muted-foreground">No hay compras pendientes de pago 🎉</div>
+            )}
           </div>
         )}
       </Card>
 
       {payOrder && <PayPurchaseModal order={payOrder} onClose={() => setPayOrder(null)} onPaid={() => setPayOrder(null)} />}
+      {paySupplier && (
+        <PayAmountModal
+          title="Pagar a proveedor"
+          subtitle={paySupplier.businessName}
+          totalOwed={paySupplier.totalOwed}
+          payUrl={`/purchases/suppliers/${paySupplier.supplierId}/pay`}
+          invalidateKeys={[['purchases-payable-summary'], ['purchases-payable', paySupplier.supplierId], ['purchases']]}
+          onClose={() => setPaySupplier(null)}
+          onPaid={() => setPaySupplier(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2212,6 +2405,269 @@ function printSettlement(s: Settlement, dateFrom: string, dateTo: string) {
   `);
 }
 
+/* ─── Pagadores (terceros que ponen el dinero de su bolsillo) ───────────── */
+interface PayerDebt {
+  orderId: string; orderNumber: string; date: string; supplierName: string;
+  totalAmount: number; reimbursedAmount: number; outstanding: number;
+}
+interface PayerStatement {
+  payer: { id: string; name: string; phone: string | null };
+  totalOwed: number;
+  debts: PayerDebt[];
+}
+
+function NewPayerModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [notes, setNotes] = useState('');
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/purchases/payers', { name, phone: phone || undefined, notes: notes || undefined }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payers'] });
+      toast.success('Pagador creado.');
+      onCreated();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-5">
+          <h2 className="text-lg font-bold">Nuevo pagador</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Nombre *</label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Papá, Juan..." autoFocus />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Teléfono</label>
+            <Input value={phone} onChange={e => setPhone(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Notas</label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} />
+          </div>
+        </div>
+        <div className="border-t p-5 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!name.trim()} loading={mutation.isPending} onClick={() => mutation.mutate()}>Crear</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Detalle expandido de UN pagador — sus compras fronteadas todavía no
+// repuestas, con fecha, proveedor y monto — y el botón para reponerle dinero
+// (mismo mecanismo de amortización FIFO que a un proveedor).
+function PayerDetail({ payerId, payerName, onPay }: { payerId: string; payerName: string; onPay: () => void }) {
+  const { data: statement, isLoading } = useQuery({
+    queryKey: ['purchases-payer-statement', payerId],
+    queryFn: async () => (await api.get<{ data: PayerStatement }>(`/purchases/payers/${payerId}/statement`)).data.data,
+  });
+
+  if (isLoading) return <div className="py-4 text-center text-xs text-muted-foreground">Cargando...</div>;
+  if (!statement || statement.debts.length === 0) {
+    return <p className="py-4 text-center text-xs text-muted-foreground">Sin compras pendientes de reponer.</p>;
+  }
+
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b text-left text-xs text-muted-foreground">
+          <th className="py-2 font-medium">N° Orden</th>
+          <th className="py-2 font-medium">Proveedor</th>
+          <th className="py-2 font-medium">Fecha</th>
+          <th className="py-2 font-medium text-right">Total</th>
+          <th className="py-2 font-medium text-right">Repuesto</th>
+          <th className="py-2 font-medium text-right">Pendiente</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y">
+        {statement.debts.map((d) => (
+          <tr key={d.orderId}>
+            <td className="py-2 font-medium">{d.orderNumber}</td>
+            <td className="py-2">{d.supplierName}</td>
+            <td className="py-2 text-muted-foreground">{formatDateTime(d.date)}</td>
+            <td className="py-2 text-right">{formatCurrency(d.totalAmount)}</td>
+            <td className="py-2 text-right text-muted-foreground">{formatCurrency(d.reimbursedAmount)}</td>
+            <td className="py-2 text-right font-semibold text-destructive">{formatCurrency(d.outstanding)}</td>
+          </tr>
+        ))}
+      </tbody>
+      <tfoot>
+        <tr><td colSpan={6} className="pt-2">
+          <Button size="sm" onClick={onPay}>Reponer dinero a {payerName}</Button>
+        </td></tr>
+      </tfoot>
+    </table>
+  );
+}
+
+function PayersTab() {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [payPayer, setPayPayer] = useState<Payer | null>(null);
+  const [showNew, setShowNew] = useState(false);
+
+  const { data: payers, isLoading } = useQuery({
+    queryKey: ['payers'],
+    queryFn: async () => (await api.get<{ data: Payer[] }>('/purchases/payers')).data.data,
+  });
+
+  const grandTotal = (payers ?? []).reduce((s, p) => s + (p.totalOwed ?? 0), 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground max-w-xl">
+          Terceros que a veces pagan una compra de su bolsillo (no la empresa) — ej. compras en el mercado pagadas
+          en efectivo por el dueño. Aquí se ve cuánto se le debe a cada uno y se le repone el dinero.
+        </p>
+        <Button onClick={() => setShowNew(true)}><Plus className="mr-2 h-4 w-4" />Nuevo pagador</Button>
+      </div>
+
+      {grandTotal > 0 && (
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Total pendiente a pagadores</span>
+            <span className="text-xl font-bold text-destructive">{formatCurrency(grandTotal)}</span>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        {isLoading ? <div className="py-12 text-center text-muted-foreground">Cargando...</div> : (
+          <div className="divide-y">
+            {(payers ?? []).map((p) => (
+              <div key={p.id}>
+                <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 text-left"
+                  onClick={() => setExpanded(v => v === p.id ? null : p.id)}>
+                  <div className="flex items-center gap-2">
+                    {expanded === p.id ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                    <div>
+                      <p className="font-medium">{p.name}</p>
+                      {p.phone && <p className="text-xs text-muted-foreground">{p.phone}</p>}
+                    </div>
+                  </div>
+                  <span className={cn('text-lg font-bold', (p.totalOwed ?? 0) > 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                    {formatCurrency(p.totalOwed ?? 0)}
+                  </span>
+                </button>
+                {expanded === p.id && (
+                  <div className="px-4 pb-4 bg-muted/20">
+                    <PayerDetail payerId={p.id} payerName={p.name} onPay={() => setPayPayer(p)} />
+                  </div>
+                )}
+              </div>
+            ))}
+            {(payers ?? []).length === 0 && (
+              <div className="py-12 text-center text-muted-foreground">No hay pagadores registrados todavía.</div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {showNew && <NewPayerModal onClose={() => setShowNew(false)} onCreated={() => setShowNew(false)} />}
+      {payPayer && (
+        <PayAmountModal
+          title="Reponer dinero"
+          subtitle={payPayer.name}
+          totalOwed={payPayer.totalOwed ?? 0}
+          payUrl={`/purchases/payers/${payPayer.id}/pay`}
+          invalidateKeys={[['payers'], ['purchases-payer-statement', payPayer.id]]}
+          onClose={() => setPayPayer(null)}
+          onPaid={() => setPayPayer(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface SupplierStatementDebt {
+  orderId: string; orderNumber: string; date: string; supplierInvoice: string | null;
+  totalAmount: number; paidAmount: number; outstanding: number;
+}
+interface SupplierStatement {
+  supplier: { id: string; businessName: string; taxId: string | null };
+  totalOwed: number;
+  debts: SupplierStatementDebt[];
+}
+
+// "Cuánto le debo y por qué" — a diferencia del historial de pagos de abajo
+// (que solo muestra lo ya pagado), esto muestra la deuda pendiente real con
+// sus compras de origen, fechas y montos.
+function SupplierDebtCard({ supplierId, businessName }: { supplierId: string; businessName: string }) {
+  const [payOpen, setPayOpen] = useState(false);
+  const { data: statement, isLoading } = useQuery({
+    queryKey: ['purchases-supplier-statement', supplierId],
+    queryFn: async () => (await api.get<{ data: SupplierStatement }>(`/purchases/suppliers/${supplierId}/statement`)).data.data,
+  });
+
+  if (isLoading) return <div className="py-8 text-center text-muted-foreground">Cargando estado de cuenta...</div>;
+  if (!statement) return null;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>Deuda pendiente — {businessName}</CardTitle>
+          <p className="text-sm text-muted-foreground">Qué se debe y de qué compras viene, con fechas y montos.</p>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-bold text-destructive">{formatCurrency(statement.totalOwed)}</p>
+          {statement.totalOwed > 0 && <Button size="sm" className="mt-1" onClick={() => setPayOpen(true)}>Pagar monto</Button>}
+        </div>
+      </CardHeader>
+      {statement.debts.length > 0 && (
+        <CardContent>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50 text-left">
+                  <th className="px-4 py-2 font-medium">N° Orden</th>
+                  <th className="px-4 py-2 font-medium">Fecha</th>
+                  <th className="px-4 py-2 font-medium">Factura</th>
+                  <th className="px-4 py-2 font-medium text-right">Total</th>
+                  <th className="px-4 py-2 font-medium text-right">Pagado</th>
+                  <th className="px-4 py-2 font-medium text-right">Pendiente</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {statement.debts.map((d) => (
+                  <tr key={d.orderId}>
+                    <td className="px-4 py-2 font-medium">{d.orderNumber}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{formatDateTime(d.date)}</td>
+                    <td className="px-4 py-2">{d.supplierInvoice ?? '—'}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(d.totalAmount)}</td>
+                    <td className="px-4 py-2 text-right text-muted-foreground">{formatCurrency(d.paidAmount)}</td>
+                    <td className="px-4 py-2 text-right font-semibold text-destructive">{formatCurrency(d.outstanding)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      )}
+      {payOpen && (
+        <PayAmountModal
+          title="Pagar a proveedor"
+          subtitle={businessName}
+          totalOwed={statement.totalOwed}
+          payUrl={`/purchases/suppliers/${supplierId}/pay`}
+          invalidateKeys={[['purchases-supplier-statement', supplierId], ['purchases-payable-summary'], ['purchases-payable', supplierId], ['purchases']]}
+          onClose={() => setPayOpen(false)}
+          onPaid={() => setPayOpen(false)}
+        />
+      )}
+    </Card>
+  );
+}
+
 function SettlementsTab() {
   const [supplierId, setSupplierId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -2237,8 +2693,8 @@ function SettlementsTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Genera un resumen consolidado de todos los pagos hechos a un proveedor en un rango de fechas — útil para
-        cuadrar cuentas o entregarle una liquidación.
+        Elige un proveedor para ver cuánto se le debe y de qué compras viene esa deuda. También puedes generar un
+        resumen de los pagos ya hechos en un rango de fechas, para cuadrar cuentas o entregarle una liquidación.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <div>
@@ -2262,6 +2718,10 @@ function SettlementsTab() {
           Generar liquidación
         </Button>
       </div>
+
+      {supplierId && (
+        <SupplierDebtCard supplierId={supplierId} businessName={suppliers?.find(s => s.id === supplierId)?.businessName ?? ''} />
+      )}
 
       {isLoading && <div className="py-12 text-center text-muted-foreground">Cargando...</div>}
 
@@ -2330,7 +2790,7 @@ function SettlementsTab() {
 
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function PurchasesPage() {
-  const [tab, setTab] = useState<'orders' | 'payable' | 'suppliers' | 'settlements'>('orders');
+  const [tab, setTab] = useState<'orders' | 'payable' | 'suppliers' | 'settlements' | 'payers'>('orders');
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -2344,6 +2804,7 @@ export function PurchasesPage() {
           ['orders', FileText, 'Órdenes de Compra'],
           ['payable', Clock, 'Cuentas por Pagar'],
           ['settlements', Receipt, 'Liquidaciones'],
+          ['payers', HandCoins, 'Pagadores'],
           ['suppliers', Truck, 'Proveedores'],
         ] as const).map(([key, Icon, label]) => (
           <button key={key} onClick={() => setTab(key)}
@@ -2354,7 +2815,11 @@ export function PurchasesPage() {
         ))}
       </div>
 
-      {tab === 'orders' ? <OrdersTab /> : tab === 'payable' ? <PayableTab /> : tab === 'settlements' ? <SettlementsTab /> : <SuppliersTab />}
+      {tab === 'orders' ? <OrdersTab />
+        : tab === 'payable' ? <PayableTab />
+        : tab === 'settlements' ? <SettlementsTab />
+        : tab === 'payers' ? <PayersTab />
+        : <SuppliersTab />}
     </div>
   );
 }

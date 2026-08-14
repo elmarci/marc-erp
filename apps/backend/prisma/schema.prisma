@@ -194,6 +194,9 @@ model User {
   expenses                  Expense[]
   recurringExpenseTemplates RecurringExpenseTemplate[]
   supplierPayments          SupplierPayment[]
+  supplierPaymentBatches    SupplierPaymentBatch[]
+  payerRepayments           PayerRepayment[]
+  payerRepaymentBatches     PayerRepaymentBatch[]
   bottleDepositMovements    BottleDepositMovement[]
 
   @@index([email])
@@ -349,10 +352,35 @@ model Supplier {
   products         Product[]
   purchaseOrders   PurchaseOrder[]
   supplierProducts SupplierProduct[]
+  paymentBatches   SupplierPaymentBatch[]
 
   @@index([taxId])
   @@index([businessName])
   @@map("suppliers")
+}
+
+// Persona o tercero que puso el dinero de su bolsillo para pagar una compra
+// (ej. el dueño compra en un mercado y paga en efectivo antes de que la
+// mercadería llegue al sistema) — distinto del Supplier, que es quien vendió
+// la mercadería. Cuando una PurchaseOrder tiene payerId, el proveedor ya
+// quedó pagado (no genera cuenta por pagar a proveedor) pero se abre una
+// deuda de la empresa hacia este pagador, que se repone por separado.
+model Payer {
+  id        String    @id @default(uuid())
+  name      String
+  phone     String?
+  notes     String?
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  purchaseOrders   PurchaseOrder[]
+  repayments       PayerRepayment[]
+  repaymentBatches PayerRepaymentBatch[]
+
+  @@index([name])
+  @@map("payers")
 }
 
 // Catálogo real de qué producto vende cada proveedor y a qué precio.
@@ -430,20 +458,20 @@ model Product {
   updatedAt      DateTime      @updatedAt @map("updated_at")
   deletedAt      DateTime?     @map("deleted_at")
 
-  category           Category            @relation(fields: [categoryId], references: [id])
-  brand              Brand?              @relation(fields: [brandId], references: [id])
-  supplier           Supplier?           @relation(fields: [supplierId], references: [id])
-  taxRate            TaxRate?            @relation(fields: [taxRateId], references: [id])
-  variants           ProductVariant[]
-  compositeItems     CompositeProduct[]  @relation("ParentProduct")
-  usedInComposites   CompositeProduct[]  @relation("ComponentProduct")
-  inventoryMovements InventoryMovement[]
-  saleItems          SaleItem[]
-  purchaseOrderItems PurchaseOrderItem[]
-  stockAlerts        StockAlert[]
-  batches            Batch[]
-  promotionItems     PromotionProduct[]
-  supplierProducts   SupplierProduct[]
+  category               Category                @relation(fields: [categoryId], references: [id])
+  brand                  Brand?                  @relation(fields: [brandId], references: [id])
+  supplier               Supplier?               @relation(fields: [supplierId], references: [id])
+  taxRate                TaxRate?                @relation(fields: [taxRateId], references: [id])
+  variants               ProductVariant[]
+  compositeItems         CompositeProduct[]      @relation("ParentProduct")
+  usedInComposites       CompositeProduct[]      @relation("ComponentProduct")
+  inventoryMovements     InventoryMovement[]
+  saleItems              SaleItem[]
+  purchaseOrderItems     PurchaseOrderItem[]
+  stockAlerts            StockAlert[]
+  batches                Batch[]
+  promotionItems         PromotionProduct[]
+  supplierProducts       SupplierProduct[]
   bottleDepositMovements BottleDepositMovement[]
 
   @@index([barcode])
@@ -590,39 +618,47 @@ model StockAlert {
 // =============================================================================
 
 model PurchaseOrder {
-  id              String                @id @default(uuid())
-  orderNumber     String                @unique @map("order_number")
-  supplierId      String                @map("supplier_id")
-  userId          String                @map("user_id")
-  approvedById    String?               @map("approved_by_id")
-  status          PurchaseOrderStatus   @default(DRAFT)
+  id                    String                @id @default(uuid())
+  orderNumber           String                @unique @map("order_number")
+  supplierId            String                @map("supplier_id")
+  userId                String                @map("user_id")
+  approvedById          String?               @map("approved_by_id")
+  status                PurchaseOrderStatus   @default(DRAFT)
   // Cuánto de esta compra ya salió de Caja General vs. cuánto queda como
   // deuda con el proveedor (cuenta por pagar). PAID/PARTIAL/CREDIT se derivan
   // de paidAmount vs. totalAmount cada vez que se registra un pago.
-  paymentStatus   PurchasePaymentStatus @default(CREDIT) @map("payment_status")
-  paidAmount      Decimal               @default(0) @map("paid_amount") @db.Decimal(12, 2)
-  expectedDate    DateTime?             @map("expected_date")
-  receivedDate    DateTime?             @map("received_date")
-  subtotal        Decimal               @db.Decimal(12, 2)
-  taxAmount       Decimal             @map("tax_amount") @db.Decimal(12, 2)
-  totalAmount     Decimal             @map("total_amount") @db.Decimal(12, 2)
-  notes           String?
-  supplierInvoice String?             @map("supplier_invoice")
-  voidedAt        DateTime?           @map("voided_at")
-  voidedById      String?             @map("voided_by_id")
-  voidReason      String?             @map("void_reason")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  paymentStatus         PurchasePaymentStatus @default(CREDIT) @map("payment_status")
+  paidAmount            Decimal               @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  // Si esta compra la pagó un tercero de su bolsillo (no la empresa), va acá
+  // en vez de generar cuenta por pagar al proveedor — ver comentario en el
+  // modelo Payer. payerReimbursedAmount lleva cuánto de eso ya se le repuso.
+  payerId               String?               @map("payer_id")
+  payerReimbursedAmount Decimal               @default(0) @map("payer_reimbursed_amount") @db.Decimal(12, 2)
+  expectedDate          DateTime?             @map("expected_date")
+  receivedDate          DateTime?             @map("received_date")
+  subtotal              Decimal               @db.Decimal(12, 2)
+  taxAmount             Decimal               @map("tax_amount") @db.Decimal(12, 2)
+  totalAmount           Decimal               @map("total_amount") @db.Decimal(12, 2)
+  notes                 String?
+  supplierInvoice       String?               @map("supplier_invoice")
+  voidedAt              DateTime?             @map("voided_at")
+  voidedById            String?               @map("voided_by_id")
+  voidReason            String?               @map("void_reason")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
 
-  supplier   Supplier            @relation(fields: [supplierId], references: [id])
-  user       User                @relation(fields: [userId], references: [id])
-  approvedBy User?               @relation("ApprovedByPurchases", fields: [approvedById], references: [id])
-  voidedBy   User?               @relation("VoidedByPurchases", fields: [voidedById], references: [id])
-  items      PurchaseOrderItem[]
-  receipts   PurchaseReceipt[]
-  payments   SupplierPayment[]
+  supplier        Supplier            @relation(fields: [supplierId], references: [id])
+  payer           Payer?              @relation(fields: [payerId], references: [id])
+  user            User                @relation(fields: [userId], references: [id])
+  approvedBy      User?               @relation("ApprovedByPurchases", fields: [approvedById], references: [id])
+  voidedBy        User?               @relation("VoidedByPurchases", fields: [voidedById], references: [id])
+  items           PurchaseOrderItem[]
+  receipts        PurchaseReceipt[]
+  payments        SupplierPayment[]
+  payerRepayments PayerRepayment[]
 
   @@index([supplierId])
+  @@index([payerId])
   @@index([status])
   @@index([createdAt])
   @@map("purchase_orders")
@@ -691,12 +727,86 @@ model SupplierPayment {
   reference       String?
   paidAt          DateTime      @default(now()) @map("paid_at")
   notes           String?
+  // Cuando un solo pago "por monto" se reparte entre varias OC del mismo
+  // proveedor (amortización FIFO), todas las filas resultantes comparten
+  // este batchId — así se puede mostrar como un solo evento de pago aunque
+  // cada fila siga apuntando a UNA orden (mismo esquema de siempre, nada se
+  // rompe para pagos de una sola orden donde batchId queda null).
+  batchId         String?       @map("batch_id")
 
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  user          User          @relation(fields: [userId], references: [id])
+  purchaseOrder PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  user          User                  @relation(fields: [userId], references: [id])
+  batch         SupplierPaymentBatch? @relation(fields: [batchId], references: [id])
 
   @@index([purchaseOrderId])
+  @@index([batchId])
   @@map("supplier_payments")
+}
+
+// Encabezado de un pago "por monto" a un proveedor que la lógica de
+// amortización reparte entre sus compras pendientes más antiguas — agrupa
+// las filas de SupplierPayment que genera para poder mostrarlas/anularlas
+// juntas sin perder la trazabilidad por orden.
+model SupplierPaymentBatch {
+  id          String   @id @default(uuid())
+  supplierId  String   @map("supplier_id")
+  userId      String   @map("user_id")
+  totalAmount Decimal  @map("total_amount") @db.Decimal(12, 2)
+  reference   String?
+  notes       String?
+  paidAt      DateTime @default(now()) @map("paid_at")
+
+  supplier Supplier          @relation(fields: [supplierId], references: [id])
+  user     User              @relation(fields: [userId], references: [id])
+  payments SupplierPayment[]
+
+  @@index([supplierId])
+  @@map("supplier_payment_batches")
+}
+
+// Reposición de dinero a un Payer (tercero que pagó una compra de su
+// bolsillo) — mismo patrón que SupplierPayment/SupplierPaymentBatch: cada
+// fila queda ligada a UNA orden (para saber qué compra terminó de reponerse)
+// y varias filas pueden compartir un batchId cuando un pago por monto se
+// reparte entre varias compras pendientes del mismo pagador.
+model PayerRepayment {
+  id              String        @id @default(uuid())
+  payerId         String        @map("payer_id")
+  purchaseOrderId String        @map("purchase_order_id")
+  batchId         String?       @map("batch_id")
+  userId          String        @map("user_id")
+  amount          Decimal       @db.Decimal(12, 2)
+  method          PaymentMethod
+  reference       String?
+  notes           String?
+  paidAt          DateTime      @default(now()) @map("paid_at")
+
+  payer         Payer                @relation(fields: [payerId], references: [id])
+  purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
+  batch         PayerRepaymentBatch? @relation(fields: [batchId], references: [id])
+  user          User                 @relation(fields: [userId], references: [id])
+
+  @@index([payerId])
+  @@index([purchaseOrderId])
+  @@index([batchId])
+  @@map("payer_repayments")
+}
+
+model PayerRepaymentBatch {
+  id          String   @id @default(uuid())
+  payerId     String   @map("payer_id")
+  userId      String   @map("user_id")
+  totalAmount Decimal  @map("total_amount") @db.Decimal(12, 2)
+  reference   String?
+  notes       String?
+  paidAt      DateTime @default(now()) @map("paid_at")
+
+  payer    Payer            @relation(fields: [payerId], references: [id])
+  user     User             @relation(fields: [userId], references: [id])
+  payments PayerRepayment[]
+
+  @@index([payerId])
+  @@map("payer_repayment_batches")
 }
 
 // =============================================================================
@@ -725,10 +835,10 @@ model Customer {
   updatedAt      DateTime     @updatedAt @map("updated_at")
   deletedAt      DateTime?    @map("deleted_at")
 
-  sales          Sale[]
-  debtPayments   CustomerDebtPayment[]
-  coupons        Coupon[]
-  storeAccounts  StoreCustomer[]
+  sales         Sale[]
+  debtPayments  CustomerDebtPayment[]
+  coupons       Coupon[]
+  storeAccounts StoreCustomer[]
 
   @@index([taxId])
   @@index([phone])
@@ -796,13 +906,13 @@ model CashSession {
   closedAt       DateTime?         @map("closed_at")
   notes          String?
 
-  cashRegister CashRegister   @relation(fields: [cashRegisterId], references: [id])
-  user         User           @relation(fields: [userId], references: [id])
-  sales        Sale[]
-  movements    CashMovement[]
+  cashRegister           CashRegister                @relation(fields: [cashRegisterId], references: [id])
+  user                   User                        @relation(fields: [userId], references: [id])
+  sales                  Sale[]
+  movements              CashMovement[]
   // Cuadre de billeteras digitales (Yape, Plin) al cerrar caja — separado del
   // efectivo porque cada método es su propia "cuenta" en Caja General.
-  reconciliations CashSessionReconciliation[]
+  reconciliations        CashSessionReconciliation[]
   bottleDepositMovements BottleDepositMovement[]
 
   @@index([cashRegisterId])
@@ -1097,31 +1207,31 @@ model Expense {
 // =============================================================================
 
 model Promotion {
-  id          String        @id @default(uuid())
+  id          String              @id @default(uuid())
   name        String
   description String?
   type        PromotionType
-  value       Decimal       @db.Decimal(10, 2) // porcentaje o monto
+  value       Decimal             @db.Decimal(10, 2) // porcentaje o monto
   // Solo para HAPPY_HOUR — indica si "value" es % o monto fijo en soles.
   valueType   PromotionValueType? @map("value_type")
-  minQuantity Int?          @map("min_quantity")
-  maxQuantity Int?          @map("max_quantity")
-  minAmount   Decimal?      @map("min_amount") @db.Decimal(10, 2)
-  buyQuantity Int?          @map("buy_quantity")
-  getQuantity Int?          @map("get_quantity")
-  startDate   DateTime      @map("start_date")
-  endDate     DateTime?     @map("end_date")
-  startTime   String?       @map("start_time") // "14:00"
-  endTime     String?       @map("end_time") // "18:00"
-  daysOfWeek  Int[]         @map("days_of_week") // 0=Dom, 1=Lun...
-  isActive    Boolean       @default(true) @map("is_active")
-  priority    Int           @default(0)
-  showInStore Boolean       @default(false) @map("show_in_store")
-  storeImage  String?       @map("store_image")
-  storeVideo  String?       @map("store_video")
-  storeBadge  String?       @map("store_badge")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  minQuantity Int?                @map("min_quantity")
+  maxQuantity Int?                @map("max_quantity")
+  minAmount   Decimal?            @map("min_amount") @db.Decimal(10, 2)
+  buyQuantity Int?                @map("buy_quantity")
+  getQuantity Int?                @map("get_quantity")
+  startDate   DateTime            @map("start_date")
+  endDate     DateTime?           @map("end_date")
+  startTime   String?             @map("start_time") // "14:00"
+  endTime     String?             @map("end_time") // "18:00"
+  daysOfWeek  Int[]               @map("days_of_week") // 0=Dom, 1=Lun...
+  isActive    Boolean             @default(true) @map("is_active")
+  priority    Int                 @default(0)
+  showInStore Boolean             @default(false) @map("show_in_store")
+  storeImage  String?             @map("store_image")
+  storeVideo  String?             @map("store_video")
+  storeBadge  String?             @map("store_badge")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
 
   products     PromotionProduct[]
   categories   PromotionCategory[]
