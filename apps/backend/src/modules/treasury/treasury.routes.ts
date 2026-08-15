@@ -94,6 +94,35 @@ router.post('/expenses', async (req: Request, res: Response, next: NextFunction)
   } catch (err) { next(err); }
 });
 
+// Conciliación/arqueo de Caja General al cierre del día — separado del
+// arqueo de caja de turno (que ya existe vía CashSessionReconciliation).
+router.get('/reconciliations', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { account, page, limit } = z.object({
+      account: z.enum(['CASH', 'YAPE', 'PLIN']).optional(),
+      page: z.coerce.number().min(1).default(1),
+      limit: z.coerce.number().min(1).max(100).default(25),
+    }).parse(req.query);
+    const result = await treasuryService.listReconciliations({ account, page, limit });
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.post('/reconcile', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { account, countedAmount, notes, date } = z.object({
+      account: z.enum(['CASH', 'YAPE', 'PLIN']),
+      countedAmount: z.number().min(0),
+      notes: z.string().optional(),
+      date: z.string().transform((s) => parseLimaDate(s, false)).optional(),
+    }).parse(req.body);
+    const reconciliation = await treasuryService.recordReconciliation({
+      account, countedAmount, notes, date, userId: req.user!.sub,
+    });
+    res.status(201).json({ success: true, data: reconciliation });
+  } catch (err) { next(err); }
+});
+
 router.get('/recurring-expenses', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const templates = await treasuryService.listRecurringTemplates();

@@ -128,6 +128,73 @@ export class TreasuryService {
     };
   }
 
+  /* ── Conciliación / arqueo de Caja General ───────────────────────────────
+   * Compara el saldo que dice el sistema (última TreasuryMovement de esa
+   * cuenta) contra el conteo físico del día — mismo criterio que el arqueo
+   * de caja de turno (CashSessionReconciliation), pero a nivel de Caja
+   * General. Si hay diferencia, se genera un TreasuryMovement de ajuste
+   * para que el sistema quede igual al conteo (nunca se edita un saldo a
+   * mano). */
+
+  async recordReconciliation(input: {
+    account: TreasuryAccount;
+    countedAmount: number;
+    notes?: string;
+    userId: string;
+    date?: Date;
+  }) {
+    const d = input.date ?? new Date();
+    const dayKey = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+    return prisma.$transaction(async (tx) => {
+      const last = await tx.treasuryMovement.findFirst({ where: { account: input.account }, orderBy: { createdAt: 'desc' } });
+      const expectedAmount = last ? Number(last.balanceAfter) : 0;
+      const difference = Math.round((input.countedAmount - expectedAmount) * 100) / 100;
+
+      const reconciliation = await tx.treasuryReconciliation.upsert({
+        where: { account_date: { account: input.account, date: dayKey } },
+        create: {
+          account: input.account, date: dayKey, expectedAmount, countedAmount: input.countedAmount,
+          difference, notes: input.notes, userId: input.userId,
+        },
+        update: {
+          expectedAmount, countedAmount: input.countedAmount, difference, notes: input.notes, userId: input.userId,
+        },
+      });
+
+      if (Math.abs(difference) > 0.009) {
+        await this.recordMovement(
+          tx, difference > 0 ? 'DEPOSIT' : 'WITHDRAWAL', Math.abs(difference),
+          `Ajuste por arqueo de Caja General (${input.account}) — ${dayKey.toLocaleDateString('es-PE')}`,
+          input.userId, 'TREASURY_RECONCILIATION', reconciliation.id, input.account,
+        );
+      }
+
+      return reconciliation;
+    });
+  }
+
+  async listReconciliations(filters: { page: number; limit: number; account?: TreasuryAccount }) {
+    const where: Record<string, unknown> = {};
+    if (filters.account) where['account'] = filters.account;
+
+    const [data, total] = await Promise.all([
+      prisma.treasuryReconciliation.findMany({
+        where,
+        include: { user: { select: { firstName: true, lastName: true } } },
+        orderBy: { date: 'desc' },
+        skip: (filters.page - 1) * filters.limit,
+        take: filters.limit,
+      }),
+      prisma.treasuryReconciliation.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
+    };
+  }
+
   /* ── Gastos ───────────────────────────────────────────────────────────── */
 
   async createExpense(input: CreateExpenseInput) {

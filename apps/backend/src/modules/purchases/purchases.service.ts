@@ -1,7 +1,9 @@
 import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
 import { treasuryService, methodToAccount } from '../treasury/treasury.service';
+import { payerLedgerService } from './payer-ledger.service';
 import { emitEvent } from '../../config/socket';
+import { getAccountingState, getAgingBucket, emptyAgingSummary, type AgingBucket } from './purchase-state.util';
 import type { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
 interface DirectPurchaseItemInput {
@@ -34,16 +36,45 @@ export class PurchasesService {
   }
 
   private buildOrdersWhere(filters: {
-    status?: string; supplierId?: string; search?: string; dateFrom?: Date; dateTo?: Date;
+    status?: string; supplierId?: string; payerId?: string; paymentStatus?: string;
+    search?: string; dateFrom?: Date; dateTo?: Date; dueFrom?: Date; dueTo?: Date;
+    amountMin?: number; amountMax?: number; onlyPending?: boolean; methodUsed?: string;
   }): Prisma.PurchaseOrderWhereInput {
     const where: Prisma.PurchaseOrderWhereInput = {};
     if (filters.status) where.status = filters.status as PurchaseOrderStatus;
     if (filters.supplierId) where.supplierId = filters.supplierId;
+    if (filters.payerId) where.payerId = filters.payerId;
+    if (filters.paymentStatus) where.paymentStatus = filters.paymentStatus as never;
     if (filters.dateFrom || filters.dateTo) {
       where.createdAt = {
         ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
         ...(filters.dateTo ? { lte: filters.dateTo } : {}),
       };
+    }
+    if (filters.dueFrom || filters.dueTo) {
+      where.dueDate = {
+        ...(filters.dueFrom ? { gte: filters.dueFrom } : {}),
+        ...(filters.dueTo ? { lte: filters.dueTo } : {}),
+      };
+    }
+    if (filters.amountMin != null || filters.amountMax != null) {
+      where.totalAmount = {
+        ...(filters.amountMin != null ? { gte: filters.amountMin } : {}),
+        ...(filters.amountMax != null ? { lte: filters.amountMax } : {}),
+      };
+    }
+    if (filters.onlyPending) {
+      where.paidAmount = { lt: prisma.purchaseOrder.fields.totalAmount };
+      where.voidedAt = null;
+    }
+    if (filters.methodUsed === 'CREDITO_PAGADOR') {
+      where.payerAmount = { gt: 0 };
+    } else if (filters.methodUsed === 'MIXTO') {
+      where.AND = [{ payerAmount: { gt: 0 } }, { payments: { some: {} } }];
+    } else if (filters.methodUsed === 'SIN_PAGO') {
+      where.paidAmount = 0;
+    } else if (filters.methodUsed) {
+      where.payments = { some: { method: filters.methodUsed as never } };
     }
     if (filters.search) {
       where.OR = [
@@ -56,7 +87,9 @@ export class PurchasesService {
   }
 
   async listOrders(filters: {
-    status?: string; supplierId?: string; search?: string; dateFrom?: Date; dateTo?: Date;
+    status?: string; supplierId?: string; payerId?: string; paymentStatus?: string;
+    search?: string; dateFrom?: Date; dateTo?: Date; dueFrom?: Date; dueTo?: Date;
+    amountMin?: number; amountMax?: number; onlyPending?: boolean; methodUsed?: string;
     page: number; limit: number; sortBy?: 'createdAt' | 'totalAmount' | 'orderNumber'; sortOrder?: 'asc' | 'desc';
   }) {
     const where = this.buildOrdersWhere(filters);
@@ -80,7 +113,7 @@ export class PurchasesService {
     ]);
 
     return {
-      data,
+      data: data.map((o) => ({ ...o, accountingState: getAccountingState(o) })),
       pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
       totals: {
         totalAmount: Number(aggregate._sum.totalAmount ?? 0),
@@ -90,7 +123,11 @@ export class PurchasesService {
   }
 
   // Mismos filtros que listOrders(), sin paginar — para exportar a Excel.
-  async exportOrders(filters: { status?: string; supplierId?: string; search?: string; dateFrom?: Date; dateTo?: Date }) {
+  async exportOrders(filters: {
+    status?: string; supplierId?: string; payerId?: string; paymentStatus?: string;
+    search?: string; dateFrom?: Date; dateTo?: Date; dueFrom?: Date; dueTo?: Date;
+    amountMin?: number; amountMax?: number; onlyPending?: boolean; methodUsed?: string;
+  }) {
     const where = this.buildOrdersWhere(filters);
 
     return prisma.purchaseOrder.findMany({
@@ -102,6 +139,21 @@ export class PurchasesService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  // Saldo consolidado: Caja Efectivo/Yape/Plin + total por pagar a
+  // proveedores + total por pagar a pagadores, en una sola vista.
+  async getDashboard() {
+    const [treasuryBalances, payableSummary, payers] = await Promise.all([
+      treasuryService.getBalances(),
+      this.getPayableSummary(),
+      this.listPayers(),
+    ]);
+    return {
+      treasury: treasuryBalances,
+      payableToSuppliers: payableSummary.grandTotal,
+      payableToPayers: payers.reduce((s, p) => s + p.totalOwed, 0),
+    };
   }
 
   // Liquidación consolidada de pagos a un proveedor en un rango de fechas —
@@ -174,7 +226,7 @@ export class PurchasesService {
       },
     });
     if (!order) throw new NotFoundError('Orden de compra');
-    return order;
+    return { ...order, accountingState: getAccountingState(order) };
   }
 
   async createOrder(userId: string, data: {
@@ -275,6 +327,15 @@ export class PurchasesService {
           tx, 'WITHDRAWAL', leg.amount, description, userId, 'PURCHASE', orderId, methodToAccount(leg.method),
         );
       }
+
+      // Se registra también como SupplierPayment (batchId null = pago de una
+      // sola orden, mismo criterio que payOrder/payToSupplier) para que este
+      // pago al crear/recibir la compra quede trazable igual que un pago
+      // "por monto" hecho después — de ahí sale el filtro "método usado" y
+      // el historial de recentPayments del estado de cuenta.
+      await tx.supplierPayment.create({
+        data: { purchaseOrderId: orderId, userId, amount: leg.amount, method: leg.method as never, notes: description },
+      });
     }
 
     const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
@@ -344,7 +405,10 @@ export class PurchasesService {
     if (!supplier) throw new NotFoundError('Proveedor');
 
     const openOrders = await prisma.purchaseOrder.findMany({
-      where: { supplierId, status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] }, paymentStatus: { not: 'PAID' } },
+      // hasDiscrepancy: false — las OC observadas quedan fuera del reparto
+      // automático hasta resolverse (se pueden seguir pagando manual/
+      // individualmente con payOrder si hace falta salir del paso).
+      where: { supplierId, status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] }, paymentStatus: { not: 'PAID' }, hasDiscrepancy: false },
       orderBy: { createdAt: 'asc' },
       select: { id: true, totalAmount: true, paidAmount: true },
     });
@@ -419,23 +483,34 @@ export class PurchasesService {
     const openOrders = await prisma.purchaseOrder.findMany({
       where: { status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] }, paymentStatus: { not: 'PAID' } },
       select: {
-        supplierId: true, totalAmount: true, paidAmount: true, createdAt: true,
+        supplierId: true, totalAmount: true, paidAmount: true, createdAt: true, dueDate: true, hasDiscrepancy: true,
         supplier: { select: { businessName: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
 
-    const bySupplier = new Map<string, { supplierId: string; businessName: string; totalOwed: number; orderCount: number; oldestDate: Date }>();
+    const bySupplier = new Map<string, {
+      supplierId: string; businessName: string; totalOwed: number; orderCount: number; oldestDate: Date;
+      overdueCount: number; observedCount: number; aging: Record<AgingBucket, number>;
+    }>();
     for (const o of openOrders) {
       const outstanding = Number(o.totalAmount) - Number(o.paidAmount);
+      const isOverdue = !!o.dueDate && o.dueDate.getTime() < Date.now();
       const entry = bySupplier.get(o.supplierId);
+      const bucket = getAgingBucket(o.createdAt);
       if (entry) {
         entry.totalOwed += outstanding;
         entry.orderCount += 1;
+        entry.aging[bucket] += outstanding;
+        if (isOverdue) entry.overdueCount += 1;
+        if (o.hasDiscrepancy) entry.observedCount += 1;
       } else {
+        const aging = emptyAgingSummary();
+        aging[bucket] = outstanding;
         bySupplier.set(o.supplierId, {
           supplierId: o.supplierId, businessName: o.supplier.businessName,
           totalOwed: outstanding, orderCount: 1, oldestDate: o.createdAt,
+          overdueCount: isOverdue ? 1 : 0, observedCount: o.hasDiscrepancy ? 1 : 0, aging,
         });
       }
     }
@@ -456,7 +531,10 @@ export class PurchasesService {
       prisma.purchaseOrder.findMany({
         where: { supplierId, status: { in: ['RECEIVED', 'PARTIALLY_RECEIVED'] }, paymentStatus: { not: 'PAID' } },
         orderBy: { createdAt: 'asc' },
-        select: { id: true, orderNumber: true, createdAt: true, receivedDate: true, totalAmount: true, paidAmount: true, supplierInvoice: true },
+        select: {
+          id: true, orderNumber: true, createdAt: true, receivedDate: true, totalAmount: true, paidAmount: true,
+          supplierInvoice: true, dueDate: true, hasDiscrepancy: true, status: true, voidedAt: true,
+        },
       }),
       prisma.supplierPayment.findMany({
         where: { purchaseOrder: { supplierId } },
@@ -466,19 +544,29 @@ export class PurchasesService {
       }),
     ]);
 
-    const debts = openOrders.map((o) => ({
-      orderId: o.id,
-      orderNumber: o.orderNumber,
-      date: o.receivedDate ?? o.createdAt,
-      supplierInvoice: o.supplierInvoice,
-      totalAmount: Number(o.totalAmount),
-      paidAmount: Number(o.paidAmount),
-      outstanding: Number(o.totalAmount) - Number(o.paidAmount),
-    }));
+    const aging = emptyAgingSummary();
+    const debts = openOrders.map((o) => {
+      const outstanding = Number(o.totalAmount) - Number(o.paidAmount);
+      const bucket = getAgingBucket(o.createdAt);
+      aging[bucket] += outstanding;
+      return {
+        orderId: o.id,
+        orderNumber: o.orderNumber,
+        date: o.receivedDate ?? o.createdAt,
+        dueDate: o.dueDate,
+        supplierInvoice: o.supplierInvoice,
+        totalAmount: Number(o.totalAmount),
+        paidAmount: Number(o.paidAmount),
+        outstanding,
+        agingBucket: bucket,
+        accountingState: getAccountingState(o),
+      };
+    });
 
     return {
       supplier: { id: supplier.id, businessName: supplier.businessName, taxId: supplier.taxId },
       totalOwed: debts.reduce((s, d) => s + d.outstanding, 0),
+      aging,
       debts,
       recentPayments: recentPayments.map((p) => ({
         id: p.id, paidAt: p.paidAt, amount: Number(p.amount), method: p.method,
@@ -696,6 +784,22 @@ export class PurchasesService {
     // puede recibirse en varias partes, cada una con su propio pago o no).
     const receiptTotal = items.reduce((sum, i) => sum + (i.isBonus ? 0 : i.receivedQty * i.unitCost), 0);
 
+    // OBSERVADO: si el costo con el que se recibe no coincide con lo
+    // cotizado originalmente en la orden, se marca para que quede fuera de
+    // los pagos "por monto" (FIFO) hasta que alguien lo revise — no bloquea
+    // la recepción en sí.
+    const discrepancyNotes: string[] = [];
+    for (const item of items) {
+      if (item.isBonus || item.receivedQty <= 0) continue;
+      const original = order.items.find(oi => oi.productId === item.productId);
+      if (original && Math.abs(Number(original.unitCost) - item.unitCost) > 0.01) {
+        discrepancyNotes.push(
+          `${original.product.name}: cotizado S/ ${Number(original.unitCost).toFixed(2)} vs. recibido S/ ${item.unitCost.toFixed(2)}`,
+        );
+      }
+    }
+    const discrepancyDetected = discrepancyNotes.length > 0;
+
     const receipt = await prisma.$transaction(async (tx) => {
       const receipt = await tx.purchaseReceipt.create({
         data: {
@@ -749,9 +853,23 @@ export class PurchasesService {
       const anyReceived = updatedItems.some(i => Number(i.receivedQty) > 0);
       const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIALLY_RECEIVED' : order.status;
 
+      let dueDate: Date | undefined;
+      if (allReceived && !order.dueDate) {
+        dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + (order.supplier.paymentTermDays ?? 30));
+      }
+
       await tx.purchaseOrder.update({
         where: { id: orderId },
-        data: { status: newStatus, receivedDate: allReceived ? new Date() : undefined },
+        data: {
+          status: newStatus,
+          receivedDate: allReceived ? new Date() : undefined,
+          dueDate,
+          ...(discrepancyDetected ? {
+            hasDiscrepancy: true,
+            discrepancyNotes: [order.discrepancyNotes, ...discrepancyNotes].filter(Boolean).join(' | '),
+          } : {}),
+        },
       });
 
       if (payment?.paid && receiptTotal > 0) {
@@ -777,6 +895,28 @@ export class PurchasesService {
   }
 
   /**
+   * Marca/desmarca a mano una compra como OBSERVADA (discrepancia entre lo
+   * pedido y lo recibido, o cualquier otro reclamo pendiente con el
+   * proveedor) — mientras esté marcada, queda fuera de los pagos "por
+   * monto" (FIFO), pero se puede seguir pagando manual/individualmente y no
+   * bloquea nada más.
+   */
+  async setDiscrepancy(orderId: string, hasDiscrepancy: boolean, notes?: string) {
+    const order = await prisma.purchaseOrder.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundError('Orden de compra');
+    if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
+
+    await prisma.purchaseOrder.update({
+      where: { id: orderId },
+      data: {
+        hasDiscrepancy,
+        discrepancyNotes: hasDiscrepancy ? (notes ?? order.discrepancyNotes) : null,
+      },
+    });
+    return this.getOrder(orderId);
+  }
+
+  /**
    * "Registrar Compra" — cuando la mercadería ya llegó con factura/guía en
    * mano, no hace falta el ciclo orden→aprobación→recepción: se registra y
    * se aplica todo de inmediato (stock, CPP, kardex) en una sola transacción.
@@ -789,11 +929,12 @@ export class PurchasesService {
     includeTax?: boolean;
     items: DirectPurchaseItemInput[];
     payment?: PurchasePaymentInput;
-    // Si la puso un tercero de su bolsillo (ej. "mi papá compró y pagó al
-    // toque"), esta compra nace pagada al proveedor sin mover Caja General
-    // — en vez de eso abre una deuda de la empresa hacia ese pagador. No
-    // tiene sentido junto con `payment` (uno u otro, nunca ambos).
+    // Si un pagador (tercero, ej. "mi papá") financió toda o parte de esta
+    // compra, esa porción no sale de Caja General — se abre como deuda de la
+    // empresa hacia él. El resto (si queda) se paga al contado vía `payment`
+    // (legs) o queda a crédito con el proveedor, como cualquier otra compra.
     payerId?: string;
+    payerAmount?: number;
   }) {
     const supplier = await prisma.supplier.findFirst({ where: { id: data.supplierId, deletedAt: null } });
     if (!supplier) throw new NotFoundError('Proveedor');
@@ -815,6 +956,28 @@ export class PurchasesService {
     const totalAmount = subtotal + taxAmount;
     const now = data.date ?? new Date();
 
+    // Sin payerAmount explícito pero con payerId, se asume que financió el
+    // 100% (comportamiento de antes, cuando era todo-o-nada).
+    const payerAmount = payer ? Math.min(data.payerAmount ?? totalAmount, totalAmount) : 0;
+    if (payer && payerAmount <= 0.009) {
+      throw new BusinessError('El monto financiado por el pagador debe ser mayor a 0.');
+    }
+    const legs = data.payment?.paid ? (data.payment.legs ?? []) : [];
+    const legsSum = legs.reduce((sum, l) => sum + l.amount, 0);
+    if (legsSum + payerAmount > totalAmount + 0.01) {
+      throw new BusinessError(
+        `La suma de lo pagado al contado (S/ ${legsSum.toFixed(2)}) y lo financiado por el pagador `
+        + `(S/ ${payerAmount.toFixed(2)}) supera el total de la compra (S/ ${totalAmount.toFixed(2)}).`,
+      );
+    }
+
+    const remainingToSupplier = totalAmount - payerAmount - legsSum;
+    const dueDate = remainingToSupplier > 0.009 ? (() => {
+      const d = new Date(now);
+      d.setDate(d.getDate() + (supplier.paymentTermDays ?? 30));
+      return d;
+    })() : null;
+
     const { orderId } = await prisma.$transaction(async (tx) => {
       const order = await tx.purchaseOrder.create({
         data: {
@@ -828,9 +991,16 @@ export class PurchasesService {
           subtotal,
           taxAmount,
           totalAmount,
-          // El proveedor ya cobró de mano del pagador — esta compra nace
-          // saldada con él, sin que haya salido nada de Caja General todavía.
-          ...(payer ? { payerId: payer.id, paymentStatus: 'PAID' as const, paidAmount: totalAmount } : {}),
+          dueDate,
+          // Lo que el pagador puso ya queda saldado con el proveedor de
+          // inmediato (paidAmount arranca en payerAmount); lo que falta se
+          // completa abajo con los legs de pago al contado, si los hay.
+          ...(payer ? {
+            payerId: payer.id,
+            payerAmount,
+            paidAmount: payerAmount,
+            paymentStatus: payerAmount >= totalAmount - 0.009 ? 'PAID' as const : payerAmount > 0 ? 'PARTIAL' as const : 'CREDIT' as const,
+          } : {}),
           items: {
             create: data.items.map(i => ({
               productId: i.productId,
@@ -876,14 +1046,15 @@ export class PurchasesService {
         });
       }
 
-      if (!payer && data.payment?.paid && totalAmount > 0) {
-        const legs = data.payment.legs ?? [];
-        const legsSum = legs.reduce((sum, l) => sum + l.amount, 0);
-        if (Math.abs(legsSum - totalAmount) > 0.01) {
-          throw new BusinessError(
-            `La suma de las formas de pago (S/ ${legsSum.toFixed(2)}) no coincide con el total a pagar (S/ ${totalAmount.toFixed(2)}).`,
-          );
-        }
+      if (payer && payerAmount > 0) {
+        await payerLedgerService.recordMovementInTx(
+          tx, payer.id, 'CARGO', payerAmount,
+          `Compra financiada: OC ${order.orderNumber} — ${supplier.businessName}`,
+          userId, 'PURCHASE', order.id,
+        );
+      }
+
+      if (legsSum > 0) {
         await this.applyPurchasePaymentLegs(
           tx, order.id, totalAmount, legs, userId,
           `Pago de compra: OC ${order.orderNumber} — ${supplier.businessName}`,
@@ -893,7 +1064,7 @@ export class PurchasesService {
       return { orderId: order.id };
     });
 
-    if (data.payment?.paid) emitEvent('erp:cash-updated');
+    if (legsSum > 0) emitEvent('erp:cash-updated');
     return this.getOrder(orderId);
   }
 
@@ -932,6 +1103,9 @@ export class PurchasesService {
     if (!order) throw new NotFoundError('Orden de compra');
     if (order.status !== 'RECEIVED') throw new BusinessError('Solo se pueden anular compras que ya fueron recibidas por completo.');
     if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
+    if (Number(order.payerReimbursedAmount) > 0) {
+      throw new BusinessError('Ya se le repuso dinero al pagador de esta compra — no se puede anular automáticamente. Revierte antes la reposición.');
+    }
 
     // Se revierte en orden inverso al que se aplicó, para que cada paso
     // regrese el costo exactamente al valor que tenía justo antes de esa
@@ -1023,6 +1197,14 @@ export class PurchasesService {
         }
       }
 
+      if (order.payerId && Number(order.payerAmount) > 0) {
+        await payerLedgerService.recordMovementInTx(
+          tx, order.payerId, 'ABONO', Number(order.payerAmount),
+          `Reversión (compra anulada): OC ${order.orderNumber} — ${order.supplier.businessName}`,
+          userId, 'PURCHASE_VOID', orderId,
+        );
+      }
+
       await tx.purchaseOrder.update({
         where: { id: orderId },
         data: { status: 'CANCELLED', voidedAt: new Date(), voidedById: userId, voidReason: reason },
@@ -1050,7 +1232,11 @@ export class PurchasesService {
     });
     if (!order) throw new NotFoundError('Orden de compra');
     if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
-    if (Number(order.paidAmount) <= 0) throw new BusinessError('Esta compra no tiene ningún pago registrado.');
+    const hasPayerAmount = Number(order.payerAmount) > 0;
+    if (Number(order.paidAmount) <= 0 && !hasPayerAmount) throw new BusinessError('Esta compra no tiene ningún pago registrado.');
+    if (hasPayerAmount && Number(order.payerReimbursedAmount) > 0) {
+      throw new BusinessError('Ya se le repuso dinero al pagador de esta compra — no se puede revertir automáticamente. Revierte antes la reposición.');
+    }
 
     const paidTreasuryMovements = await prisma.treasuryMovement.findMany({
       where: { referenceType: 'PURCHASE', referenceId: orderId, type: 'WITHDRAWAL' },
@@ -1092,9 +1278,20 @@ export class PurchasesService {
       // historial de "pagos" que en realidad nunca ocurrieron.
       await tx.supplierPayment.deleteMany({ where: { purchaseOrderId: orderId } });
 
+      if (hasPayerAmount) {
+        await payerLedgerService.recordMovementInTx(
+          tx, order.payerId!, 'ABONO', Number(order.payerAmount),
+          `Reversión de pago (corrección — ${reason}): OC ${order.orderNumber} — financiamiento de pagador anulado`,
+          userId, 'PURCHASE_PAYMENT_REVERT', orderId,
+        );
+      }
+
       await tx.purchaseOrder.update({
         where: { id: orderId },
-        data: { paidAmount: 0, paymentStatus: 'CREDIT' },
+        data: {
+          paidAmount: 0, paymentStatus: 'CREDIT',
+          ...(hasPayerAmount ? { payerId: null, payerAmount: 0 } : {}),
+        },
       });
     });
 
@@ -1351,31 +1548,53 @@ export class PurchasesService {
       where: { deletedAt: null },
       orderBy: { name: 'asc' },
     });
-    const orders = await prisma.purchaseOrder.findMany({
-      where: { payerId: { not: null }, voidedAt: null },
-      select: { payerId: true, totalAmount: true, payerReimbursedAmount: true },
-    });
-    const owedByPayer = new Map<string, number>();
-    for (const o of orders) {
-      const outstanding = Number(o.totalAmount) - Number(o.payerReimbursedAmount);
-      owedByPayer.set(o.payerId!, (owedByPayer.get(o.payerId!) ?? 0) + outstanding);
+    const [balances, openOrders] = await Promise.all([
+      payerLedgerService.getBalances(payers.map((p) => p.id)),
+      prisma.purchaseOrder.findMany({
+        where: { payerId: { not: null }, voidedAt: null, payerAmount: { gt: prisma.purchaseOrder.fields.payerReimbursedAmount } },
+        select: { payerId: true, payerAmount: true, payerReimbursedAmount: true, createdAt: true },
+      }),
+    ]);
+
+    const aggByPayer = new Map<string, { orderCount: number; aging: Record<AgingBucket, number> }>();
+    for (const o of openOrders) {
+      const outstanding = Number(o.payerAmount) - Number(o.payerReimbursedAmount);
+      const bucket = getAgingBucket(o.createdAt);
+      const entry = aggByPayer.get(o.payerId!) ?? { orderCount: 0, aging: emptyAgingSummary() };
+      entry.orderCount += 1;
+      entry.aging[bucket] += outstanding;
+      aggByPayer.set(o.payerId!, entry);
     }
-    return payers.map((p) => ({ ...p, totalOwed: owedByPayer.get(p.id) ?? 0 }));
+
+    return payers.map((p) => {
+      const totalOwed = balances.get(p.id) ?? 0;
+      const agg = aggByPayer.get(p.id) ?? { orderCount: 0, aging: emptyAgingSummary() };
+      return {
+        ...p,
+        totalOwed,
+        orderCount: agg.orderCount,
+        aging: agg.aging,
+        overLimit: Number(p.creditLimit) > 0 && totalOwed > Number(p.creditLimit),
+      };
+    });
   }
 
-  async createPayer(data: { name: string; phone?: string | null; notes?: string | null }) {
+  async createPayer(data: { name: string; phone?: string | null; notes?: string | null; creditLimit?: number }) {
     if (!data.name.trim()) throw new BusinessError('El nombre es obligatorio.');
-    return prisma.payer.create({ data: { name: data.name.trim(), phone: data.phone, notes: data.notes } });
+    return prisma.payer.create({
+      data: { name: data.name.trim(), phone: data.phone, notes: data.notes, creditLimit: data.creditLimit ?? 0 },
+    });
   }
 
-  async updatePayer(id: string, data: { name?: string; phone?: string | null; notes?: string | null; isActive?: boolean }) {
+  async updatePayer(id: string, data: { name?: string; phone?: string | null; notes?: string | null; isActive?: boolean; creditLimit?: number }) {
     const payer = await prisma.payer.findFirst({ where: { id, deletedAt: null } });
     if (!payer) throw new NotFoundError('Pagador');
     return prisma.payer.update({ where: { id }, data });
   }
 
   // Mismo mecanismo de amortización FIFO que payToSupplier, pero contra las
-  // compras que este pagador pagó de su bolsillo y que la empresa todavía no le repuso.
+  // compras que este pagador financió y que la empresa todavía no le repuso
+  // (payerAmount, no totalAmount — puede haber financiado solo una parte).
   async payToPayer(payerId: string, userId: string, legs: PurchasePaymentLeg[], reference?: string, notes?: string) {
     const amount = legs.reduce((sum, l) => sum + l.amount, 0);
     if (amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
@@ -1387,11 +1606,11 @@ export class PurchasesService {
     if (!payer) throw new NotFoundError('Pagador');
 
     const openOrders = await prisma.purchaseOrder.findMany({
-      where: { payerId, voidedAt: null, totalAmount: { gt: prisma.purchaseOrder.fields.payerReimbursedAmount } },
+      where: { payerId, voidedAt: null, payerAmount: { gt: prisma.purchaseOrder.fields.payerReimbursedAmount } },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, totalAmount: true, payerReimbursedAmount: true },
+      select: { id: true, payerAmount: true, payerReimbursedAmount: true },
     });
-    const orders = openOrders.map((o) => ({ id: o.id, outstanding: Number(o.totalAmount) - Number(o.payerReimbursedAmount) }));
+    const orders = openOrders.map((o) => ({ id: o.id, outstanding: Number(o.payerAmount) - Number(o.payerReimbursedAmount) }));
     const totalOutstanding = orders.reduce((s, o) => s + o.outstanding, 0);
     if (totalOutstanding <= 0.009) throw new BusinessError('No hay compras pendientes de reponer a este pagador.');
     if (amount > totalOutstanding + 0.009) {
@@ -1424,10 +1643,12 @@ export class PurchasesService {
         });
       }
 
+      const description = `Reposición a ${payer.name} — ${byOrder.size} compra(s)`;
+      await payerLedgerService.recordMovementInTx(tx, payerId, 'ABONO', amount, description, userId, 'PAYER_REPAYMENT_BATCH', batch.id);
+
       const usedPerLeg = new Map<number, number>();
       for (const a of allocations) usedPerLeg.set(a.legIndex, (usedPerLeg.get(a.legIndex) ?? 0) + a.amount);
 
-      const description = `Reposición a ${payer.name} — ${byOrder.size} compra(s)`;
       for (const [legIndex, legAmount] of usedPerLeg) {
         const leg = legs[legIndex];
         let cashSession = null;
@@ -1459,9 +1680,9 @@ export class PurchasesService {
     const payer = await prisma.payer.findUnique({ where: { id: payerId } });
     if (!payer) throw new NotFoundError('Pagador');
 
-    const [openOrders, recentRepayments] = await Promise.all([
+    const [openOrders, recentRepayments, totalOwed] = await Promise.all([
       prisma.purchaseOrder.findMany({
-        where: { payerId, voidedAt: null, totalAmount: { gt: prisma.purchaseOrder.fields.payerReimbursedAmount } },
+        where: { payerId, voidedAt: null, payerAmount: { gt: prisma.purchaseOrder.fields.payerReimbursedAmount } },
         orderBy: { createdAt: 'asc' },
         include: { supplier: { select: { businessName: true } } },
       }),
@@ -1471,21 +1692,32 @@ export class PurchasesService {
         take: 30,
         include: { purchaseOrder: { select: { orderNumber: true } }, user: { select: { firstName: true, lastName: true } } },
       }),
+      payerLedgerService.getBalance(payerId),
     ]);
 
-    const debts = openOrders.map((o) => ({
-      orderId: o.id,
-      orderNumber: o.orderNumber,
-      date: o.receivedDate ?? o.createdAt,
-      supplierName: o.supplier.businessName,
-      totalAmount: Number(o.totalAmount),
-      reimbursedAmount: Number(o.payerReimbursedAmount),
-      outstanding: Number(o.totalAmount) - Number(o.payerReimbursedAmount),
-    }));
+    const aging = emptyAgingSummary();
+    const debts = openOrders.map((o) => {
+      const outstanding = Number(o.payerAmount) - Number(o.payerReimbursedAmount);
+      const bucket = getAgingBucket(o.createdAt);
+      aging[bucket] += outstanding;
+      return {
+        orderId: o.id,
+        orderNumber: o.orderNumber,
+        date: o.receivedDate ?? o.createdAt,
+        supplierName: o.supplier.businessName,
+        totalAmount: Number(o.totalAmount),
+        payerAmount: Number(o.payerAmount),
+        reimbursedAmount: Number(o.payerReimbursedAmount),
+        outstanding,
+        agingBucket: bucket,
+      };
+    });
 
     return {
-      payer: { id: payer.id, name: payer.name, phone: payer.phone },
-      totalOwed: debts.reduce((s, d) => s + d.outstanding, 0),
+      payer: { id: payer.id, name: payer.name, phone: payer.phone, creditLimit: Number(payer.creditLimit) },
+      totalOwed,
+      overLimit: Number(payer.creditLimit) > 0 && totalOwed > Number(payer.creditLimit),
+      aging,
       debts,
       recentRepayments: recentRepayments.map((p) => ({
         id: p.id, paidAt: p.paidAt, amount: Number(p.amount), method: p.method,

@@ -24,10 +24,15 @@ interface Supplier {
   isActive: boolean; _count?: { purchaseOrders: number };
 }
 
+type AccountingState = 'ANULADO' | 'OBSERVADO' | 'REGISTRADO' | 'PAGADO' | 'VENCIDO' | 'PARCIAL' | 'PENDIENTE_PAGO';
+
 interface PurchaseOrder {
   id: string; orderNumber: string; status: string;
   paymentStatus: 'PAID' | 'PARTIAL' | 'CREDIT';
   paidAmount: number;
+  payerId: string | null; payerAmount: number;
+  dueDate: string | null; hasDiscrepancy: boolean; discrepancyNotes: string | null;
+  accountingState: AccountingState;
   createdAt: string; expectedDate: string | null;
   subtotal: number; taxAmount: number; totalAmount: number;
   supplier: { businessName: string };
@@ -39,7 +44,9 @@ interface PurchaseOrder {
 // del proveedor (quien vendió). Ver comentario del modelo Payer en el backend.
 interface Payer {
   id: string; name: string; phone: string | null; notes: string | null;
-  isActive: boolean; totalOwed?: number;
+  creditLimit: number; isActive: boolean;
+  totalOwed?: number; orderCount?: number; overLimit?: boolean;
+  aging?: Record<'0-15' | '16-30' | '31-60' | '60+', number>;
 }
 
 interface OrderDetail extends PurchaseOrder {
@@ -99,6 +106,18 @@ const STATUS_VARIANT: Record<string, 'default' | 'success' | 'destructive' | 'se
   DRAFT: 'secondary', PENDING_APPROVAL: 'default', APPROVED: 'default',
   SENT: 'default', PARTIALLY_RECEIVED: 'default', RECEIVED: 'success', CANCELLED: 'destructive',
 };
+
+// Estado contable de 8 valores (calculado en el backend a partir de status +
+// paymentStatus + vencimiento + observado) — ver purchase-state.util.ts.
+const ACCOUNTING_STATE_LABELS: Record<AccountingState, string> = {
+  ANULADO: 'Anulado', OBSERVADO: 'Observado', REGISTRADO: 'Registrado',
+  PAGADO: 'Pagado', VENCIDO: 'Vencido', PARCIAL: 'Pago parcial', PENDIENTE_PAGO: 'Pendiente de pago',
+};
+const ACCOUNTING_STATE_VARIANT: Record<AccountingState, 'default' | 'success' | 'destructive' | 'secondary' | 'outline'> = {
+  ANULADO: 'secondary', OBSERVADO: 'destructive', REGISTRADO: 'outline',
+  PAGADO: 'success', VENCIDO: 'destructive', PARCIAL: 'default', PENDIENTE_PAGO: 'default',
+};
+const AGING_BUCKET_LABELS: Record<string, string> = { '0-15': '0-15 días', '16-30': '16-30 días', '31-60': '31-60 días', '60+': '60+ días' };
 
 /* ─── Supplier Form Modal ────────────────────────────────────────────────── */
 function SupplierModal({ supplier, onClose, onSaved }: {
@@ -483,6 +502,9 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   // abre una deuda interna con ese pagador, sin tocar Caja General.
   const [payerMode, setPayerMode] = useState(false);
   const [payerId, setPayerId] = useState('');
+  // Cuánto de esta compra financia el pagador — puede ser menos que el total
+  // (pago mixto: el resto se paga al contado o queda a crédito con el proveedor).
+  const [payerAmountInput, setPayerAmountInput] = useState('');
   const [showNewPayer, setShowNewPayer] = useState(false);
   const [newPayerName, setNewPayerName] = useState('');
   const [newPayerPhone, setNewPayerPhone] = useState('');
@@ -563,17 +585,24 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const taxAmount = includeTax ? subtotal * 0.18 : 0;
   const total = subtotal + taxAmount;
 
-  // Si solo hay una forma de pago, la mantenemos igualada al total mientras
-  // se editan las líneas — si el usuario ya fraccionó el pago, no la tocamos
-  // (que ajuste él mismo, así no le "corregimos" un split intencional).
+  const payerAmountNum = payerMode ? Math.min(Number(payerAmountInput) || 0, total) : 0;
+  // Lo que no cubre el pagador se paga al contado (legs) o queda a crédito
+  // con el proveedor — es el "total" contra el que corre el picker de pago.
+  const payTarget = payerMode ? Math.max(0, total - payerAmountNum) : total;
+
+  // Si solo hay una forma de pago, la mantenemos igualada al monto a cubrir
+  // ahora mientras se editan las líneas o el monto del pagador — si el
+  // usuario ya fraccionó el pago, no la tocamos (que ajuste él mismo).
   useEffect(() => {
-    setPayment(p => p.legs.length === 1 && p.legs[0].amount !== total
-      ? { ...p, legs: [{ ...p.legs[0], amount: total }] }
+    setPayment(p => p.legs.length === 1 && p.legs[0].amount !== payTarget
+      ? { ...p, legs: [{ ...p.legs[0], amount: payTarget }] }
       : p);
-  }, [total]);
+  }, [payTarget]);
 
   const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0)
-    && (payerMode ? !!payerId : (!payment.paid || total === 0 || legsMatch(payment.legs, total)));
+    && (payerMode
+      ? !!payerId && payerAmountNum > 0.009 && (payTarget === 0 || !payment.paid || legsMatch(payment.legs, payTarget))
+      : (!payment.paid || total === 0 || legsMatch(payment.legs, total)));
 
   const mutation = useMutation({
     mutationFn: () => api.post<{ data: OrderDetail }>('/purchases/direct', {
@@ -582,26 +611,30 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
       date: date ? new Date(`${date}T12:00:00`).toISOString() : undefined,
       notes: notes || undefined,
       includeTax,
-      payerId: payerId || undefined,
+      payerId: payerMode ? (payerId || undefined) : undefined,
+      payerAmount: payerMode ? payerAmountNum : undefined,
       items: lines.map(l => ({
         productId: l.productId,
         quantity: effQty(l),
         unitCost: effUnitCost(l),
         isBonus: l.isBonus,
       })),
-      payment: payerId ? undefined : payment,
+      payment: (payerMode && payTarget === 0) ? undefined : payment,
     }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
       queryClient.invalidateQueries({ queryKey: ['purchases-payable-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['purchases-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['payers'] });
       queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
       queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
       queryClient.invalidateQueries({ queryKey: ['cash-movements'] });
-      toast.success(payerId
-        ? 'Compra registrada — pagada al proveedor, queda pendiente reponer al pagador.'
+      toast.success(payerMode
+        ? (payTarget > 0
+          ? `Compra registrada — ${formatCurrency(payerAmountNum)} financiado por el pagador, resto ${payment.paid ? 'pagado' : 'a crédito'}.`
+          : 'Compra registrada — pagada al proveedor, queda pendiente reponer al pagador.')
         : payment.paid
           ? 'Compra registrada y pagada — stock, costo y caja actualizados.'
           : 'Compra registrada como crédito — queda en Cuentas por Pagar.');
@@ -780,8 +813,12 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                     La empresa
                   </Button>
                   <Button type="button" size="sm" variant={payerMode ? 'default' : 'outline'} className="flex-1"
-                    onClick={() => { setPayerMode(true); if (!payers || payers.length === 0) setShowNewPayer(true); }}>
-                    Un tercero (reponer luego)
+                    onClick={() => {
+                      setPayerMode(true);
+                      setPayerAmountInput(String(total));
+                      if (!payers || payers.length === 0) setShowNewPayer(true);
+                    }}>
+                    Un tercero (todo o en parte)
                   </Button>
                 </div>
                 {payerMode && !!payers?.length && (
@@ -792,11 +829,19 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                   </select>
                 )}
                 {payerMode && payerId && (
-                  <p className="text-xs text-muted-foreground">
-                    La compra queda pagada al proveedor de inmediato (sin tocar Caja General) y se abre una
-                    deuda de <strong>{payers?.find(p => p.id === payerId)?.name}</strong> por {formatCurrency(total)},
-                    que se repone luego desde la pestaña "Pagadores".
-                  </p>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-muted-foreground">Monto que financia {payers?.find(p => p.id === payerId)?.name}</label>
+                      <Input type="number" min={0} max={total} step={0.01} value={payerAmountInput}
+                        onChange={e => setPayerAmountInput(e.target.value)} className="h-8" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {formatCurrency(payerAmountNum)} queda pagado al proveedor sin tocar Caja General — se abre
+                      una deuda con <strong>{payers?.find(p => p.id === payerId)?.name}</strong> que se repone luego
+                      desde la pestaña "Pagadores".
+                      {payTarget > 0 && <> El resto ({formatCurrency(payTarget)}) se paga al contado o queda a crédito con el proveedor, abajo.</>}
+                    </p>
+                  </div>
                 )}
                 {payerMode && showNewPayer && (
                   <div className="rounded-md bg-muted/50 p-2 space-y-2">
@@ -821,6 +866,9 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
               </div>
 
               {!payerMode && <PaymentStatusPicker paid={payment.paid} legs={payment.legs} total={total} onChange={setPayment} />}
+              {payerMode && payerId && payTarget > 0 && (
+                <PaymentStatusPicker paid={payment.paid} legs={payment.legs} total={payTarget} onChange={setPayment} />
+              )}
             </>
           )}
         </div>
@@ -1749,6 +1797,19 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const discrepancyMutation = useMutation({
+    mutationFn: (hasDiscrepancy: boolean) => {
+      const notes = hasDiscrepancy ? window.prompt('¿Cuál es la discrepancia? (ej: llegó menos cantidad de la pedida)') ?? undefined : undefined;
+      return api.patch(`/purchases/${order.id}/discrepancy`, { hasDiscrepancy, notes });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
+      toast.success('Se actualizó el estado de observación.');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   const revertPaymentMutation = useMutation({
     mutationFn: (reason: string) => api.post(`/purchases/${order.id}/revert-payment`, { reason }),
     onSuccess: () => {
@@ -1806,11 +1867,9 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
           </Badge>
         </td>
         <td className="px-4 py-3">
-          {['RECEIVED', 'PARTIALLY_RECEIVED'].includes(order.status) && (
-            <Badge variant={PAYMENT_STATUS_VARIANT[order.paymentStatus] ?? 'default'}>
-              {PAYMENT_STATUS_LABELS[order.paymentStatus] ?? order.paymentStatus}
-            </Badge>
-          )}
+          <Badge variant={ACCOUNTING_STATE_VARIANT[order.accountingState] ?? 'default'}>
+            {ACCOUNTING_STATE_LABELS[order.accountingState] ?? order.accountingState}
+          </Badge>
         </td>
         <td className="px-4 py-3 text-muted-foreground">{formatDateTime(order.createdAt)}</td>
         <td className="px-4 py-3 text-right font-semibold">{formatCurrency(order.totalAmount)}</td>
@@ -1897,6 +1956,13 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
               </table>
               {detail.notes && <p className="text-muted-foreground text-xs">Notas: {detail.notes}</p>}
 
+              {detail.hasDiscrepancy && (
+                <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive space-y-1">
+                  <p className="font-semibold">Observada — no entra a pagos "por monto" (FIFO) hasta resolverse</p>
+                  {detail.discrepancyNotes && <p>{detail.discrepancyNotes}</p>}
+                </div>
+              )}
+
               {['RECEIVED', 'PARTIALLY_RECEIVED'].includes(detail.status) && (
                 <div className="rounded-lg border p-3 space-y-2">
                   <div className="flex items-center justify-between">
@@ -1907,9 +1973,15 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                       </Badge>
                       <span className="text-xs text-muted-foreground">
                         Pagado {formatCurrency(detail.paidAmount)} de {formatCurrency(detail.totalAmount)}
+                        {detail.dueDate && <> · vence {formatDateTime(detail.dueDate)}</>}
                       </span>
                     </div>
                   </div>
+                  {detail.payerAmount > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {formatCurrency(detail.payerAmount)} financiado por un pagador (no salió de Caja General).
+                    </p>
+                  )}
                   {detail.payments.length > 0 && (
                     <div className="space-y-1">
                       {detail.payments.map(p => (
@@ -1920,13 +1992,23 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                       ))}
                     </div>
                   )}
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {detail.paymentStatus !== 'PAID' && (
                       <Button size="sm" onClick={() => setShowPay(true)}>Registrar pago</Button>
                     )}
                     {detail.paymentStatus !== 'CREDIT' && !detail.voidedAt && (
                       <Button size="sm" variant="outline" onClick={handleRevertPayment} loading={revertPaymentMutation.isPending}>
                         <Undo2 className="mr-1.5 h-3.5 w-3.5" />Revertir pago (era a crédito)
+                      </Button>
+                    )}
+                    {!detail.voidedAt && (
+                      <Button
+                        size="sm" variant="outline"
+                        className={detail.hasDiscrepancy ? '' : 'text-destructive'}
+                        onClick={() => discrepancyMutation.mutate(!detail.hasDiscrepancy)}
+                        loading={discrepancyMutation.isPending}
+                      >
+                        {detail.hasDiscrepancy ? 'Quitar observación' : 'Marcar como observada'}
                       </Button>
                     )}
                   </div>
@@ -2077,11 +2159,21 @@ function SuppliersTab() {
 }
 
 /* ─── Orders Tab ────────────────────────────────────────────────────────── */
+const METHOD_USED_LABELS: Record<string, string> = {
+  ...PAYMENT_METHOD_LABELS,
+  CREDITO_PAGADOR: 'Crédito de pagador', MIXTO: 'Mixto', SIN_PAGO: 'Sin pago',
+};
+
 function OrdersTab() {
   const [statusFilter, setStatusFilter] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
+  const [methodUsedFilter, setMethodUsedFilter] = useState('');
+  const [onlyPending, setOnlyPending] = useState(false);
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [dueFrom, setDueFrom] = useState('');
+  const [dueTo, setDueTo] = useState('');
   const [sort, setSort] = useState('createdAt:desc');
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
@@ -2095,18 +2187,23 @@ function OrdersTab() {
   const queryString = () => {
     const params = new URLSearchParams({ limit: '20' });
     if (statusFilter) params.set('status', statusFilter);
+    if (paymentStatusFilter) params.set('paymentStatus', paymentStatusFilter);
+    if (methodUsedFilter) params.set('methodUsed', methodUsedFilter);
+    if (onlyPending) params.set('onlyPending', 'true');
     if (debouncedSearch) params.set('search', debouncedSearch);
     if (dateFrom) params.set('dateFrom', dateFrom);
     // El input type="date" da solo la fecha (medianoche) — sumamos el resto
     // del día para que "Hasta" incluya las compras registradas ese mismo día.
     if (dateTo) params.set('dateTo', `${dateTo}T23:59:59.999`);
+    if (dueFrom) params.set('dueFrom', dueFrom);
+    if (dueTo) params.set('dueTo', `${dueTo}T23:59:59.999`);
     if (sortBy) params.set('sortBy', sortBy);
     if (sortOrder) params.set('sortOrder', sortOrder);
     return params;
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['purchases', statusFilter, debouncedSearch, dateFrom, dateTo, sort, page],
+    queryKey: ['purchases', statusFilter, paymentStatusFilter, methodUsedFilter, onlyPending, debouncedSearch, dateFrom, dateTo, dueFrom, dueTo, sort, page],
     queryFn: async () => {
       const params = queryString();
       params.set('page', String(page));
@@ -2118,7 +2215,11 @@ function OrdersTab() {
     },
   });
 
-  const hasFilters = !!(statusFilter || debouncedSearch || dateFrom || dateTo);
+  const hasFilters = !!(statusFilter || paymentStatusFilter || methodUsedFilter || onlyPending || debouncedSearch || dateFrom || dateTo || dueFrom || dueTo);
+  const clearFilters = () => {
+    setStatusFilter(''); setPaymentStatusFilter(''); setMethodUsedFilter(''); setOnlyPending(false);
+    setSearch(''); setDateFrom(''); setDateTo(''); setDueFrom(''); setDueTo(''); setPage(1);
+  };
 
   return (
     <div className="space-y-4">
@@ -2139,6 +2240,22 @@ function OrdersTab() {
         </select>
         <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-40" title="Desde" />
         <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-40" title="Hasta" />
+        <select value={paymentStatusFilter} onChange={e => { setPaymentStatusFilter(e.target.value); setPage(1); }}
+          className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <option value="">Cualquier pago</option>
+          {Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select value={methodUsedFilter} onChange={e => { setMethodUsedFilter(e.target.value); setPage(1); }}
+          className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <option value="">Cualquier método</option>
+          {Object.entries(METHOD_USED_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <Input type="date" value={dueFrom} onChange={e => { setDueFrom(e.target.value); setPage(1); }} className="w-40" title="Vence desde" />
+        <Input type="date" value={dueTo} onChange={e => { setDueTo(e.target.value); setPage(1); }} className="w-40" title="Vence hasta" />
+        <label className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
+          <input type="checkbox" checked={onlyPending} onChange={e => { setOnlyPending(e.target.checked); setPage(1); }} />
+          Solo con saldo pendiente
+        </label>
         <select value={sort} onChange={e => setSort(e.target.value)}
           className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <option value="createdAt:desc">Más recientes</option>
@@ -2149,7 +2266,7 @@ function OrdersTab() {
           <option value="orderNumber:asc">N° orden (asc)</option>
         </select>
         {hasFilters && (
-          <Button variant="ghost" size="sm" onClick={() => { setStatusFilter(''); setSearch(''); setDateFrom(''); setDateTo(''); setPage(1); }}>
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
             <X className="mr-1 h-3.5 w-3.5" />Limpiar
           </Button>
         )}
@@ -2250,6 +2367,20 @@ function OrdersTab() {
 /* ─── Cuentas por Pagar Tab ──────────────────────────────────────────────── */
 interface SupplierPayableSummary {
   supplierId: string; businessName: string; totalOwed: number; orderCount: number; oldestDate: string;
+  overdueCount: number; observedCount: number;
+  aging: Record<'0-15' | '16-30' | '31-60' | '60+', number>;
+}
+
+function AgingRow({ aging }: { aging: Record<'0-15' | '16-30' | '31-60' | '60+', number> }) {
+  return (
+    <div className="flex flex-wrap gap-3 text-xs">
+      {(['0-15', '16-30', '31-60', '60+'] as const).filter(b => aging[b] > 0).map((b) => (
+        <span key={b} className={cn('rounded-full px-2 py-0.5', b === '60+' ? 'bg-destructive/10 text-destructive' : b === '31-60' ? 'bg-amber-500/10 text-amber-600' : 'bg-muted text-muted-foreground')}>
+          {AGING_BUCKET_LABELS[b]}: {formatCurrency(aging[b])}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 // Detalle de las órdenes pendientes de UN proveedor — se pide solo cuando se
@@ -2324,9 +2455,14 @@ function PayableTab() {
                   onClick={() => setExpanded(v => v === s.supplierId ? null : s.supplierId)}>
                   <div className="flex items-center gap-2">
                     {expanded === s.supplierId ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                    <div>
-                      <p className="font-medium">{s.businessName}</p>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{s.businessName}</p>
+                        {s.overdueCount > 0 && <Badge variant="destructive">{s.overdueCount} vencida(s)</Badge>}
+                        {s.observedCount > 0 && <Badge variant="secondary">{s.observedCount} observada(s)</Badge>}
+                      </div>
                       <p className="text-xs text-muted-foreground">{s.orderCount} compra(s) pendiente(s) · desde {formatDateTime(s.oldestDate)}</p>
+                      <AgingRow aging={s.aging} />
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -2408,11 +2544,14 @@ function printSettlement(s: Settlement, dateFrom: string, dateTo: string) {
 /* ─── Pagadores (terceros que ponen el dinero de su bolsillo) ───────────── */
 interface PayerDebt {
   orderId: string; orderNumber: string; date: string; supplierName: string;
-  totalAmount: number; reimbursedAmount: number; outstanding: number;
+  totalAmount: number; payerAmount: number; reimbursedAmount: number; outstanding: number;
+  agingBucket: '0-15' | '16-30' | '31-60' | '60+';
 }
 interface PayerStatement {
-  payer: { id: string; name: string; phone: string | null };
+  payer: { id: string; name: string; phone: string | null; creditLimit: number };
   totalOwed: number;
+  overLimit: boolean;
+  aging: Record<'0-15' | '16-30' | '31-60' | '60+', number>;
   debts: PayerDebt[];
 }
 
@@ -2420,10 +2559,14 @@ function NewPayerModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [creditLimit, setCreditLimit] = useState('');
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () => api.post('/purchases/payers', { name, phone: phone || undefined, notes: notes || undefined }),
+    mutationFn: () => api.post('/purchases/payers', {
+      name, phone: phone || undefined, notes: notes || undefined,
+      creditLimit: creditLimit ? Number(creditLimit) : undefined,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payers'] });
       toast.success('Pagador creado.');
@@ -2452,6 +2595,12 @@ function NewPayerModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             <label className="mb-1 block text-sm font-medium">Notas</label>
             <Input value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Límite de crédito (opcional)</label>
+            <Input type="number" min="0" step="0.01" value={creditLimit} onChange={e => setCreditLimit(e.target.value)}
+              placeholder="0 = sin límite" />
+            <p className="mt-1 text-xs text-muted-foreground">Solo avisa si se supera — no bloquea nuevas compras.</p>
+          </div>
         </div>
         <div className="border-t p-5 flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
@@ -2477,35 +2626,43 @@ function PayerDetail({ payerId, payerName, onPay }: { payerId: string; payerName
   }
 
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b text-left text-xs text-muted-foreground">
-          <th className="py-2 font-medium">N° Orden</th>
-          <th className="py-2 font-medium">Proveedor</th>
-          <th className="py-2 font-medium">Fecha</th>
-          <th className="py-2 font-medium text-right">Total</th>
-          <th className="py-2 font-medium text-right">Repuesto</th>
-          <th className="py-2 font-medium text-right">Pendiente</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y">
-        {statement.debts.map((d) => (
-          <tr key={d.orderId}>
-            <td className="py-2 font-medium">{d.orderNumber}</td>
-            <td className="py-2">{d.supplierName}</td>
-            <td className="py-2 text-muted-foreground">{formatDateTime(d.date)}</td>
-            <td className="py-2 text-right">{formatCurrency(d.totalAmount)}</td>
-            <td className="py-2 text-right text-muted-foreground">{formatCurrency(d.reimbursedAmount)}</td>
-            <td className="py-2 text-right font-semibold text-destructive">{formatCurrency(d.outstanding)}</td>
+    <div className="space-y-2">
+      {statement.overLimit && (
+        <p className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive">
+          Supera el límite de crédito ({formatCurrency(statement.payer.creditLimit)}).
+        </p>
+      )}
+      <AgingRow aging={statement.aging} />
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs text-muted-foreground">
+            <th className="py-2 font-medium">N° Orden</th>
+            <th className="py-2 font-medium">Proveedor</th>
+            <th className="py-2 font-medium">Fecha</th>
+            <th className="py-2 font-medium text-right">Financiado</th>
+            <th className="py-2 font-medium text-right">Repuesto</th>
+            <th className="py-2 font-medium text-right">Pendiente</th>
           </tr>
-        ))}
-      </tbody>
-      <tfoot>
-        <tr><td colSpan={6} className="pt-2">
-          <Button size="sm" onClick={onPay}>Reponer dinero a {payerName}</Button>
-        </td></tr>
-      </tfoot>
-    </table>
+        </thead>
+        <tbody className="divide-y">
+          {statement.debts.map((d) => (
+            <tr key={d.orderId}>
+              <td className="py-2 font-medium">{d.orderNumber}</td>
+              <td className="py-2">{d.supplierName}</td>
+              <td className="py-2 text-muted-foreground">{formatDateTime(d.date)}</td>
+              <td className="py-2 text-right">{formatCurrency(d.payerAmount)}</td>
+              <td className="py-2 text-right text-muted-foreground">{formatCurrency(d.reimbursedAmount)}</td>
+              <td className="py-2 text-right font-semibold text-destructive">{formatCurrency(d.outstanding)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr><td colSpan={6} className="pt-2">
+            <Button size="sm" onClick={onPay}>Reponer dinero a {payerName}</Button>
+          </td></tr>
+        </tfoot>
+      </table>
+    </div>
   );
 }
 
@@ -2549,9 +2706,13 @@ function PayersTab() {
                   onClick={() => setExpanded(v => v === p.id ? null : p.id)}>
                   <div className="flex items-center gap-2">
                     {expanded === p.id ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                    <div>
-                      <p className="font-medium">{p.name}</p>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{p.name}</p>
+                        {p.overLimit && <Badge variant="destructive">Supera límite</Badge>}
+                      </div>
                       {p.phone && <p className="text-xs text-muted-foreground">{p.phone}</p>}
+                      {p.aging && <AgingRow aging={p.aging} />}
                     </div>
                   </div>
                   <span className={cn('text-lg font-bold', (p.totalOwed ?? 0) > 0 ? 'text-destructive' : 'text-muted-foreground')}>
@@ -2589,12 +2750,14 @@ function PayersTab() {
 }
 
 interface SupplierStatementDebt {
-  orderId: string; orderNumber: string; date: string; supplierInvoice: string | null;
+  orderId: string; orderNumber: string; date: string; dueDate: string | null; supplierInvoice: string | null;
   totalAmount: number; paidAmount: number; outstanding: number;
+  agingBucket: '0-15' | '16-30' | '31-60' | '60+'; accountingState: AccountingState;
 }
 interface SupplierStatement {
   supplier: { id: string; businessName: string; taxId: string | null };
   totalOwed: number;
+  aging: Record<'0-15' | '16-30' | '31-60' | '60+', number>;
   debts: SupplierStatementDebt[];
 }
 
@@ -2624,13 +2787,16 @@ function SupplierDebtCard({ supplierId, businessName }: { supplierId: string; bu
         </div>
       </CardHeader>
       {statement.debts.length > 0 && (
-        <CardContent>
+        <CardContent className="space-y-3">
+          <AgingRow aging={statement.aging} />
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50 text-left">
                   <th className="px-4 py-2 font-medium">N° Orden</th>
                   <th className="px-4 py-2 font-medium">Fecha</th>
+                  <th className="px-4 py-2 font-medium">Vence</th>
+                  <th className="px-4 py-2 font-medium">Estado</th>
                   <th className="px-4 py-2 font-medium">Factura</th>
                   <th className="px-4 py-2 font-medium text-right">Total</th>
                   <th className="px-4 py-2 font-medium text-right">Pagado</th>
@@ -2642,6 +2808,12 @@ function SupplierDebtCard({ supplierId, businessName }: { supplierId: string; bu
                   <tr key={d.orderId}>
                     <td className="px-4 py-2 font-medium">{d.orderNumber}</td>
                     <td className="px-4 py-2 text-muted-foreground">{formatDateTime(d.date)}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{d.dueDate ? formatDateTime(d.dueDate) : '—'}</td>
+                    <td className="px-4 py-2">
+                      <Badge variant={ACCOUNTING_STATE_VARIANT[d.accountingState] ?? 'default'}>
+                        {ACCOUNTING_STATE_LABELS[d.accountingState] ?? d.accountingState}
+                      </Badge>
+                    </td>
                     <td className="px-4 py-2">{d.supplierInvoice ?? '—'}</td>
                     <td className="px-4 py-2 text-right">{formatCurrency(d.totalAmount)}</td>
                     <td className="px-4 py-2 text-right text-muted-foreground">{formatCurrency(d.paidAmount)}</td>
@@ -2788,6 +2960,42 @@ function SettlementsTab() {
   );
 }
 
+/* ─── Dashboard consolidado ─────────────────────────────────────────────── */
+interface PurchasesDashboard {
+  treasury: { cash: number; yape: number; plin: number; total: number };
+  payableToSuppliers: number;
+  payableToPayers: number;
+}
+
+function PurchasesDashboardBar() {
+  const { data } = useQuery({
+    queryKey: ['purchases-dashboard'],
+    queryFn: async () => (await api.get<{ data: PurchasesDashboard }>('/purchases/dashboard')).data.data,
+  });
+  if (!data) return null;
+
+  const cards: Array<[string, number, string]> = [
+    ['Caja Efectivo', data.treasury.cash, 'text-foreground'],
+    ['Caja Yape', data.treasury.yape, 'text-foreground'],
+    ['Caja Plin', data.treasury.plin, 'text-foreground'],
+    ['Por pagar a proveedores', data.payableToSuppliers, 'text-destructive'],
+    ['Por pagar a pagadores', data.payableToPayers, 'text-destructive'],
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {cards.map(([label, amount, color]) => (
+        <Card key={label}>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className={cn('text-lg font-bold', color)}>{formatCurrency(amount)}</p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function PurchasesPage() {
   const [tab, setTab] = useState<'orders' | 'payable' | 'suppliers' | 'settlements' | 'payers'>('orders');
@@ -2798,6 +3006,8 @@ export function PurchasesPage() {
         <h1 className="text-2xl font-bold">Compras y Proveedores</h1>
         <p className="text-sm text-muted-foreground">Gestión de órdenes de compra, recepción y proveedores</p>
       </div>
+
+      <PurchasesDashboardBar />
 
       <div className="flex gap-1 border-b">
         {([

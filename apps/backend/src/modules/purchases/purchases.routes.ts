@@ -16,9 +16,17 @@ const STATUS_LABELS: Record<string, string> = {
 const listFiltersSchema = z.object({
   status: z.string().optional(),
   supplierId: z.string().uuid().optional(),
+  payerId: z.string().uuid().optional(),
+  paymentStatus: z.enum(['PAID', 'PARTIAL', 'CREDIT']).optional(),
   search: z.string().optional(),
   dateFrom: limaDateFromParam,
   dateTo: limaDateToParam,
+  dueFrom: limaDateFromParam,
+  dueTo: limaDateToParam,
+  amountMin: z.coerce.number().min(0).optional(),
+  amountMax: z.coerce.number().min(0).optional(),
+  onlyPending: z.coerce.boolean().optional(),
+  methodUsed: z.enum(['CASH', 'YAPE', 'PLIN', 'TRANSFER', 'DEBIT_CARD', 'CREDIT_CARD', 'OTHER', 'CREDITO_PAGADOR', 'MIXTO', 'SIN_PAGO']).optional(),
 });
 
 const paymentLegSchema = z.object({
@@ -31,14 +39,23 @@ const paymentLegSchema = z.object({
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { status, supplierId, search, dateFrom, dateTo, page, limit, sortBy, sortOrder } = listFiltersSchema.extend({
+    const filters = listFiltersSchema.extend({
       page: z.coerce.number().min(1).default(1),
       limit: z.coerce.number().min(1).max(100).default(20),
       sortBy: z.enum(['createdAt', 'totalAmount', 'orderNumber']).optional(),
       sortOrder: z.enum(['asc', 'desc']).optional(),
     }).parse(req.query);
-    const result = await purchasesService.listOrders({ status, supplierId, search, dateFrom, dateTo, page, limit, sortBy, sortOrder });
+    const result = await purchasesService.listOrders(filters);
     res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+// Saldo consolidado: Caja Efectivo/Yape/Plin + total por pagar a
+// proveedores + total por pagar a pagadores. Antes de "/:id".
+router.get('/dashboard', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await purchasesService.getDashboard();
+    res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
 
@@ -56,8 +73,8 @@ router.get('/settlements', async (req: Request, res: Response, next: NextFunctio
 
 router.get('/export', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { status, supplierId, search, dateFrom, dateTo } = listFiltersSchema.parse(req.query);
-    const orders = await purchasesService.exportOrders({ status, supplierId, search, dateFrom, dateTo });
+    const filters = listFiltersSchema.parse(req.query);
+    const orders = await purchasesService.exportOrders(filters);
 
     await sendExcel(res, 'compras.xlsx', 'Órdenes de Compra', [
       { header: 'N° Orden', key: 'orderNumber', width: 14 },
@@ -146,6 +163,7 @@ router.post('/payers', authorizeMinRole('WAREHOUSE'), async (req: Request, res: 
       name: z.string().min(1),
       phone: z.string().optional().nullable(),
       notes: z.string().optional().nullable(),
+      creditLimit: z.coerce.number().min(0).optional(),
     }).parse(req.body);
     const payer = await purchasesService.createPayer(data);
     res.status(201).json({ success: true, data: payer });
@@ -159,6 +177,7 @@ router.patch('/payers/:payerId', authorizeMinRole('WAREHOUSE'), async (req: Requ
       phone: z.string().optional().nullable(),
       notes: z.string().optional().nullable(),
       isActive: z.boolean().optional(),
+      creditLimit: z.coerce.number().min(0).optional(),
     }).parse(req.body);
     const payer = await purchasesService.updatePayer(req.params.payerId, data);
     res.json({ success: true, data: payer });
@@ -230,6 +249,19 @@ router.patch('/:id/items/:itemId', authorizeMinRole('SUPERVISOR'), async (req: R
   } catch (err) { next(err); }
 });
 
+// Marca/desmarca una compra como OBSERVADA (discrepancia con el proveedor) —
+// mientras esté marcada, queda fuera de los pagos "por monto" (FIFO).
+router.patch('/:id/discrepancy', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { hasDiscrepancy, notes } = z.object({
+      hasDiscrepancy: z.boolean(),
+      notes: z.string().optional(),
+    }).parse(req.body);
+    const order = await purchasesService.setDiscrepancy(req.params.id, hasDiscrepancy, notes);
+    res.json({ success: true, data: order });
+  } catch (err) { next(err); }
+});
+
 router.post('/:id/cancel', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const order = await purchasesService.cancelOrder(req.params.id);
@@ -294,9 +326,11 @@ router.post('/direct', authorizeMinRole('WAREHOUSE'), async (req: Request, res: 
         expiryDate: z.coerce.date().optional(),
       })).min(1),
       payment: paymentSchema,
-      // Si esta compra la pagó un tercero de su bolsillo (no la empresa) —
-      // ver Payer en el schema. Es excluyente con `payment`.
+      // Si un pagador financió toda o parte de esta compra — ver Payer en el
+      // schema. payerAmount puede combinarse con `payment` (pago mixto): lo
+      // que no cubre el pagador se completa al contado o queda a crédito.
       payerId: z.string().uuid().optional(),
+      payerAmount: z.coerce.number().positive().optional(),
     }).parse(req.body);
 
     const order = await purchasesService.createDirectPurchase(req.user!.sub, data);

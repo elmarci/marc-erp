@@ -1050,6 +1050,84 @@ const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
 
 const TREASURY_ACCOUNT_LABELS: Record<string, string> = { CASH: 'Efectivo', YAPE: 'Yape', PLIN: 'Plin' };
 
+interface TreasuryReconciliationRow {
+  id: string; account: string; date: string;
+  expectedAmount: number; countedAmount: number; difference: number; notes: string | null;
+  createdAt: string; user: { firstName: string; lastName: string };
+}
+
+// Conciliación/arqueo de Caja General al cierre del día — compara el saldo
+// del sistema contra el conteo físico y, si hay diferencia, genera un
+// movimiento de ajuste para que el sistema quede igual al conteo. Separado
+// del arqueo de caja de turno (que ya existe en ActiveSessionPanel/close).
+function ReconcileModal({ balances, onClose }: {
+  balances: { cash: number; yape: number; plin: number } | undefined;
+  onClose: () => void;
+}) {
+  const [account, setAccount] = useState<'CASH' | 'YAPE' | 'PLIN'>('CASH');
+  const [countedAmount, setCountedAmount] = useState('');
+  const [notes, setNotes] = useState('');
+  const queryClient = useQueryClient();
+
+  const expected = account === 'CASH' ? balances?.cash : account === 'YAPE' ? balances?.yape : balances?.plin;
+  const difference = countedAmount !== '' && expected !== undefined ? Number(countedAmount) - expected : null;
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/treasury/reconcile', {
+      account, countedAmount: parseFloat(countedAmount), notes: notes || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-reconciliations'] });
+      toast.success('Arqueo registrado.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 pb-4">
+          <h2 className="text-lg font-bold">Arqueo de Caja General</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="overflow-y-auto px-6 pb-6 space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Cuenta</label>
+            <select value={account} onChange={(e) => setAccount(e.target.value as typeof account)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {Object.entries(TREASURY_ACCOUNT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <p className="text-sm text-muted-foreground">Saldo esperado (sistema): <span className="font-semibold text-foreground">{formatCurrency(expected ?? 0)}</span></p>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Conteo físico (S/)</label>
+            <Input type="number" min={0} step={0.01} value={countedAmount}
+              onChange={(e) => setCountedAmount(e.target.value)} className="text-lg font-bold" autoFocus />
+          </div>
+          {difference !== null && Math.abs(difference) > 0.009 && (
+            <p className={cn('text-sm font-medium', difference > 0 ? 'text-success' : 'text-destructive')}>
+              Diferencia: {difference > 0 ? '+' : ''}{formatCurrency(difference)} — se registrará un ajuste de {difference > 0 ? 'depósito' : 'retiro'} para cuadrar el sistema.
+            </p>
+          )}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Notas</label>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Motivo de la diferencia, si hay..." />
+          </div>
+        </div>
+        <div className="border-t p-4 flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
+          <Button className="flex-1" disabled={countedAmount === ''} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            Registrar arqueo
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DepositModal({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -1234,7 +1312,8 @@ function TreasuryPanel() {
   const [showExpense, setShowExpense] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
   const [showBottleDeposit, setShowBottleDeposit] = useState(false);
-  const [tab, setTab] = useState<'movimientos' | 'gastos' | 'recurrentes'>('movimientos');
+  const [showReconcile, setShowReconcile] = useState(false);
+  const [tab, setTab] = useState<'movimientos' | 'gastos' | 'recurrentes' | 'arqueo'>('movimientos');
 
   const { data: depositsOutstanding } = useQuery({
     queryKey: ['bottle-deposits-totals'],
@@ -1263,6 +1342,12 @@ function TreasuryPanel() {
     queryKey: ['treasury-recurring'],
     queryFn: async () => (await api.get<{ data: RecurringTemplate[] }>('/treasury/recurring-expenses')).data.data,
     enabled: tab === 'recurrentes',
+  });
+
+  const { data: reconciliations } = useQuery({
+    queryKey: ['treasury-reconciliations'],
+    queryFn: async () => (await api.get<{ data: TreasuryReconciliationRow[] }>('/treasury/reconciliations?limit=50')).data.data,
+    enabled: tab === 'arqueo',
   });
 
   const toggleTemplateMutation = useMutation({
@@ -1319,7 +1404,7 @@ function TreasuryPanel() {
       {showBottleDeposit && <BottleDepositModal onClose={() => setShowBottleDeposit(false)} />}
 
       <div className="flex gap-1 border-b">
-        {([['movimientos', 'Movimientos'], ['gastos', 'Gastos'], ['recurrentes', 'Gastos recurrentes']] as const).map(([key, label]) => (
+        {([['movimientos', 'Movimientos'], ['gastos', 'Gastos'], ['recurrentes', 'Gastos recurrentes'], ['arqueo', 'Arqueo']] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn('px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
               tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
@@ -1435,9 +1520,53 @@ function TreasuryPanel() {
         </div>
       )}
 
+      {tab === 'arqueo' && (
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => setShowReconcile(true)}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />Registrar arqueo
+            </Button>
+          </div>
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50 text-left">
+                    <th className="px-4 py-3 font-medium">Fecha</th>
+                    <th className="px-4 py-3 font-medium">Cuenta</th>
+                    <th className="px-4 py-3 font-medium text-right">Esperado</th>
+                    <th className="px-4 py-3 font-medium text-right">Contado</th>
+                    <th className="px-4 py-3 font-medium text-right">Diferencia</th>
+                    <th className="px-4 py-3 font-medium">Registrado por</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {(reconciliations ?? []).map((r) => (
+                    <tr key={r.id}>
+                      <td className="px-4 py-3 text-muted-foreground">{formatDateTime(r.date)}</td>
+                      <td className="px-4 py-3"><Badge variant="outline">{TREASURY_ACCOUNT_LABELS[r.account] ?? r.account}</Badge></td>
+                      <td className="px-4 py-3 text-right">{formatCurrency(r.expectedAmount)}</td>
+                      <td className="px-4 py-3 text-right">{formatCurrency(r.countedAmount)}</td>
+                      <td className={cn('px-4 py-3 text-right font-semibold', Math.abs(r.difference) < 0.01 ? 'text-muted-foreground' : r.difference > 0 ? 'text-success' : 'text-destructive')}>
+                        {r.difference > 0 ? '+' : ''}{formatCurrency(r.difference)}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{r.user.firstName} {r.user.lastName}</td>
+                    </tr>
+                  ))}
+                  {(!reconciliations || reconciliations.length === 0) && (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Sin arqueos registrados</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
       {showExpense && <ExpenseModal onClose={() => setShowExpense(false)} />}
       {showTemplate && <RecurringTemplateModal onClose={() => setShowTemplate(false)} />}
+      {showReconcile && <ReconcileModal balances={balances} onClose={() => setShowReconcile(false)} />}
     </div>
   );
 }
