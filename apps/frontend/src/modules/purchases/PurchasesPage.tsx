@@ -52,6 +52,7 @@ interface Payer {
 interface OrderDetail extends PurchaseOrder {
   supplierInvoice: string | null; notes: string | null;
   supplier: Supplier;
+  payer: { id: string; name: string; phone: string | null } | null;
   approvedBy: { firstName: string; lastName: string } | null;
   voidedAt: string | null; voidReason: string | null;
   voidedBy: { firstName: string; lastName: string } | null;
@@ -357,6 +358,9 @@ function printPurchaseReceipt(order: OrderDetail) {
       <td style="text-align:right">${i.isBonus ? 'GRATIS' : formatCost(i.unitCost)}</td>
       <td style="text-align:right">S/ ${Number(i.subtotal).toFixed(2)}</td>
     </tr>`).join('');
+  const outstanding = Number(order.totalAmount) - Number(order.paidAmount);
+  const paymentsRows = order.payments.map(p => `
+    <div class="row"><span>${PAYMENT_METHOD_LABELS[p.method] ?? p.method}${p.reference ? ` (${p.reference})` : ''}:</span><span>S/ ${Number(p.amount).toFixed(2)}</span></div>`).join('');
   const body = `
     <p class="c b" style="font-size:14px">COMPROBANTE DE COMPRA</p>
     <p class="c">${order.orderNumber}</p>
@@ -364,11 +368,16 @@ function printPurchaseReceipt(order: OrderDetail) {
     <div class="row"><span>Proveedor:</span><span>${order.supplier.businessName}</span></div>
     ${order.supplierInvoice ? `<div class="row"><span>Documento:</span><span>${order.supplierInvoice}</span></div>` : ''}
     <div class="row"><span>Fecha:</span><span>${new Date(order.createdAt).toLocaleString('es-PE')}</span></div>
+    <div class="row"><span>Estado de pago:</span><span>${PAYMENT_STATUS_LABELS[order.paymentStatus] ?? order.paymentStatus}</span></div>
     <div class="line"></div>
     <table><thead><tr><th>Producto</th><th style="text-align:center">Cant.</th><th style="text-align:right">Costo</th><th style="text-align:right">Subt.</th></tr></thead>
     <tbody>${rows}</tbody></table>
     <div class="line"></div>
     <div class="row b" style="font-size:14px"><span>TOTAL:</span><span>S/ ${Number(order.totalAmount).toFixed(2)}</span></div>
+    ${order.payer ? `<div class="row"><span>Financiado por:</span><span>${order.payer.name} — S/ ${Number(order.payerAmount).toFixed(2)}</span></div>` : ''}
+    ${paymentsRows ? `<div class="line"></div><p class="b">Pagos registrados:</p>${paymentsRows}` : ''}
+    ${outstanding > 0.009 ? `<div class="row b"><span>Pendiente:</span><span>S/ ${outstanding.toFixed(2)}</span></div>` : ''}
+    ${order.dueDate ? `<div class="row"><span>Vence:</span><span>${new Date(order.dueDate).toLocaleDateString('es-PE')}</span></div>` : ''}
     <p class="c" style="margin-top:10px">MARC ERP</p>`;
   printThermalHtml(`Compra ${order.orderNumber}`, body);
 }
@@ -1285,13 +1294,45 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
   const [payment, setPayment] = useState<{ paid: boolean; legs: PaymentLeg[] }>({ paid: true, legs: [{ amount: 0, method: 'CASH' }] });
   const receiptTotal = items.reduce((s, i) => s + (i.isBonus ? 0 : i.receivedQty * i.unitCost), 0);
 
-  useEffect(() => {
-    setPayment(p => p.legs.length === 1 && p.legs[0].amount !== receiptTotal
-      ? { ...p, legs: [{ ...p.legs[0], amount: receiptTotal }] }
-      : p);
-  }, [receiptTotal]);
+  // Igual que en Registrar Compra: si esta orden ya viene financiada por un
+  // pagador (asignado al recibir una entrega anterior) se mantiene fijo —
+  // no se puede cambiar de pagador a mitad de camino.
+  const [payerMode, setPayerMode] = useState(!!order.payerId);
+  const [payerId, setPayerId] = useState(order.payerId ?? '');
+  const [payerAmountInput, setPayerAmountInput] = useState('');
+  const [showNewPayer, setShowNewPayer] = useState(false);
+  const [newPayerName, setNewPayerName] = useState('');
+  const [newPayerPhone, setNewPayerPhone] = useState('');
 
-  const canSubmitPayment = !payment.paid || receiptTotal === 0 || legsMatch(payment.legs, receiptTotal);
+  const { data: payers } = useQuery({
+    queryKey: ['payers'],
+    queryFn: async () => (await api.get<{ data: Payer[] }>('/purchases/payers')).data.data,
+  });
+
+  const createPayerMutation = useMutation({
+    mutationFn: () => api.post<{ data: Payer }>('/purchases/payers', { name: newPayerName, phone: newPayerPhone || undefined }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['payers'] });
+      setPayerId(res.data.data.id);
+      setShowNewPayer(false);
+      setNewPayerName('');
+      setNewPayerPhone('');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const payerAmountNum = payerMode ? Math.min(Number(payerAmountInput) || 0, receiptTotal) : 0;
+  const payTarget = payerMode ? Math.max(0, receiptTotal - payerAmountNum) : receiptTotal;
+
+  useEffect(() => {
+    setPayment(p => p.legs.length === 1 && p.legs[0].amount !== payTarget
+      ? { ...p, legs: [{ ...p.legs[0], amount: payTarget }] }
+      : p);
+  }, [payTarget]);
+
+  const canSubmitPayment = payerMode
+    ? !!payerId && payerAmountNum > 0.009 && (payTarget === 0 || !payment.paid || legsMatch(payment.legs, payTarget))
+    : (!payment.paid || receiptTotal === 0 || legsMatch(payment.legs, receiptTotal));
 
   const { data: bonusResults } = useQuery({
     queryKey: ['products-search', debouncedBonusSearch],
@@ -1325,18 +1366,26 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
     mutationFn: () => api.post(`/purchases/${order.id}/receive`, {
       items: items.map(i => ({ productId: i.productId, receivedQty: i.receivedQty, unitCost: i.unitCost, isBonus: i.isBonus })),
       notes,
-      payment,
+      payerId: payerMode ? (payerId || undefined) : undefined,
+      payerAmount: payerMode ? payerAmountNum : undefined,
+      payment: (payerMode && payTarget === 0) ? undefined : payment,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
       queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['purchases-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['payers'] });
       queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
       queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
       queryClient.invalidateQueries({ queryKey: ['cash-movements'] });
-      toast.success(payment.paid
-        ? 'Mercadería recibida y pagada — stock y caja actualizados.'
-        : 'Mercadería recibida como crédito — queda en Cuentas por Pagar.');
+      toast.success(payerMode
+        ? (payTarget > 0
+          ? `Mercadería recibida — ${formatCurrency(payerAmountNum)} financiado por el pagador, resto ${payment.paid ? 'pagado' : 'a crédito'}.`
+          : 'Mercadería recibida — pagada al proveedor, queda pendiente reponer al pagador.')
+        : payment.paid
+          ? 'Mercadería recibida y pagada — stock y caja actualizados.'
+          : 'Mercadería recibida como crédito — queda en Cuentas por Pagar.');
       onReceived();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -1412,7 +1461,78 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
           </div>
 
           {receiptTotal > 0 && (
-            <PaymentStatusPicker paid={payment.paid} legs={payment.legs} total={receiptTotal} onChange={setPayment} />
+            <>
+              <div className="rounded-lg border p-3 space-y-2">
+                <label className="mb-1 block text-sm font-medium">¿Quién paga esta recepción?</label>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant={!payerMode ? 'default' : 'outline'} className="flex-1"
+                    disabled={!!order.payerId}
+                    onClick={() => { setPayerMode(false); setPayerId(''); setShowNewPayer(false); }}>
+                    La empresa
+                  </Button>
+                  <Button type="button" size="sm" variant={payerMode ? 'default' : 'outline'} className="flex-1"
+                    onClick={() => {
+                      setPayerMode(true);
+                      setPayerAmountInput(String(receiptTotal));
+                      if (!payers || payers.length === 0) setShowNewPayer(true);
+                    }}>
+                    Un tercero (todo o en parte)
+                  </Button>
+                </div>
+                {order.payerId && (
+                  <p className="text-xs text-muted-foreground">
+                    Esta orden ya está financiada por un pagador — no se puede cambiar de tercero, solo sumar más monto o completar con la empresa.
+                  </p>
+                )}
+                {payerMode && !!payers?.length && (
+                  <select value={payerId} onChange={e => setPayerId(e.target.value)} disabled={!!order.payerId}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <option value="">Seleccionar pagador...</option>
+                    {payers.map(p => <option key={p.id} value={p.id}>{p.name}{p.phone ? ` — ${p.phone}` : ''}</option>)}
+                  </select>
+                )}
+                {payerMode && payerId && (
+                  <div className="space-y-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-muted-foreground">Monto que financia {payers?.find(p => p.id === payerId)?.name}</label>
+                      <Input type="number" min={0} max={receiptTotal} step={0.01} value={payerAmountInput}
+                        onChange={e => setPayerAmountInput(e.target.value)} className="h-8" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {formatCurrency(payerAmountNum)} queda pagado al proveedor sin tocar Caja General — se abre
+                      una deuda con <strong>{payers?.find(p => p.id === payerId)?.name}</strong> que se repone luego
+                      desde la pestaña "Pagadores".
+                      {payTarget > 0 && <> El resto ({formatCurrency(payTarget)}) se paga al contado o queda a crédito con el proveedor, abajo.</>}
+                    </p>
+                  </div>
+                )}
+                {payerMode && showNewPayer && (
+                  <div className="rounded-md bg-muted/50 p-2 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input placeholder="Nombre *" value={newPayerName} onChange={e => setNewPayerName(e.target.value)} className="h-8" />
+                      <Input placeholder="Teléfono (opcional)" value={newPayerPhone} onChange={e => setNewPayerPhone(e.target.value)} className="h-8" />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      {!!payers?.length && <Button type="button" size="sm" variant="ghost" onClick={() => setShowNewPayer(false)}>Cancelar</Button>}
+                      <Button type="button" size="sm" disabled={!newPayerName.trim()} loading={createPayerMutation.isPending}
+                        onClick={() => createPayerMutation.mutate()}>
+                        Crear pagador
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {payerMode && !showNewPayer && (
+                  <button type="button" className="text-xs text-primary hover:underline" onClick={() => setShowNewPayer(true)}>
+                    + Nuevo pagador
+                  </button>
+                )}
+              </div>
+
+              {!payerMode && <PaymentStatusPicker paid={payment.paid} legs={payment.legs} total={receiptTotal} onChange={setPayment} />}
+              {payerMode && payerId && payTarget > 0 && (
+                <PaymentStatusPicker paid={payment.paid} legs={payment.legs} total={payTarget} onChange={setPayment} />
+              )}
+            </>
           )}
         </div>
         <div className="border-t p-5 flex gap-3 justify-end">
@@ -1428,7 +1548,7 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
 
 /* ─── Registrar pago de una compra a crédito ─────────────────────────────── */
 function PayPurchaseModal({ order, onClose, onPaid }: {
-  order: { id: string; orderNumber: string; totalAmount: number; paidAmount: number };
+  order: { id: string; orderNumber: string; totalAmount: number; paidAmount: number; payerId?: string | null };
   onClose: () => void; onPaid: () => void;
 }) {
   const outstanding = order.totalAmount - order.paidAmount;
@@ -1440,20 +1560,56 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
 
   const amountNum = Number(amount) || 0;
 
+  // Igual que en Recibir/Registrar: si esta orden ya está financiada por un
+  // pagador, no se puede cambiar de tercero a mitad de camino.
+  const [payerMode, setPayerMode] = useState(!!order.payerId);
+  const [payerId, setPayerId] = useState(order.payerId ?? '');
+  const [payerAmountInput, setPayerAmountInput] = useState('');
+  const [showNewPayer, setShowNewPayer] = useState(false);
+  const [newPayerName, setNewPayerName] = useState('');
+  const [newPayerPhone, setNewPayerPhone] = useState('');
+
+  const { data: payers } = useQuery({
+    queryKey: ['payers'],
+    queryFn: async () => (await api.get<{ data: Payer[] }>('/purchases/payers')).data.data,
+  });
+
+  const createPayerMutation = useMutation({
+    mutationFn: () => api.post<{ data: Payer }>('/purchases/payers', { name: newPayerName, phone: newPayerPhone || undefined }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['payers'] });
+      setPayerId(res.data.data.id);
+      setShowNewPayer(false);
+      setNewPayerName('');
+      setNewPayerPhone('');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const payerAmountNum = payerMode ? Math.min(Number(payerAmountInput) || 0, amountNum) : 0;
+  // Lo que no cubre el pagador se paga al contado (legs), igual que en los
+  // otros dos formularios de pago mixto.
+  const legsTarget = Math.max(0, amountNum - payerAmountNum);
+
   // Igual que en Registrar/Recibir: mientras haya una sola forma de pago, se
   // mantiene igualada al monto a pagar — si ya se fraccionó, no se toca.
   useEffect(() => {
-    setLegs(l => l.length === 1 && l[0].amount !== amountNum ? [{ ...l[0], amount: amountNum }] : l);
-  }, [amountNum]);
+    setLegs(l => l.length === 1 && l[0].amount !== legsTarget ? [{ ...l[0], amount: legsTarget }] : l);
+  }, [legsTarget]);
 
   const mutation = useMutation({
     mutationFn: () => api.post(`/purchases/${order.id}/pay`, {
-      legs, reference: reference || undefined, notes: notes || undefined,
+      legs: legsTarget > 0 ? legs : [],
+      reference: reference || undefined, notes: notes || undefined,
+      payerId: payerMode ? (payerId || undefined) : undefined,
+      payerAmount: payerMode ? payerAmountNum : undefined,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
       queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['purchases-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['payers'] });
       queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
       queryClient.invalidateQueries({ queryKey: ['cash-summary'] });
       queryClient.invalidateQueries({ queryKey: ['cash-movements'] });
@@ -1463,7 +1619,10 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const canSubmit = amountNum > 0 && amountNum <= outstanding + 0.009 && legsMatch(legs, amountNum);
+  const canSubmit = amountNum > 0 && amountNum <= outstanding + 0.009
+    && (payerMode
+      ? !!payerId && payerAmountNum > 0.009 && (legsTarget === 0 || legsMatch(legs, legsTarget))
+      : legsMatch(legs, amountNum));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -1480,10 +1639,74 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
             <label className="mb-1 block text-sm font-medium">Monto a pagar</label>
             <Input type="number" min={0.01} max={outstanding} step={0.01} value={amount} onChange={e => setAmount(e.target.value)} className="text-right font-bold" />
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium">¿De dónde sale el dinero?</label>
-            <PaymentLegsEditor total={amountNum} legs={legs} onChange={setLegs} />
+
+          <div className="rounded-lg border p-3 space-y-2">
+            <label className="mb-1 block text-sm font-medium">¿Quién paga esto?</label>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant={!payerMode ? 'default' : 'outline'} className="flex-1"
+                disabled={!!order.payerId}
+                onClick={() => { setPayerMode(false); setPayerId(''); setShowNewPayer(false); }}>
+                La empresa
+              </Button>
+              <Button type="button" size="sm" variant={payerMode ? 'default' : 'outline'} className="flex-1"
+                onClick={() => {
+                  setPayerMode(true);
+                  setPayerAmountInput(String(amountNum));
+                  if (!payers || payers.length === 0) setShowNewPayer(true);
+                }}>
+                Un tercero (todo o en parte)
+              </Button>
+            </div>
+            {payerMode && !!payers?.length && (
+              <select value={payerId} onChange={e => setPayerId(e.target.value)} disabled={!!order.payerId}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">Seleccionar pagador...</option>
+                {payers.map(p => <option key={p.id} value={p.id}>{p.name}{p.phone ? ` — ${p.phone}` : ''}</option>)}
+              </select>
+            )}
+            {payerMode && payerId && (
+              <div className="space-y-2">
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Monto que financia {payers?.find(p => p.id === payerId)?.name}</label>
+                  <Input type="number" min={0} max={amountNum} step={0.01} value={payerAmountInput}
+                    onChange={e => setPayerAmountInput(e.target.value)} className="h-8" />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {formatCurrency(payerAmountNum)} queda pagado al proveedor sin tocar Caja General — se abre
+                  una deuda con <strong>{payers?.find(p => p.id === payerId)?.name}</strong> que se repone luego
+                  desde la pestaña "Pagadores".
+                  {legsTarget > 0 && <> El resto ({formatCurrency(legsTarget)}) se paga al contado, abajo.</>}
+                </p>
+              </div>
+            )}
+            {payerMode && showNewPayer && (
+              <div className="rounded-md bg-muted/50 p-2 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Nombre *" value={newPayerName} onChange={e => setNewPayerName(e.target.value)} className="h-8" />
+                  <Input placeholder="Teléfono (opcional)" value={newPayerPhone} onChange={e => setNewPayerPhone(e.target.value)} className="h-8" />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  {!!payers?.length && <Button type="button" size="sm" variant="ghost" onClick={() => setShowNewPayer(false)}>Cancelar</Button>}
+                  <Button type="button" size="sm" disabled={!newPayerName.trim()} loading={createPayerMutation.isPending}
+                    onClick={() => createPayerMutation.mutate()}>
+                    Crear pagador
+                  </Button>
+                </div>
+              </div>
+            )}
+            {payerMode && !showNewPayer && (
+              <button type="button" className="text-xs text-primary hover:underline" onClick={() => setShowNewPayer(true)}>
+                + Nuevo pagador
+              </button>
+            )}
           </div>
+
+          {legsTarget > 0 && (
+            <div>
+              <label className="mb-1 block text-sm font-medium">¿De dónde sale el dinero?</label>
+              <PaymentLegsEditor total={legsTarget} legs={legs} onChange={setLegs} />
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-sm font-medium">Referencia (opcional)</label>
             <Input value={reference} onChange={e => setReference(e.target.value)} placeholder="N° operación, voucher..." />
@@ -2547,12 +2770,17 @@ interface PayerDebt {
   totalAmount: number; payerAmount: number; reimbursedAmount: number; outstanding: number;
   agingBucket: '0-15' | '16-30' | '31-60' | '60+';
 }
+interface PaymentHistoryRow {
+  id: string; paidAt: string; amount: number; method: string;
+  reference: string | null; notes: string | null; batchId: string | null; orderNumber: string; user: string;
+}
 interface PayerStatement {
   payer: { id: string; name: string; phone: string | null; creditLimit: number };
   totalOwed: number;
   overLimit: boolean;
   aging: Record<'0-15' | '16-30' | '31-60' | '60+', number>;
   debts: PayerDebt[];
+  recentRepayments: PaymentHistoryRow[];
 }
 
 function NewPayerModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -2611,9 +2839,61 @@ function NewPayerModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   );
 }
 
+// Una reposición puede repartirse (FIFO) entre varias compras de un mismo
+// pagador — todas esas filas comparten `batchId` (el evento de pago real,
+// una sola salida de Caja); se agrupan para mostrar "un pago, N compras"
+// en vez de una fila repetida por cada orden que tocó.
+function groupRepaymentBatches(rows: PaymentHistoryRow[]) {
+  const map = new Map<string, { key: string; paidAt: string; amount: number; method: string; reference: string | null; user: string; orders: string[] }>();
+  for (const r of rows) {
+    const key = r.batchId ?? r.id;
+    const existing = map.get(key);
+    if (existing) {
+      existing.amount += r.amount;
+      existing.orders.push(r.orderNumber);
+    } else {
+      map.set(key, { key, paidAt: r.paidAt, amount: r.amount, method: r.method, reference: r.reference, user: r.user, orders: [r.orderNumber] });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function RepaymentHistoryTable({ batches }: { batches: ReturnType<typeof groupRepaymentBatches> }) {
+  if (batches.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium text-muted-foreground">Historial de reposiciones</p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs text-muted-foreground">
+            <th className="py-2 font-medium">Fecha</th>
+            <th className="py-2 font-medium">Método</th>
+            <th className="py-2 font-medium">Compras cubiertas</th>
+            <th className="py-2 font-medium text-right">Monto</th>
+            <th className="py-2 font-medium">Usuario</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {batches.map((b) => (
+            <tr key={b.key}>
+              <td className="py-2 text-muted-foreground">{formatDateTime(b.paidAt)}</td>
+              <td className="py-2">{PAYMENT_METHOD_LABELS[b.method] ?? b.method}{b.reference ? ` (${b.reference})` : ''}</td>
+              <td className="py-2 text-xs text-muted-foreground">{b.orders.join(', ')}</td>
+              <td className="py-2 text-right font-semibold text-success">{formatCurrency(b.amount)}</td>
+              <td className="py-2 text-xs text-muted-foreground">{b.user}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Detalle expandido de UN pagador — sus compras fronteadas todavía no
-// repuestas, con fecha, proveedor y monto — y el botón para reponerle dinero
-// (mismo mecanismo de amortización FIFO que a un proveedor).
+// repuestas, con fecha, proveedor y monto, el botón para reponerle dinero
+// (mismo mecanismo de amortización FIFO que a un proveedor), y el historial
+// de reposiciones ya hechas (para saber qué se le pagó, cuándo y con qué
+// compras se cubrió).
 function PayerDetail({ payerId, payerName, onPay }: { payerId: string; payerName: string; onPay: () => void }) {
   const { data: statement, isLoading } = useQuery({
     queryKey: ['purchases-payer-statement', payerId],
@@ -2621,12 +2901,21 @@ function PayerDetail({ payerId, payerName, onPay }: { payerId: string; payerName
   });
 
   if (isLoading) return <div className="py-4 text-center text-xs text-muted-foreground">Cargando...</div>;
-  if (!statement || statement.debts.length === 0) {
-    return <p className="py-4 text-center text-xs text-muted-foreground">Sin compras pendientes de reponer.</p>;
+  if (!statement) return null;
+
+  const repaymentBatches = groupRepaymentBatches(statement.recentRepayments);
+
+  if (statement.debts.length === 0 && repaymentBatches.length === 0) {
+    return <p className="py-4 text-center text-xs text-muted-foreground">Sin movimientos todavía.</p>;
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
+      {statement.debts.length === 0 && (
+        <p className="text-xs text-muted-foreground">Sin compras pendientes de reponer.</p>
+      )}
+      {statement.debts.length > 0 && (
+      <div className="space-y-2">
       {statement.overLimit && (
         <p className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive">
           Supera el límite de crédito ({formatCurrency(statement.payer.creditLimit)}).
@@ -2662,6 +2951,9 @@ function PayerDetail({ payerId, payerName, onPay }: { payerId: string; payerName
           </td></tr>
         </tfoot>
       </table>
+      </div>
+      )}
+      <RepaymentHistoryTable batches={repaymentBatches} />
     </div>
   );
 }
@@ -2759,6 +3051,7 @@ interface SupplierStatement {
   totalOwed: number;
   aging: Record<'0-15' | '16-30' | '31-60' | '60+', number>;
   debts: SupplierStatementDebt[];
+  recentPayments: PaymentHistoryRow[];
 }
 
 // "Cuánto le debo y por qué" — a diferencia del historial de pagos de abajo
@@ -2823,6 +3116,11 @@ function SupplierDebtCard({ supplierId, businessName }: { supplierId: string; bu
               </tbody>
             </table>
           </div>
+        </CardContent>
+      )}
+      {statement.recentPayments.length > 0 && (
+        <CardContent>
+          <RepaymentHistoryTable batches={groupRepaymentBatches(statement.recentPayments)} />
         </CardContent>
       )}
       {payOpen && (

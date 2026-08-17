@@ -170,11 +170,14 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
   const {
     items, subtotal, discountAmount, taxAmount, total,
     updateQuantity, removeItem, clearCart, customerId, customerName, setCustomer,
-    globalDiscountPercent, setGlobalDiscount,
+    globalDiscountPercent, globalDiscountAmount, setGlobalDiscount,
   } = usePosStore();
 
   const discountRef = useRef<HTMLInputElement>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+  // Descuento global por % (del subtotal) o por monto fijo en soles —
+  // mutuamente excluyentes, igual que ya soporta el store internamente.
+  const [discountMode, setDiscountMode] = useState<'percent' | 'amount'>('percent');
 
   const handleQuantityChange = (productId: string, value: string) => {
     const qty = parseFloat(value);
@@ -331,23 +334,42 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
         )}
       </div>
 
-      {/* Descuento global */}
+      {/* Descuento global — por % del subtotal o por monto fijo en soles */}
       {items.length > 0 && (
         <div className="border-t px-4 py-2">
           <div className="flex items-center gap-2">
             <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <span className="text-xs text-muted-foreground">Descuento %:</span>
+            <span className="text-xs text-muted-foreground shrink-0">Descuento:</span>
+            <div className="flex rounded-md border overflow-hidden shrink-0">
+              <button
+                type="button"
+                className={cn('px-1.5 py-0.5 text-xs font-medium', discountMode === 'percent' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
+                onClick={() => { setDiscountMode('percent'); setGlobalDiscount(0, 0); }}
+              >
+                %
+              </button>
+              <button
+                type="button"
+                className={cn('px-1.5 py-0.5 text-xs font-medium border-l', discountMode === 'amount' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
+                onClick={() => { setDiscountMode('amount'); setGlobalDiscount(0, 0); }}
+              >
+                S/
+              </button>
+            </div>
             <Input
+              key={discountMode}
               ref={discountRef}
               type="number"
               min={0}
-              max={100}
-              defaultValue={globalDiscountPercent || ''}
+              max={discountMode === 'percent' ? 100 : undefined}
+              step={discountMode === 'amount' ? 0.01 : 1}
+              defaultValue={(discountMode === 'percent' ? globalDiscountPercent : globalDiscountAmount) || ''}
               placeholder="0"
-              className="h-7 w-16 text-center text-sm"
+              className="h-7 w-20 text-center text-sm"
               onBlur={(e) => {
                 const v = parseFloat(e.target.value) || 0;
-                setGlobalDiscount(0, Math.min(100, v));
+                if (discountMode === 'percent') setGlobalDiscount(0, Math.min(100, v));
+                else setGlobalDiscount(Math.max(0, v), 0);
               }}
             />
             <span className="text-xs text-muted-foreground ml-auto">

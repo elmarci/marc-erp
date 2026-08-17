@@ -303,6 +303,7 @@ export class PurchasesService {
     legs: PurchasePaymentLeg[],
     userId: string,
     description: string,
+    extra?: { reference?: string; notes?: string },
   ) {
     const amount = legs.reduce((sum, l) => sum + l.amount, 0);
     if (amount <= 0) return;
@@ -334,7 +335,10 @@ export class PurchasesService {
       // "por monto" hecho después — de ahí sale el filtro "método usado" y
       // el historial de recentPayments del estado de cuenta.
       await tx.supplierPayment.create({
-        data: { purchaseOrderId: orderId, userId, amount: leg.amount, method: leg.method as never, notes: description },
+        data: {
+          purchaseOrderId: orderId, userId, amount: leg.amount, method: leg.method as never,
+          reference: extra?.reference, notes: extra?.notes ?? description,
+        },
       });
     }
 
@@ -774,15 +778,34 @@ export class PurchasesService {
     items: Array<{ productId: string; receivedQty: number; unitCost: number; isBonus?: boolean; batchNumber?: string; expiryDate?: Date }>,
     notes?: string,
     payment?: PurchasePaymentInput,
+    // Igual que en Registrar Compra: si un tercero financia toda o parte de
+    // esta recepción, esa porción no sale de Caja General — se abre/suma
+    // como deuda de la empresa hacia él. El resto (si queda) se paga al
+    // contado vía `payment` o queda a crédito con el proveedor.
+    payerId?: string,
+    payerAmount?: number,
   ) {
     const order = await this.getOrder(orderId);
     if (!['APPROVED', 'SENT', 'PARTIALLY_RECEIVED'].includes(order.status)) {
       throw new BusinessError('Solo se puede recibir mercadería en órdenes aprobadas o enviadas.');
     }
 
+    const payer = payerId ? await prisma.payer.findFirst({ where: { id: payerId, deletedAt: null } }) : null;
+    if (payerId && !payer) throw new NotFoundError('Pagador');
+    if (payer && order.payerId && order.payerId !== payer.id) {
+      throw new BusinessError('Esta compra ya está financiada por otro pagador — no se puede asignar uno distinto.');
+    }
+
     // Lo que realmente se le debe al proveedor por ESTA recepción (una orden
     // puede recibirse en varias partes, cada una con su propio pago o no).
     const receiptTotal = items.reduce((sum, i) => sum + (i.isBonus ? 0 : i.receivedQty * i.unitCost), 0);
+    const payerAmt = payer ? Math.max(0, Math.min(payerAmount ?? receiptTotal, receiptTotal)) : 0;
+    if (payer && payerAmt <= 0.009) {
+      throw new BusinessError('El monto financiado por el pagador debe ser mayor a 0.');
+    }
+    // Lo que falta cubrir con las formas de pago normales, después de
+    // restar lo que puso el pagador — es contra esto que se valida `payment`.
+    const paymentTarget = receiptTotal - payerAmt;
 
     // OBSERVADO: si el costo con el que se recibe no coincide con lo
     // cotizado originalmente en la orden, se marca para que quede fuera de
@@ -859,6 +882,20 @@ export class PurchasesService {
         dueDate.setDate(dueDate.getDate() + (order.supplier.paymentTermDays ?? 30));
       }
 
+      let payerUpdate: Prisma.PurchaseOrderUncheckedUpdateInput = {};
+      if (payer && payerAmt > 0) {
+        const beforePayer = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
+        const newPaidAmount = Number(beforePayer.paidAmount) + payerAmt;
+        const newPaymentStatus = newPaidAmount >= Number(beforePayer.totalAmount) - 0.009 ? 'PAID' as const
+          : newPaidAmount > 0 ? 'PARTIAL' as const : 'CREDIT' as const;
+        payerUpdate = {
+          payerId: payer.id,
+          payerAmount: Number(beforePayer.payerAmount) + payerAmt,
+          paidAmount: newPaidAmount,
+          paymentStatus: newPaymentStatus,
+        };
+      }
+
       await tx.purchaseOrder.update({
         where: { id: orderId },
         data: {
@@ -869,15 +906,24 @@ export class PurchasesService {
             hasDiscrepancy: true,
             discrepancyNotes: [order.discrepancyNotes, ...discrepancyNotes].filter(Boolean).join(' | '),
           } : {}),
+          ...payerUpdate,
         },
       });
 
-      if (payment?.paid && receiptTotal > 0) {
+      if (payer && payerAmt > 0) {
+        await payerLedgerService.recordMovementInTx(
+          tx, payer.id, 'CARGO', payerAmt,
+          `Compra financiada: OC ${order.orderNumber} — ${order.supplier.businessName}`,
+          userId, 'PURCHASE', orderId,
+        );
+      }
+
+      if (payment?.paid && paymentTarget > 0) {
         const legs = payment.legs ?? [];
         const legsSum = legs.reduce((sum, l) => sum + l.amount, 0);
-        if (Math.abs(legsSum - receiptTotal) > 0.01) {
+        if (Math.abs(legsSum - paymentTarget) > 0.01) {
           throw new BusinessError(
-            `La suma de las formas de pago (S/ ${legsSum.toFixed(2)}) no coincide con el total a pagar (S/ ${receiptTotal.toFixed(2)}).`,
+            `La suma de las formas de pago (S/ ${legsSum.toFixed(2)}) no coincide con el total a pagar (S/ ${paymentTarget.toFixed(2)}).`,
           );
         }
         const freshOrder = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
@@ -1503,12 +1549,17 @@ export class PurchasesService {
    * y puede fraccionarse entre varias) en el momento real en que sale el
    * dinero, usando el registro histórico (SupplierPayment) para trazabilidad.
    */
-  async payOrder(orderId: string, userId: string, legs: PurchasePaymentLeg[], reference?: string, notes?: string) {
-    const amount = legs.reduce((sum, l) => sum + l.amount, 0);
-    if (amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
+  async payOrder(
+    orderId: string, userId: string, legs: PurchasePaymentLeg[], reference?: string, notes?: string,
+    // Si en vez de (o además de) pagar al contado, un tercero cubre esta
+    // compra a crédito, esa porción no sale de Caja General — se abre/suma
+    // como deuda de la empresa hacia él, igual que en Registrar Compra.
+    payerId?: string, payerAmount?: number,
+  ) {
     if (legs.some((l) => l.amount <= 0)) {
       throw new BusinessError('Cada forma de pago debe tener un monto mayor a 0.');
     }
+    const legsSum = legs.reduce((sum, l) => sum + l.amount, 0);
 
     const order = await prisma.purchaseOrder.findUnique({
       where: { id: orderId },
@@ -1519,25 +1570,53 @@ export class PurchasesService {
       throw new BusinessError('Solo se pueden pagar compras que ya fueron recibidas.');
     }
 
+    const payer = payerId ? await prisma.payer.findFirst({ where: { id: payerId, deletedAt: null } }) : null;
+    if (payerId && !payer) throw new NotFoundError('Pagador');
+    if (payer && order.payerId && order.payerId !== payer.id) {
+      throw new BusinessError('Esta compra ya está financiada por otro pagador — no se puede asignar uno distinto.');
+    }
+
     const outstanding = Number(order.totalAmount) - Number(order.paidAmount);
     if (outstanding <= 0.009) throw new BusinessError('Esta compra ya está pagada por completo.');
+
+    const payerAmt = payer ? Math.max(0, Math.min(payerAmount ?? outstanding, outstanding)) : 0;
+    const amount = legsSum + payerAmt;
+    if (amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
     if (amount > outstanding + 0.009) {
       throw new BusinessError(`El monto excede el saldo pendiente (S/ ${outstanding.toFixed(2)}).`);
     }
 
     await prisma.$transaction(async (tx) => {
-      for (const leg of legs) {
-        await tx.supplierPayment.create({
-          data: { purchaseOrderId: orderId, userId, amount: leg.amount, method: leg.method as never, reference, notes },
-        });
+      if (legsSum > 0) {
+        await this.applyPurchasePaymentLegs(
+          tx, orderId, Number(order.totalAmount), legs, userId,
+          `Pago a proveedor: OC ${order.orderNumber} — ${order.supplier.businessName}`,
+          { reference, notes },
+        );
       }
-      await this.applyPurchasePaymentLegs(
-        tx, orderId, Number(order.totalAmount), legs, userId,
-        `Pago a proveedor: OC ${order.orderNumber} — ${order.supplier.businessName}`,
-      );
+      if (payer && payerAmt > 0) {
+        const fresh = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
+        const newPaidAmount = Number(fresh.paidAmount) + payerAmt;
+        const newStatus = newPaidAmount >= Number(fresh.totalAmount) - 0.009 ? 'PAID' as const
+          : newPaidAmount > 0 ? 'PARTIAL' as const : 'CREDIT' as const;
+        await tx.purchaseOrder.update({
+          where: { id: orderId },
+          data: {
+            payerId: payer.id,
+            payerAmount: Number(fresh.payerAmount) + payerAmt,
+            paidAmount: newPaidAmount,
+            paymentStatus: newStatus,
+          },
+        });
+        await payerLedgerService.recordMovementInTx(
+          tx, payer.id, 'CARGO', payerAmt,
+          `Compra financiada (pago posterior): OC ${order.orderNumber} — ${order.supplier.businessName}`,
+          userId, 'PURCHASE', orderId,
+        );
+      }
     });
 
-    emitEvent('erp:cash-updated');
+    if (legsSum > 0) emitEvent('erp:cash-updated');
     return this.getOrder(orderId);
   }
 

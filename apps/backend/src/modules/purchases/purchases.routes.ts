@@ -276,7 +276,7 @@ const paymentSchema = z.object({
 
 router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { items, notes, payment } = z.object({
+    const { items, notes, payment, payerId, payerAmount } = z.object({
       items: z.array(z.object({
         productId: z.string().uuid(),
         receivedQty: z.coerce.number().min(0),
@@ -287,22 +287,29 @@ router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, 
       })).min(1),
       notes: z.string().optional(),
       payment: paymentSchema,
+      payerId: z.string().uuid().optional(),
+      payerAmount: z.coerce.number().positive().optional(),
     }).parse(req.body);
 
-    const receipt = await purchasesService.receiveOrder(req.params.id, req.user!.sub, items as Parameters<typeof purchasesService.receiveOrder>[2], notes, payment);
+    const receipt = await purchasesService.receiveOrder(
+      req.params.id, req.user!.sub, items as Parameters<typeof purchasesService.receiveOrder>[2], notes, payment,
+      payerId, payerAmount,
+    );
     res.status(201).json({ success: true, data: receipt });
   } catch (err) { next(err); }
 });
 
 router.post('/:id/pay', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { legs, reference, notes } = z.object({
-      legs: z.array(paymentLegSchema).min(1),
+    const { legs, reference, notes, payerId, payerAmount } = z.object({
+      legs: z.array(paymentLegSchema).default([]),
       reference: z.string().optional(),
       notes: z.string().optional(),
+      payerId: z.string().uuid().optional(),
+      payerAmount: z.coerce.number().positive().optional(),
     }).parse(req.body);
 
-    const order = await purchasesService.payOrder(req.params.id, req.user!.sub, legs, reference, notes);
+    const order = await purchasesService.payOrder(req.params.id, req.user!.sub, legs, reference, notes, payerId, payerAmount);
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });

@@ -246,6 +246,19 @@ export class SalesService {
       }
     }
 
+    // El monto a crédito es solo la porción cuyo método de pago es CREDIT —
+    // una venta puede ser parte al contado y parte fiada. paidAmount guarda
+    // lo ya cobrado (todo lo no-crédito) y currentBalance del cliente solo
+    // sube por la porción realmente fiada (no por el total de la venta).
+    const creditPortion = input.payments.filter((p) => p.method === 'CREDIT').reduce((sum, p) => sum + p.amount, 0);
+    const nonCreditPaid = input.payments.filter((p) => p.method !== 'CREDIT').reduce((sum, p) => sum + p.amount, 0);
+
+    // Sin cliente no hay a quién cargarle la deuda — una venta fiada
+    // "anónima" dejaría el monto sin registrar en ninguna cuenta por cobrar.
+    if ((input.isCredit || creditPortion > 0) && !input.customerId) {
+      throw new BusinessError('Una venta fiada debe tener un cliente asignado — sin cliente no hay a quién cargarle la deuda.');
+    }
+
     // Verificar crédito del cliente
     if (input.isCredit && input.customerId) {
       const customer = await prisma.customer.findUnique({ where: { id: input.customerId } });
@@ -260,13 +273,6 @@ export class SalesService {
 
     // Generar número de venta
     const saleNumber = await this.generateSaleNumber();
-
-    // El monto a crédito es solo la porción cuyo método de pago es CREDIT —
-    // una venta puede ser parte al contado y parte fiada. paidAmount guarda
-    // lo ya cobrado (todo lo no-crédito) y currentBalance del cliente solo
-    // sube por la porción realmente fiada (no por el total de la venta).
-    const creditPortion = input.payments.filter((p) => p.method === 'CREDIT').reduce((sum, p) => sum + p.amount, 0);
-    const nonCreditPaid = input.payments.filter((p) => p.method !== 'CREDIT').reduce((sum, p) => sum + p.amount, 0);
 
     // Procesar venta en transacción
     const sale = await prisma.$transaction(async (tx) => {

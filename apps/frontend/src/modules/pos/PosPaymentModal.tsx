@@ -25,7 +25,7 @@ const PAYMENT_METHODS = [
 ];
 
 export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPaymentModalProps) {
-  const { total, payments, addPayment, removePayment, totalPaid, change, items, setIsCredit } = usePosStore();
+  const { total, payments, addPayment, removePayment, totalPaid, change, items, setIsCredit, customerId } = usePosStore();
   const [selectedMethod, setSelectedMethod] = useState('CASH');
   const [amount, setAmount] = useState(total.toFixed(2));
   const remaining = Math.max(0, total - totalPaid);
@@ -40,6 +40,12 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
   const registerPayment = (): boolean => {
     if (enteredAmount <= 0) {
       toast.error('Ingrese un monto válido.');
+      return false;
+    }
+    // Sin cliente no hay a quién cargarle la deuda — no tiene sentido dejar
+    // fiar una venta "anónima".
+    if (selectedMethod === 'CREDIT' && !customerId) {
+      toast.error('Asigna un cliente a la venta antes de fiar (botón "Asignar cliente" arriba del carrito).');
       return false;
     }
     if (selectedMethod === 'CREDIT' && enteredAmount > remaining) {
@@ -73,6 +79,10 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
     if (command.type === 'SET_PAYMENT_METHOD') {
       const known = PAYMENT_METHODS.find((pm) => pm.method === command.method);
       if (!known) { toast.error('Método de pago no reconocido.'); return; }
+      if (command.method === 'CREDIT' && !customerId) {
+        toast.error('Asigna un cliente a la venta antes de fiar.');
+        return;
+      }
       setSelectedMethod(command.method);
       setAmount(remaining.toFixed(2));
       toast.success(`Método: ${known.label}. Confirma el monto y presiona Cobrar.`, { duration: 3000 });
@@ -131,24 +141,32 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
               )}
             </div>
             <div className="grid grid-cols-4 gap-2">
-              {PAYMENT_METHODS.map((pm) => (
-                <button
-                  key={pm.method}
-                  onClick={() => {
-                    setSelectedMethod(pm.method);
-                    setAmount(remaining.toFixed(2));
-                  }}
-                  className={cn(
-                    'flex flex-col items-center gap-1.5 rounded-lg border p-2.5 text-xs font-medium transition-all',
-                    selectedMethod === pm.method
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border hover:border-primary/50 hover:bg-muted',
-                  )}
-                >
-                  <pm.icon className="h-4 w-4" />
-                  {pm.label}
-                </button>
-              ))}
+              {PAYMENT_METHODS.map((pm) => {
+                const disabled = pm.method === 'CREDIT' && !customerId;
+                return (
+                  <button
+                    key={pm.method}
+                    disabled={disabled}
+                    title={disabled ? 'Asigna un cliente a la venta para poder fiar' : undefined}
+                    onClick={() => {
+                      if (disabled) { toast.error('Asigna un cliente a la venta antes de fiar.'); return; }
+                      setSelectedMethod(pm.method);
+                      setAmount(remaining.toFixed(2));
+                    }}
+                    className={cn(
+                      'flex flex-col items-center gap-1.5 rounded-lg border p-2.5 text-xs font-medium transition-all',
+                      disabled
+                        ? 'border-border opacity-40 cursor-not-allowed'
+                        : selectedMethod === pm.method
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border hover:border-primary/50 hover:bg-muted',
+                    )}
+                  >
+                    <pm.icon className="h-4 w-4" />
+                    {pm.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
