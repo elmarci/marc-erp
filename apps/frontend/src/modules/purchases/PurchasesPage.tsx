@@ -4,10 +4,13 @@ import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
   PackageCheck, Truck, Clock, FileText, X, ScanBarcode, Sparkles, ArrowLeft,
   BookOpen, Star, Trash2, FileSpreadsheet, Undo2, Pencil, Receipt, HandCoins,
+  Wallet, Smartphone, AlertTriangle, SlidersHorizontal,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
@@ -424,21 +427,22 @@ function PaymentLegsEditor({ total, legs, onChange }: {
     <div className="space-y-2">
       {legs.map((leg, idx) => (
         <div key={idx} className="flex items-center gap-2">
-          <Input type="number" min={0} step={0.01} value={leg.amount}
+          <MoneyInput size="sm" min={0} value={leg.amount}
+            state={leg.amount > 0 ? 'ok' : undefined}
             onChange={e => updateLeg(idx, { amount: Number(e.target.value) })}
-            className="h-9 w-24 shrink-0" />
-          <select value={leg.method}
+            className="w-28 shrink-0" />
+          <Select compact value={leg.method}
             onChange={e => updateLeg(idx, { method: e.target.value, cashSessionId: undefined })}
-            className="flex h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            className="flex-1">
             {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
+          </Select>
           {leg.method === 'CASH' && (
-            <select value={leg.cashSessionId ?? ''}
+            <Select compact value={leg.cashSessionId ?? ''}
               onChange={e => updateLeg(idx, { cashSessionId: e.target.value || undefined })}
-              className="flex h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              className="flex-1">
               <option value="">Caja General</option>
               {openSessions.map(s => <option key={s.cashSessionId} value={s.cashSessionId}>{s.label}</option>)}
-            </select>
+            </Select>
           )}
           {legs.length > 1 && (
             <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0"
@@ -453,7 +457,8 @@ function PaymentLegsEditor({ total, legs, onChange }: {
           onClick={() => onChange([...legs, { amount: Math.max(0, remaining), method: 'CASH' }])}>
           + Agregar otra forma de pago
         </Button>
-        <span className={cn('text-xs font-medium', Math.abs(remaining) > 0.01 ? 'text-destructive' : 'text-success')}>
+        <span className={cn('rounded-md px-2 py-1 text-sm font-bold tabular-nums',
+          Math.abs(remaining) > 0.01 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success')}>
           {Math.abs(remaining) > 0.01 ? `Falta ${formatCurrency(remaining)}` : 'Cuadra ✓'}
         </span>
       </div>
@@ -466,8 +471,11 @@ function PaymentStatusPicker({ paid, legs, total, onChange }: {
   onChange: (v: { paid: boolean; legs: PaymentLeg[] }) => void;
 }) {
   return (
-    <div className="rounded-lg border p-3 space-y-2">
-      <label className="mb-1 block text-sm font-medium">¿Cómo se paga esta compra? ({formatCurrency(total)})</label>
+    <div className="rounded-lg border-2 p-4 space-y-2.5">
+      <label className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        ¿Cómo se paga esta compra?
+        <span className="text-sm font-bold tabular-nums text-foreground normal-case tracking-normal">{formatCurrency(total)}</span>
+      </label>
       <div className="flex gap-2">
         <Button type="button" size="sm" variant={paid ? 'default' : 'outline'} className="flex-1"
           onClick={() => onChange({ paid: true, legs: legs.length ? legs : [{ amount: total, method: 'CASH' }] })}>
@@ -666,14 +674,13 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
         </div>
 
         <div className="overflow-y-auto p-5 space-y-4 flex-1">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg border p-4 grid grid-cols-3 gap-3">
             <div>
               <label className="mb-1 block text-sm font-medium">Proveedor *</label>
-              <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Select value={supplierId} onChange={e => setSupplierId(e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {suppliers?.map(s => <option key={s.id} value={s.id}>{s.businessName}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">N° Documento</label>
@@ -754,18 +761,18 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                     <div className="grid grid-cols-4 gap-2 items-end">
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">N° sacos</label>
-                        <Input type="number" min={0} value={l.sacks} onChange={e => updateLine(idx, { sacks: e.target.value })} className="h-8" />
+                        <Input type="number" min={0} value={l.sacks} onChange={e => updateLine(idx, { sacks: e.target.value })} className="h-9" />
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">Peso/saco ({l.bulkUnit})</label>
-                        <Input type="number" min={0} step={0.01} value={l.weightPerSack} onChange={e => updateLine(idx, { weightPerSack: e.target.value })} className="h-8" />
+                        <Input type="number" min={0} step={0.01} value={l.weightPerSack} onChange={e => updateLine(idx, { weightPerSack: e.target.value })} className="h-9" />
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">{l.isBonus ? 'Costo total (n/a)' : 'Costo total del lote'}</label>
-                        <Input type="number" min={0} step={0.01} value={l.totalCost} disabled={l.isBonus}
-                          onChange={e => updateLine(idx, { totalCost: e.target.value })} className="h-8" />
+                        <MoneyInput size="sm" min={0} value={l.totalCost} disabled={l.isBonus}
+                          onChange={e => updateLine(idx, { totalCost: e.target.value })} />
                       </div>
-                      <div className="text-xs text-muted-foreground pb-2">
+                      <div className="text-xs text-muted-foreground pb-2 tabular-nums">
                         = {effQty(l).toLocaleString('es-PE', { maximumFractionDigits: 3 })} {l.bulkUnit} · S/ {effUnitCost(l).toFixed(4)} c/u
                       </div>
                     </div>
@@ -774,14 +781,14 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">Cantidad{l.isBulk ? ` (${l.bulkUnit})` : ''}</label>
                         <Input type="number" min={0} step={l.isBulk ? 0.01 : 1} value={l.quantity}
-                          onChange={e => updateLine(idx, { quantity: e.target.value })} className="h-8" />
+                          onChange={e => updateLine(idx, { quantity: e.target.value })} className="h-9" />
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">Costo unit.</label>
-                        <Input type="number" min={0} step={0.0001} value={l.isBonus ? '0' : l.unitCost} disabled={l.isBonus}
-                          onChange={e => updateLine(idx, { unitCost: e.target.value })} className="h-8" />
+                        <MoneyInput size="sm" min={0} value={l.isBonus ? '0' : l.unitCost} disabled={l.isBonus}
+                          onChange={e => updateLine(idx, { unitCost: e.target.value })} />
                       </div>
-                      <div className="text-sm text-right font-medium pb-1.5">
+                      <div className="text-base text-right font-bold tabular-nums pb-1.5">
                         {l.isBonus ? <span className="text-success">GRATIS</span> : formatCurrency(effQty(l) * effUnitCost(l))}
                       </div>
                     </div>
@@ -798,24 +805,25 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
 
           {lines.length > 0 && (
             <>
-              <div className="border-t pt-3 space-y-1">
+              <div className="rounded-lg border p-4 space-y-1.5">
                 <label className="flex items-center gap-2 text-sm cursor-pointer w-fit ml-auto">
                   <input type="checkbox" checked={includeTax} onChange={e => setIncludeTax(e.target.checked)} className="h-4 w-4 rounded border-input" />
                   Sumar IGV 18% (solo si el proveedor factura y lo desglosa aparte)
                 </label>
                 {includeTax && (
                   <>
-                    <div className="flex justify-end text-sm text-muted-foreground">Subtotal: {formatCurrency(subtotal)}</div>
-                    <div className="flex justify-end text-sm text-muted-foreground">IGV (18%): {formatCurrency(taxAmount)}</div>
+                    <div className="flex justify-end text-sm text-muted-foreground tabular-nums">Subtotal: {formatCurrency(subtotal)}</div>
+                    <div className="flex justify-end text-sm text-muted-foreground tabular-nums">IGV (18%): {formatCurrency(taxAmount)}</div>
                   </>
                 )}
-                <div className="flex justify-end text-lg font-bold">
-                  Total: {formatCurrency(total)}
+                <div className="flex justify-end items-baseline gap-2 border-t pt-1.5">
+                  <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Total</span>
+                  <span className="text-2xl font-bold tabular-nums">{formatCurrency(total)}</span>
                 </div>
               </div>
 
-              <div className="rounded-lg border p-3 space-y-2">
-                <label className="mb-1 block text-sm font-medium">¿Quién pagó esta compra?</label>
+              <div className="rounded-lg border-2 p-4 space-y-2">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">¿Quién pagó esta compra?</label>
                 <div className="flex gap-2">
                   <Button type="button" size="sm" variant={!payerMode ? 'default' : 'outline'} className="flex-1"
                     onClick={() => { setPayerMode(false); setPayerId(''); setShowNewPayer(false); }}>
@@ -831,18 +839,17 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                   </Button>
                 </div>
                 {payerMode && !!payers?.length && (
-                  <select value={payerId} onChange={e => setPayerId(e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Select compact value={payerId} onChange={e => setPayerId(e.target.value)}>
                     <option value="">Seleccionar pagador...</option>
                     {payers.map(p => <option key={p.id} value={p.id}>{p.name}{p.phone ? ` — ${p.phone}` : ''}</option>)}
-                  </select>
+                  </Select>
                 )}
                 {payerMode && payerId && (
                   <div className="space-y-2">
                     <div>
                       <label className="mb-1 block text-xs text-muted-foreground">Monto que financia {payers?.find(p => p.id === payerId)?.name}</label>
-                      <Input type="number" min={0} max={total} step={0.01} value={payerAmountInput}
-                        onChange={e => setPayerAmountInput(e.target.value)} className="h-8" />
+                      <MoneyInput size="sm" min={0} max={total} value={payerAmountInput}
+                        onChange={e => setPayerAmountInput(e.target.value)} />
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {formatCurrency(payerAmountNum)} queda pagado al proveedor sin tocar Caja General — se abre
@@ -982,11 +989,10 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-sm font-medium">Proveedor *</label>
-              <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Select value={supplierId} onChange={e => setSupplierId(e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {suppliers?.map(s => <option key={s.id} value={s.id}>{s.businessName}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Fecha esperada</label>
@@ -1038,11 +1044,11 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           {items.length > 0 && (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left">
-                  <th className="py-2 font-medium">Producto</th>
-                  <th className="py-2 font-medium text-center w-24">Cant.</th>
-                  <th className="py-2 font-medium text-right w-28">Costo unit.</th>
-                  <th className="py-2 font-medium text-right w-24">Subtotal</th>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 font-semibold">Producto</th>
+                  <th className="py-2 font-semibold text-center w-24">Cant.</th>
+                  <th className="py-2 font-semibold text-right w-36">Costo unit.</th>
+                  <th className="py-2 font-semibold text-right w-28">Subtotal</th>
                   <th className="w-8" />
                 </tr>
               </thead>
@@ -1053,14 +1059,13 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                     <td className="py-2 px-2">
                       <Input type="number" min={1} value={item.orderedQty}
                         onChange={e => updateItem(idx, 'orderedQty', Number(e.target.value))}
-                        className="h-8 text-center" />
+                        className="h-9 text-center" />
                     </td>
                     <td className="py-2 px-2">
-                      <Input type="number" min={0} step={0.0001} value={item.unitCost}
-                        onChange={e => updateItem(idx, 'unitCost', Number(e.target.value))}
-                        className="h-8 text-right" />
+                      <MoneyInput size="sm" min={0} value={item.unitCost}
+                        onChange={e => updateItem(idx, 'unitCost', Number(e.target.value))} />
                     </td>
-                    <td className="py-2 text-right font-medium">{formatCurrency(item.orderedQty * item.unitCost)}</td>
+                    <td className="py-2 text-right font-semibold tabular-nums">{formatCurrency(item.orderedQty * item.unitCost)}</td>
                     <td className="py-2">
                       <Button variant="ghost" size="icon" className="h-7 w-7"
                         onClick={() => setItems(v => v.filter((_, n) => n !== idx))}>
@@ -1073,19 +1078,19 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
               <tfoot>
                 <tr className="border-t">
                   <td colSpan={3} className="py-2 text-right font-semibold">Subtotal</td>
-                  <td className="py-2 text-right font-bold">{formatCurrency(subtotal)}</td>
+                  <td className="py-2 text-right font-bold tabular-nums">{formatCurrency(subtotal)}</td>
                   <td />
                 </tr>
                 {includeTax && (
                   <tr>
                     <td colSpan={3} className="py-1 text-right text-muted-foreground text-xs">IGV (18%)</td>
-                    <td className="py-1 text-right text-muted-foreground text-xs">{formatCurrency(taxAmount)}</td>
+                    <td className="py-1 text-right text-muted-foreground text-xs tabular-nums">{formatCurrency(taxAmount)}</td>
                     <td />
                   </tr>
                 )}
                 <tr>
-                  <td colSpan={3} className="py-2 text-right font-bold">Total</td>
-                  <td className="py-2 text-right font-bold">{formatCurrency(total)}</td>
+                  <td colSpan={3} className="py-2 text-right text-sm font-semibold uppercase tracking-wide text-muted-foreground">Total</td>
+                  <td className="py-2 text-right text-xl font-bold tabular-nums">{formatCurrency(total)}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -1197,7 +1202,7 @@ function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void; onCrea
                           <p className="font-medium">{g.supplierName}</p>
                           <p className="text-xs text-muted-foreground">{g.products.length} producto{g.products.length !== 1 ? 's' : ''} con stock bajo</p>
                         </div>
-                        <p className="font-bold text-primary">{formatCurrency(groupTotal)}</p>
+                        <p className="text-lg font-bold tabular-nums text-primary">{formatCurrency(groupTotal)}</p>
                       </button>
                     );
                   })}
@@ -1218,11 +1223,11 @@ function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void; onCrea
               </button>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left">
-                    <th className="py-2 font-medium">Producto</th>
-                    <th className="py-2 font-medium text-center w-24">Cant. sugerida</th>
-                    <th className="py-2 font-medium text-right w-28">Costo unit.</th>
-                    <th className="py-2 font-medium text-right w-24">Subtotal</th>
+                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="py-2 font-semibold">Producto</th>
+                    <th className="py-2 font-semibold text-center w-24">Cant. sugerida</th>
+                    <th className="py-2 font-semibold text-right w-36">Costo unit.</th>
+                    <th className="py-2 font-semibold text-right w-28">Subtotal</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -1240,21 +1245,20 @@ function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void; onCrea
                       <td className="py-2 px-2">
                         <Input type="number" min={1} value={item.orderedQty}
                           onChange={e => updateItem(idx, 'orderedQty', Number(e.target.value))}
-                          className="h-8 text-center" />
+                          className="h-9 text-center" />
                       </td>
                       <td className="py-2 px-2">
-                        <Input type="number" min={0} step={0.0001} value={item.unitCost}
-                          onChange={e => updateItem(idx, 'unitCost', Number(e.target.value))}
-                          className="h-8 text-right" />
+                        <MoneyInput size="sm" min={0} value={item.unitCost}
+                          onChange={e => updateItem(idx, 'unitCost', Number(e.target.value))} />
                       </td>
-                      <td className="py-2 text-right font-medium">{formatCurrency(item.orderedQty * item.unitCost)}</td>
+                      <td className="py-2 text-right font-semibold tabular-nums">{formatCurrency(item.orderedQty * item.unitCost)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="border-t">
-                    <td colSpan={3} className="py-2 text-right font-semibold">Subtotal (sin IGV)</td>
-                    <td className="py-2 text-right font-bold">{formatCurrency(total)}</td>
+                    <td colSpan={3} className="py-2 text-right text-sm font-semibold uppercase tracking-wide text-muted-foreground">Subtotal (sin IGV)</td>
+                    <td className="py-2 text-right text-xl font-bold tabular-nums">{formatCurrency(total)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -1406,12 +1410,12 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
           </div>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left">
-                <th className="py-2 font-medium">Producto</th>
-                <th className="py-2 font-medium text-center w-20">Pedido</th>
-                <th className="py-2 font-medium text-center w-24">Recibido</th>
-                <th className="py-2 font-medium text-right w-24">Costo unit.</th>
-                <th className="py-2 font-medium text-center w-20">Bonif.</th>
+              <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="py-2 font-semibold">Producto</th>
+                <th className="py-2 font-semibold text-center w-20">Pedido</th>
+                <th className="py-2 font-semibold text-center w-24">Recibido</th>
+                <th className="py-2 font-semibold text-right w-32">Costo unit.</th>
+                <th className="py-2 font-semibold text-center w-16">Bonif.</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -1422,12 +1426,11 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
                   <td className="py-2 px-2">
                     <Input type="number" min={0} step={0.001} value={item.receivedQty}
                       onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, receivedQty: Number(e.target.value) } : i))}
-                      className="h-8 text-center" />
+                      className="h-9 text-center" />
                   </td>
                   <td className="py-2 px-2">
-                    <Input type="number" min={0} step={0.0001} value={item.isBonus ? 0 : item.unitCost} disabled={item.isBonus}
-                      onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, unitCost: Number(e.target.value) } : i))}
-                      className="h-8 text-right" />
+                    <MoneyInput size="sm" min={0} value={item.isBonus ? 0 : item.unitCost} disabled={item.isBonus}
+                      onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, unitCost: Number(e.target.value) } : i))} />
                   </td>
                   <td className="py-2 text-center">
                     <input type="checkbox" checked={item.isBonus} className="h-4 w-4"
@@ -1462,8 +1465,8 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
 
           {receiptTotal > 0 && (
             <>
-              <div className="rounded-lg border p-3 space-y-2">
-                <label className="mb-1 block text-sm font-medium">¿Quién paga esta recepción?</label>
+              <div className="rounded-lg border-2 p-4 space-y-2">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">¿Quién paga esta recepción?</label>
                 <div className="flex gap-2">
                   <Button type="button" size="sm" variant={!payerMode ? 'default' : 'outline'} className="flex-1"
                     disabled={!!order.payerId}
@@ -1485,18 +1488,17 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
                   </p>
                 )}
                 {payerMode && !!payers?.length && (
-                  <select value={payerId} onChange={e => setPayerId(e.target.value)} disabled={!!order.payerId}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Select compact value={payerId} onChange={e => setPayerId(e.target.value)} disabled={!!order.payerId}>
                     <option value="">Seleccionar pagador...</option>
                     {payers.map(p => <option key={p.id} value={p.id}>{p.name}{p.phone ? ` — ${p.phone}` : ''}</option>)}
-                  </select>
+                  </Select>
                 )}
                 {payerMode && payerId && (
                   <div className="space-y-2">
                     <div>
                       <label className="mb-1 block text-xs text-muted-foreground">Monto que financia {payers?.find(p => p.id === payerId)?.name}</label>
-                      <Input type="number" min={0} max={receiptTotal} step={0.01} value={payerAmountInput}
-                        onChange={e => setPayerAmountInput(e.target.value)} className="h-8" />
+                      <MoneyInput size="sm" min={0} max={receiptTotal} value={payerAmountInput}
+                        onChange={e => setPayerAmountInput(e.target.value)} />
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {formatCurrency(payerAmountNum)} queda pagado al proveedor sin tocar Caja General — se abre
@@ -1637,11 +1639,11 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
         <div className="p-5 space-y-3">
           <div>
             <label className="mb-1 block text-sm font-medium">Monto a pagar</label>
-            <Input type="number" min={0.01} max={outstanding} step={0.01} value={amount} onChange={e => setAmount(e.target.value)} className="text-right font-bold" />
+            <MoneyInput min={0.01} max={outstanding} value={amount} onChange={e => setAmount(e.target.value)} />
           </div>
 
-          <div className="rounded-lg border p-3 space-y-2">
-            <label className="mb-1 block text-sm font-medium">¿Quién paga esto?</label>
+          <div className="rounded-lg border-2 p-4 space-y-2">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">¿Quién paga esto?</label>
             <div className="flex gap-2">
               <Button type="button" size="sm" variant={!payerMode ? 'default' : 'outline'} className="flex-1"
                 disabled={!!order.payerId}
@@ -1658,18 +1660,17 @@ function PayPurchaseModal({ order, onClose, onPaid }: {
               </Button>
             </div>
             {payerMode && !!payers?.length && (
-              <select value={payerId} onChange={e => setPayerId(e.target.value)} disabled={!!order.payerId}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Select compact value={payerId} onChange={e => setPayerId(e.target.value)} disabled={!!order.payerId}>
                 <option value="">Seleccionar pagador...</option>
                 {payers.map(p => <option key={p.id} value={p.id}>{p.name}{p.phone ? ` — ${p.phone}` : ''}</option>)}
-              </select>
+              </Select>
             )}
             {payerMode && payerId && (
               <div className="space-y-2">
                 <div>
                   <label className="mb-1 block text-xs text-muted-foreground">Monto que financia {payers?.find(p => p.id === payerId)?.name}</label>
-                  <Input type="number" min={0} max={amountNum} step={0.01} value={payerAmountInput}
-                    onChange={e => setPayerAmountInput(e.target.value)} className="h-8" />
+                  <MoneyInput size="sm" min={0} max={amountNum} value={payerAmountInput}
+                    onChange={e => setPayerAmountInput(e.target.value)} />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {formatCurrency(payerAmountNum)} queda pagado al proveedor sin tocar Caja General — se abre
@@ -1774,7 +1775,7 @@ function PayAmountModal({ title, subtitle, totalOwed, payUrl, invalidateKeys, on
         <div className="p-5 space-y-3">
           <div>
             <label className="mb-1 block text-sm font-medium">Monto a pagar</label>
-            <Input type="number" min={0.01} max={totalOwed} step={0.01} value={amount} onChange={e => setAmount(e.target.value)} className="text-right font-bold" />
+            <MoneyInput min={0.01} max={totalOwed} value={amount} onChange={e => setAmount(e.target.value)} />
             <p className="mt-1 text-xs text-muted-foreground">Se reparte solo entre las compras más antiguas hasta agotar el monto.</p>
           </div>
           <div>
@@ -1847,10 +1848,10 @@ function EditOrderItemModal({ order, item, onClose, onEdited }: {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Costo unitario</label>
-              <Input type="number" min={0} step={0.01} value={unitCost} onChange={e => setUnitCost(e.target.value)} />
+              <MoneyInput min={0} value={unitCost} onChange={e => setUnitCost(e.target.value)} />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground tabular-nums">
             Nuevo subtotal: {formatCurrency(qtyNum * costNum)} — el total de la orden se recalcula automáticamente.
           </p>
         </div>
@@ -1963,7 +1964,7 @@ function CorrectItemModal({ order, item, onClose, onCorrected }: {
           {!isBonus && (
             <div>
               <label className="mb-1 block text-sm font-medium">Costo unitario</label>
-              <Input type="number" min={0} step={0.01} value={unitCost} onChange={e => setUnitCost(e.target.value)} />
+              <MoneyInput min={0} value={unitCost} onChange={e => setUnitCost(e.target.value)} />
             </div>
           )}
           <div>
@@ -2082,22 +2083,22 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
   return (
     <>
       <tr className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setExpanded(v => !v)}>
-        <td className="px-4 py-3 font-medium">{order.orderNumber}</td>
-        <td className="px-4 py-3">{order.supplier.businessName}</td>
-        <td className="px-4 py-3">
+        <td className="px-4 py-3.5 font-semibold">{order.orderNumber}</td>
+        <td className="px-4 py-3.5">{order.supplier.businessName}</td>
+        <td className="px-4 py-3.5">
           <Badge variant={STATUS_VARIANT[order.status] ?? 'default'}>
             {STATUS_LABELS[order.status] ?? order.status}
           </Badge>
         </td>
-        <td className="px-4 py-3">
+        <td className="px-4 py-3.5">
           <Badge variant={ACCOUNTING_STATE_VARIANT[order.accountingState] ?? 'default'}>
             {ACCOUNTING_STATE_LABELS[order.accountingState] ?? order.accountingState}
           </Badge>
         </td>
-        <td className="px-4 py-3 text-muted-foreground">{formatDateTime(order.createdAt)}</td>
-        <td className="px-4 py-3 text-right font-semibold">{formatCurrency(order.totalAmount)}</td>
-        <td className="px-4 py-3 text-center">{order._count.items}</td>
-        <td className="px-4 py-3">
+        <td className="px-4 py-3.5 text-muted-foreground">{formatDateTime(order.createdAt)}</td>
+        <td className="px-4 py-3.5 text-right text-base font-bold tabular-nums">{formatCurrency(order.totalAmount)}</td>
+        <td className="px-4 py-3.5 text-center">{order._count.items}</td>
+        <td className="px-4 py-3.5">
           <div className="flex gap-1" onClick={e => e.stopPropagation()}>
             {canApprove && <Button size="sm" variant="outline" onClick={() => approveMutation.mutate()} loading={approveMutation.isPending}>
               <CheckCircle className="mr-1 h-3.5 w-3.5 text-success" />Aprobar
@@ -2113,7 +2114,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
             </Button>}
           </div>
         </td>
-        <td className="px-4 py-3">{expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</td>
+        <td className="px-4 py-3.5">{expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</td>
       </tr>
 
       {expanded && detail && (
@@ -2143,8 +2144,8 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                       <td className={cn('py-1.5 text-center', item.receivedQty >= item.orderedQty ? 'text-success' : item.receivedQty > 0 ? 'text-amber-500' : '')}>
                         {item.receivedQty}
                       </td>
-                      <td className="py-1.5 text-right">{item.isBonus ? 'GRATIS' : formatCost(item.unitCost)}</td>
-                      <td className="py-1.5 text-right font-medium">{formatCurrency(item.subtotal)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{item.isBonus ? 'GRATIS' : formatCost(item.unitCost)}</td>
+                      <td className="py-1.5 text-right font-semibold tabular-nums">{formatCurrency(item.subtotal)}</td>
                       {(!detail.voidedAt || canEditItems) && (
                         <td className="py-1.5 text-right">
                           {canEditItems && (
@@ -2194,7 +2195,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                       <Badge variant={PAYMENT_STATUS_VARIANT[detail.paymentStatus] ?? 'default'}>
                         {PAYMENT_STATUS_LABELS[detail.paymentStatus] ?? detail.paymentStatus}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground tabular-nums">
                         Pagado {formatCurrency(detail.paidAmount)} de {formatCurrency(detail.totalAmount)}
                         {detail.dueDate && <> · vence {formatDateTime(detail.dueDate)}</>}
                       </span>
@@ -2210,7 +2211,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                       {detail.payments.map(p => (
                         <div key={p.id} className="flex justify-between text-xs text-muted-foreground">
                           <span>{formatDateTime(p.paidAt)} · {PAYMENT_METHOD_LABELS[p.method] ?? p.method}{p.reference ? ` · ${p.reference}` : ''}</span>
-                          <span className="font-medium text-foreground">{formatCurrency(p.amount)}</span>
+                          <span className="font-semibold tabular-nums text-foreground">{formatCurrency(p.amount)}</span>
                         </div>
                       ))}
                     </div>
@@ -2325,28 +2326,28 @@ function SuppliersTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium">Razón social</th>
-                  <th className="px-4 py-3 text-left font-medium">RUC</th>
-                  <th className="px-4 py-3 text-left font-medium">Contacto</th>
-                  <th className="px-4 py-3 text-left font-medium">Teléfono</th>
-                  <th className="px-4 py-3 text-center font-medium">Órdenes</th>
-                  <th className="px-4 py-3 text-center font-medium">Estado</th>
+                <tr className="border-b bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-3 text-left font-semibold">Razón social</th>
+                  <th className="px-4 py-3 text-left font-semibold">RUC</th>
+                  <th className="px-4 py-3 text-left font-semibold">Contacto</th>
+                  <th className="px-4 py-3 text-left font-semibold">Teléfono</th>
+                  <th className="px-4 py-3 text-center font-semibold">Órdenes</th>
+                  <th className="px-4 py-3 text-center font-semibold">Estado</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {(data ?? []).map(s => (
                   <tr key={s.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3 font-medium">{s.businessName}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{s.taxId ?? '—'}</td>
-                    <td className="px-4 py-3">{s.contactName ?? '—'}</td>
-                    <td className="px-4 py-3">{s.phone ?? '—'}</td>
-                    <td className="px-4 py-3 text-center">{s._count?.purchaseOrders ?? 0}</td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3.5 font-semibold">{s.businessName}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground">{s.taxId ?? '—'}</td>
+                    <td className="px-4 py-3.5">{s.contactName ?? '—'}</td>
+                    <td className="px-4 py-3.5">{s.phone ?? '—'}</td>
+                    <td className="px-4 py-3.5 text-center">{s._count?.purchaseOrders ?? 0}</td>
+                    <td className="px-4 py-3.5 text-center">
                       <Badge variant={s.isActive ? 'success' : 'secondary'}>{s.isActive ? 'Activo' : 'Inactivo'}</Badge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <div className="flex gap-1">
                         <Button variant="ghost" size="sm" onClick={() => setCatalogSupplier(s)}>
                           <BookOpen className="mr-1 h-3.5 w-3.5" />Catálogo
@@ -2398,6 +2399,7 @@ function OrdersTab() {
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
   const [sort, setSort] = useState('createdAt:desc');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
@@ -2439,6 +2441,7 @@ function OrdersTab() {
   });
 
   const hasFilters = !!(statusFilter || paymentStatusFilter || methodUsedFilter || onlyPending || debouncedSearch || dateFrom || dateTo || dueFrom || dueTo);
+  const advancedCount = [methodUsedFilter, dateFrom, dateTo, dueFrom, dueTo].filter(Boolean).length + (onlyPending ? 1 : 0);
   const clearFilters = () => {
     setStatusFilter(''); setPaymentStatusFilter(''); setMethodUsedFilter(''); setOnlyPending(false);
     setSearch(''); setDateFrom(''); setDateTo(''); setDueFrom(''); setDueTo(''); setPage(1);
@@ -2446,76 +2449,102 @@ function OrdersTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="N° orden, factura o proveedor..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            className="w-64 pl-9"
-          />
-        </div>
-        <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-          className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <option value="">Todos los estados</option>
-          {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-40" title="Desde" />
-        <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-40" title="Hasta" />
-        <select value={paymentStatusFilter} onChange={e => { setPaymentStatusFilter(e.target.value); setPage(1); }}
-          className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <option value="">Cualquier pago</option>
-          {Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <select value={methodUsedFilter} onChange={e => { setMethodUsedFilter(e.target.value); setPage(1); }}
-          className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <option value="">Cualquier método</option>
-          {Object.entries(METHOD_USED_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <Input type="date" value={dueFrom} onChange={e => { setDueFrom(e.target.value); setPage(1); }} className="w-40" title="Vence desde" />
-        <Input type="date" value={dueTo} onChange={e => { setDueTo(e.target.value); setPage(1); }} className="w-40" title="Vence hasta" />
-        <label className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
-          <input type="checkbox" checked={onlyPending} onChange={e => { setOnlyPending(e.target.checked); setPage(1); }} />
-          Solo con saldo pendiente
-        </label>
-        <select value={sort} onChange={e => setSort(e.target.value)}
-          className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <option value="createdAt:desc">Más recientes</option>
-          <option value="createdAt:asc">Más antiguas</option>
-          <option value="totalAmount:desc">Mayor total</option>
-          <option value="totalAmount:asc">Menor total</option>
-          <option value="orderNumber:desc">N° orden (desc)</option>
-          <option value="orderNumber:asc">N° orden (asc)</option>
-        </select>
-        {hasFilters && (
-          <Button variant="ghost" size="sm" onClick={clearFilters}>
-            <X className="mr-1 h-3.5 w-3.5" />Limpiar
-          </Button>
-        )}
-        <div className="flex-1" />
-        <Button variant="outline"
-          onClick={() => downloadExcel(`/purchases/export?${queryString()}`, 'compras.xlsx')}>
-          <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
-        </Button>
-        <Button variant="outline" onClick={() => setShowSuggest(true)}
-          className="border-primary/30 text-primary hover:bg-primary/10">
-          <Sparkles className="mr-2 h-4 w-4" />Sugerir Orden
-        </Button>
-        <Button onClick={() => setShowNew(true)}>
-          <Plus className="mr-2 h-4 w-4" />Nueva Orden
-        </Button>
-        <Button onClick={() => setShowRegister(true)} className="bg-success text-success-foreground hover:bg-success/90">
-          <PackageCheck className="mr-2 h-4 w-4" />Registrar Compra
-        </Button>
-      </div>
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[220px] flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="N° orden, factura o proveedor..."
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
+                className="pl-9"
+              />
+            </div>
+            <Select className="w-44" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
+              <option value="">Todos los estados</option>
+              {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <Select className="w-40" value={paymentStatusFilter} onChange={e => { setPaymentStatusFilter(e.target.value); setPage(1); }}>
+              <option value="">Cualquier pago</option>
+              {Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+            <Select className="w-44" value={sort} onChange={e => setSort(e.target.value)}>
+              <option value="createdAt:desc">Más recientes</option>
+              <option value="createdAt:asc">Más antiguas</option>
+              <option value="totalAmount:desc">Mayor total</option>
+              <option value="totalAmount:asc">Menor total</option>
+              <option value="orderNumber:desc">N° orden (desc)</option>
+              <option value="orderNumber:asc">N° orden (asc)</option>
+            </Select>
+            <Button variant={showAdvanced ? 'secondary' : 'outline'} size="sm" onClick={() => setShowAdvanced(v => !v)}>
+              <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />Más filtros
+              {advancedCount > 0 && <Badge variant="default" className="ml-1.5 px-1.5">{advancedCount}</Badge>}
+            </Button>
+            {hasFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                <X className="mr-1 h-3.5 w-3.5" />Limpiar
+              </Button>
+            )}
+          </div>
+
+          {showAdvanced && (
+            <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/30 p-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Método usado</label>
+                <Select compact className="w-44" value={methodUsedFilter} onChange={e => { setMethodUsedFilter(e.target.value); setPage(1); }}>
+                  <option value="">Cualquier método</option>
+                  {Object.entries(METHOD_USED_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </Select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Fecha desde</label>
+                <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-40" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Fecha hasta</label>
+                <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-40" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Vence desde</label>
+                <Input type="date" value={dueFrom} onChange={e => { setDueFrom(e.target.value); setPage(1); }} className="w-40" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">Vence hasta</label>
+                <Input type="date" value={dueTo} onChange={e => { setDueTo(e.target.value); setPage(1); }} className="w-40" />
+              </div>
+              <label className="flex items-center gap-2 px-2 pb-2 text-sm text-muted-foreground cursor-pointer">
+                <input type="checkbox" checked={onlyPending} onChange={e => { setOnlyPending(e.target.checked); setPage(1); }} />
+                Solo con saldo pendiente
+              </label>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+            <Button variant="outline"
+              onClick={() => downloadExcel(`/purchases/export?${queryString()}`, 'compras.xlsx')}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
+            </Button>
+            <Button variant="outline" onClick={() => setShowSuggest(true)}
+              className="border-primary/30 text-primary hover:bg-primary/10">
+              <Sparkles className="mr-2 h-4 w-4" />Sugerir Orden
+            </Button>
+            <Button onClick={() => setShowNew(true)}>
+              <Plus className="mr-2 h-4 w-4" />Nueva Orden
+            </Button>
+            <Button onClick={() => setShowRegister(true)} className="bg-success text-success-foreground hover:bg-success/90">
+              <PackageCheck className="mr-2 h-4 w-4" />Registrar Compra
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {data && (
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span>{data.pagination.total} {data.pagination.total === 1 ? 'orden' : 'órdenes'}</span>
-          <span className="font-medium text-foreground">Total: {formatCurrency(data.totals.totalAmount)}</span>
-          <span>Pagado: {formatCurrency(data.totals.paidAmount)}</span>
-          <span>Pendiente: {formatCurrency(data.totals.totalAmount - data.totals.paidAmount)}</span>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+          <span className="text-muted-foreground">{data.pagination.total} {data.pagination.total === 1 ? 'orden' : 'órdenes'}</span>
+          <span className="font-semibold tabular-nums">Total: {formatCurrency(data.totals.totalAmount)}</span>
+          <span className="font-semibold tabular-nums text-success">Pagado: {formatCurrency(data.totals.paidAmount)}</span>
+          <span className="font-semibold tabular-nums text-destructive">Pendiente: {formatCurrency(data.totals.totalAmount - data.totals.paidAmount)}</span>
         </div>
       )}
 
@@ -2524,15 +2553,15 @@ function OrdersTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-muted/50 text-left">
-                  <th className="px-4 py-3 font-medium">N° Orden</th>
-                  <th className="px-4 py-3 font-medium">Proveedor</th>
-                  <th className="px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3 font-medium">Pago</th>
-                  <th className="px-4 py-3 font-medium">Fecha</th>
-                  <th className="px-4 py-3 font-medium text-right">Total</th>
-                  <th className="px-4 py-3 font-medium text-center">Ítems</th>
-                  <th className="px-4 py-3 font-medium">Acciones</th>
+                <tr className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-3 font-semibold">N° Orden</th>
+                  <th className="px-4 py-3 font-semibold">Proveedor</th>
+                  <th className="px-4 py-3 font-semibold">Estado</th>
+                  <th className="px-4 py-3 font-semibold">Pago</th>
+                  <th className="px-4 py-3 font-semibold">Fecha</th>
+                  <th className="px-4 py-3 font-semibold text-right">Total</th>
+                  <th className="px-4 py-3 font-semibold text-center">Ítems</th>
+                  <th className="px-4 py-3 font-semibold">Acciones</th>
                   <th className="px-4 py-3 w-8" />
                 </tr>
               </thead>
@@ -2619,12 +2648,12 @@ function SupplierPayableDetail({ supplierId, onPayOrder }: { supplierId: string;
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="border-b text-left text-xs text-muted-foreground">
-          <th className="py-2 font-medium">N° Orden</th>
-          <th className="py-2 font-medium">Fecha</th>
-          <th className="py-2 font-medium text-right">Total</th>
-          <th className="py-2 font-medium text-right">Pagado</th>
-          <th className="py-2 font-medium text-right">Pendiente</th>
+        <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <th className="py-2 font-semibold">N° Orden</th>
+          <th className="py-2 font-semibold">Fecha</th>
+          <th className="py-2 font-semibold text-right">Total</th>
+          <th className="py-2 font-semibold text-right">Pagado</th>
+          <th className="py-2 font-semibold text-right">Pendiente</th>
           <th className="py-2 w-20" />
         </tr>
       </thead>
@@ -2633,9 +2662,9 @@ function SupplierPayableDetail({ supplierId, onPayOrder }: { supplierId: string;
           <tr key={o.id}>
             <td className="py-2 font-medium">{o.orderNumber}</td>
             <td className="py-2 text-muted-foreground">{formatDateTime(o.createdAt)}</td>
-            <td className="py-2 text-right">{formatCurrency(o.totalAmount)}</td>
-            <td className="py-2 text-right text-muted-foreground">{formatCurrency(o.paidAmount)}</td>
-            <td className="py-2 text-right font-semibold text-destructive">{formatCurrency(o.outstanding)}</td>
+            <td className="py-2 text-right tabular-nums">{formatCurrency(o.totalAmount)}</td>
+            <td className="py-2 text-right tabular-nums text-muted-foreground">{formatCurrency(o.paidAmount)}</td>
+            <td className="py-2 text-right font-bold tabular-nums text-destructive">{formatCurrency(o.outstanding)}</td>
             <td className="py-2 text-right">
               <Button size="sm" variant="outline" onClick={() => onPayOrder(o)}>Pagar esta</Button>
             </td>
@@ -2661,10 +2690,10 @@ function PayableTab() {
   return (
     <div className="space-y-4">
       {(data?.suppliers.length ?? 0) > 0 && (
-        <Card>
+        <Card className="border-t-4 border-t-destructive">
           <CardContent className="p-4 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Total pendiente a proveedores</span>
-            <span className="text-xl font-bold text-destructive">{formatCurrency(data!.grandTotal)}</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total pendiente a proveedores</span>
+            <span className="text-2xl font-bold tabular-nums text-destructive">{formatCurrency(data!.grandTotal)}</span>
           </CardContent>
         </Card>
       )}
@@ -2689,7 +2718,7 @@ function PayableTab() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-destructive">{formatCurrency(s.totalOwed)}</span>
+                    <span className="text-xl font-bold tabular-nums text-destructive">{formatCurrency(s.totalOwed)}</span>
                     <Button size="sm" onClick={(e) => { e.stopPropagation(); setPaySupplier(s); }}>Pagar monto</Button>
                   </div>
                 </button>
@@ -2825,7 +2854,7 @@ function NewPayerModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">Límite de crédito (opcional)</label>
-            <Input type="number" min="0" step="0.01" value={creditLimit} onChange={e => setCreditLimit(e.target.value)}
+            <MoneyInput min={0} value={creditLimit} onChange={e => setCreditLimit(e.target.value)}
               placeholder="0 = sin límite" />
             <p className="mt-1 text-xs text-muted-foreground">Solo avisa si se supera — no bloquea nuevas compras.</p>
           </div>
@@ -2865,12 +2894,12 @@ function RepaymentHistoryTable({ batches }: { batches: ReturnType<typeof groupRe
       <p className="mb-1 text-xs font-medium text-muted-foreground">Historial de reposiciones</p>
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b text-left text-xs text-muted-foreground">
-            <th className="py-2 font-medium">Fecha</th>
-            <th className="py-2 font-medium">Método</th>
-            <th className="py-2 font-medium">Compras cubiertas</th>
-            <th className="py-2 font-medium text-right">Monto</th>
-            <th className="py-2 font-medium">Usuario</th>
+          <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <th className="py-2 font-semibold">Fecha</th>
+            <th className="py-2 font-semibold">Método</th>
+            <th className="py-2 font-semibold">Compras cubiertas</th>
+            <th className="py-2 font-semibold text-right">Monto</th>
+            <th className="py-2 font-semibold">Usuario</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -2879,7 +2908,7 @@ function RepaymentHistoryTable({ batches }: { batches: ReturnType<typeof groupRe
               <td className="py-2 text-muted-foreground">{formatDateTime(b.paidAt)}</td>
               <td className="py-2">{PAYMENT_METHOD_LABELS[b.method] ?? b.method}{b.reference ? ` (${b.reference})` : ''}</td>
               <td className="py-2 text-xs text-muted-foreground">{b.orders.join(', ')}</td>
-              <td className="py-2 text-right font-semibold text-success">{formatCurrency(b.amount)}</td>
+              <td className="py-2 text-right font-bold tabular-nums text-success">{formatCurrency(b.amount)}</td>
               <td className="py-2 text-xs text-muted-foreground">{b.user}</td>
             </tr>
           ))}
@@ -2924,13 +2953,13 @@ function PayerDetail({ payerId, payerName, onPay }: { payerId: string; payerName
       <AgingRow aging={statement.aging} />
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b text-left text-xs text-muted-foreground">
-            <th className="py-2 font-medium">N° Orden</th>
-            <th className="py-2 font-medium">Proveedor</th>
-            <th className="py-2 font-medium">Fecha</th>
-            <th className="py-2 font-medium text-right">Financiado</th>
-            <th className="py-2 font-medium text-right">Repuesto</th>
-            <th className="py-2 font-medium text-right">Pendiente</th>
+          <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <th className="py-2 font-semibold">N° Orden</th>
+            <th className="py-2 font-semibold">Proveedor</th>
+            <th className="py-2 font-semibold">Fecha</th>
+            <th className="py-2 font-semibold text-right">Financiado</th>
+            <th className="py-2 font-semibold text-right">Repuesto</th>
+            <th className="py-2 font-semibold text-right">Pendiente</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -2939,9 +2968,9 @@ function PayerDetail({ payerId, payerName, onPay }: { payerId: string; payerName
               <td className="py-2 font-medium">{d.orderNumber}</td>
               <td className="py-2">{d.supplierName}</td>
               <td className="py-2 text-muted-foreground">{formatDateTime(d.date)}</td>
-              <td className="py-2 text-right">{formatCurrency(d.payerAmount)}</td>
-              <td className="py-2 text-right text-muted-foreground">{formatCurrency(d.reimbursedAmount)}</td>
-              <td className="py-2 text-right font-semibold text-destructive">{formatCurrency(d.outstanding)}</td>
+              <td className="py-2 text-right tabular-nums">{formatCurrency(d.payerAmount)}</td>
+              <td className="py-2 text-right tabular-nums text-muted-foreground">{formatCurrency(d.reimbursedAmount)}</td>
+              <td className="py-2 text-right font-bold tabular-nums text-destructive">{formatCurrency(d.outstanding)}</td>
             </tr>
           ))}
         </tbody>
@@ -2981,10 +3010,10 @@ function PayersTab() {
       </div>
 
       {grandTotal > 0 && (
-        <Card>
+        <Card className="border-t-4 border-t-destructive">
           <CardContent className="p-4 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Total pendiente a pagadores</span>
-            <span className="text-xl font-bold text-destructive">{formatCurrency(grandTotal)}</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total pendiente a pagadores</span>
+            <span className="text-2xl font-bold tabular-nums text-destructive">{formatCurrency(grandTotal)}</span>
           </CardContent>
         </Card>
       )}
@@ -3007,7 +3036,7 @@ function PayersTab() {
                       {p.aging && <AgingRow aging={p.aging} />}
                     </div>
                   </div>
-                  <span className={cn('text-lg font-bold', (p.totalOwed ?? 0) > 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                  <span className={cn('text-xl font-bold tabular-nums', (p.totalOwed ?? 0) > 0 ? 'text-destructive' : 'text-muted-foreground')}>
                     {formatCurrency(p.totalOwed ?? 0)}
                   </span>
                 </button>
@@ -3075,7 +3104,7 @@ function SupplierDebtCard({ supplierId, businessName }: { supplierId: string; bu
           <p className="text-sm text-muted-foreground">Qué se debe y de qué compras viene, con fechas y montos.</p>
         </div>
         <div className="text-right">
-          <p className="text-2xl font-bold text-destructive">{formatCurrency(statement.totalOwed)}</p>
+          <p className="text-2xl font-bold tabular-nums text-destructive">{formatCurrency(statement.totalOwed)}</p>
           {statement.totalOwed > 0 && <Button size="sm" className="mt-1" onClick={() => setPayOpen(true)}>Pagar monto</Button>}
         </div>
       </CardHeader>
@@ -3085,15 +3114,15 @@ function SupplierDebtCard({ supplierId, businessName }: { supplierId: string; bu
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-muted/50 text-left">
-                  <th className="px-4 py-2 font-medium">N° Orden</th>
-                  <th className="px-4 py-2 font-medium">Fecha</th>
-                  <th className="px-4 py-2 font-medium">Vence</th>
-                  <th className="px-4 py-2 font-medium">Estado</th>
-                  <th className="px-4 py-2 font-medium">Factura</th>
-                  <th className="px-4 py-2 font-medium text-right">Total</th>
-                  <th className="px-4 py-2 font-medium text-right">Pagado</th>
-                  <th className="px-4 py-2 font-medium text-right">Pendiente</th>
+                <tr className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-2 font-semibold">N° Orden</th>
+                  <th className="px-4 py-2 font-semibold">Fecha</th>
+                  <th className="px-4 py-2 font-semibold">Vence</th>
+                  <th className="px-4 py-2 font-semibold">Estado</th>
+                  <th className="px-4 py-2 font-semibold">Factura</th>
+                  <th className="px-4 py-2 font-semibold text-right">Total</th>
+                  <th className="px-4 py-2 font-semibold text-right">Pagado</th>
+                  <th className="px-4 py-2 font-semibold text-right">Pendiente</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -3108,9 +3137,9 @@ function SupplierDebtCard({ supplierId, businessName }: { supplierId: string; bu
                       </Badge>
                     </td>
                     <td className="px-4 py-2">{d.supplierInvoice ?? '—'}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(d.totalAmount)}</td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">{formatCurrency(d.paidAmount)}</td>
-                    <td className="px-4 py-2 text-right font-semibold text-destructive">{formatCurrency(d.outstanding)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{formatCurrency(d.totalAmount)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{formatCurrency(d.paidAmount)}</td>
+                    <td className="px-4 py-2 text-right font-bold tabular-nums text-destructive">{formatCurrency(d.outstanding)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -3166,28 +3195,29 @@ function SettlementsTab() {
         Elige un proveedor para ver cuánto se le debe y de qué compras viene esa deuda. También puedes generar un
         resumen de los pagos ya hechos en un rango de fechas, para cuadrar cuentas o entregarle una liquidación.
       </p>
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Proveedor</label>
-          <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
-            className="flex h-10 w-64 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <option value="">Selecciona un proveedor...</option>
-            {(suppliers ?? []).map(s => <option key={s.id} value={s.id}>{s.businessName}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Desde</label>
-          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-40" />
-        </div>
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Hasta</label>
-          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-40" />
-        </div>
-        <Button disabled={!supplierId} loading={isFetching}
-          onClick={() => setRunFilters({ supplierId, dateFrom, dateTo })}>
-          Generar liquidación
-        </Button>
-      </div>
+      <Card>
+        <CardContent className="p-4 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Proveedor</label>
+            <Select className="w-64" value={supplierId} onChange={e => setSupplierId(e.target.value)}>
+              <option value="">Selecciona un proveedor...</option>
+              {(suppliers ?? []).map(s => <option key={s.id} value={s.id}>{s.businessName}</option>)}
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Desde</label>
+            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-40" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Hasta</label>
+            <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-40" />
+          </div>
+          <Button disabled={!supplierId} loading={isFetching}
+            onClick={() => setRunFilters({ supplierId, dateFrom, dateTo })}>
+            Generar liquidación
+          </Button>
+        </CardContent>
+      </Card>
 
       {supplierId && (
         <SupplierDebtCard supplierId={supplierId} businessName={suppliers?.find(s => s.id === supplierId)?.businessName ?? ''} />
@@ -3214,14 +3244,14 @@ function SettlementsTab() {
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b bg-muted/50 text-left">
-                        <th className="px-4 py-2 font-medium">Fecha</th>
-                        <th className="px-4 py-2 font-medium">Orden</th>
-                        <th className="px-4 py-2 font-medium">Factura</th>
-                        <th className="px-4 py-2 font-medium">Método</th>
-                        <th className="px-4 py-2 font-medium">Referencia</th>
-                        <th className="px-4 py-2 font-medium">Registrado por</th>
-                        <th className="px-4 py-2 font-medium text-right">Monto</th>
+                      <tr className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                        <th className="px-4 py-2 font-semibold">Fecha</th>
+                        <th className="px-4 py-2 font-semibold">Orden</th>
+                        <th className="px-4 py-2 font-semibold">Factura</th>
+                        <th className="px-4 py-2 font-semibold">Método</th>
+                        <th className="px-4 py-2 font-semibold">Referencia</th>
+                        <th className="px-4 py-2 font-semibold">Registrado por</th>
+                        <th className="px-4 py-2 font-semibold text-right">Monto</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -3233,7 +3263,7 @@ function SettlementsTab() {
                           <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</td>
                           <td className="px-4 py-2">{p.reference ?? '—'}</td>
                           <td className="px-4 py-2">{p.user}</td>
-                          <td className="px-4 py-2 text-right font-medium">{formatCurrency(p.amount)}</td>
+                          <td className="px-4 py-2 text-right font-semibold tabular-nums">{formatCurrency(p.amount)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -3241,11 +3271,11 @@ function SettlementsTab() {
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-6 border-t pt-4 text-sm">
                   {Object.entries(settlement.totalsByMethod).map(([m, amt]) => (
-                    <span key={m} className="text-muted-foreground">
-                      {PAYMENT_METHOD_LABELS[m] ?? m}: <span className="font-medium text-foreground">{formatCurrency(amt)}</span>
+                    <span key={m} className="text-muted-foreground tabular-nums">
+                      {PAYMENT_METHOD_LABELS[m] ?? m}: <span className="font-semibold text-foreground">{formatCurrency(amt)}</span>
                     </span>
                   ))}
-                  <span className="text-base font-bold">
+                  <span className="text-lg font-bold tabular-nums">
                     Total ({settlement.count} {settlement.count === 1 ? 'pago' : 'pagos'}): {formatCurrency(settlement.grandTotal)}
                   </span>
                 </div>
@@ -3272,21 +3302,26 @@ function PurchasesDashboardBar() {
   });
   if (!data) return null;
 
-  const cards: Array<[string, number, string]> = [
-    ['Caja Efectivo', data.treasury.cash, 'text-foreground'],
-    ['Caja Yape', data.treasury.yape, 'text-foreground'],
-    ['Caja Plin', data.treasury.plin, 'text-foreground'],
-    ['Por pagar a proveedores', data.payableToSuppliers, 'text-destructive'],
-    ['Por pagar a pagadores', data.payableToPayers, 'text-destructive'],
+  const cards: Array<[string, number, typeof Wallet, 'neutral' | 'debt']> = [
+    ['Caja Efectivo', data.treasury.cash, Wallet, 'neutral'],
+    ['Caja Yape', data.treasury.yape, Smartphone, 'neutral'],
+    ['Caja Plin', data.treasury.plin, Smartphone, 'neutral'],
+    ['Por pagar a proveedores', data.payableToSuppliers, AlertTriangle, 'debt'],
+    ['Por pagar a pagadores', data.payableToPayers, AlertTriangle, 'debt'],
   ];
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-      {cards.map(([label, amount, color]) => (
-        <Card key={label}>
+      {cards.map(([label, amount, Icon, kind]) => (
+        <Card key={label} className={cn('border-t-4', kind === 'debt' ? 'border-t-destructive' : 'border-t-success')}>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className={cn('text-lg font-bold', color)}>{formatCurrency(amount)}</p>
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{label}</span>
+            </div>
+            <p className={cn('mt-1 text-2xl font-bold tabular-nums', kind === 'debt' && amount > 0 ? 'text-destructive' : 'text-foreground')}>
+              {formatCurrency(amount)}
+            </p>
           </CardContent>
         </Card>
       ))}
