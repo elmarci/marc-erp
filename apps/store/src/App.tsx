@@ -4,6 +4,7 @@ import { Header } from './components/Header'
 import { CartDrawer } from './components/CartDrawer'
 import { InstallAppBanner } from './components/InstallAppBanner'
 import { MobileTabBar } from './components/MobileTabBar'
+import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
 import { HomePage } from './pages/HomePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { ProductPage } from './pages/ProductPage'
@@ -41,6 +42,7 @@ export default function App() {
         </motion.div>
       </AnimatePresence>
       <MobileTabBar />
+      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/pedido') && <VoiceShoppingListButton />}
     </div>
   )
 }
