@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { Header } from './components/Header'
 import { CartDrawer } from './components/CartDrawer'
+import { InstallAppBanner } from './components/InstallAppBanner'
 import { HomePage } from './pages/HomePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { ProductPage } from './pages/ProductPage'
@@ -14,6 +15,7 @@ export default function App() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       <CartDrawer />
+      <InstallAppBanner />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/catalogo" element={<CatalogPage />} />
