@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Search, X, ChevronRight, Home, LayoutGrid } from 'lucide-react'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
+import { VoiceSearchButton } from '../components/VoiceSearchButton'
 import { getCategoryIcon } from '../categoryIcons'
 
 export function CatalogPage() {
@@ -43,6 +44,16 @@ export function CatalogPage() {
     e.preventDefault()
     setSearchParams(prev => {
       if (search) prev.set('search', search); else prev.delete('search')
+      return prev
+    })
+    setPage(1)
+  }
+
+  const handleVoiceResult = (transcript: string) => {
+    const q = transcript.trim()
+    setSearch(q)
+    setSearchParams(prev => {
+      if (q) prev.set('search', q); else prev.delete('search')
       return prev
     })
     setPage(1)
@@ -124,7 +135,8 @@ export function CatalogPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-ink-ghost" />
                 <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Buscar productos..."
-                  className="w-full bg-white border border-paper-line rounded-full pl-9 pr-4 py-2 text-sm text-paper-ink placeholder-paper-ink-ghost focus:outline-none focus:border-brand-blue-400 transition-colors" />
+                  className="w-full bg-white border border-paper-line rounded-full pl-9 pr-10 py-2 text-sm text-paper-ink placeholder-paper-ink-ghost focus:outline-none focus:border-brand-blue-400 transition-colors" />
+                <VoiceSearchButton onResult={handleVoiceResult} className="absolute right-2.5 top-1/2 -translate-y-1/2" />
               </div>
             </form>
             {(search || categoryId) && (

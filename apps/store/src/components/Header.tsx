@@ -9,6 +9,7 @@ import { storeApi } from '../api'
 import { AuthModal } from './AuthModal'
 import { CategoryDrawer } from './CategoryDrawer'
 import { CategoryMegaMenu } from './CategoryMegaMenu'
+import { VoiceSearchButton } from './VoiceSearchButton'
 
 export function Header() {
   const items = useCartStore(s => s.items)
@@ -29,6 +30,10 @@ export function Header() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (search.trim()) navigate(`/catalogo?search=${encodeURIComponent(search.trim())}`)
+  }
+
+  const handleVoiceResult = (transcript: string) => {
+    navigate(`/catalogo?search=${encodeURIComponent(transcript.trim())}`)
   }
 
   return (
@@ -61,7 +66,8 @@ export function Header() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-ink-ghost" />
               <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Buscar productos..."
-                className="w-full bg-paper-surface border border-transparent rounded-xl pl-9 pr-4 py-2 text-sm text-paper-ink placeholder-paper-ink-ghost focus:outline-none focus:bg-white focus:border-brand-blue-400 transition-colors" />
+                className="w-full bg-paper-surface border border-transparent rounded-xl pl-9 pr-9 py-2 text-sm text-paper-ink placeholder-paper-ink-ghost focus:outline-none focus:bg-white focus:border-brand-blue-400 transition-colors" />
+              <VoiceSearchButton onResult={handleVoiceResult} className="absolute right-2 top-1/2 -translate-y-1/2" />
             </div>
           </form>
 
