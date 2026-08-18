@@ -30,25 +30,25 @@ export function CategoryMegaMenu() {
   return (
     <div className="relative hidden md:block" onMouseLeave={close}>
       <button onClick={() => setOpen(o => !o)} onMouseEnter={() => setOpen(true)}
-        className={`flex items-center gap-2 h-10 px-4 rounded-full text-sm font-semibold transition-colors ${open ? 'bg-brand-blue-50 text-brand-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}>
+        className={`flex items-center gap-2 h-10 px-4 rounded-full text-sm font-semibold transition-colors ${open ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink-soft hover:bg-paper-surface'}`}>
         <LayoutGrid className="h-4 w-4" />Categorías
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-2 z-50 flex bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
+        <div className="absolute left-0 top-full mt-2 z-50 flex bg-white border border-paper-line rounded-2xl shadow-2xl overflow-hidden animate-fade-in">
           {/* Categorías principales */}
-          <div className="w-56 border-r border-gray-100 py-2 max-h-[26rem] overflow-y-auto">
+          <div className="w-56 border-r border-paper-line py-2 max-h-[26rem] overflow-y-auto">
             {categories.map(cat => {
               const Icon = getCategoryIcon(cat.name)
               const isActive = active?.id === cat.id
               return (
                 <button key={cat.id} onMouseEnter={() => setActiveId(cat.id)} onClick={() => setActiveId(cat.id)}
                   className={`w-full flex items-center gap-2.5 pl-3.5 pr-3 py-2.5 text-sm font-medium text-left border-l-2 transition-colors
-                    ${isActive ? 'bg-brand-blue-50 text-brand-blue-700 border-brand-blue-600' : 'text-gray-700 hover:bg-gray-50 border-transparent'}`}>
+                    ${isActive ? 'bg-brand-green-50 text-brand-green-700 border-brand-green-600' : 'text-paper-ink hover:bg-paper-surface border-transparent'}`}>
                   <Icon className="h-4 w-4 shrink-0" />
                   <span className="flex-1 truncate">{cat.name}</span>
-                  <ChevronRight className="h-3.5 w-3.5 text-gray-300 shrink-0" />
+                  <ChevronRight className="h-3.5 w-3.5 text-paper-ink-ghost shrink-0" />
                 </button>
               )
             })}
@@ -59,20 +59,20 @@ export function CategoryMegaMenu() {
             {active && (
               <>
                 <Link to={`/catalogo?categoryId=${active.id}`} onClick={close}
-                  className="block font-bold text-gray-900 mb-3 hover:text-brand-blue-600 transition-colors">
+                  className="block font-bold text-paper-ink mb-3 hover:text-brand-green-600 transition-colors">
                   Ver todo {active.name} →
                 </Link>
                 {active.children.length > 0 ? (
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
                     {active.children.map(child => (
                       <Link key={child.id} to={`/catalogo?categoryId=${child.id}`} onClick={close}
-                        className="text-sm text-gray-600 hover:text-brand-blue-600 transition-colors truncate">
+                        className="text-sm text-paper-ink-soft hover:text-brand-green-600 transition-colors truncate">
                         {child.name}
                       </Link>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400">{active._count.products} productos disponibles</p>
+                  <p className="text-sm text-paper-ink-ghost">{active._count.products} productos disponibles</p>
                 )}
               </>
             )}
@@ -81,12 +81,12 @@ export function CategoryMegaMenu() {
           {/* Publicidad — un espacio de anuncio fijo dentro de la navegación,
               para que las promociones nunca queden fuera del recorrido de compra. */}
           <Link to={offer ? '/ofertas' : '/catalogo'} onClick={close}
-            className="w-52 shrink-0 bg-gradient-to-br from-brand-green-600 to-brand-green-800 text-white p-5 flex flex-col justify-between hover:from-brand-green-700 hover:to-brand-green-900 transition-colors">
+            className="w-52 shrink-0 bg-gradient-to-br from-brand-blue-600 to-brand-blue-800 text-white p-5 flex flex-col justify-between hover:from-brand-blue-700 hover:to-brand-blue-900 transition-colors">
             {offer ? (
               <>
                 <div>
                   {offer.storeBadge && (
-                    <span className="inline-block bg-white text-gray-900 text-[10px] font-black px-2 py-0.5 rounded-full mb-2">
+                    <span className="inline-block bg-white text-paper-ink text-[10px] font-black px-2 py-0.5 rounded-full mb-2">
                       {offer.storeBadge}
                     </span>
                   )}

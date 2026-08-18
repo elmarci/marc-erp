@@ -4,13 +4,14 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
+    @apply bg-paper-bg text-paper-ink font-sans;
     -webkit-font-smoothing: antialiased;
   }
-  * { @apply border-gray-200; }
+  * { @apply border-paper-line; }
+  ::selection { background: rgba(76, 163, 36, .25); }
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-gray-300 rounded-full; }
+  ::-webkit-scrollbar-thumb { @apply bg-paper-ink-ghost rounded-full; }
 }
 
 @layer utilities {
@@ -20,4 +21,11 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  /* Filas horizontales deslizables con el dedo (categorías, más vendidos,
+     similares) — se ve la fila pero no la barra de scroll fea. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 }

@@ -23,8 +23,13 @@ function getBuyXGetYPrice(originalPrice: number, offer: Offer): { pricePerUnit: 
   return { pricePerUnit, totalUnits, paidUnits }
 }
 
-function OfferCard({ offer }: { offer: Offer }) {
+function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green' | 'blue' }) {
   const { addItem, openCart } = useCartStore()
+  // El badge grande del tipo de oferta ("20% OFF", "Lleva 3 paga 2") alterna
+  // verde/azul entre tarjetas para que la grilla de ofertas no lea monocroma —
+  // el borde en hover se mantiene azul en todas, igual que ProductCard.
+  const accentText = accent === 'green' ? 'text-brand-green-700' : 'text-brand-blue-700'
+  const accentGradient = accent === 'green' ? 'from-brand-green-50 to-white' : 'from-brand-blue-50 to-white'
 
   const handleAdd = (product: Offer['products'][0]['product']) => {
     const originalPrice = Number(product.salePrice)
@@ -87,31 +92,31 @@ function OfferCard({ offer }: { offer: Offer }) {
   }
 
   return (
-    <div className="bg-white border border-gray-200 hover:border-brand-green-300 hover:shadow-md rounded-2xl overflow-hidden transition-all">
+    <div className="bg-white border border-paper-line hover:border-brand-blue-200 hover:shadow-md rounded-2xl shadow-sm overflow-hidden transition-all">
       {/* Header oferta */}
-      <div className="relative bg-gradient-to-r from-brand-green-50 to-white p-5 border-b border-gray-100">
+      <div className={`relative bg-gradient-to-r ${accentGradient} p-5 border-b border-paper-line`}>
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
-            <h3 className="font-black text-lg text-gray-900">{offer.name}</h3>
-            {offer.description && <p className="text-sm text-gray-500 mt-0.5">{offer.description}</p>}
+            <h3 className="font-black text-lg text-paper-ink">{offer.name}</h3>
+            {offer.description && <p className="text-sm text-paper-ink-soft mt-0.5">{offer.description}</p>}
           </div>
           {offer.storeBadge && (
-            <span className="shrink-0 bg-brand-green-500 text-white text-xs font-black px-3 py-1 rounded-full">
+            <span className="shrink-0 bg-brand-magenta-500 text-white text-xs font-black px-3 py-1 rounded-full">
               {offer.storeBadge}
             </span>
           )}
         </div>
 
         {/* Descripción visual de la oferta */}
-        <div className="bg-white rounded-xl p-3 border border-gray-100">
-          <p className="text-brand-green-700 font-black text-xl">{getOfferBadgeText()}</p>
+        <div className="bg-white rounded-xl p-3 border border-paper-line">
+          <p className={`font-black text-xl ${accentText}`}>{getOfferBadgeText()}</p>
           {offer.type === 'BUY_X_GET_Y' && (
-            <p className="text-gray-500 text-xs mt-1">
+            <p className="text-paper-ink-soft text-xs mt-1">
               Agrega {offer.getQuantity ?? 3} unidades al carrito — pagas solo {offer.buyQuantity ?? 2}
             </p>
           )}
           {(offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'FIXED_DISCOUNT') && (
-            <p className="text-gray-500 text-xs mt-1">Descuento aplicado automáticamente al agregar</p>
+            <p className="text-paper-ink-soft text-xs mt-1">Descuento aplicado automáticamente al agregar</p>
           )}
         </div>
 
@@ -126,7 +131,7 @@ function OfferCard({ offer }: { offer: Offer }) {
       {/* Productos de la oferta */}
       {offer.products.length > 0 && (
         <div className="p-4">
-          <p className="text-xs text-gray-400 uppercase tracking-wider mb-3 font-semibold flex items-center gap-1.5">
+          <p className="text-xs text-paper-ink-ghost uppercase tracking-wider mb-3 font-semibold flex items-center gap-1.5">
             <Package className="h-3.5 w-3.5" />Productos en esta oferta
           </p>
           <div className="space-y-2">
@@ -139,28 +144,30 @@ function OfferCard({ offer }: { offer: Offer }) {
 
               return (
                 <div key={product.id}
-                  className="flex items-center gap-3 bg-gray-50 hover:bg-gray-100 rounded-xl p-3 transition-colors cursor-pointer"
+                  className="flex items-center gap-3 bg-paper-surface hover:bg-paper-line/40 rounded-xl p-3 transition-colors cursor-pointer"
                   onClick={() => handleAdd(product)}>
                   {/* Imagen */}
                   {product.imageUrl ? (
                     <img src={product.imageUrl} alt={product.name}
-                      className="h-14 w-14 rounded-xl object-cover shrink-0 bg-white border border-gray-100" />
+                      className="h-14 w-14 rounded-lg object-cover shrink-0 bg-white border border-paper-line" />
                   ) : (
-                    <div className="h-14 w-14 rounded-xl bg-gray-100 shrink-0 flex items-center justify-center">
-                      <Tag className="h-5 w-5 text-gray-300" />
+                    <div className="h-14 w-14 rounded-lg bg-paper-surface shrink-0 flex items-center justify-center">
+                      <Tag className="h-5 w-5 text-paper-ink-ghost" />
                     </div>
                   )}
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-gray-900 line-clamp-1">{product.name}</p>
+                    <p className="font-semibold text-sm text-paper-ink line-clamp-1">{product.name}</p>
 
-                    {/* Precio según tipo de oferta */}
+                    {/* Precio según tipo de oferta — precio final siempre en negro
+                        sólido (convención de ProductCard), el verde queda solo
+                        para el badge del % de descuento. */}
                     {isDiscount && (
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-gray-400 line-through text-xs">S/ {original.toFixed(2)}</span>
-                        <span className="text-brand-green-700 font-black text-base">S/ {finalPrice.toFixed(2)}</span>
-                        <span className="bg-brand-green-100 text-brand-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        <span className="text-paper-ink-ghost line-through text-xs">S/ {original.toFixed(2)}</span>
+                        <span className="text-paper-ink font-extrabold text-base">S/ {finalPrice.toFixed(2)}</span>
+                        <span className="bg-brand-magenta-100 text-brand-magenta-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                           {offer.type === 'PERCENTAGE_DISCOUNT' ? `-${offer.value}%` : `-S/${offer.value}`}
                         </span>
                       </div>
@@ -169,24 +176,24 @@ function OfferCard({ offer }: { offer: Offer }) {
                     {isBXGY && bxgy && (
                       <div className="mt-0.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-400 text-xs">S/ {original.toFixed(2)} c/u</span>
-                          <span className="text-brand-green-700 font-black text-sm">
+                          <span className="text-paper-ink-ghost text-xs">S/ {original.toFixed(2)} c/u</span>
+                          <span className="text-paper-ink font-extrabold text-sm">
                             S/ {(bxgy.pricePerUnit * bxgy.totalUnits).toFixed(2)} el pack
                           </span>
                         </div>
-                        <p className="text-gray-400 text-[11px]">
+                        <p className="text-paper-ink-ghost text-[11px]">
                           {bxgy.totalUnits} unidades · equivale a S/ {bxgy.pricePerUnit.toFixed(2)} c/u
                         </p>
                       </div>
                     )}
 
                     {!isDiscount && !isBXGY && (
-                      <span className="text-brand-green-700 font-bold text-sm">S/ {original.toFixed(2)}</span>
+                      <span className="text-paper-ink font-extrabold text-sm">S/ {original.toFixed(2)}</span>
                     )}
                   </div>
 
                   {/* Botón agregar */}
-                  <button className="h-10 w-10 bg-brand-blue-600 hover:bg-brand-blue-700 text-white rounded-full flex items-center justify-center transition-colors shrink-0">
+                  <button className="h-10 w-10 bg-brand-green-600 hover:bg-brand-green-700 text-white rounded-full flex items-center justify-center transition-colors shrink-0">
                     <ShoppingCart className="h-4 w-4" />
                   </button>
                 </div>
@@ -198,7 +205,7 @@ function OfferCard({ offer }: { offer: Offer }) {
 
       {offer.products.length === 0 && (
         <div className="p-5 text-center">
-          <p className="text-sm text-gray-500">Oferta válida en productos seleccionados</p>
+          <p className="text-sm text-paper-ink-soft">Oferta válida en productos seleccionados</p>
           <Link to="/catalogo" className="inline-block mt-3 text-brand-blue-600 hover:text-brand-blue-700 text-sm font-medium transition-colors">
             Ver catálogo →
           </Link>
@@ -220,26 +227,26 @@ export function OffersPage() {
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
       <div className="flex items-center gap-3 mb-8">
-        <div className="h-12 w-12 bg-brand-green-100 border border-brand-green-200 rounded-xl flex items-center justify-center">
-          <Tag className="h-6 w-6 text-brand-green-700" />
+        <div className="h-12 w-12 bg-brand-blue-100 border border-brand-blue-200 rounded-2xl flex items-center justify-center">
+          <Tag className="h-6 w-6 text-brand-blue-700" />
         </div>
         <div>
-          <h1 className="text-2xl font-black text-gray-900">Ofertas especiales</h1>
-          <p className="text-gray-500 text-sm">Aprovecha nuestras promociones por tiempo limitado</p>
+          <h1 className="text-2xl font-black text-paper-ink">Ofertas especiales</h1>
+          <p className="text-paper-ink-soft text-sm">Aprovecha nuestras promociones por tiempo limitado</p>
         </div>
       </div>
 
       {isLoading && (
         <div className="grid sm:grid-cols-2 gap-4">
-          {[1, 2].map(i => <div key={i} className="bg-gray-100 rounded-2xl h-64 animate-pulse" />)}
+          {[1, 2].map(i => <div key={i} className="bg-paper-surface rounded-2xl h-64 animate-pulse" />)}
         </div>
       )}
 
       {!isLoading && offers.length === 0 && (
         <div className="text-center py-20">
-          <Tag className="h-16 w-16 mx-auto mb-4 text-gray-200" />
-          <p className="text-gray-400 text-lg">No hay ofertas activas en este momento</p>
-          <Link to="/" className="inline-block mt-6 bg-brand-blue-600 hover:bg-brand-blue-700 text-white font-bold px-6 py-3 rounded-full text-sm transition-colors">
+          <Tag className="h-16 w-16 mx-auto mb-4 text-paper-ink-ghost" />
+          <p className="text-paper-ink-faint text-lg">No hay ofertas activas en este momento</p>
+          <Link to="/" className="inline-block mt-6 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold px-6 py-3 rounded-full shadow-md shadow-brand-green-600/20 text-sm transition-colors">
             Ver productos
           </Link>
         </div>
@@ -247,7 +254,7 @@ export function OffersPage() {
 
       {!isLoading && offers.length > 0 && (
         <div className="grid sm:grid-cols-2 gap-5">
-          {offers.map(offer => <OfferCard key={offer.id} offer={offer} />)}
+          {offers.map((offer, i) => <OfferCard key={offer.id} offer={offer} accent={i % 2 === 0 ? 'green' : 'blue'} />)}
         </div>
       )}
     </main>

@@ -30,46 +30,49 @@ export function CartDrawer() {
   return (
     <>
       {/* Overlay */}
-      <div className="fixed inset-0 z-50 bg-gray-900/50 backdrop-blur-sm" onClick={closeCart} />
+      <div className="fixed inset-0 z-50 bg-paper-ink/50 backdrop-blur-sm" onClick={closeCart} />
 
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-md bg-white border-l border-gray-200 flex flex-col">
+      {/* Drawer — estilo ticket de papel */}
+      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-md bg-paper-bg border-l border-paper-line flex flex-col">
+        {/* Franja perforada */}
+        <div className="h-2 shrink-0" style={{ backgroundImage: 'radial-gradient(circle, rgba(32,30,29,.18) 1.5px, transparent 1.5px)', backgroundSize: '10px 10px', backgroundPosition: 'center' }} />
+
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-200">
-          <h2 className="text-lg font-bold flex items-center gap-2 text-gray-900">
-            <ShoppingBag className="h-5 w-5 text-brand-blue-600" />
-            Tu carrito
-            {items.length > 0 && <span className="text-sm text-gray-400">({items.length} productos)</span>}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-dashed border-paper-line">
+          <h2 className="text-sm font-bold tracking-[.08em] uppercase flex items-center gap-2 text-paper-ink">
+            <ShoppingBag className="h-4 w-4 text-brand-green-600" />
+            Ticket · Tu pedido
+            {items.length > 0 && <span className="text-xs font-normal normal-case text-paper-ink-ghost">({items.length})</span>}
           </h2>
-          <button onClick={closeCart} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <X className="h-5 w-5 text-gray-500" />
+          <button onClick={closeCart} className="p-2 hover:bg-paper-surface rounded-full transition-colors">
+            <X className="h-5 w-5 text-paper-ink-soft" />
           </button>
         </div>
 
         {/* Items */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto p-4">
           {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-300">
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-paper-ink-ghost">
               <ShoppingBag className="h-16 w-16" />
-              <p className="text-lg text-gray-400">Tu carrito está vacío</p>
-              <button onClick={closeCart} className="text-brand-blue-600 hover:text-brand-blue-700 text-sm transition-colors">
+              <p className="text-lg text-paper-ink-faint">Tu carrito está vacío</p>
+              <button onClick={closeCart} className="text-brand-green-600 hover:text-brand-green-700 text-sm transition-colors">
                 Explorar productos →
               </button>
             </div>
           ) : (
-            items.map(item => (
-              <div key={item.product.id} className="flex gap-3 bg-gray-50 rounded-xl p-3">
+            items.map((item, idx) => (
+              <div key={item.product.id} className={`flex gap-3 py-3 ${idx > 0 ? 'border-t border-dashed border-paper-line' : ''}`}>
                 {item.product.imageUrl ? (
                   <img src={item.product.imageUrl} alt={item.product.name}
-                    className="h-16 w-16 rounded-lg object-cover shrink-0" />
+                    className="h-16 w-16 rounded-xl object-cover shrink-0" />
                 ) : (
-                  <div className="h-16 w-16 rounded-lg bg-gray-200 shrink-0 flex items-center justify-center">
-                    <ShoppingBag className="h-6 w-6 text-gray-400" />
+                  <div className="h-16 w-16 rounded-xl bg-paper-surface shrink-0 flex items-center justify-center">
+                    <ShoppingBag className="h-6 w-6 text-paper-ink-ghost" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-gray-900 line-clamp-2 leading-tight">{item.product.name}</p>
-                  <p className="text-gray-400 text-xs mt-0.5">
+                  <p className="font-medium text-sm text-paper-ink line-clamp-2 leading-tight">{item.product.name}</p>
+                  <p className="text-paper-ink-ghost text-xs mt-0.5">
                     {item.product.description
                       ? <span className="text-brand-green-600">{item.product.description}</span>
                       : `S/ ${Number(item.product.salePrice).toFixed(2)} c/u`}
@@ -77,21 +80,21 @@ export function CartDrawer() {
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-1.5">
                       <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                        className="h-6 w-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors">
-                        <Minus className="h-2.5 w-2.5 text-gray-700" />
+                        className="h-6 w-6 rounded-full bg-paper-surface hover:bg-paper-line flex items-center justify-center transition-colors">
+                        <Minus className="h-2.5 w-2.5 text-paper-ink-soft" />
                       </button>
-                      <span className="w-6 text-center text-sm font-bold text-gray-900">{item.quantity}</span>
+                      <span className="w-6 text-center text-sm font-bold text-paper-ink">{item.quantity}</span>
                       <button onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                        className="h-6 w-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors">
-                        <Plus className="h-2.5 w-2.5 text-gray-700" />
+                        className="h-6 w-6 rounded-full bg-paper-surface hover:bg-paper-line flex items-center justify-center transition-colors">
+                        <Plus className="h-2.5 w-2.5 text-paper-ink-soft" />
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-brand-green-700 font-bold text-sm">
+                      <span className="text-paper-ink font-bold text-sm tabular-nums">
                         S/ {(Number(item.product.salePrice) * item.quantity).toFixed(2)}
                       </span>
                       <button onClick={() => removeItem(item.product.id)}
-                        className="text-red-400 hover:text-red-600 transition-colors">
+                        className="text-brand-magenta-400 hover:text-brand-magenta-600 transition-colors">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -104,13 +107,13 @@ export function CartDrawer() {
 
         {/* Footer */}
         {items.length > 0 && (
-          <div className="p-5 border-t border-gray-200 space-y-3">
-            <div className="flex justify-between text-lg font-bold text-gray-900">
+          <div className="p-5 border-t border-dashed border-paper-line space-y-3">
+            <div className="flex justify-between text-lg font-bold text-paper-ink">
               <span>Total</span>
-              <span className="text-brand-green-700">S/ {total.toFixed(2)}</span>
+              <span className="text-brand-green-700 tabular-nums">S/ {total.toFixed(2)}</span>
             </div>
             <button onClick={handleCheckout}
-              className="w-full bg-brand-blue-600 hover:bg-brand-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors text-sm">
+              className="w-full bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold py-3.5 rounded-xl shadow-md shadow-brand-green-600/25 transition-colors text-sm">
               Hacer pedido online
             </button>
             <button onClick={handleWhatsApp}
@@ -119,7 +122,7 @@ export function CartDrawer() {
               Pedir por WhatsApp
             </button>
             <button onClick={() => { clearCart(); closeCart() }}
-              className="w-full text-gray-400 hover:text-gray-600 text-xs transition-colors py-1">
+              className="w-full text-paper-ink-ghost hover:text-paper-ink-soft text-xs transition-colors py-1">
               Vaciar carrito
             </button>
           </div>

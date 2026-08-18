@@ -6,11 +6,12 @@ import type { Offer } from '../api'
 
 const AUTOPLAY_MS = 6000
 
-// Alterna azul/verde de marca para que el carrusel se sienta variado sin
-// salirse de la paleta — cada slide un color distinto al anterior.
+// Alterna verde y azul de marca para que el carrusel no se sienta monocromo —
+// cada slide un tono distinto al anterior, ciclando entre los dos acentos.
 const GRADIENTS = [
-  'from-brand-blue-700 to-brand-blue-900',
-  'from-brand-green-700 to-brand-green-900',
+  'from-brand-green-600 to-brand-green-900',
+  'from-brand-blue-600 to-brand-blue-900',
+  'from-paper-ink to-brand-blue-800',
 ]
 
 function getOfferBadgeText(offer: Offer) {
@@ -48,7 +49,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
 
   return (
     <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-      <div className="relative rounded-2xl overflow-hidden group h-56 sm:h-72"
+      <div className="relative rounded-3xl overflow-hidden shadow-lg group h-56 sm:h-72"
         onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
           <motion.div
@@ -84,7 +85,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                 className="relative z-10 px-6 sm:px-14 max-w-lg"
               >
                 {offer.storeBadge && (
-                  <span className="inline-block bg-white text-gray-900 text-xs font-black px-3 py-1 rounded-full mb-3 animate-pulse">
+                  <span className="inline-block bg-white text-paper-ink text-xs font-black px-3 py-1 rounded-full mb-3 animate-pulse">
                     {offer.storeBadge}
                   </span>
                 )}
@@ -92,7 +93,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                 {offer.description && <p className="text-white/70 text-sm mb-3 hidden sm:block">{offer.description}</p>}
                 <p className="text-2xl sm:text-4xl font-black text-white mb-4">{getOfferBadgeText(offer)}</p>
                 <motion.span whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}
-                  className="inline-block bg-white/95 text-gray-900 font-bold px-5 py-2.5 rounded-full text-sm">
+                  className="inline-block bg-white/95 text-paper-ink font-bold px-5 py-2.5 rounded-full text-sm">
                   Ver oferta
                 </motion.span>
               </motion.div>
@@ -102,7 +103,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                 <div className="hidden sm:flex absolute right-6 md:right-16 top-1/2 -translate-y-1/2 h-40 md:h-52 w-40 md:w-52 bg-white/95 rounded-2xl items-center justify-center shadow-2xl">
                   {firstProduct?.imageUrl
                     ? <img src={firstProduct.imageUrl} alt={firstProduct.name} className="h-full w-full object-contain p-4" />
-                    : <ShoppingBag className="h-16 w-16 text-gray-200" />}
+                    : <ShoppingBag className="h-16 w-16 text-paper-ink-ghost" />}
                 </div>
               )}
             </Link>
@@ -114,11 +115,11 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
           <>
             <button onClick={(e) => { e.preventDefault(); go(index - 1, -1) }} aria-label="Anterior"
               className="absolute left-3 top-1/2 -translate-y-1/2 h-9 w-9 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-20">
-              <ChevronLeft className="h-5 w-5 text-gray-700" />
+              <ChevronLeft className="h-5 w-5 text-paper-ink-soft" />
             </button>
             <button onClick={(e) => { e.preventDefault(); go(index + 1, 1) }} aria-label="Siguiente"
               className="absolute right-3 top-1/2 -translate-y-1/2 h-9 w-9 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-20">
-              <ChevronRight className="h-5 w-5 text-gray-700" />
+              <ChevronRight className="h-5 w-5 text-paper-ink-soft" />
             </button>
 
             {/* Paginación */}
