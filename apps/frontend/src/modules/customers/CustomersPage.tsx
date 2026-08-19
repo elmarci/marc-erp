@@ -15,6 +15,10 @@ import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
+interface StoreAccount {
+  id: string; email: string | null; authProvider: string; createdAt: string;
+}
+
 interface Customer {
   id: string; firstName: string; lastName: string | null;
   taxId: string | null; taxIdType: string | null;
@@ -22,7 +26,10 @@ interface Customer {
   address: string | null; type: string;
   creditLimit: number; currentBalance: number; loyaltyPoints: number; isActive: boolean;
   notes: string | null; createdAt: string;
+  storeAccounts?: StoreAccount[];
 }
+
+const AUTH_PROVIDER_LABELS: Record<string, string> = { PASSWORD: 'Correo/contraseña', GOOGLE: 'Google' };
 
 interface Sale {
   id: string; saleNumber: string; totalAmount: number; paidAmount: number; isCredit: boolean; status: string;
@@ -403,7 +410,12 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
       <div className="w-full max-w-2xl rounded-2xl bg-card shadow-2xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between border-b p-5">
           <div>
-            <h2 className="text-lg font-bold">{customer.firstName} {customer.lastName}</h2>
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              {customer.firstName} {customer.lastName}
+              {customer.storeAccounts && customer.storeAccounts.length > 0 && (
+                <Badge variant="secondary">🛒 Tienda online</Badge>
+              )}
+            </h2>
             {customer.taxId && <p className="text-sm text-muted-foreground">{customer.taxIdType}: {customer.taxId}</p>}
           </div>
           <div className="flex gap-2">
@@ -446,6 +458,16 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
                 </span>
                 <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{customer.loyaltyPoints}</span>
               </div>
+              {customer.storeAccounts && customer.storeAccounts.length > 0 && (
+                <div className="rounded-lg bg-blue-500/10 px-3 py-2 text-xs text-blue-700 dark:text-blue-400 space-y-0.5">
+                  {customer.storeAccounts.map(sa => (
+                    <p key={sa.id}>
+                      🛒 Se registró en la tienda online el {formatDate(sa.createdAt)} vía {AUTH_PROVIDER_LABELS[sa.authProvider] ?? sa.authProvider}
+                      {sa.email ? ` · ${sa.email}` : ''}
+                    </p>
+                  ))}
+                </div>
+              )}
               {customer.notes && <p className="text-xs text-muted-foreground italic">"{customer.notes}"</p>}
               <p className="text-xs text-muted-foreground">Cliente desde {formatDate(customer.createdAt)}</p>
             </div>
@@ -585,14 +607,19 @@ export function CustomersPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
+  const [onlineOnly, setOnlineOnly] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | undefined>();
   const [detailCustomer, setDetailCustomer] = useState<Customer | undefined>();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', page, debouncedSearch],
+    queryKey: ['customers', page, debouncedSearch, onlineOnly],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '25', ...(debouncedSearch ? { search: debouncedSearch } : {}) });
+      const params = new URLSearchParams({
+        page: String(page), limit: '25',
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+        ...(onlineOnly ? { onlineOnly: 'true' } : {}),
+      });
       const res = await api.get<{ data: Customer[]; pagination: { total: number; totalPages: number } }>(`/customers?${params}`);
       return res.data;
     },
@@ -624,10 +651,18 @@ export function CustomersPage() {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Buscar por nombre, DNI, teléfono..."
-          value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+      <div className="flex items-center gap-3">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Buscar por nombre, DNI, teléfono..."
+            value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer whitespace-nowrap">
+          <input type="checkbox" checked={onlineOnly}
+            onChange={e => { setOnlineOnly(e.target.checked); setPage(1); }}
+            className="h-4 w-4 rounded border-input" />
+          🛒 Solo tienda online
+        </label>
       </div>
 
       <Card>
@@ -659,7 +694,10 @@ export function CustomersPage() {
                     <tr key={c.id} className="hover:bg-muted/30 cursor-pointer"
                       onClick={() => setDetailCustomer(c)}>
                       <td className="px-4 py-3">
-                        <p className="font-medium">{c.firstName} {c.lastName}</p>
+                        <p className="font-medium flex items-center gap-1.5">
+                          {c.firstName} {c.lastName}
+                          {c.storeAccounts && c.storeAccounts.length > 0 && <span title="Registrado en la tienda online">🛒</span>}
+                        </p>
                         {c.businessName && <p className="text-xs text-muted-foreground">{c.businessName}</p>}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">

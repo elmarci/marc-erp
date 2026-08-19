@@ -68,12 +68,14 @@ router.get('/export', async (req: Request, res: Response, next: NextFunction) =>
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page = '1', limit = '25', search, type } = req.query as Record<string, string>;
+    const { page = '1', limit = '25', search, type, onlineOnly } = req.query as Record<string, string>;
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    const isOnlineOnly = onlineOnly === 'true';
 
     const where: Prisma.CustomerWhereInput = {
       deletedAt: null,
       ...(type ? { type: type as never } : {}),
+      ...(isOnlineOnly ? { storeAccounts: { some: {} } } : {}),
       ...(search ? {
         OR: [
           { firstName: { contains: search, mode: 'insensitive' } },
@@ -84,8 +86,15 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       } : {}),
     };
 
+    // Con el filtro de clientes de la tienda online, lo más útil es ver
+    // primero a los que se acaban de registrar, no orden alfabético.
+    const orderBy: Prisma.CustomerOrderByWithRelationInput = isOnlineOnly ? { createdAt: 'desc' } : { firstName: 'asc' };
+
     const [customers, total] = await prisma.$transaction([
-      prisma.customer.findMany({ where, skip, take: parseInt(limit), orderBy: { firstName: 'asc' } }),
+      prisma.customer.findMany({
+        where, skip, take: parseInt(limit), orderBy,
+        include: { storeAccounts: { select: { id: true, email: true, authProvider: true, createdAt: true } } },
+      }),
       prisma.customer.count({ where }),
     ]);
 
