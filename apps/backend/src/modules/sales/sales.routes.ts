@@ -22,6 +22,20 @@ const saleItemSchema = z.object({
   unitPrice: z.coerce.number().min(0).optional(),
   discountAmount: z.coerce.number().min(0).optional(),
   discountPercent: z.coerce.number().min(0).max(100).optional(),
+  // Sólo se usa para el producto comodín "Otros / Venta varios" (ver
+  // Product.isMiscItem) — descripción libre de qué se vendió. Para
+  // cualquier otro producto el backend ignora este campo y usa el nombre
+  // real del catálogo, para que el ticket no pueda falsificarse.
+  productName: z.string().trim().min(1).max(120).optional(),
+});
+
+const bottleDepositItemSchema = z.object({
+  productId: z.string().uuid(),
+  quantity: z.coerce.number().int().positive(),
+  // true = se cobró la garantía (dinero real recibido, pasivo por devolver);
+  // false = se prestó el envase sin cobrar (igual pasivo, pero sin dinero de
+  // por medio — no se le devuelve nada cuando lo traiga de vuelta).
+  paid: z.boolean(),
 });
 
 const paymentSchema = z.object({
@@ -37,6 +51,7 @@ const createSaleSchema = z.object({
   documentType: z.nativeEnum(DocumentType).optional().nullable(),
   items: z.array(saleItemSchema).min(1, 'La venta debe tener al menos un producto'),
   payments: z.array(paymentSchema).min(1, 'Debe registrar al menos un pago'),
+  bottleDeposits: z.array(bottleDepositItemSchema).optional(),
   discountAmount: z.number().min(0).optional(),
   discountPercent: z.number().min(0).max(100).optional(),
   isCredit: z.boolean().optional(),

@@ -21,6 +21,7 @@ interface Product {
   isBulk: boolean;
   bulkUnit: string | null;
   isFavorite?: boolean;
+  bottleDeposit?: number;
   category: { name: string };
 }
 
@@ -546,6 +547,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       discountAmount,
       discountPercent: 0,
       stock: product.currentStock,
+      bottleDepositUnit: Number(product.bottleDeposit ?? 0) || undefined,
     });
     // El nombre mostrado en el carrito incluye el peso para productos a
     // granel — si la cantidad terminó topada por el stock (o ya había algo

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star, PackagePlus, GlassWater } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,6 +111,66 @@ function LoyaltyPointsBanner({ customerId }: { customerId: string }) {
   );
 }
 
+/* ─── Venta excepcional de algo fuera de catálogo ────────────────────────── */
+function MiscItemModal({ onAdd, onClose }: {
+  onAdd: (input: { productId: string; description: string; amount: number; quantity: number }) => void;
+  onClose: () => void;
+}) {
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [quantity, setQuantity] = useState('1');
+
+  const { data: miscProductId, isLoading } = useQuery({
+    queryKey: ['pos-misc-item'],
+    queryFn: async () => (await api.get<{ data: { id: string } }>('/products/misc-item')).data.data.id,
+    staleTime: Infinity,
+  });
+
+  const amountNum = parseFloat(amount);
+  const qtyNum = parseInt(quantity, 10);
+  const canSubmit = !!miscProductId && description.trim().length > 0 && amountNum > 0 && qtyNum > 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-4">
+          <h3 className="font-semibold flex items-center gap-2"><PackagePlus className="h-4 w-4 text-primary" />Venta excepcional</h3>
+          <button onClick={onClose}><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Para algo que vendiste y no está registrado en el catálogo — se anota en la venta pero no descuenta stock de ningún producto.
+          </p>
+          <div>
+            <label className="mb-1 block text-sm font-medium">¿Qué vendiste?</label>
+            <Input autoFocus value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej: Candado chico" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Monto (S/)</label>
+              <Input type="number" min={0.01} step={0.10} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Cantidad</label>
+              <Input type="number" min={1} step={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <div className="border-t p-4 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button
+            loading={isLoading}
+            disabled={!canSubmit}
+            onClick={() => onAdd({ productId: miscProductId!, description: description.trim(), amount: amountNum, quantity: qtyNum })}
+          >
+            Agregar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CustomerSearchModal({ onSelect, onClose }: {
   onSelect: (id: string, name: string) => void;
   onClose: () => void;
@@ -171,10 +231,25 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
     items, subtotal, discountAmount, taxAmount, total,
     updateQuantity, removeItem, clearCart, customerId, customerName, setCustomer,
     globalDiscountPercent, globalDiscountAmount, setGlobalDiscount,
+    addItem, setBottleDepositChoice,
   } = usePosStore();
 
   const discountRef = useRef<HTMLInputElement>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+  const [showMiscItem, setShowMiscItem] = useState(false);
+  // Cuando el cajero elige "Prestar" el envase sin cliente asignado, hay que
+  // pedirle uno primero (si no, luego no hay a quién cobrarle) — este estado
+  // recuerda para qué línea era, para aplicar la elección recién se asigne.
+  const [pendingLoanProductId, setPendingLoanProductId] = useState<string | null>(null);
+
+  const handleBottleDepositChoice = (productId: string, choice: 'CHARGE' | 'LOAN') => {
+    if (choice === 'LOAN' && !customerId) {
+      setPendingLoanProductId(productId);
+      setShowCustomerSearch(true);
+      return;
+    }
+    setBottleDepositChoice(productId, choice);
+  };
   // Descuento global por % (del subtotal) o por monto fijo en soles —
   // mutuamente excluyentes, igual que ya soporta el store internamente.
   const [discountMode, setDiscountMode] = useState<'percent' | 'amount'>('percent');
@@ -210,6 +285,16 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {/* Venta excepcional (algo fuera de catálogo) */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title="Vender algo que no está en el catálogo"
+            className="text-muted-foreground"
+            onClick={() => setShowMiscItem(true)}
+          >
+            <PackagePlus className="h-4 w-4" />
+          </Button>
           {/* Cliente */}
           <Button
             variant="ghost"
@@ -328,6 +413,36 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
                     </p>
                   </div>
                 </div>
+
+                {/* Envase retornable — cobrar garantía / prestar sin cobrar */}
+                {!!item.bottleDepositUnit && (
+                  <div className="mt-2 flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1.5">
+                    <GlassWater className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      Envase {formatCurrency(item.bottleDepositUnit)} c/u:
+                    </span>
+                    <div className="flex gap-1 ml-auto">
+                      <button type="button"
+                        onClick={() => handleBottleDepositChoice(item.productId, 'CHARGE')}
+                        className={cn('rounded px-2 py-0.5 text-xs font-medium transition-colors',
+                          item.bottleDepositChoice === 'CHARGE' ? 'bg-primary text-primary-foreground' : 'bg-background border text-muted-foreground hover:text-foreground')}>
+                        Cobrar
+                      </button>
+                      <button type="button"
+                        onClick={() => handleBottleDepositChoice(item.productId, 'LOAN')}
+                        className={cn('rounded px-2 py-0.5 text-xs font-medium transition-colors',
+                          item.bottleDepositChoice === 'LOAN' ? 'bg-amber-500 text-white' : 'bg-background border text-muted-foreground hover:text-foreground')}>
+                        Prestar
+                      </button>
+                      {item.bottleDepositChoice && (
+                        <button type="button" onClick={() => setBottleDepositChoice(item.productId, null)}
+                          className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-destructive">
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -413,8 +528,33 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
 
     {showCustomerSearch && (
       <CustomerSearchModal
-        onSelect={(id, name) => { setCustomer(id, name); setShowCustomerSearch(false); }}
-        onClose={() => setShowCustomerSearch(false)}
+        onSelect={(id, name) => {
+          setCustomer(id, name);
+          setShowCustomerSearch(false);
+          if (pendingLoanProductId) {
+            setBottleDepositChoice(pendingLoanProductId, 'LOAN');
+            setPendingLoanProductId(null);
+          }
+        }}
+        onClose={() => { setShowCustomerSearch(false); setPendingLoanProductId(null); }}
+      />
+    )}
+
+    {showMiscItem && (
+      <MiscItemModal
+        onAdd={({ productId, description, amount, quantity }) => {
+          // Cada venta excepcional es su propia línea aunque comparta el
+          // mismo producto comodín — un id único evita que dos "Otros" con
+          // descripción/precio distintos se mezclen en una sola línea.
+          addItem({
+            productId: `${productId}#${crypto.randomUUID()}`, name: description, barcode: null, quantity,
+            unitPrice: amount, originalPrice: amount, discountAmount: 0, discountPercent: 0,
+            stock: quantity,
+          });
+          toast.success(`${description} agregado — ${formatCurrency(amount * quantity)}`);
+          setShowMiscItem(false);
+        }}
+        onClose={() => setShowMiscItem(false)}
       />
     )}
     </>

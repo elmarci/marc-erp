@@ -14,6 +14,13 @@ interface SaleItemInput {
   unitPrice?: number;
   discountAmount?: number;
   discountPercent?: number;
+  productName?: string;
+}
+
+interface BottleDepositItemInput {
+  productId: string;
+  quantity: number;
+  paid: boolean;
 }
 
 interface SalePaymentInput {
@@ -38,6 +45,7 @@ export interface CreateSaleInput {
   pointsToRedeem?: number;
   isOfflineSync?: boolean;
   offlineCreatedAt?: Date;
+  bottleDeposits?: BottleDepositItemInput[];
 }
 
 export interface ReturnSaleInput {
@@ -150,10 +158,23 @@ export class SalesService {
     // alguien lo revise, en vez de perder la venta ya cobrada al cliente.
     for (const item of input.items) {
       const product = products.find((p) => p.id === item.productId)!;
+      if (product.isMiscItem) continue; // no maneja stock — venta excepcional de algo fuera de catálogo
       if (Number(product.currentStock) < item.quantity && !input.isOfflineSync) {
         throw new BusinessError(
           `Stock insuficiente para "${product.name}". Disponible: ${product.currentStock}, solicitado: ${item.quantity}.`,
         );
+      }
+    }
+
+    // Envases: sólo se puede cobrar/prestar garantía de un producto que
+    // realmente está en esta venta y que de verdad maneja envase retornable.
+    for (const bd of input.bottleDeposits ?? []) {
+      const product = products.find((p) => p.id === bd.productId);
+      if (!product || !input.items.some((i) => i.productId === bd.productId)) {
+        throw new BusinessError('El envase debe corresponder a un producto que está en esta venta.');
+      }
+      if (Number(product.bottleDeposit) <= 0) {
+        throw new BusinessError(`"${product.name}" no maneja garantía de envase.`);
       }
     }
 
@@ -180,7 +201,7 @@ export class SalesService {
         // para poder calcular el margen real de esta venta después, aunque
         // el costo del producto siga cambiando con compras futuras.
         costPrice: Number(product.costPrice),
-        productName: product.name,
+        productName: product.isMiscItem && item.productName ? item.productName : product.name,
         productBarcode: product.barcode,
       };
     });
@@ -322,6 +343,8 @@ export class SalesService {
       // Reducir stock y registrar movimientos
       for (const item of saleItems) {
         const product = products.find((p) => p.id === item.productId)!;
+        if (product.isMiscItem) continue; // no maneja stock
+
         const newStock = Number(product.currentStock) - item.quantity;
 
         await tx.product.update({
@@ -415,6 +438,33 @@ export class SalesService {
             expiresAt,
           },
         });
+      }
+
+      // Envases retornables — pasivo aparte de la venta (no es ingreso), pero
+      // registrado en el mismo momento y ligado a esta venta y a este cliente
+      // para saber después a quién devolverle el dinero (o sólo recibir el
+      // envase de vuelta si nunca se cobró nada).
+      for (const bd of input.bottleDeposits ?? []) {
+        const product = products.find((p) => p.id === bd.productId)!;
+        const amount = bd.paid ? bd.quantity * Number(product.bottleDeposit) : 0;
+
+        await tx.bottleDepositMovement.create({
+          data: {
+            productId: bd.productId, type: 'CHARGED', quantity: bd.quantity, amount,
+            method: 'CASH', cashSessionId: input.cashSessionId, userId: input.cashierId,
+            customerId: input.customerId, saleId: newSale.id,
+            notes: bd.paid ? undefined : 'Envase prestado sin cobrar garantía',
+          },
+        });
+
+        if (amount > 0) {
+          await tx.cashMovement.create({
+            data: {
+              cashSessionId: input.cashSessionId, type: 'DEPOSIT', amount,
+              reason: `Garantía de envase — ${product.name} x${bd.quantity}`,
+            },
+          });
+        }
       }
 
       return { ...newSale, generatedCoupon };

@@ -107,6 +107,13 @@ router.get('/low-stock', async (req: Request, res: Response, next: NextFunction)
   } catch (err) { next(err); }
 });
 
+router.get('/misc-item', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const product = await productsService.getOrCreateMiscItem();
+    res.json({ success: true, data: product });
+  } catch (err) { next(err); }
+});
+
 router.get('/barcode/:barcode', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const product = await productsService.getByBarcode(req.params.barcode);

@@ -12,11 +12,21 @@ const moveSchema = z.object({
   method: z.enum(['CASH', 'YAPE', 'PLIN', 'TRANSFER', 'DEBIT_CARD', 'CREDIT_CARD', 'OTHER']),
   cashSessionId: z.string().uuid().optional(),
   notes: z.string().optional(),
+  customerId: z.string().uuid().optional(),
+  paid: z.boolean().optional(),
+  amount: z.coerce.number().min(0).optional(),
 });
 
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await bottleDepositsService.listOutstanding();
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.get('/by-customer', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await bottleDepositsService.listOutstandingByCustomer();
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 });

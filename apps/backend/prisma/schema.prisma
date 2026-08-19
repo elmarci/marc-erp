@@ -479,6 +479,12 @@ model Product {
   // otros que no vienen con empaque) — el cajero los encuentra con un toque
   // en vez de tener que buscarlos por nombre.
   isFavorite     Boolean       @default(false) @map("is_favorite")
+  // Producto "comodín" para vender algo excepcional que no está en el
+  // catálogo (ej. un artículo suelto que no se registró) — el cajero pone
+  // descripción y monto libres en el POS. No descuenta stock ni entra en
+  // reportes de inventario. Sólo debe existir un puñado de estos (idealmente
+  // uno), creados on-demand por el backend — ver products.service.getOrCreateMiscItem.
+  isMiscItem     Boolean       @default(false) @map("is_misc_item")
   // Garantía por envase retornable (ej. S/1 por botella) — 0 significa que
   // este producto no maneja envase con garantía. Independiente de la venta:
   // se cobra/devuelve por su cuenta, nunca como parte del ticket de venta.
@@ -885,10 +891,11 @@ model Customer {
   updatedAt      DateTime     @updatedAt @map("updated_at")
   deletedAt      DateTime?    @map("deleted_at")
 
-  sales         Sale[]
-  debtPayments  CustomerDebtPayment[]
-  coupons       Coupon[]
-  storeAccounts StoreCustomer[]
+  sales           Sale[]
+  debtPayments    CustomerDebtPayment[]
+  coupons         Coupon[]
+  storeAccounts   StoreCustomer[]
+  bottleDeposits  BottleDepositMovement[]
 
   @@index([taxId])
   @@index([phone])
@@ -990,15 +997,27 @@ model BottleDepositMovement {
   method        PaymentMethod
   cashSessionId String?           @map("cash_session_id")
   userId        String            @map("user_id")
+  // A quién se le cobró/prestó el envase — sin esto era imposible saber
+  // "quién me debe una botella" (antes sólo se llevaba el total agregado por
+  // producto). Nullable: sigue permitiendo movimientos anónimos sueltos.
+  customerId    String?           @map("customer_id")
+  // Venta de la que salió este movimiento, cuando se originó ahí — permite
+  // cobrar/prestar el envase en el mismo momento de vender, no como paso
+  // aparte manual en Caja.
+  saleId        String?           @map("sale_id")
   notes         String?
   createdAt     DateTime          @default(now()) @map("created_at")
 
   product     Product      @relation(fields: [productId], references: [id])
   cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
   user        User         @relation(fields: [userId], references: [id])
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  sale        Sale?        @relation(fields: [saleId], references: [id])
 
   @@index([productId])
   @@index([cashSessionId])
+  @@index([customerId])
+  @@index([saleId])
   @@map("bottle_deposit_movements")
 }
 
@@ -1164,6 +1183,7 @@ model Sale {
   debtPayments          CustomerDebtPayment[]
   promotionApplications PromotionApplication[]
   couponGenerated       Coupon?                @relation("CouponSourceSale")
+  bottleDeposits        BottleDepositMovement[]
   couponRedeemed        Coupon?                @relation("CouponRedeemedSale")
 
   @@index([cashSessionId])

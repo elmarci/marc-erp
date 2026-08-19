@@ -10,6 +10,7 @@ export interface CachedProduct {
   imageUrl: string | null;
   isBulk: boolean;
   bulkUnit: string | null;
+  bottleDeposit?: number;
   category: { name: string };
 }
 

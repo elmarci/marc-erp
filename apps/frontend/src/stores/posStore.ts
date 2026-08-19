@@ -16,6 +16,12 @@ export interface CartItem {
   // sentido de "2 por S/9" (quedaría vendiendo cantidades sueltas al precio
   // rebajado del paquete).
   packSize?: number;
+  // Envase retornable — monto de garantía por unidad (0/undefined = no
+  // aplica) y qué decidió el cajero para TODA la cantidad de esta línea:
+  // cobrar la garantía, prestar el envase sin cobrar, o no gestionarlo esta
+  // venta (undefined).
+  bottleDepositUnit?: number;
+  bottleDepositChoice?: 'CHARGE' | 'LOAN';
 }
 
 export interface CartPayment {
@@ -54,6 +60,7 @@ interface PosState {
   addItem: (item: Omit<CartItem, 'subtotal'>) => { addedQuantity: number; finalQuantity: number; capped: boolean };
   updateQuantity: (productId: string, quantity: number) => { finalQuantity: number; capped: boolean };
   renameItem: (productId: string, name: string) => void;
+  setBottleDepositChoice: (productId: string, choice: 'CHARGE' | 'LOAN' | null) => void;
   updateDiscount: (productId: string, discountAmount: number, discountPercent: number) => void;
   removeItem: (productId: string) => void;
   setCustomer: (id: string | null, name: string | null) => void;
@@ -173,6 +180,11 @@ export const usePosStore = create<PosState>()((set, get) => ({
   renameItem: (productId, name) => {
     const { items } = get();
     set({ items: items.map((i) => (i.productId === productId ? { ...i, name } : i)) });
+  },
+
+  setBottleDepositChoice: (productId, choice) => {
+    const { items } = get();
+    set({ items: items.map((i) => (i.productId === productId ? { ...i, bottleDepositChoice: choice ?? undefined } : i)) });
   },
 
   updateDiscount: (productId, discountAmount, discountPercent) => {

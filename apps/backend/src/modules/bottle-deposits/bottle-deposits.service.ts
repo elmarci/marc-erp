@@ -10,6 +10,13 @@ export interface DepositMoveInput {
   cashSessionId?: string;
   userId: string;
   notes?: string;
+  customerId?: string;
+  // charge(): si es false, se presta el envase sin cobrar nada (amount=0,
+  // sigue quedando registrado como pendiente). Default true (comportamiento
+  // de siempre). return(): monto explícito a devolver — si no se manda, se
+  // usa el cálculo de siempre (cantidad × garantía del producto).
+  paid?: boolean;
+  amount?: number;
 }
 
 export class BottleDepositsService {
@@ -87,6 +94,70 @@ export class BottleDepositsService {
     return charged - returned;
   }
 
+  /** Cuánto debe (en botellas y en plata) un cliente puntual de un producto puntual. */
+  private async getOutstandingForCustomer(customerId: string, productId: string): Promise<{ qty: number; amount: number }> {
+    const rows = await prisma.bottleDepositMovement.groupBy({
+      by: ['type'],
+      where: { customerId, productId },
+      _sum: { quantity: true, amount: true },
+    });
+    const charged = rows.find(r => r.type === 'CHARGED');
+    const returned = rows.find(r => r.type === 'RETURNED');
+    return {
+      qty: (charged?._sum.quantity ?? 0) - (returned?._sum.quantity ?? 0),
+      amount: Number(charged?._sum.amount ?? 0) - Number(returned?._sum.amount ?? 0),
+    };
+  }
+
+  /** Clientes con envases pendientes — para saber "quién me debe una botella". */
+  async listOutstandingByCustomer() {
+    const movements = await prisma.bottleDepositMovement.groupBy({
+      by: ['customerId', 'productId', 'type'],
+      where: { customerId: { not: null } },
+      _sum: { quantity: true, amount: true },
+    });
+
+    const byKey = new Map<string, { customerId: string; productId: string; qty: number; amount: number }>();
+    for (const m of movements) {
+      const key = `${m.customerId}:${m.productId}`;
+      const entry = byKey.get(key) ?? { customerId: m.customerId!, productId: m.productId, qty: 0, amount: 0 };
+      const sign = m.type === 'CHARGED' ? 1 : -1;
+      entry.qty += sign * (m._sum.quantity ?? 0);
+      entry.amount += sign * Number(m._sum.amount ?? 0);
+      byKey.set(key, entry);
+    }
+
+    const pending = [...byKey.values()].filter(e => e.qty > 0);
+    if (pending.length === 0) return { data: [] };
+
+    const [customers, products] = await Promise.all([
+      prisma.customer.findMany({
+        where: { id: { in: [...new Set(pending.map(p => p.customerId))] } },
+        select: { id: true, firstName: true, lastName: true, phone: true },
+      }),
+      prisma.product.findMany({
+        where: { id: { in: [...new Set(pending.map(p => p.productId))] } },
+        select: { id: true, name: true, barcode: true },
+      }),
+    ]);
+    const customerMap = new Map(customers.map(c => [c.id, c]));
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    const data = pending.map(p => ({
+      customerId: p.customerId,
+      customerName: customerMap.get(p.customerId)
+        ? `${customerMap.get(p.customerId)!.firstName} ${customerMap.get(p.customerId)!.lastName ?? ''}`.trim()
+        : 'Cliente eliminado',
+      customerPhone: customerMap.get(p.customerId)?.phone ?? null,
+      productId: p.productId,
+      productName: productMap.get(p.productId)?.name ?? 'Producto eliminado',
+      outstandingQty: p.qty,
+      outstandingAmount: p.amount,
+    })).sort((a, b) => a.customerName.localeCompare(b.customerName));
+
+    return { data };
+  }
+
   /**
    * Cobra la garantía por N envases — dinero real que entra a caja, pero NO
    * es venta: no toca stock ni margen, es un pasivo que se le debe al
@@ -99,11 +170,12 @@ export class BottleDepositsService {
     if (!product) throw new NotFoundError('Producto');
     if (Number(product.bottleDeposit) <= 0) throw new BusinessError('Este producto no maneja garantía de envase.');
 
-    const amount = input.quantity * Number(product.bottleDeposit);
+    const paid = input.paid ?? true;
+    const amount = paid ? input.quantity * Number(product.bottleDeposit) : 0;
     const description = `Garantía de envase — ${product.name} x${input.quantity}`;
 
     let cashSession = null;
-    if (input.method === 'CASH' && input.cashSessionId) {
+    if (paid && input.method === 'CASH' && input.cashSessionId) {
       cashSession = await prisma.cashSession.findFirst({ where: { id: input.cashSessionId, status: 'OPEN' } });
     }
 
@@ -111,9 +183,12 @@ export class BottleDepositsService {
       await tx.bottleDepositMovement.create({
         data: {
           productId: input.productId, type: 'CHARGED', quantity: input.quantity, amount,
-          method: input.method as never, cashSessionId: cashSession?.id, userId: input.userId, notes: input.notes,
+          method: input.method as never, cashSessionId: cashSession?.id, userId: input.userId,
+          customerId: input.customerId, notes: input.notes ?? (paid ? undefined : 'Envase prestado sin cobrar garantía'),
         },
       });
+
+      if (!paid) return;
 
       if (cashSession) {
         await tx.cashMovement.create({
@@ -140,16 +215,25 @@ export class BottleDepositsService {
     const product = await prisma.product.findFirst({ where: { id: input.productId, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');
 
-    const outstanding = await this.getOutstandingQty(input.productId);
-    if (input.quantity > outstanding) {
-      throw new BusinessError(`Solo hay ${outstanding} envase(s) pendiente(s) de este producto — no se puede devolver más de eso.`);
+    // Si viene un cliente puntual, el pendiente se valida contra SU saldo
+    // (puede tener mezcla de envases pagados y prestados) — sin cliente se
+    // sigue validando contra el total del producto, como antes.
+    const outstanding = input.customerId
+      ? await this.getOutstandingForCustomer(input.customerId, input.productId)
+      : { qty: await this.getOutstandingQty(input.productId), amount: Infinity };
+    if (input.quantity > outstanding.qty) {
+      throw new BusinessError(`Solo hay ${outstanding.qty} envase(s) pendiente(s) — no se puede devolver más de eso.`);
     }
 
-    const amount = input.quantity * Number(product.bottleDeposit);
+    // El monto a devolver lo decide el cajero (puede ser 0 si esos envases se
+    // prestaron sin cobrar) — nunca más de lo que realmente se le debe.
+    const requestedAmount = input.amount ?? input.quantity * Number(product.bottleDeposit);
+    const amount = Math.min(requestedAmount, outstanding.amount);
+    if (amount < 0) throw new BusinessError('El monto a devolver no puede ser negativo.');
     const description = `Devolución de garantía — ${product.name} x${input.quantity}`;
 
     let cashSession = null;
-    if (input.method === 'CASH' && input.cashSessionId) {
+    if (amount > 0 && input.method === 'CASH' && input.cashSessionId) {
       cashSession = await prisma.cashSession.findFirst({ where: { id: input.cashSessionId, status: 'OPEN' } });
     }
 
@@ -157,9 +241,12 @@ export class BottleDepositsService {
       await tx.bottleDepositMovement.create({
         data: {
           productId: input.productId, type: 'RETURNED', quantity: input.quantity, amount,
-          method: input.method as never, cashSessionId: cashSession?.id, userId: input.userId, notes: input.notes,
+          method: input.method as never, cashSessionId: cashSession?.id, userId: input.userId,
+          customerId: input.customerId, notes: input.notes,
         },
       });
+
+      if (amount <= 0) return;
 
       if (cashSession) {
         await tx.cashMovement.create({

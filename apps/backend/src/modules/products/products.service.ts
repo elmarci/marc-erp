@@ -238,6 +238,37 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * Producto "comodín" para ventas excepcionales de algo que no está en el
+   * catálogo (ej. un artículo suelto) — el cajero pone descripción y monto
+   * libres en el POS. Se crea una sola vez, la primera vez que se necesita.
+   */
+  async getOrCreateMiscItem() {
+    const existing = await prisma.product.findFirst({ where: { isMiscItem: true, deletedAt: null } });
+    if (existing) return existing;
+
+    let category = await prisma.category.findFirst({ where: { slug: 'otros-varios' } });
+    if (!category) {
+      category = await prisma.category.create({
+        data: { name: 'Otros / Varios', slug: 'otros-varios', isActive: true },
+      });
+    }
+
+    return prisma.product.create({
+      data: {
+        name: 'Otros / Venta varios',
+        categoryId: category.id,
+        unitOfMeasure: 'UNIT',
+        costPrice: 0,
+        salePrice: 0,
+        minStock: 0,
+        currentStock: 0,
+        isMiscItem: true,
+        status: 'ACTIVE',
+      },
+    });
+  }
+
   /* ── Comparación de precios entre proveedores ─────────────────────────────── */
   async getSuppliers(productId: string) {
     const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null }, select: { id: true } });

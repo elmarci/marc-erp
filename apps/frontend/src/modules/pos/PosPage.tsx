@@ -162,7 +162,7 @@ export function PosPage() {
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, []);
 
-  const addProductToCart = (product: { id: string; name: string; barcode: string | null; salePrice: number; currentStock: number }, offline: boolean) => {
+  const addProductToCart = (product: { id: string; name: string; barcode: string | null; salePrice: number; currentStock: number; bottleDeposit?: number }, offline: boolean) => {
     if (product.currentStock <= 0) {
       toast.error(`"${product.name}" sin stock disponible.`);
       return;
@@ -177,6 +177,7 @@ export function PosPage() {
       discountAmount: 0,
       discountPercent: 0,
       stock: product.currentStock,
+      bottleDepositUnit: Number(product.bottleDeposit ?? 0) || undefined,
     });
     if (result.addedQuantity <= 0) {
       toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito (${product.currentStock}).`);
@@ -187,7 +188,7 @@ export function PosPage() {
 
   const handleBarcodeScanned = useCallback(async (barcode: string) => {
     try {
-      const res = await api.get<{ data: { id: string; name: string; salePrice: number; currentStock: number; barcode: string | null } }>
+      const res = await api.get<{ data: { id: string; name: string; salePrice: number; currentStock: number; barcode: string | null; bottleDeposit?: number } }>
         (`/products/barcode/${barcode}`);
       addProductToCart(res.data.data, false);
     } catch (err) {
@@ -244,10 +245,17 @@ export function PosPage() {
       customerId,
       documentType,
       items: items.map((i) => ({
-        productId: i.productId,
+        // Las líneas de "Venta excepcional" llevan un sufijo "#..." en el id
+        // (ver PosCart/MiscItemModal) para no mezclarse entre sí en el
+        // carrito — el backend necesita el id real del producto comodín.
+        productId: i.productId.split('#')[0],
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         discountAmount: i.discountAmount,
+        // El backend sólo lo usa para el producto comodín "Otros / Venta
+        // varios" — para cualquier otro producto lo ignora y usa el nombre
+        // real del catálogo.
+        productName: i.name,
       })),
       payments: cappedPayments,
       discountAmount: manualDiscountAmount,
@@ -255,6 +263,9 @@ export function PosPage() {
       pointsToRedeem: pointsToRedeem || undefined,
       isCredit,
       notes,
+      bottleDeposits: items
+        .filter((i) => i.bottleDepositChoice)
+        .map((i) => ({ productId: i.productId, quantity: i.quantity, paid: i.bottleDepositChoice === 'CHARGE' })),
     };
 
     setIsProcessing(true);
