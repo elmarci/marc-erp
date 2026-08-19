@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Receipt, Search, Eye, FileSpreadsheet, X, ArrowUpDown, ArrowUp, ArrowDown,
-  TrendingUp, Wallet, Percent, HandCoins,
+  TrendingUp, Wallet, Percent, HandCoins, GlassWater,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -16,6 +16,7 @@ import { api } from '@/services/api';
 import { cn, formatCurrency, formatDateTime, STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { BottleDepositManager } from '@/modules/bottle-deposits/BottleDepositManager';
 
 interface Sale {
   id: string; saleNumber: string; totalAmount: number; status: string; createdAt: string;
@@ -62,6 +63,7 @@ export function SalesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const page = parseInt(searchParams.get('page') ?? '1');
 
+  const [pageTab, setPageTab] = useState<'historial' | 'envases'>('historial');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const [preset, setPreset] = useState(3); // "Todo" por defecto
@@ -158,13 +160,46 @@ export function SalesPage() {
           <p className="text-sm text-muted-foreground">Historial, filtros avanzados y reportes de ventas</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => downloadExcel(exportUrl(), 'ventas.xlsx')}>
-            <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
-          </Button>
+          {pageTab === 'historial' && (
+            <Button variant="outline" onClick={() => downloadExcel(exportUrl(), 'ventas.xlsx')}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
+            </Button>
+          )}
           <Link to="/pos"><Button><Receipt className="mr-2 h-4 w-4" />Nueva Venta</Button></Link>
         </div>
       </div>
 
+      {/* Historial de ventas vs. seguimiento de envases retornables — este
+          último no depende de que la caja esté abierta, así que vive acá y
+          no en Caja. */}
+      <div className="flex gap-1 border-b">
+        {([['historial', 'Historial', Receipt], ['envases', 'Envases', GlassWater]] as const).map(([key, label, Icon]) => (
+          <button key={key} onClick={() => setPageTab(key)}
+            className={cn('flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+              pageTab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+            <Icon className="h-3.5 w-3.5" />{label}
+          </button>
+        ))}
+      </div>
+
+      {pageTab === 'envases' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <GlassWater className="h-4 w-4 text-primary" />Garantía de envase
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Cobrar o devolver garantías, y ver quién debe traer un envase o a quién devolverle plata.
+            </p>
+          </CardHeader>
+          <CardContent className="max-w-xl">
+            <BottleDepositManager />
+          </CardContent>
+        </Card>
+      )}
+
+      {pageTab === 'historial' && (
+      <>
       {/* KPI cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -432,6 +467,8 @@ export function SalesPage() {
             </div>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );
