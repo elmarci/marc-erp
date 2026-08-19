@@ -157,7 +157,7 @@ export function AuthGate() {
                     </div>
                     <div className="flex justify-center">
                       <GoogleLogin onSuccess={handleGoogleSuccess} onError={() => toast.error('No se pudo ingresar con Google.')}
-                        text={mode === 'login' ? 'signin_with' : 'signup_with'} width="336" locale="es" />
+                        text={mode === 'login' ? 'signin_with' : 'signup_with'} width="336" />
                     </div>
                   </>
                 )}
