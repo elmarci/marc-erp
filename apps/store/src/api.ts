@@ -149,4 +149,9 @@ export const storeApi = {
 
   setDefaultAddress: (id: string) =>
     api.patch<{ data: StoreAddress }>(`/store/auth/addresses/${id}/default`),
+
+  loginWithGoogle: (idToken: string, phone?: string) =>
+    api.post<{ data: { customer: { id: string; name: string; phone: string; email: string | null }; token: string } }>(
+      '/store/auth/google', { idToken, phone }
+    ),
 }

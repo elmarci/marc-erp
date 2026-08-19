@@ -6,7 +6,6 @@ import { useAuthStore } from '../authStore'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
-import { AuthModal } from './AuthModal'
 import { CategoryDrawer } from './CategoryDrawer'
 import { CategoryMegaMenu } from './CategoryMegaMenu'
 import { VoiceSearchButton } from './VoiceSearchButton'
@@ -15,9 +14,8 @@ export function Header() {
   const items = useCartStore(s => s.items)
   const openCart = useCartStore(s => s.openCart)
   const count = cartCount(items)
-  const { customer, isLoggedIn, logout } = useAuthStore()
+  const { customer, logout, exitGuestMode } = useAuthStore()
   const [search, setSearch] = useState('')
-  const [showAuth, setShowAuth] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [showDrawer, setShowDrawer] = useState(false)
   const navigate = useNavigate()
@@ -78,7 +76,7 @@ export function Header() {
               {offersCount > 0 && <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-brand-magenta-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{offersCount}</span>}
             </Link>
 
-            {isLoggedIn && customer ? (
+            {customer ? (
               <div className="relative">
                 <button onClick={() => setShowMenu(!showMenu)}
                   className="hidden sm:flex items-center gap-1.5 text-sm text-paper-ink-soft hover:text-brand-green-600 transition-colors px-3 py-2">
@@ -106,7 +104,7 @@ export function Header() {
                 )}
               </div>
             ) : (
-              <button onClick={() => setShowAuth(true)}
+              <button onClick={exitGuestMode}
                 className="hidden sm:flex items-center gap-1.5 text-sm text-paper-ink-soft hover:text-brand-green-600 transition-colors px-3 py-2">
                 <User className="h-4 w-4" />Ingresar
               </button>
@@ -139,7 +137,6 @@ export function Header() {
       </header>
 
       {showDrawer && <CategoryDrawer onClose={() => setShowDrawer(false)} />}
-      {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
     </>
   )
 }

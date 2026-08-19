@@ -1392,7 +1392,9 @@ model StoreCustomer {
   name         String
   phone        String   @unique
   email        String?  @unique
-  passwordHash String   @map("password_hash")
+  passwordHash String?  @map("password_hash")
+  googleId     String?  @unique @map("google_id")
+  authProvider String   @default("PASSWORD") @map("auth_provider")
   isActive     Boolean  @default(true) @map("is_active")
   // Cada cuenta de la tienda online tiene su ficha espejo en el módulo
   // Clientes del ERP — así las compras online cuentan para el historial,

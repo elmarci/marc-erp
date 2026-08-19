@@ -5,6 +5,8 @@ import { CartDrawer } from './components/CartDrawer'
 import { InstallAppBanner } from './components/InstallAppBanner'
 import { MobileTabBar } from './components/MobileTabBar'
 import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
+import { AuthGate } from './pages/AuthGate'
+import { useAuthStore } from './authStore'
 import { HomePage } from './pages/HomePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { ProductPage } from './pages/ProductPage'
@@ -15,6 +17,13 @@ import { OffersPage } from './pages/OffersPage'
 
 export default function App() {
   const location = useLocation()
+  const isLoggedIn = useAuthStore(s => s.isLoggedIn)
+  const guestMode = useAuthStore(s => s.guestMode)
+
+  // El registro es la vía principal (perfil real, historial, puntos) pero
+  // quien no quiera crear cuenta puede seguir como invitado y pedir por
+  // WhatsApp desde el carrito.
+  if (!isLoggedIn && !guestMode) return <AuthGate />
 
   return (
     <div className="min-h-screen bg-paper-bg">

@@ -17,6 +17,7 @@ const envSchema = z.object({
   RATE_LIMIT_LOGIN_MAX: z.coerce.number().default(5),
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_FILE_SIZE_MB: z.coerce.number().default(10),
+  GOOGLE_CLIENT_ID: z.string().optional(),
 });
 
 function validateEnv() {

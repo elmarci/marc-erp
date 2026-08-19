@@ -47,6 +47,17 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
   } catch (err) { next(err); }
 });
 
+router.post('/google', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { idToken, phone } = z.object({
+      idToken: z.string().min(1),
+      phone: z.string().min(9).optional(),
+    }).parse(req.body);
+    const result = await storeAuthService.loginWithGoogle(idToken, phone);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 router.get('/profile', storeAuthMiddleware, requireStoreAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const customerId = (req as Request & { customerId: string }).customerId;

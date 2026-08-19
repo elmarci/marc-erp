@@ -71,6 +71,7 @@ services:
       CORS_ORIGIN: ${FRONTEND_URL:-http://localhost:5173}
       BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     volumes:
       - ./apps/backend:/app
       - /app/node_modules

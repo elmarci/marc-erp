@@ -1,5 +1,6 @@
 import { X, Plus, Minus, ShoppingBag, Trash2 } from 'lucide-react'
 import { useCartStore, cartTotal } from '../cartStore'
+import { useAuthStore } from '../authStore'
 import { useNavigate } from 'react-router-dom'
 
 const WHATSAPP_NUMBER = '51930555831'
@@ -11,12 +12,22 @@ export function CartDrawer() {
   const removeItem = useCartStore(s => s.removeItem)
   const updateQuantity = useCartStore(s => s.updateQuantity)
   const clearCart = useCartStore(s => s.clearCart)
+  const customer = useAuthStore(s => s.customer)
   const total = cartTotal(items)
   const navigate = useNavigate()
 
+  // Opción de respaldo para quien no quiere crear cuenta — arma el pedido
+  // completo en un mensaje estructurado y lo manda directo a WhatsApp.
   const handleWhatsApp = () => {
-    const lines = items.map(i => `• ${i.product.name} x${i.quantity} = S/ ${(i.product.salePrice * i.quantity).toFixed(2)}`)
-    const msg = `Hola TIENDA MARC! 👋\n\nQuiero hacer un pedido:\n\n${lines.join('\n')}\n\n*TOTAL: S/ ${total.toFixed(2)}*`
+    const lines = items.map(i => `• ${i.product.name} ×${i.quantity} — S/ ${(Number(i.product.salePrice) * i.quantity).toFixed(2)}`)
+    const greeting = customer ? `Hola TIENDA MARC! Soy ${customer.name} 👋` : 'Hola TIENDA MARC! 👋'
+    const msg = [
+      greeting, '',
+      'Quiero hacer este pedido:', '',
+      ...lines, '',
+      `*TOTAL: S/ ${total.toFixed(2)}*`, '',
+      customer ? `Mi teléfono: ${customer.phone}` : '(Te paso mi dirección y forma de pago por acá)',
+    ].join('\n')
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 

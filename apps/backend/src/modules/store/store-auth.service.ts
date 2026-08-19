@@ -1,11 +1,13 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import { prisma } from '../../database/client';
 import { BusinessError, NotFoundError } from '../../utils/errors';
 import { env } from '../../config/env';
 
 const CUSTOMER_JWT_SECRET = env.JWT_SECRET + '_customer';
 const TOKEN_EXPIRES = '30d';
+const googleClient = env.GOOGLE_CLIENT_ID ? new OAuth2Client(env.GOOGLE_CLIENT_ID) : null;
 
 export class StoreAuthService {
   // Busca un Customer del ERP por teléfono; si no existe lo crea. Así toda
@@ -58,6 +60,7 @@ export class StoreAuthService {
       },
     });
     if (!customer) throw new BusinessError('Teléfono/correo o contraseña incorrectos.');
+    if (!customer.passwordHash) throw new BusinessError('Esta cuenta se creó con Google. Ingresa con el botón de Google.');
 
     const valid = await bcrypt.compare(password, customer.passwordHash);
     if (!valid) throw new BusinessError('Teléfono/correo o contraseña incorrectos.');
@@ -68,6 +71,49 @@ export class StoreAuthService {
       const customerId = await this.findOrCreateErpCustomer(customer.name, customer.phone, customer.email ?? undefined);
       await prisma.storeCustomer.update({ where: { id: customer.id }, data: { customerId } });
       customer.customerId = customerId;
+    }
+
+    const token = this.generateToken(customer.id);
+    return { customer: this.safeCustomer(customer), token };
+  }
+
+  // Login/registro con Google. Requiere `phone` sólo cuando se está creando
+  // una cuenta nueva (Google no entrega teléfono) — necesitamos un teléfono
+  // real para delivery y para el espejo en el módulo Clientes del ERP.
+  async loginWithGoogle(idToken: string, phone?: string) {
+    if (!googleClient) throw new BusinessError('El login con Google no está configurado todavía.');
+
+    const ticket = await googleClient.verifyIdToken({ idToken, audience: env.GOOGLE_CLIENT_ID });
+    const payload = ticket.getPayload();
+    if (!payload?.sub || !payload.email) throw new BusinessError('No se pudo verificar la cuenta de Google.');
+
+    let customer = await prisma.storeCustomer.findUnique({ where: { googleId: payload.sub } });
+
+    if (!customer) {
+      const byEmail = await prisma.storeCustomer.findUnique({ where: { email: payload.email } });
+      if (byEmail) {
+        customer = await prisma.storeCustomer.update({ where: { id: byEmail.id }, data: { googleId: payload.sub } });
+      } else {
+        if (!phone?.trim()) throw new BusinessError('NEEDS_PHONE');
+        const existingPhone = await prisma.storeCustomer.findUnique({ where: { phone } });
+        if (existingPhone) throw new BusinessError('Ya existe una cuenta con ese teléfono.');
+
+        const name = payload.name ?? payload.email.split('@')[0];
+        const customerId = await this.findOrCreateErpCustomer(name, phone, payload.email);
+        customer = await prisma.storeCustomer.create({
+          data: {
+            name, phone, email: payload.email, googleId: payload.sub,
+            authProvider: 'GOOGLE', customerId,
+          },
+        });
+      }
+    }
+
+    if (!customer.isActive) throw new BusinessError('Esta cuenta está desactivada.');
+
+    if (!customer.customerId) {
+      const customerId = await this.findOrCreateErpCustomer(customer.name, customer.phone, customer.email ?? undefined);
+      customer = await prisma.storeCustomer.update({ where: { id: customer.id }, data: { customerId } });
     }
 
     const token = this.generateToken(customer.id);

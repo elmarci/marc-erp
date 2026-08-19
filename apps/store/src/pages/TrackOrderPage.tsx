@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Package, Search, LogOut, User, ChevronRight, RefreshCw, Star, ShoppingBag,
+  Package, LogOut, ChevronRight, RefreshCw, Star, ShoppingBag,
   MapPin, Plus, Trash2, Pencil, Check, X, CalendarDays,
 } from 'lucide-react'
 import { storeApi, type StoreAddress } from '../api'
 import { useAuthStore } from '../authStore'
 import { Link } from 'react-router-dom'
-import { AuthModal } from '../components/AuthModal'
 import { useCartStore } from '../cartStore'
 import { toast } from 'sonner'
 
@@ -162,23 +161,20 @@ function ProfileEditor({ name, email }: { name: string; email: string | null }) 
 }
 
 export function TrackOrderPage() {
-  const { customer, isLoggedIn, logout } = useAuthStore()
+  const { customer, logout, exitGuestMode } = useAuthStore()
   const { addItem, openCart } = useCartStore()
-  const [phone, setPhone] = useState(customer?.phone ?? '')
-  const [submitted, setSubmitted] = useState(isLoggedIn && customer ? customer.phone : '')
-  const [showAuth, setShowAuth] = useState(false)
 
   const { data: profileData } = useQuery({
     queryKey: ['store-profile'],
     queryFn: () => storeApi.getProfile(),
-    enabled: !!isLoggedIn,
+    enabled: !!customer,
   })
   const profile = profileData?.data.data
 
   const { data, isLoading } = useQuery({
-    queryKey: ['track-orders', submitted],
-    queryFn: () => storeApi.trackOrders(submitted),
-    enabled: !!submitted,
+    queryKey: ['track-orders', customer?.phone],
+    queryFn: () => storeApi.trackOrders(customer!.phone),
+    enabled: !!customer,
     refetchInterval: 15000,
   })
 
@@ -202,92 +198,71 @@ export function TrackOrderPage() {
     toast.success('Productos del pedido agregados al carrito')
   }
 
+  // Invitado sin cuenta — sus pedidos por WhatsApp no quedan asociados a un
+  // perfil, así que no hay nada que mostrar acá sin iniciar sesión.
+  if (!customer) {
+    return (
+      <main className="max-w-md mx-auto px-4 py-20 text-center">
+        <Package className="h-12 w-12 mx-auto mb-4 text-brand-blue-600" />
+        <h1 className="text-2xl font-black mb-1 text-paper-ink">Mis pedidos</h1>
+        <p className="text-paper-ink-soft text-sm mb-6">Crea tu cuenta o inicia sesión para ver tu historial, puntos y direcciones guardadas.</p>
+        <button onClick={exitGuestMode}
+          className="bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold px-6 py-3 rounded-xl transition-colors">
+          Ingresar / Crear cuenta
+        </button>
+      </main>
+    )
+  }
+
   return (
     <main className="max-w-2xl mx-auto px-4 py-12">
       {/* Header */}
       <div className="text-center mb-8">
-        {isLoggedIn && customer ? (
-          <>
-            <div className="h-16 w-16 bg-brand-blue-500 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-3 shadow-sm">
-              {customer.name[0].toUpperCase()}
-            </div>
-            <h1 className="text-2xl font-black text-paper-ink">{customer.name}</h1>
-            <p className="text-paper-ink-soft text-sm">{customer.phone}{customer.email ? ` · ${customer.email}` : ''}</p>
-            {profile && (
-              <p className="text-xs text-paper-ink-faint flex items-center justify-center gap-1 mt-1">
-                <CalendarDays className="h-3 w-3" />Cliente desde {new Date(profile.createdAt).toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}
-              </p>
-            )}
-            <div className="flex items-center justify-center gap-4 mt-2">
-              <ProfileEditor name={customer.name} email={customer.email ?? null} />
-              <button onClick={logout} className="text-xs text-paper-ink-ghost hover:text-brand-magenta-600 flex items-center gap-1 transition-colors">
-                <LogOut className="h-3 w-3" />Cerrar sesión
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <Package className="h-12 w-12 mx-auto mb-4 text-brand-blue-600" />
-            <h1 className="text-2xl font-black mb-1 text-paper-ink">Mis pedidos</h1>
-            <p className="text-paper-ink-soft text-sm">Ingresa tu teléfono para ver tus pedidos</p>
-          </>
+        <div className="h-16 w-16 bg-brand-blue-500 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-3 shadow-sm">
+          {customer!.name[0].toUpperCase()}
+        </div>
+        <h1 className="text-2xl font-black text-paper-ink">{customer!.name}</h1>
+        <p className="text-paper-ink-soft text-sm">{customer!.phone}{customer!.email ? ` · ${customer!.email}` : ''}</p>
+        {profile && (
+          <p className="text-xs text-paper-ink-faint flex items-center justify-center gap-1 mt-1">
+            <CalendarDays className="h-3 w-3" />Cliente desde {new Date(profile.createdAt).toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}
+          </p>
         )}
+        <div className="flex items-center justify-center gap-4 mt-2">
+          <ProfileEditor name={customer!.name} email={customer!.email ?? null} />
+          <button onClick={logout} className="text-xs text-paper-ink-ghost hover:text-brand-magenta-600 flex items-center gap-1 transition-colors">
+            <LogOut className="h-3 w-3" />Cerrar sesión
+          </button>
+        </div>
       </div>
 
-      {/* Stats — solo para clientes registrados */}
-      {isLoggedIn && customer && (
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
-            <ShoppingBag className="h-4 w-4 text-brand-blue-600 mx-auto mb-1" />
-            <p className="text-lg font-black text-paper-ink">{orders.length}</p>
-            <p className="text-xs text-paper-ink-ghost">Pedidos</p>
-          </div>
-          <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
-            <span className="text-sm font-black text-brand-blue-600 block mb-1">S/</span>
-            <p className="text-lg font-black text-paper-ink">{totalSpent.toFixed(0)}</p>
-            <p className="text-xs text-paper-ink-ghost">Comprado</p>
-          </div>
-          <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
-            <div className="h-6 w-6 mx-auto mb-1 rounded-full border border-dashed border-brand-magenta-300 flex items-center justify-center">
-              <Star className="h-3 w-3 text-brand-magenta-500" />
-            </div>
-            <p className="text-lg font-black text-paper-ink">{profile?.loyaltyPoints ?? 0}</p>
-            <p className="text-xs text-paper-ink-ghost">Puntos</p>
-          </div>
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-8">
+        <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
+          <ShoppingBag className="h-4 w-4 text-brand-blue-600 mx-auto mb-1" />
+          <p className="text-lg font-black text-paper-ink">{orders.length}</p>
+          <p className="text-xs text-paper-ink-ghost">Pedidos</p>
         </div>
-      )}
-
-      {/* Libreta de direcciones — solo para clientes registrados */}
-      {isLoggedIn && customer && (
-        <div className="mb-8">
-          <AddressBook />
+        <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
+          <span className="text-sm font-black text-brand-blue-600 block mb-1">S/</span>
+          <p className="text-lg font-black text-paper-ink">{totalSpent.toFixed(0)}</p>
+          <p className="text-xs text-paper-ink-ghost">Comprado</p>
         </div>
-      )}
-
-      {/* Si no está logueado, mostrar opción de registro + búsqueda por teléfono */}
-      {!isLoggedIn && (
-        <div className="space-y-4 mb-8">
-          <button onClick={() => setShowAuth(true)}
-            className="w-full flex items-center justify-center gap-2 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold py-3 rounded-xl transition-colors">
-            <User className="h-4 w-4" />Ingresar para ver todos mis pedidos
-          </button>
-          <div className="flex items-center gap-3 text-xs text-paper-ink-ghost">
-            <div className="flex-1 h-px bg-paper-line" />o busca por teléfono<div className="flex-1 h-px bg-paper-line" />
+        <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
+          <div className="h-6 w-6 mx-auto mb-1 rounded-full border border-dashed border-brand-magenta-300 flex items-center justify-center">
+            <Star className="h-3 w-3 text-brand-magenta-500" />
           </div>
-          <div className="flex gap-3">
-            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-              placeholder="Ej: 987654321"
-              className="flex-1 bg-white border border-paper-line rounded-xl px-4 py-3 text-sm text-paper-ink focus:outline-none focus:border-brand-blue-400 transition-colors"
-              onKeyDown={e => e.key === 'Enter' && setSubmitted(phone)} />
-            <button onClick={() => setSubmitted(phone)}
-              className="bg-brand-blue-600 hover:bg-brand-blue-700 text-white font-bold px-5 rounded-xl transition-colors">
-              <Search className="h-5 w-5" />
-            </button>
-          </div>
+          <p className="text-lg font-black text-paper-ink">{profile?.loyaltyPoints ?? 0}</p>
+          <p className="text-xs text-paper-ink-ghost">Puntos</p>
         </div>
-      )}
+      </div>
 
-      {isLoggedIn && <h2 className="text-lg font-bold text-paper-ink mb-4">Historial de pedidos</h2>}
+      {/* Libreta de direcciones */}
+      <div className="mb-8">
+        <AddressBook />
+      </div>
+
+      <h2 className="text-lg font-bold text-paper-ink mb-4">Historial de pedidos</h2>
 
       {/* Lista de pedidos */}
       {isLoading && (
@@ -297,7 +272,7 @@ export function TrackOrderPage() {
         </div>
       )}
 
-      {submitted && !isLoading && orders.length === 0 && (
+      {!isLoading && orders.length === 0 && (
         <div className="text-center py-12 text-paper-ink-ghost">
           <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
           <p className="text-paper-ink-ghost">No se encontraron pedidos</p>
@@ -344,8 +319,6 @@ export function TrackOrderPage() {
           )
         })}
       </div>
-
-      {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
     </main>
   )
 }
