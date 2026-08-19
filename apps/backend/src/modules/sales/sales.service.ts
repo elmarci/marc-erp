@@ -21,6 +21,7 @@ interface BottleDepositItemInput {
   productId: string;
   quantity: number;
   paid: boolean;
+  debtorLabel?: string;
 }
 
 interface SalePaymentInput {
@@ -452,7 +453,7 @@ export class SalesService {
           data: {
             productId: bd.productId, type: 'CHARGED', quantity: bd.quantity, amount,
             method: 'CASH', cashSessionId: input.cashSessionId, userId: input.cashierId,
-            customerId: input.customerId, saleId: newSale.id,
+            customerId: input.customerId, debtorLabel: bd.debtorLabel?.trim() || undefined, saleId: newSale.id,
             notes: bd.paid ? undefined : 'Envase prestado sin cobrar garantía',
           },
         });

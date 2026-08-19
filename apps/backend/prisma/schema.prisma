@@ -1001,6 +1001,10 @@ model BottleDepositMovement {
   // "quién me debe una botella" (antes sólo se llevaba el total agregado por
   // producto). Nullable: sigue permitiendo movimientos anónimos sueltos.
   customerId    String?           @map("customer_id")
+  // Identificador rápido (nombre, apodo, teléfono...) para cuando no vale la
+  // pena — o el cliente no quiere — crear una ficha completa en Clientes.
+  // Independiente de customerId: se usa cuando no hay uno asignado.
+  debtorLabel   String?           @map("debtor_label")
   // Venta de la que salió este movimiento, cuando se originó ahí — permite
   // cobrar/prestar el envase en el mismo momento de vender, no como paso
   // aparte manual en Caja.

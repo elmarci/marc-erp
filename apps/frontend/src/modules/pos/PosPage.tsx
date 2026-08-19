@@ -265,7 +265,10 @@ export function PosPage() {
       notes,
       bottleDeposits: items
         .filter((i) => i.bottleDepositChoice)
-        .map((i) => ({ productId: i.productId, quantity: i.quantity, paid: i.bottleDepositChoice === 'CHARGE' })),
+        .map((i) => ({
+          productId: i.productId, quantity: i.quantity, paid: i.bottleDepositChoice === 'CHARGE',
+          debtorLabel: i.bottleDepositDebtorLabel || undefined,
+        })),
     };
 
     setIsProcessing(true);

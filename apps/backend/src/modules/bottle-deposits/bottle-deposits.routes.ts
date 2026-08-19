@@ -13,6 +13,7 @@ const moveSchema = z.object({
   cashSessionId: z.string().uuid().optional(),
   notes: z.string().optional(),
   customerId: z.string().uuid().optional(),
+  debtorLabel: z.string().trim().min(1).max(80).optional(),
   paid: z.boolean().optional(),
   amount: z.coerce.number().min(0).optional(),
 });
@@ -24,9 +25,9 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
-router.get('/by-customer', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/debtors', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await bottleDepositsService.listOutstandingByCustomer();
+    const result = await bottleDepositsService.listOutstandingByDebtor();
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 });

@@ -171,6 +171,44 @@ function MiscItemModal({ onAdd, onClose }: {
   );
 }
 
+/* ─── Identificador rápido para saber a quién devolverle el envase ──────── */
+// No obliga a crear una ficha de cliente — sólo un nombre/apodo/teléfono
+// libre. Quien quiera puede en cambio buscar un cliente ya registrado.
+function DebtorLabelModal({ onConfirm, onSearchCustomer, onClose }: {
+  onConfirm: (label: string) => void;
+  onSearchCustomer: () => void;
+  onClose: () => void;
+}) {
+  const [label, setLabel] = useState('');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-4">
+          <h3 className="font-semibold">¿A nombre de quién queda el envase?</h3>
+          <button onClick={onClose}><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            No hace falta que sea un cliente registrado — con un nombre, apodo o teléfono alcanza para saber a quién devolverle después.
+          </p>
+          <Input autoFocus value={label} onChange={(e) => setLabel(e.target.value)}
+            placeholder="Ej: Juan, casa azul / 987654321"
+            onKeyDown={(e) => { if (e.key === 'Enter' && label.trim()) onConfirm(label.trim()); }} />
+          <button type="button" onClick={onSearchCustomer}
+            className="text-xs text-primary hover:underline">
+            Prefiero buscar un cliente registrado
+          </button>
+        </div>
+        <div className="border-t p-4 flex gap-3 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button disabled={!label.trim()} onClick={() => onConfirm(label.trim())}>Confirmar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CustomerSearchModal({ onSelect, onClose }: {
   onSelect: (id: string, name: string) => void;
   onClose: () => void;
@@ -237,15 +275,18 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
   const discountRef = useRef<HTMLInputElement>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showMiscItem, setShowMiscItem] = useState(false);
-  // Cuando el cajero elige "Prestar" el envase sin cliente asignado, hay que
-  // pedirle uno primero (si no, luego no hay a quién cobrarle) — este estado
-  // recuerda para qué línea era, para aplicar la elección recién se asigne.
+  // Cuando el cajero elige "Prestar" el envase sin nadie identificado aún,
+  // hay que pedirle un nombre/apodo (o un cliente registrado) primero — si
+  // no, luego no hay a quién devolverle. Este estado recuerda para qué línea
+  // era, para aplicar la elección recién se identifique a alguien.
   const [pendingLoanProductId, setPendingLoanProductId] = useState<string | null>(null);
 
   const handleBottleDepositChoice = (productId: string, choice: 'CHARGE' | 'LOAN') => {
-    if (choice === 'LOAN' && !customerId) {
+    const item = items.find((i) => i.productId === productId);
+    // Ya identificado (con etiqueta libre o porque la venta ya tiene
+    // cliente) — no hace falta volver a preguntar.
+    if (choice === 'LOAN' && !item?.bottleDepositDebtorLabel && !customerId) {
       setPendingLoanProductId(productId);
-      setShowCustomerSearch(true);
       return;
     }
     setBottleDepositChoice(productId, choice);
@@ -416,31 +457,38 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
 
                 {/* Envase retornable — cobrar garantía / prestar sin cobrar */}
                 {!!item.bottleDepositUnit && (
-                  <div className="mt-2 flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1.5">
-                    <GlassWater className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      Envase {formatCurrency(item.bottleDepositUnit)} c/u:
-                    </span>
-                    <div className="flex gap-1 ml-auto">
-                      <button type="button"
-                        onClick={() => handleBottleDepositChoice(item.productId, 'CHARGE')}
-                        className={cn('rounded px-2 py-0.5 text-xs font-medium transition-colors',
-                          item.bottleDepositChoice === 'CHARGE' ? 'bg-primary text-primary-foreground' : 'bg-background border text-muted-foreground hover:text-foreground')}>
-                        Cobrar
-                      </button>
-                      <button type="button"
-                        onClick={() => handleBottleDepositChoice(item.productId, 'LOAN')}
-                        className={cn('rounded px-2 py-0.5 text-xs font-medium transition-colors',
-                          item.bottleDepositChoice === 'LOAN' ? 'bg-amber-500 text-white' : 'bg-background border text-muted-foreground hover:text-foreground')}>
-                        Prestar
-                      </button>
-                      {item.bottleDepositChoice && (
-                        <button type="button" onClick={() => setBottleDepositChoice(item.productId, null)}
-                          className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-destructive">
-                          <X className="h-3 w-3" />
+                  <div className="mt-2 rounded-md bg-muted/50 px-2 py-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <GlassWater className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        Envase {formatCurrency(item.bottleDepositUnit)} c/u:
+                      </span>
+                      <div className="flex gap-1 ml-auto">
+                        <button type="button"
+                          onClick={() => handleBottleDepositChoice(item.productId, 'CHARGE')}
+                          className={cn('rounded px-2 py-0.5 text-xs font-medium transition-colors',
+                            item.bottleDepositChoice === 'CHARGE' ? 'bg-primary text-primary-foreground' : 'bg-background border text-muted-foreground hover:text-foreground')}>
+                          Cobrar
                         </button>
-                      )}
+                        <button type="button"
+                          onClick={() => handleBottleDepositChoice(item.productId, 'LOAN')}
+                          className={cn('rounded px-2 py-0.5 text-xs font-medium transition-colors',
+                            item.bottleDepositChoice === 'LOAN' ? 'bg-amber-500 text-white' : 'bg-background border text-muted-foreground hover:text-foreground')}>
+                          Prestar
+                        </button>
+                        {item.bottleDepositChoice && (
+                          <button type="button" onClick={() => setBottleDepositChoice(item.productId, null)}
+                            className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-destructive">
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    {item.bottleDepositChoice === 'LOAN' && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                        Queda a nombre de: <strong>{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong>
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -525,6 +573,17 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
         </Button>
       </div>
     </div>
+
+    {pendingLoanProductId && !showCustomerSearch && (
+      <DebtorLabelModal
+        onConfirm={(label) => {
+          setBottleDepositChoice(pendingLoanProductId, 'LOAN', label);
+          setPendingLoanProductId(null);
+        }}
+        onSearchCustomer={() => setShowCustomerSearch(true)}
+        onClose={() => setPendingLoanProductId(null)}
+      />
+    )}
 
     {showCustomerSearch && (
       <CustomerSearchModal

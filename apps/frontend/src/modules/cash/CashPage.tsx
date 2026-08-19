@@ -372,16 +372,22 @@ interface DepositProductRow {
 }
 
 interface DebtorRow {
-  customerId: string; customerName: string; customerPhone: string | null;
+  customerId: string | null; debtorLabel: string | null; debtorName: string; isRegisteredCustomer: boolean;
+  customerPhone: string | null;
   productId: string; productName: string; outstandingQty: number; outstandingAmount: number;
 }
 interface CustomerHit { id: string; firstName: string; lastName: string | null; phone: string | null }
 
-/* ─── Buscador de cliente inline (comparte estilo con PosCart) ──────────── */
-function InlineCustomerPicker({ customerId, customerName, onSelect, onClear }: {
-  customerId: string; customerName: string;
-  onSelect: (id: string, name: string) => void; onClear: () => void;
+interface Debtor { customerId?: string; debtorLabel?: string; displayName: string }
+
+/* ─── Identificador de a quién se le cobra/presta — nombre libre por
+     defecto, con opción de buscar un cliente ya registrado ────────────── */
+function DebtorPicker({ debtor, onSelect, onClear }: {
+  debtor: Debtor | null;
+  onSelect: (debtor: Debtor) => void; onClear: () => void;
 }) {
+  const [mode, setMode] = useState<'label' | 'search'>('label');
+  const [label, setLabel] = useState('');
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -392,34 +398,59 @@ function InlineCustomerPicker({ customerId, customerName, onSelect, onClear }: {
     enabled: debouncedSearch.length >= 1 && open,
   });
 
-  if (customerId) {
+  if (debtor) {
     return (
       <div className="flex items-center justify-between rounded-md border bg-primary/5 px-3 py-2">
-        <span className="text-sm font-medium text-primary">{customerName}</span>
+        <span className="text-sm font-medium text-primary">
+          {debtor.displayName}{debtor.customerId ? '' : ' (sin registrar)'}
+        </span>
         <button onClick={onClear} className="text-muted-foreground hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
       </div>
     );
   }
 
-  return (
-    <div className="relative">
+  if (mode === 'search') {
+    return (
       <div className="relative">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Buscar cliente por nombre, DNI, teléfono..."
-          value={search} onChange={e => { setSearch(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} />
-      </div>
-      {open && search.length >= 1 && (
-        <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto divide-y rounded-md border bg-card shadow-lg">
-          {(data ?? []).length === 0 && <p className="p-3 text-center text-xs text-muted-foreground">Sin resultados</p>}
-          {(data ?? []).map(c => (
-            <button key={c.id} type="button"
-              onClick={() => { onSelect(c.id, `${c.firstName} ${c.lastName ?? ''}`.trim()); setSearch(''); setOpen(false); }}
-              className="w-full px-3 py-2 text-left text-sm hover:bg-muted">
-              {c.firstName} {c.lastName} {c.phone ? <span className="text-xs text-muted-foreground">· {c.phone}</span> : null}
-            </button>
-          ))}
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Buscar cliente por nombre, DNI, teléfono..."
+            value={search} onChange={e => { setSearch(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} />
         </div>
-      )}
+        {open && search.length >= 1 && (
+          <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto divide-y rounded-md border bg-card shadow-lg">
+            {(data ?? []).length === 0 && <p className="p-3 text-center text-xs text-muted-foreground">Sin resultados</p>}
+            {(data ?? []).map(c => (
+              <button key={c.id} type="button"
+                onClick={() => { onSelect({ customerId: c.id, displayName: `${c.firstName} ${c.lastName ?? ''}`.trim() }); setSearch(''); setOpen(false); }}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted">
+                {c.firstName} {c.lastName} {c.phone ? <span className="text-xs text-muted-foreground">· {c.phone}</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
+        <button type="button" onClick={() => setMode('label')} className="mt-1 text-xs text-primary hover:underline">
+          Prefiero sólo poner un nombre
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <Input value={label} onChange={e => setLabel(e.target.value)} placeholder="Nombre, apodo o teléfono (opcional)"
+        onKeyDown={e => { if (e.key === 'Enter' && label.trim()) onSelect({ debtorLabel: label.trim(), displayName: label.trim() }); }} />
+      <div className="mt-1 flex items-center justify-between">
+        <button type="button" onClick={() => setMode('search')} className="text-xs text-primary hover:underline">
+          Buscar cliente registrado
+        </button>
+        {label.trim() && (
+          <button type="button" onClick={() => onSelect({ debtorLabel: label.trim(), displayName: label.trim() })}
+            className="text-xs font-medium text-primary hover:underline">
+            Usar "{label.trim()}"
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -434,8 +465,7 @@ function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string
   const [paid, setPaid] = useState(true);
   const [returnAmount, setReturnAmount] = useState('');
   const [returnAmountTouched, setReturnAmountTouched] = useState(false);
-  const [depositCustomerId, setDepositCustomerId] = useState('');
-  const [depositCustomerName, setDepositCustomerName] = useState('');
+  const [debtor, setDebtor] = useState<Debtor | null>(null);
 
   const { data } = useQuery({
     queryKey: ['bottle-deposits-outstanding'],
@@ -443,21 +473,22 @@ function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string
   });
 
   const { data: debtors } = useQuery({
-    queryKey: ['bottle-deposits-by-customer'],
-    queryFn: async () => (await api.get<{ data: DebtorRow[] }>('/bottle-deposits/by-customer')).data.data,
+    queryKey: ['bottle-deposits-debtors'],
+    queryFn: async () => (await api.get<{ data: DebtorRow[] }>('/bottle-deposits/debtors')).data.data,
     enabled: action === 'debtors',
   });
 
   const product = (data ?? []).find(p => p.productId === productId);
 
-  // Con cliente asignado, lo pendiente de ESE par cliente+producto puede ser
-  // distinto al total del producto (mezcla de envases pagados y prestados) —
-  // se calcula del mismo listado que alimenta la pestaña "Quién debe".
-  const debtorRow = (debtors ?? []).find(d => d.customerId === depositCustomerId && d.productId === productId);
+  // Con deudor identificado, lo pendiente de ESE par deudor+producto puede
+  // ser distinto al total del producto (mezcla de envases pagados y
+  // prestados) — se calcula del mismo listado que "Quién debe".
+  const debtorRow = (debtors ?? []).find(d =>
+    d.productId === productId && (debtor?.customerId ? d.customerId === debtor.customerId : d.debtorLabel === debtor?.debtorLabel));
   const outstandingQty = action === 'return'
-    ? (depositCustomerId ? (debtorRow?.outstandingQty ?? 0) : (product?.outstandingQty ?? 0))
+    ? (debtor ? (debtorRow?.outstandingQty ?? 0) : (product?.outstandingQty ?? 0))
     : undefined;
-  const outstandingAmount = depositCustomerId ? (debtorRow?.outstandingAmount ?? 0) : (product?.outstandingAmount ?? 0);
+  const outstandingAmount = debtor ? (debtorRow?.outstandingAmount ?? 0) : (product?.outstandingAmount ?? 0);
 
   const chargeAmount = paid && product ? Number(quantity || 0) * product.depositAmount : 0;
   const suggestedReturnAmount = product ? Math.min(Number(quantity || 0) * product.depositAmount, outstandingAmount) : 0;
@@ -466,12 +497,12 @@ function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string
   const mutation = useMutation({
     mutationFn: () => api.post(`/bottle-deposits/${action === 'charge' ? 'charge' : 'return'}`, {
       productId, quantity: Number(quantity), method, cashSessionId, notes: notes || undefined,
-      customerId: depositCustomerId || undefined,
+      customerId: debtor?.customerId, debtorLabel: debtor?.debtorLabel,
       ...(action === 'charge' ? { paid } : { amount: finalReturnAmount }),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bottle-deposits-outstanding'] });
-      queryClient.invalidateQueries({ queryKey: ['bottle-deposits-by-customer'] });
+      queryClient.invalidateQueries({ queryKey: ['bottle-deposits-debtors'] });
       queryClient.invalidateQueries({ queryKey: ['bottle-deposits-totals'] });
       queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
       queryClient.invalidateQueries({ queryKey: ['cash-summary', cashSessionId] });
@@ -484,8 +515,9 @@ function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string
 
   const startReturnFor = (row: DebtorRow) => {
     setAction('return');
-    setDepositCustomerId(row.customerId);
-    setDepositCustomerName(row.customerName);
+    setDebtor(row.isRegisteredCustomer
+      ? { customerId: row.customerId!, displayName: row.debtorName }
+      : { debtorLabel: row.debtorLabel!, displayName: row.debtorName });
     setProductId(row.productId);
     setQuantity(String(row.outstandingQty));
     setReturnAmountTouched(false);
@@ -516,9 +548,9 @@ function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string
                 <p className="py-6 text-center text-sm text-muted-foreground">Nadie debe envases por ahora.</p>
               )}
               {(debtors ?? []).map(d => (
-                <div key={`${d.customerId}:${d.productId}`} className="flex items-center justify-between gap-2 px-3 py-2.5">
+                <div key={`${d.customerId ?? d.debtorLabel}:${d.productId}`} className="flex items-center justify-between gap-2 px-3 py-2.5">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{d.customerName}</p>
+                    <p className="text-sm font-medium truncate">{d.debtorName}</p>
                     <p className="text-xs text-muted-foreground truncate">
                       {d.productName} · debe {d.outstandingQty}
                       {d.outstandingAmount > 0 ? ` · a favor ${formatCurrency(d.outstandingAmount)}` : ' · sin dinero de por medio'}
@@ -531,14 +563,14 @@ function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string
           ) : (
             <>
               <div>
-                <label className="mb-1 block text-sm font-medium">Cliente (opcional)</label>
-                <InlineCustomerPicker
-                  customerId={depositCustomerId} customerName={depositCustomerName}
-                  onSelect={(id, name) => { setDepositCustomerId(id); setDepositCustomerName(name); setReturnAmountTouched(false); }}
-                  onClear={() => { setDepositCustomerId(''); setDepositCustomerName(''); setReturnAmountTouched(false); }}
+                <label className="mb-1 block text-sm font-medium">¿A nombre de quién? (opcional)</label>
+                <DebtorPicker
+                  debtor={debtor}
+                  onSelect={(d) => { setDebtor(d); setReturnAmountTouched(false); }}
+                  onClear={() => { setDebtor(null); setReturnAmountTouched(false); }}
                 />
-                {action === 'return' && !depositCustomerId && (
-                  <p className="mt-1 text-xs text-muted-foreground">Sin cliente, se descuenta del total pendiente del producto.</p>
+                {action === 'return' && !debtor && (
+                  <p className="mt-1 text-xs text-muted-foreground">Sin identificar, se descuenta del total pendiente del producto.</p>
                 )}
               </div>
 
@@ -547,7 +579,7 @@ function BottleDepositModal({ cashSessionId, onClose }: { cashSessionId?: string
                 <select value={productId} onChange={e => { setProductId(e.target.value); setQuantity('1'); setReturnAmountTouched(false); }}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <option value="">Seleccionar...</option>
-                  {(data ?? []).filter(p => action === 'charge' || (depositCustomerId ? true : p.outstandingQty > 0)).map(p => (
+                  {(data ?? []).filter(p => action === 'charge' || (debtor ? true : p.outstandingQty > 0)).map(p => (
                     <option key={p.productId} value={p.productId}>
                       {p.name} — S/{p.depositAmount.toFixed(2)}/u
                     </option>

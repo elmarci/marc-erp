@@ -36,6 +36,9 @@ const bottleDepositItemSchema = z.object({
   // false = se prestó el envase sin cobrar (igual pasivo, pero sin dinero de
   // por medio — no se le devuelve nada cuando lo traiga de vuelta).
   paid: z.boolean(),
+  // Identificador libre (nombre/apodo/teléfono) para saber a quién devolverle
+  // — no requiere que sea un cliente registrado en el sistema.
+  debtorLabel: z.string().trim().min(1).max(80).optional(),
 });
 
 const paymentSchema = z.object({

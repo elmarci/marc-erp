@@ -22,6 +22,9 @@ export interface CartItem {
   // venta (undefined).
   bottleDepositUnit?: number;
   bottleDepositChoice?: 'CHARGE' | 'LOAN';
+  // A quién identificar para saber a quién devolverle — nombre/apodo libre,
+  // no requiere un cliente registrado (ver DebtorLabelModal en PosCart).
+  bottleDepositDebtorLabel?: string;
 }
 
 export interface CartPayment {
@@ -60,7 +63,7 @@ interface PosState {
   addItem: (item: Omit<CartItem, 'subtotal'>) => { addedQuantity: number; finalQuantity: number; capped: boolean };
   updateQuantity: (productId: string, quantity: number) => { finalQuantity: number; capped: boolean };
   renameItem: (productId: string, name: string) => void;
-  setBottleDepositChoice: (productId: string, choice: 'CHARGE' | 'LOAN' | null) => void;
+  setBottleDepositChoice: (productId: string, choice: 'CHARGE' | 'LOAN' | null, debtorLabel?: string) => void;
   updateDiscount: (productId: string, discountAmount: number, discountPercent: number) => void;
   removeItem: (productId: string) => void;
   setCustomer: (id: string | null, name: string | null) => void;
@@ -182,9 +185,11 @@ export const usePosStore = create<PosState>()((set, get) => ({
     set({ items: items.map((i) => (i.productId === productId ? { ...i, name } : i)) });
   },
 
-  setBottleDepositChoice: (productId, choice) => {
+  setBottleDepositChoice: (productId, choice, debtorLabel) => {
     const { items } = get();
-    set({ items: items.map((i) => (i.productId === productId ? { ...i, bottleDepositChoice: choice ?? undefined } : i)) });
+    set({ items: items.map((i) => (i.productId === productId
+      ? { ...i, bottleDepositChoice: choice ?? undefined, bottleDepositDebtorLabel: choice ? (debtorLabel ?? i.bottleDepositDebtorLabel) : undefined }
+      : i)) });
   },
 
   updateDiscount: (productId, discountAmount, discountPercent) => {

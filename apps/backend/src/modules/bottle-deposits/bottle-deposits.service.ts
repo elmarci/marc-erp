@@ -11,6 +11,10 @@ export interface DepositMoveInput {
   userId: string;
   notes?: string;
   customerId?: string;
+  // Identificador libre (nombre/apodo/teléfono) cuando no hay un cliente
+  // registrado — no todos los que dejan/reciben un envase quieren o
+  // necesitan una ficha completa en Clientes.
+  debtorLabel?: string;
   // charge(): si es false, se presta el envase sin cobrar nada (amount=0,
   // sigue quedando registrado como pendiente). Default true (comportamiento
   // de siempre). return(): monto explícito a devolver — si no se manda, se
@@ -94,11 +98,20 @@ export class BottleDepositsService {
     return charged - returned;
   }
 
-  /** Cuánto debe (en botellas y en plata) un cliente puntual de un producto puntual. */
-  private async getOutstandingForCustomer(customerId: string, productId: string): Promise<{ qty: number; amount: number }> {
+  /**
+   * Cuánto debe (en botellas y en plata) un deudor puntual de un producto
+   * puntual — el deudor puede ser un cliente registrado o sólo una etiqueta
+   * libre (nombre/apodo), lo que haya usado el cajero al cobrar/prestar.
+   */
+  private async getOutstandingForDebtor(
+    debtor: { customerId?: string; debtorLabel?: string }, productId: string,
+  ): Promise<{ qty: number; amount: number }> {
+    const where = debtor.customerId
+      ? { customerId: debtor.customerId, productId }
+      : { debtorLabel: debtor.debtorLabel, productId };
     const rows = await prisma.bottleDepositMovement.groupBy({
       by: ['type'],
-      where: { customerId, productId },
+      where,
       _sum: { quantity: true, amount: true },
     });
     const charged = rows.find(r => r.type === 'CHARGED');
@@ -109,18 +122,18 @@ export class BottleDepositsService {
     };
   }
 
-  /** Clientes con envases pendientes — para saber "quién me debe una botella". */
-  async listOutstandingByCustomer() {
+  /** Deudores (clientes registrados o sólo etiquetados) con envases pendientes. */
+  async listOutstandingByDebtor() {
     const movements = await prisma.bottleDepositMovement.groupBy({
-      by: ['customerId', 'productId', 'type'],
-      where: { customerId: { not: null } },
+      by: ['customerId', 'debtorLabel', 'productId', 'type'],
+      where: { OR: [{ customerId: { not: null } }, { debtorLabel: { not: null } }] },
       _sum: { quantity: true, amount: true },
     });
 
-    const byKey = new Map<string, { customerId: string; productId: string; qty: number; amount: number }>();
+    const byKey = new Map<string, { customerId: string | null; debtorLabel: string | null; productId: string; qty: number; amount: number }>();
     for (const m of movements) {
-      const key = `${m.customerId}:${m.productId}`;
-      const entry = byKey.get(key) ?? { customerId: m.customerId!, productId: m.productId, qty: 0, amount: 0 };
+      const key = `${m.customerId ?? ''}:${m.debtorLabel ?? ''}:${m.productId}`;
+      const entry = byKey.get(key) ?? { customerId: m.customerId, debtorLabel: m.debtorLabel, productId: m.productId, qty: 0, amount: 0 };
       const sign = m.type === 'CHARGED' ? 1 : -1;
       entry.qty += sign * (m._sum.quantity ?? 0);
       entry.amount += sign * Number(m._sum.amount ?? 0);
@@ -130,11 +143,11 @@ export class BottleDepositsService {
     const pending = [...byKey.values()].filter(e => e.qty > 0);
     if (pending.length === 0) return { data: [] };
 
+    const customerIds = [...new Set(pending.map(p => p.customerId).filter((id): id is string => !!id))];
     const [customers, products] = await Promise.all([
-      prisma.customer.findMany({
-        where: { id: { in: [...new Set(pending.map(p => p.customerId))] } },
-        select: { id: true, firstName: true, lastName: true, phone: true },
-      }),
+      customerIds.length > 0
+        ? prisma.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, firstName: true, lastName: true, phone: true } })
+        : Promise.resolve([]),
       prisma.product.findMany({
         where: { id: { in: [...new Set(pending.map(p => p.productId))] } },
         select: { id: true, name: true, barcode: true },
@@ -143,17 +156,20 @@ export class BottleDepositsService {
     const customerMap = new Map(customers.map(c => [c.id, c]));
     const productMap = new Map(products.map(p => [p.id, p]));
 
-    const data = pending.map(p => ({
-      customerId: p.customerId,
-      customerName: customerMap.get(p.customerId)
-        ? `${customerMap.get(p.customerId)!.firstName} ${customerMap.get(p.customerId)!.lastName ?? ''}`.trim()
-        : 'Cliente eliminado',
-      customerPhone: customerMap.get(p.customerId)?.phone ?? null,
-      productId: p.productId,
-      productName: productMap.get(p.productId)?.name ?? 'Producto eliminado',
-      outstandingQty: p.qty,
-      outstandingAmount: p.amount,
-    })).sort((a, b) => a.customerName.localeCompare(b.customerName));
+    const data = pending.map(p => {
+      const customer = p.customerId ? customerMap.get(p.customerId) : undefined;
+      return {
+        customerId: p.customerId,
+        debtorLabel: p.debtorLabel,
+        debtorName: customer ? `${customer.firstName} ${customer.lastName ?? ''}`.trim() : (p.debtorLabel ?? 'Sin identificar'),
+        isRegisteredCustomer: !!customer,
+        customerPhone: customer?.phone ?? null,
+        productId: p.productId,
+        productName: productMap.get(p.productId)?.name ?? 'Producto eliminado',
+        outstandingQty: p.qty,
+        outstandingAmount: p.amount,
+      };
+    }).sort((a, b) => a.debtorName.localeCompare(b.debtorName));
 
     return { data };
   }
@@ -184,7 +200,8 @@ export class BottleDepositsService {
         data: {
           productId: input.productId, type: 'CHARGED', quantity: input.quantity, amount,
           method: input.method as never, cashSessionId: cashSession?.id, userId: input.userId,
-          customerId: input.customerId, notes: input.notes ?? (paid ? undefined : 'Envase prestado sin cobrar garantía'),
+          customerId: input.customerId, debtorLabel: input.debtorLabel?.trim() || undefined,
+          notes: input.notes ?? (paid ? undefined : 'Envase prestado sin cobrar garantía'),
         },
       });
 
@@ -215,11 +232,13 @@ export class BottleDepositsService {
     const product = await prisma.product.findFirst({ where: { id: input.productId, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');
 
-    // Si viene un cliente puntual, el pendiente se valida contra SU saldo
-    // (puede tener mezcla de envases pagados y prestados) — sin cliente se
-    // sigue validando contra el total del producto, como antes.
-    const outstanding = input.customerId
-      ? await this.getOutstandingForCustomer(input.customerId, input.productId)
+    // Si viene un deudor puntual (cliente registrado o sólo etiqueta), el
+    // pendiente se valida contra SU saldo (puede tener mezcla de envases
+    // pagados y prestados) — sin deudor se sigue validando contra el total
+    // del producto, como antes.
+    const debtorLabel = input.debtorLabel?.trim() || undefined;
+    const outstanding = (input.customerId || debtorLabel)
+      ? await this.getOutstandingForDebtor({ customerId: input.customerId, debtorLabel }, input.productId)
       : { qty: await this.getOutstandingQty(input.productId), amount: Infinity };
     if (input.quantity > outstanding.qty) {
       throw new BusinessError(`Solo hay ${outstanding.qty} envase(s) pendiente(s) — no se puede devolver más de eso.`);
@@ -242,7 +261,7 @@ export class BottleDepositsService {
         data: {
           productId: input.productId, type: 'RETURNED', quantity: input.quantity, amount,
           method: input.method as never, cashSessionId: cashSession?.id, userId: input.userId,
-          customerId: input.customerId, notes: input.notes,
+          customerId: input.customerId, debtorLabel, notes: input.notes,
         },
       });
 
