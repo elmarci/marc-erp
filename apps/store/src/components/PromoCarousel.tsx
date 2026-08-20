@@ -63,7 +63,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
               <Link
                 key={offer.id}
                 to="/ofertas"
-                className={`relative shrink-0 w-[86%] sm:w-[calc(50%-8px)] lg:w-[calc(42%-8px)] snap-start rounded-3xl overflow-hidden shadow-lg h-56 sm:h-72 flex items-end ${
+                className={`relative shrink-0 w-[86%] sm:w-[calc(50%-8px)] lg:w-[calc(42%-8px)] snap-start rounded-3xl overflow-hidden shadow-lg aspect-[3/2] flex items-end ${
                   hasMedia ? '' : `bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]}`
                 }`}
               >
