@@ -66,7 +66,7 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     mutationFn: async (file: File) => {
       const body = new FormData()
       body.append('image', file)
-      return api.post<{ data: { imageUrl: string } }>('/products/upload-image', body, {
+      return api.post<{ data: { imageUrl: string } }>('/settings/upload-banner-image', body, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
     },
@@ -297,6 +297,10 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
               <p className="text-xs text-muted-foreground -mt-2">
                 Si subes un video, se reproduce en el carrusel en lugar de la imagen (más llamativo). La imagen
                 queda como respaldo si el navegador no puede reproducir el video.
+              </p>
+              <p className="text-xs text-muted-foreground -mt-2">
+                La imagen se recorta a proporción 3:2 (horizontal) — diséñala en ese formato (ej. 1200×800px) y
+                deja margen respecto a los bordes para que ningún texto quede pegado al límite del recorte.
               </p>
               <div className="flex flex-wrap gap-4">
                 <div>

@@ -16,6 +16,7 @@ router.use(authenticate);
 
 const LOGO_DIR = path.join(process.cwd(), 'uploads', 'logo');
 const VIDEO_DIR = path.join(process.cwd(), 'uploads', 'videos');
+const BANNER_DIR = path.join(process.cwd(), 'uploads', 'banners');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -38,6 +39,18 @@ const uploadVideo = multer({
   fileFilter: (_req, file, cb) => {
     if (!/^video\/(mp4|webm)$/.test(file.mimetype)) {
       cb(new ValidationError('El video debe ser formato MP4 o WEBM.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+const uploadBannerImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!/^image\/(png|jpe?g|webp)$/.test(file.mimetype)) {
+      cb(new ValidationError('El banner debe ser una imagen PNG, JPG o WEBP.'));
       return;
     }
     cb(null, true);
@@ -156,6 +169,27 @@ router.post('/upload-video', authorizeMinRole('ADMIN'), uploadVideo.single('vide
 
     const videoUrl = `${req.protocol}://${req.get('host')}/uploads/videos/${filename}`;
     res.json({ success: true, data: { videoUrl } });
+  } catch (err) { next(err); }
+});
+
+// Banner de oferta / hero de tienda — a diferencia de las fotos de producto
+// (recorte forzado a cuadrado en products.routes.ts), estas imágenes son
+// horizontales tipo flyer, así que se recortan a 3:2 (misma proporción que
+// la tarjeta del carrusel en la tienda) en vez de a cuadrado.
+router.post('/upload-banner-image', authorizeMinRole('ADMIN'), uploadBannerImage.single('image'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) throw new ValidationError('No se recibió ninguna imagen.');
+
+    await fs.mkdir(BANNER_DIR, { recursive: true });
+
+    const filename = `${uuidv4()}.jpg`;
+    await sharp(req.file.buffer)
+      .resize(1200, 800, { fit: 'cover', position: 'attention' })
+      .jpeg({ quality: 85 })
+      .toFile(path.join(BANNER_DIR, filename));
+
+    const imageUrl = `${req.protocol}://${req.get('host')}/uploads/banners/${filename}`;
+    res.json({ success: true, data: { imageUrl } });
   } catch (err) { next(err); }
 });
 
