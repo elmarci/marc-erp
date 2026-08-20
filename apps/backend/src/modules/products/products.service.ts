@@ -155,6 +155,23 @@ export class ProductsService {
       categoryFilter = { categoryId: children.length > 0 ? { in: [categoryId, ...children.map(c => c.id)] } : categoryId };
     }
 
+    // Búsqueda por nombre/descripción sin distinguir tildes — "azucar" debe
+    // encontrar "Azúcar" y viceversa, si no el cajero se traba escribiendo
+    // rápido en pleno punto de venta. Prisma no expone la función unaccent()
+    // de Postgres en su query builder, así que se resuelven los ids que
+    // calzan con una consulta cruda y el resto del filtro sigue siendo
+    // Prisma normal (paginación, categoría, orden, etc. sin tocar).
+    let accentInsensitiveIds: string[] | null = null;
+    if (q) {
+      const rows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM products
+        WHERE deleted_at IS NULL
+          AND (unaccent(name) ILIKE unaccent(${'%' + q + '%'})
+            OR unaccent(coalesce(description, '')) ILIKE unaccent(${'%' + q + '%'}))
+      `;
+      accentInsensitiveIds = rows.map((r) => r.id);
+    }
+
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
       ...(status ? { status } : { status: { not: 'DISCONTINUED' } }),
@@ -166,11 +183,10 @@ export class ProductsService {
       ...(q
         ? {
             OR: [
-              { name: { contains: q, mode: 'insensitive' } },
+              ...(accentInsensitiveIds && accentInsensitiveIds.length > 0 ? [{ id: { in: accentInsensitiveIds } }] : []),
               { barcode: { equals: q } },
               { internalCode: { contains: q, mode: 'insensitive' } },
               { sku: { contains: q, mode: 'insensitive' } },
-              { description: { contains: q, mode: 'insensitive' } },
             ],
           }
         : {}),
