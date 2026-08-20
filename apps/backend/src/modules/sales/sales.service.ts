@@ -140,16 +140,21 @@ export class SalesService {
       throw new BusinessError('No hay una sesión de caja abierta. Abra la caja para procesar ventas.');
     }
 
-    // Obtener productos con lock para concurrencia
+    // Obtener productos con lock para concurrencia. OJO: varias líneas de
+    // "venta excepcional" (comodín) comparten a propósito el mismo productId
+    // real (ver split('#') en el frontend) — dedupear antes de comparar
+    // tamaños, si no, dos líneas de comodín ya bastan para que Prisma
+    // devuelva un producto "de menos" y dispare "no encontrado" en falso.
     const productIds = input.items.map((i) => i.productId);
+    const uniqueProductIds = [...new Set(productIds)];
     const products = await prisma.product.findMany({
-      where: { id: { in: productIds }, deletedAt: null, status: 'ACTIVE' },
+      where: { id: { in: uniqueProductIds }, deletedAt: null, status: 'ACTIVE' },
       include: { taxRate: true },
     });
 
-    if (products.length !== productIds.length) {
+    if (products.length !== uniqueProductIds.length) {
       const found = products.map((p) => p.id);
-      const missing = productIds.filter((id) => !found.includes(id));
+      const missing = uniqueProductIds.filter((id) => !found.includes(id));
       throw new BusinessError(`Productos no encontrados: ${missing.join(', ')}`);
     }
 
