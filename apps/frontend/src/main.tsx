@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
+import { usePosStore } from './stores/posStore';
 import './index.css';
 
 // Deja la app instalada para que siga cargando sin internet (solo activo en
@@ -13,7 +14,27 @@ import './index.css';
 // de página) — una pestaña dejada abierta todo el día nunca se enteraba de
 // un deploy nuevo. Forzamos una revisión cada minuto para que el cambio
 // llegue solo, sin que el cajero tenga que cerrar y volver a abrir la app.
+//
+// Ojo: activar el service worker nuevo (skipWaiting/clientsClaim, dentro del
+// propio sw.js generado) NO recarga la pestaña ya abierta — el código de
+// React en memoria sigue siendo el viejo hasta que algo la recargue. Una
+// caja dejada abierta días enteras podía quedarse corriendo JS desactualizado
+// indefinidamente (así fue como a un cajero le siguió fallando "Venta
+// excepcional" con un bug ya arreglado en el servidor). Por eso escuchamos
+// "controllerchange" y recargamos apenas el carrito esté vacío — nunca a
+// media venta, para no perder lo que ya escaneó.
 if ('serviceWorker' in navigator) {
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    const reloadWhenCartEmpty = () => {
+      if (usePosStore.getState().items.length === 0) window.location.reload();
+      else setTimeout(reloadWhenCartEmpty, 5000);
+    };
+    reloadWhenCartEmpty();
+  });
+
   registerSW({
     immediate: true,
     onRegisteredSW(_url, registration) {
