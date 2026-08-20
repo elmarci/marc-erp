@@ -35,7 +35,7 @@ export function CheckoutPage() {
     customerEmail: customer?.email ?? '',
     deliveryType: '' as 'DELIVERY' | 'PICKUP' | '',
     address: '', district: 'Pachacamac', reference: '',
-    paymentMethod: '' as 'YAPE' | 'PLIN' | 'CASH' | '',
+    paymentMethod: '' as 'YAPE' | 'CASH' | '',
     notes: '',
   })
 
@@ -310,11 +310,13 @@ export function CheckoutPage() {
                 </div>
 
                 <div className="space-y-3">
+                  {/* Plin deshabilitado temporalmente — no hay cuenta Plin
+                      activa todavía; se reactiva sumando la opción de vuelta
+                      acá y en el enum de store.routes.ts cuando haya una. */}
                   {([
-                    { val: 'YAPE', emoji: '💜', title: 'Yape', desc: 'Paga con tu app Yape', sub: 'Te enviaremos el número para pagar' },
-                    { val: 'PLIN', emoji: '💚', title: 'Plin', desc: 'Paga con tu app Plin', sub: 'Te enviaremos el número para pagar' },
+                    { val: 'YAPE', icon: '/yape.png', title: 'Yape', desc: 'Paga con tu app Yape', sub: 'Escanea el QR y listo' },
                     {
-                      val: 'CASH', emoji: '💵',
+                      val: 'CASH', icon: '/cash.png',
                       title: form.deliveryType === 'PICKUP' ? 'Efectivo en tienda' : 'Pago contra entrega',
                       desc: form.deliveryType === 'PICKUP' ? 'Paga cuando recojas tu pedido' : 'Paga en efectivo al recibir',
                       sub: 'Sin cobros adicionales'
@@ -328,7 +330,7 @@ export function CheckoutPage() {
                           : 'border-paper-line bg-white hover:border-paper-ink-faint shadow-sm'
                       }`}>
                       <div className="flex items-start gap-4">
-                        <span className="text-3xl">{opt.emoji}</span>
+                        <img src={opt.icon} alt={opt.title} className="h-11 w-11 rounded-xl object-contain shrink-0" />
                         <div className="flex-1">
                           <p className="font-bold text-base text-paper-ink">{opt.title}</p>
                           <p className="text-sm text-paper-ink-soft mt-0.5">{opt.desc}</p>
@@ -344,10 +346,13 @@ export function CheckoutPage() {
                   ))}
                 </div>
 
-                {(form.paymentMethod === 'YAPE' || form.paymentMethod === 'PLIN') && (
-                  <div className="bg-brand-blue-50 border border-brand-blue-200 rounded-xl p-4 text-sm">
-                    <p className="font-semibold mb-1 text-paper-ink">ℹ️ ¿Cómo funciona?</p>
-                    <p className="text-paper-ink-soft">Confirma tu pedido → Te llegará el número de {form.paymentMethod} → Realizas la transferencia → Envianos tu captura por WhatsApp → ¡Pedido confirmado!</p>
+                {form.paymentMethod === 'YAPE' && (
+                  <div className="bg-brand-blue-50 border border-brand-blue-200 rounded-xl p-4 text-sm flex flex-col items-center text-center gap-2">
+                    <p className="font-semibold text-paper-ink">Escanea y paga con Yape</p>
+                    <img src="/yape-qr.png" alt="QR de Yape para pagar" className="w-40 rounded-xl border border-paper-line" />
+                    <p className="text-paper-ink-soft">
+                      Paga <strong className="text-paper-ink">S/ {total.toFixed(2)}</strong> y guarda tu captura — te la pedimos apenas confirmes el pedido.
+                    </p>
                   </div>
                 )}
 
@@ -430,9 +435,8 @@ export function CheckoutPage() {
                   {form.customerName && <p>👤 {form.customerName}</p>}
                   {form.deliveryType === 'DELIVERY' && form.address && <p>📍 {form.address}, {form.district}</p>}
                   {form.deliveryType === 'PICKUP' && <p>🏪 Recojo en Av. Manchay, Pachacamac</p>}
-                  {form.paymentMethod === 'YAPE' && <p>💜 Pago por Yape</p>}
-                  {form.paymentMethod === 'PLIN' && <p>💚 Pago por Plin</p>}
-                  {form.paymentMethod === 'CASH' && <p>💵 {form.deliveryType === 'PICKUP' ? 'Efectivo en tienda' : 'Contra entrega'}</p>}
+                  {form.paymentMethod === 'YAPE' && <p className="flex items-center gap-1.5"><img src="/yape.png" alt="" className="h-4 w-4 rounded object-contain" />Pago por Yape</p>}
+                  {form.paymentMethod === 'CASH' && <p className="flex items-center gap-1.5"><img src="/cash.png" alt="" className="h-4 w-4 object-contain" />{form.deliveryType === 'PICKUP' ? 'Efectivo en tienda' : 'Contra entrega'}</p>}
                 </div>
               )}
               </div>

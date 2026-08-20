@@ -215,7 +215,7 @@ export function ProductPage() {
       {similar.length > 0 && (
         <section className="mt-16">
           <h2 className="text-xl font-bold text-paper-ink mb-6">Productos similares</h2>
-          <div className="flex overflow-x-auto no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4">
+          <div className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4">
             {similar.map(p => (
               <div key={p.id} className="shrink-0 w-40 snap-start sm:w-auto">
                 <ProductCard product={p} />

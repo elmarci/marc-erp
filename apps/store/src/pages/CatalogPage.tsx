@@ -148,7 +148,7 @@ export function CatalogPage() {
           </div>
 
           {/* Categories — pills, solo mobile/tablet */}
-          <div className="flex lg:hidden gap-2 overflow-x-auto pb-4 mb-2">
+          <div className="flex lg:hidden gap-2 overflow-x-auto h-scroll pb-4 mb-2">
             <button onClick={() => handleCategory('')}
               className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${!categoryId ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
               Todos

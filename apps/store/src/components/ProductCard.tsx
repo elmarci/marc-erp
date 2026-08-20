@@ -139,15 +139,15 @@ export function ProductCard({ product }: { product: Product }) {
 
   return (
     <>
-      <motion.div onClick={goToProduct}
+      <motion.div
         whileHover={outOfStock ? undefined : { y: -6 }}
         whileTap={outOfStock ? undefined : { scale: 0.98 }}
         transition={{ type: 'spring', stiffness: 400, damping: 24 }}
-        className={`group relative bg-white border rounded-2xl overflow-hidden select-none cursor-pointer shadow-sm
+        className={`group relative bg-white border rounded-2xl overflow-hidden select-none shadow-sm
           ${outOfStock ? 'opacity-60 border-paper-line' : 'border-paper-line hover:border-brand-blue-200 hover:shadow-lg'}`}>
 
-        {/* Imagen */}
-        <div className="relative aspect-square overflow-hidden bg-paper-surface">
+        {/* Imagen — toca para ver el detalle del producto */}
+        <div onClick={goToProduct} className="relative aspect-square overflow-hidden bg-paper-surface cursor-pointer">
           {product.imageUrl
             ? <img ref={imgRef} src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
             : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-10 w-10 text-paper-ink-ghost" /></div>
@@ -182,8 +182,10 @@ export function ProductCard({ product }: { product: Product }) {
           </AnimatePresence>
         </div>
 
-        {/* Info */}
-        <div className="p-3">
+        {/* Info — toda esta zona agrega al carrito (o abre la modal de
+            granel); es un blanco de toque mucho más grande que el botón
+            circular solo, así cuesta menos acertarle en el celular. */}
+        <div onClick={outOfStock ? undefined : handleAdd} className={outOfStock ? 'p-3' : 'p-3 cursor-pointer active:bg-paper-surface transition-colors'}>
           <p className="text-xs text-paper-ink-ghost mb-0.5">{product.category.name}</p>
           <p className="font-semibold text-sm text-paper-ink line-clamp-2 leading-tight mb-2">{product.name}</p>
 

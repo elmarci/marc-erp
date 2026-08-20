@@ -28,4 +28,14 @@
     -ms-overflow-style: none;
   }
   .no-scrollbar::-webkit-scrollbar { display: none; }
+  /* En una fila angosta de chips (categorías) dentro de una página que
+     también se desplaza verticalmente, el reconocedor de gestos táctiles a
+     veces se "traba" decidiendo el eje — un swipe que no es perfectamente
+     horizontal no mueve nada. pan-x le dice al navegador que esta fila sólo
+     atiende el eje horizontal, así cualquier componente vertical del gesto
+     se deja pasar de una y sigue el scroll normal de la página. */
+  .h-scroll {
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+  }
 }

@@ -29,10 +29,13 @@ export function AuthGate() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(v => ({ ...v, [k]: e.target.value }))
 
-  // Google no entrega teléfono — si la cuenta es nueva, el backend responde
-  // "NEEDS_PHONE" y pedimos el dato acá antes de reintentar con el mismo token.
+  // Google sólo confirma el email — nunca asumimos nombre ni teléfono desde
+  // el perfil de Google. Si la cuenta es nueva, el backend responde
+  // "NEEDS_PROFILE" y pedimos acá esos datos (en blanco, sin autocompletar)
+  // antes de reintentar con el mismo token.
   const pendingGoogleToken = useRef<string | null>(null)
-  const [needsPhone, setNeedsPhone] = useState(false)
+  const [needsProfile, setNeedsProfile] = useState(false)
+  const [googleName, setGoogleName] = useState('')
   const [googlePhone, setGooglePhone] = useState('')
 
   const loginMutation = useMutation({
@@ -48,11 +51,11 @@ export function AuthGate() {
   })
 
   const googleMutation = useMutation({
-    mutationFn: (phone?: string) => storeApi.loginWithGoogle(pendingGoogleToken.current!, phone),
-    onSuccess: (res) => { setNeedsPhone(false); setAuth(res.data.data.customer, res.data.data.token); toast.success(`¡Bienvenido, ${res.data.data.customer.name}!`) },
+    mutationFn: (data: { phone?: string; name?: string }) => storeApi.loginWithGoogle(pendingGoogleToken.current!, data.phone, data.name),
+    onSuccess: (res) => { setNeedsProfile(false); setAuth(res.data.data.customer, res.data.data.token); toast.success(`¡Bienvenido, ${res.data.data.customer.name}!`) },
     onError: (err) => {
       const msg = errorMessage(err, 'No se pudo ingresar con Google.')
-      if (msg === 'NEEDS_PHONE') { setNeedsPhone(true); return }
+      if (msg === 'NEEDS_PROFILE') { setNeedsProfile(true); return }
       toast.error(msg)
     },
   })
@@ -60,8 +63,8 @@ export function AuthGate() {
   const handleGoogleSuccess = (cred: CredentialResponse) => {
     if (!cred.credential) return
     pendingGoogleToken.current = cred.credential
-    setNeedsPhone(false)
-    googleMutation.mutate(undefined)
+    setNeedsProfile(false)
+    googleMutation.mutate({})
   }
 
   const isLoading = loginMutation.isPending || registerMutation.isPending || googleMutation.isPending
@@ -72,19 +75,24 @@ export function AuthGate() {
         <div className="flex flex-col items-center mb-6">
           <img src="/logo.png" alt="Minimarket Marc" className="h-14 w-auto mb-3" />
           <h1 className="text-xl font-black text-paper-ink text-center">
-            {needsPhone ? 'Un paso más' : mode === 'login' ? 'Bienvenido de vuelta' : 'Crea tu cuenta'}
+            {needsProfile ? 'Un paso más' : mode === 'login' ? 'Bienvenido de vuelta' : 'Crea tu cuenta'}
           </h1>
           <p className="text-paper-ink-soft text-sm text-center mt-1">
-            {needsPhone
-              ? 'Necesitamos tu WhatsApp para coordinar tus pedidos'
+            {needsProfile
+              ? 'Cuéntanos cómo te llamas y tu WhatsApp para coordinar tus pedidos'
               : 'Regístrate para comprar, ver tu historial y tus puntos'}
           </p>
         </div>
 
         <div className="bg-white border border-paper-line rounded-3xl shadow-xl overflow-hidden">
           <div className="p-5 space-y-3">
-            {needsPhone ? (
+            {needsProfile ? (
               <>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-3.5 h-4 w-4 text-paper-ink-ghost" />
+                  <input autoFocus value={googleName} onChange={e => setGoogleName(e.target.value)} placeholder="Tu nombre completo"
+                    className="w-full bg-paper-surface border border-paper-line focus:border-brand-blue-400 rounded-xl pl-10 pr-4 py-3 text-sm text-paper-ink placeholder-paper-ink-ghost outline-none transition-colors" />
+                </div>
                 <div className="relative">
                   <Phone className="absolute left-3.5 top-3.5 h-4 w-4 text-paper-ink-ghost" />
                   <input value={googlePhone} onChange={e => setGooglePhone(e.target.value)} placeholder="Teléfono (987 654 321)" type="tel"
@@ -92,11 +100,15 @@ export function AuthGate() {
                 </div>
                 <button
                   disabled={isLoading}
-                  onClick={() => { if (googlePhone.trim().length < 9) { toast.error('Ingresa un número válido'); return } googleMutation.mutate(googlePhone.trim()) }}
+                  onClick={() => {
+                    if (googleName.trim().length < 2) { toast.error('Ingresa tu nombre'); return }
+                    if (googlePhone.trim().length < 9) { toast.error('Ingresa un número válido'); return }
+                    googleMutation.mutate({ phone: googlePhone.trim(), name: googleName.trim() })
+                  }}
                   className="w-full bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl shadow-md shadow-brand-green-600/25 flex items-center justify-center gap-2 transition-colors">
                   {isLoading ? <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Continuar<ArrowRight className="h-4 w-4" /></>}
                 </button>
-                <button onClick={() => { setNeedsPhone(false); pendingGoogleToken.current = null }}
+                <button onClick={() => { setNeedsProfile(false); pendingGoogleToken.current = null }}
                   className="w-full text-xs text-paper-ink-ghost hover:text-paper-ink-soft py-1 transition-colors">
                   Cancelar
                 </button>

@@ -77,10 +77,12 @@ export class StoreAuthService {
     return { customer: this.safeCustomer(customer), token };
   }
 
-  // Login/registro con Google. Requiere `phone` sólo cuando se está creando
-  // una cuenta nueva (Google no entrega teléfono) — necesitamos un teléfono
-  // real para delivery y para el espejo en el módulo Clientes del ERP.
-  async loginWithGoogle(idToken: string, phone?: string) {
+  // Login/registro con Google. Google sólo confirma el email — nunca lo
+  // usamos para asumir nombre ni teléfono. Cuando se está creando una
+  // cuenta nueva, `phone` y `name` son obligatorios y los llena la persona
+  // misma (NEEDS_PROFILE le pide el formulario antes de reintentar con el
+  // mismo idToken).
+  async loginWithGoogle(idToken: string, phone?: string, name?: string) {
     if (!googleClient) throw new BusinessError('El login con Google no está configurado todavía.');
 
     const ticket = await googleClient.verifyIdToken({ idToken, audience: env.GOOGLE_CLIENT_ID });
@@ -94,15 +96,14 @@ export class StoreAuthService {
       if (byEmail) {
         customer = await prisma.storeCustomer.update({ where: { id: byEmail.id }, data: { googleId: payload.sub } });
       } else {
-        if (!phone?.trim()) throw new BusinessError('NEEDS_PHONE');
+        if (!phone?.trim() || !name?.trim()) throw new BusinessError('NEEDS_PROFILE');
         const existingPhone = await prisma.storeCustomer.findUnique({ where: { phone } });
         if (existingPhone) throw new BusinessError('Ya existe una cuenta con ese teléfono.');
 
-        const name = payload.name ?? payload.email.split('@')[0];
-        const customerId = await this.findOrCreateErpCustomer(name, phone, payload.email);
+        const customerId = await this.findOrCreateErpCustomer(name.trim(), phone, payload.email);
         customer = await prisma.storeCustomer.create({
           data: {
-            name, phone, email: payload.email, googleId: payload.sub,
+            name: name.trim(), phone, email: payload.email, googleId: payload.sub,
             authProvider: 'GOOGLE', customerId,
           },
         });

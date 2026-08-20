@@ -69,7 +69,10 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
       district: z.string().optional(),
       reference: z.string().optional(),
       notes: z.string().optional(),
-      paymentMethod: z.enum(['YAPE', 'PLIN', 'CASH']),
+      // PLIN deshabilitado temporalmente en la tienda — no hay cuenta Plin
+      // activa todavía; se reactiva agregando el valor de vuelta acá y en
+      // CheckoutPage.tsx cuando haya una.
+      paymentMethod: z.enum(['YAPE', 'CASH']),
       items: z.array(z.object({
         // Acepta UUID normal O IDs de bundle (bundle-offerId-productId)
         productId: z.string().min(1),

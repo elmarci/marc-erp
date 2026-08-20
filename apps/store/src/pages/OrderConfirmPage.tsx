@@ -9,7 +9,7 @@ const WHATSAPP_NUMBER = '51930555831'
 const API_BASE = import.meta.env['VITE_API_URL']?.replace('/api/v1', '') ?? 'http://localhost:3001'
 
 const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo' }
-const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵' }
+const PAYMENT_ICONS: Record<string, string> = { YAPE: '/yape.png', PLIN: '/plin.png', CASH: '/cash.png' }
 
 const STATUS_FLOW = [
   { key: 'PENDING', icon: Clock, label: 'Recibido', desc: 'Tu pedido fue recibido y está esperando confirmación' },
@@ -90,15 +90,24 @@ export function OrderConfirmPage() {
       {/* Payment alert - only for Yape/Plin */}
       {needsPayment && !isCancelled && (
         <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-5 mb-6">
-          <h3 className="font-bold text-lg mb-3 text-paper-ink">
-            {PAYMENT_EMOJIS[order.paymentMethod]} Realiza tu pago por {PAYMENT_LABELS[order.paymentMethod]}
+          <h3 className="font-bold text-lg mb-3 text-paper-ink flex items-center gap-2">
+            <img src={PAYMENT_ICONS[order.paymentMethod]} alt="" className="h-7 w-7 rounded-lg object-contain" />
+            Realiza tu pago por {PAYMENT_LABELS[order.paymentMethod]}
           </h3>
-          <div className="bg-paper-surface rounded-xl p-4 mb-4 border border-paper-line">
-            <p className="text-paper-ink-soft text-sm mb-1">Monto a pagar:</p>
-            <p className="text-3xl font-black text-paper-ink">S/ {Number(order.total).toFixed(2)}</p>
-            <p className="text-paper-ink-soft text-sm mt-2">Enviar al número:</p>
-            <p className="text-2xl font-black text-brand-blue-700">930 555 831</p>
-          </div>
+          {order.paymentMethod === 'YAPE' ? (
+            <div className="bg-paper-surface rounded-xl p-4 mb-4 border border-paper-line flex flex-col items-center text-center gap-2">
+              <img src="/yape-qr.png" alt="QR de Yape para pagar" className="w-40 rounded-xl border border-paper-line" />
+              <p className="text-paper-ink-soft text-sm">Monto a pagar:</p>
+              <p className="text-3xl font-black text-paper-ink">S/ {Number(order.total).toFixed(2)}</p>
+            </div>
+          ) : (
+            <div className="bg-paper-surface rounded-xl p-4 mb-4 border border-paper-line">
+              <p className="text-paper-ink-soft text-sm mb-1">Monto a pagar:</p>
+              <p className="text-3xl font-black text-paper-ink">S/ {Number(order.total).toFixed(2)}</p>
+              <p className="text-paper-ink-soft text-sm mt-2">Enviar al número:</p>
+              <p className="text-2xl font-black text-brand-blue-700">930 555 831</p>
+            </div>
+          )}
           <a href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(whatsappMsg)}`}
             target="_blank" rel="noopener noreferrer"
             className="flex items-center justify-center gap-3 bg-[#25D366] text-white font-bold py-4 rounded-xl hover:opacity-90 transition-opacity">
@@ -176,7 +185,10 @@ export function OrderConfirmPage() {
         <div className="border-t border-dashed border-paper-line mt-3 pt-3 space-y-1.5 text-sm text-paper-ink-soft">
           <p>👤 {order.customerName} · {order.customerPhone}</p>
           <p>{order.deliveryType === 'DELIVERY' ? `🚚 Delivery${order.address ? ` — ${order.address}, ${order.district}` : ''}` : '🏪 Recojo en tienda — Av. Manchay, Pachacamac'}</p>
-          <p>{PAYMENT_EMOJIS[order.paymentMethod]} {PAYMENT_LABELS[order.paymentMethod]} — {order.paymentStatus === 'VERIFIED' ? '✅ Pago verificado' : order.paymentMethod === 'CASH' ? 'Al recibir' : '⏳ Pendiente de verificación'}</p>
+          <p className="flex items-center gap-1.5">
+            <img src={PAYMENT_ICONS[order.paymentMethod]} alt="" className="h-4 w-4 rounded object-contain" />
+            {PAYMENT_LABELS[order.paymentMethod]} — {order.paymentStatus === 'VERIFIED' ? '✅ Pago verificado' : order.paymentMethod === 'CASH' ? 'Al recibir' : '⏳ Pendiente de verificación'}
+          </p>
         </div>
         </div>
       </div>

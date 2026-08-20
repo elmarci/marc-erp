@@ -26,7 +26,7 @@ const STORE_ADDRESS = 'Mz F10 Lt2A - C.27 Av. Manchay, Pachacamac'
 const BENEFITS = [
   { icon: Truck, title: 'Delivery a tu puerta', desc: 'Pedidos entregados el mismo día en Pachacamac' },
   { icon: Store, title: 'Recojo en tienda', desc: 'Reserva online y pasa a recogerlo sin espera' },
-  { icon: ShieldCheck, title: 'Pago seguro', desc: 'Yape, Plin o efectivo contra entrega' },
+  { icon: ShieldCheck, title: 'Pago seguro', desc: 'Yape o efectivo contra entrega' },
   { icon: Heart, title: 'Atención cercana', desc: 'Te respondemos directo por WhatsApp' },
 ]
 
@@ -168,7 +168,7 @@ export function HomePage() {
       {categories.length > 0 && (
         <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
           <Reveal><h2 className="text-xl font-bold mb-6 text-paper-ink">Compra por categorías</h2></Reveal>
-          <StaggerGroup className="flex overflow-x-auto no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-9">
+          <StaggerGroup className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-9">
             <StaggerItem className="shrink-0 w-24 snap-start sm:w-auto">
               <MotionLink to="/catalogo" whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }}
                 className="group flex flex-col items-center justify-center gap-2 bg-brand-green-600 hover:bg-brand-green-700 text-white rounded-2xl px-3 py-5 shadow-sm hover:shadow-lg hover:shadow-brand-green-600/25 text-center h-full">
@@ -218,7 +218,7 @@ export function HomePage() {
             Ver todos <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </Reveal>
-        <StaggerGroup className="flex overflow-x-auto no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 sm:gap-4">
+        <StaggerGroup className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 sm:gap-4">
           {featured.map(product => (
             <StaggerItem key={product.id} className="shrink-0 w-40 snap-start sm:w-auto">
               <ProductCard product={product} />
@@ -288,7 +288,6 @@ export function HomePage() {
             <p>WhatsApp: 930 555 831</p>
             <div className="flex items-center gap-2 mt-3">
               <span className="bg-paper-surface rounded-full px-2.5 py-1 text-xs font-medium text-paper-ink-soft">Yape</span>
-              <span className="bg-paper-surface rounded-full px-2.5 py-1 text-xs font-medium text-paper-ink-soft">Plin</span>
               <span className="bg-paper-surface rounded-full px-2.5 py-1 text-xs font-medium text-paper-ink-soft">Efectivo</span>
             </div>
           </div>

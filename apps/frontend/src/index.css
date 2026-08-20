@@ -177,6 +177,17 @@
   }
   .scroll-x-hidden::-webkit-scrollbar { display: none; }
 
+  /* Filas angostas de chips (categorías del POS) dentro de una pantalla que
+     también se desplaza verticalmente — sin esto, el reconocedor de gestos
+     táctiles a veces se "traba" ahí: un swipe que no es perfectamente
+     horizontal no mueve nada. pan-x le dice al navegador que esta fila sólo
+     atiende el eje horizontal, así el componente vertical del gesto se deja
+     pasar y el scroll de la pantalla sigue normal. */
+  .h-scroll {
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+  }
+
   /* Prevenir zoom automático en iOS (inputs < 16px lo causan) */
   @media (max-width: 767px) {
     input, select, textarea { font-size: 16px !important; }

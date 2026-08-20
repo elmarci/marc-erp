@@ -49,11 +49,12 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
 
 router.post('/google', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { idToken, phone } = z.object({
+    const { idToken, phone, name } = z.object({
       idToken: z.string().min(1),
       phone: z.string().min(9).optional(),
+      name: z.string().min(2).optional(),
     }).parse(req.body);
-    const result = await storeAuthService.loginWithGoogle(idToken, phone);
+    const result = await storeAuthService.loginWithGoogle(idToken, phone, name);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

@@ -689,7 +689,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       {/* Filtros de categoría */}
       {categories && categories.length > 0 && (
         <div className="border-b">
-          <div className="flex gap-2 overflow-x-auto px-3 py-2">
+          <div className="flex gap-2 overflow-x-auto h-scroll px-3 py-2">
             <Button
               variant={selectedCategory === null ? 'default' : 'outline'}
               size="sm"
@@ -730,7 +730,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
           </div>
           {/* Subcategorías de la categoría general seleccionada */}
           {subcategories.length > 0 && (
-            <div className="flex gap-1.5 overflow-x-auto px-3 pb-2">
+            <div className="flex gap-1.5 overflow-x-auto h-scroll px-3 pb-2">
               <Button
                 variant={selectedSubcategory === null ? 'secondary' : 'ghost'}
                 size="sm"
