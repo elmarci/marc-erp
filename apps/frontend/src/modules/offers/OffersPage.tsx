@@ -16,7 +16,7 @@ interface Offer {
   buyQuantity: number | null; getQuantity: number | null
   startTime: string | null; endTime: string | null; daysOfWeek: number[]
   startDate: string; endDate: string | null; isActive: boolean; showInStore: boolean
-  storeBadge: string | null; storeImage: string | null; storeVideo: string | null; priority: number
+  storeBadge: string | null; storeImage: string | null; storeVideo: string | null; storeFullDesign: boolean; priority: number
   products: Array<{ quantity?: number; product: { id: string; name: string; imageUrl: string | null; salePrice?: number } }>
 }
 
@@ -50,6 +50,7 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     storeBadge: offer?.storeBadge ?? '',
     storeImage: offer?.storeImage ?? '',
     storeVideo: offer?.storeVideo ?? '',
+    storeFullDesign: offer?.storeFullDesign ?? false,
     priority: String(offer?.priority ?? 0),
     productIds: offer?.type !== 'COMBO' ? (offer?.products.map(p => p.product.id) ?? []) : [],
     comboItems: offer?.type === 'COMBO'
@@ -315,6 +316,16 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
                       <Upload className="mr-1.5 h-3.5 w-3.5" />{form.storeImage ? 'Cambiar' : 'Subir'}
                     </Button>
                   </div>
+                  {form.storeImage && (
+                    <label className="mt-2 flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={form.storeFullDesign}
+                        onChange={e => setForm(v => ({ ...v, storeFullDesign: e.target.checked }))}
+                        className="h-4 w-4 rounded" />
+                      <span className="text-xs text-muted-foreground">
+                        Es un diseño ya armado (flyer con texto y precio) — no superponer título/badge/precio
+                      </span>
+                    </label>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-muted-foreground">Video (opcional)</label>

@@ -1326,6 +1326,9 @@ model Promotion {
   storeImage  String?             @map("store_image")
   storeVideo  String?             @map("store_video")
   storeBadge  String?             @map("store_badge")
+  // El banner subido ya viene con texto/precio diseñados (ej. un flyer) —
+  // la tienda no debe superponerle su propio título/badge/precio/botón.
+  storeFullDesign Boolean         @default(false) @map("store_full_design")
   createdAt   DateTime            @default(now()) @map("created_at")
   updatedAt   DateTime            @updatedAt @map("updated_at")
 

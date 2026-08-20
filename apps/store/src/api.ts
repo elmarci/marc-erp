@@ -51,6 +51,7 @@ export interface Offer {
   storeBadge: string | null
   storeImage: string | null
   storeVideo: string | null
+  storeFullDesign: boolean
   endDate: string | null
   products: Array<{
     product: { id: string; name: string; salePrice: number; imageUrl: string | null }

@@ -41,7 +41,7 @@ export class PromotionsService {
     startTime?: string; endTime?: string; daysOfWeek?: number[];
     startDate: Date; endDate?: Date;
     isActive?: boolean; showInStore?: boolean;
-    storeBadge?: string; storeImage?: string; storeVideo?: string; priority?: number;
+    storeBadge?: string; storeImage?: string; storeVideo?: string; storeFullDesign?: boolean; priority?: number;
     productIds?: string[];
     comboItems?: ComboItemInput[];
   }) {
@@ -71,7 +71,7 @@ export class PromotionsService {
     startTime?: string; endTime?: string; daysOfWeek?: number[];
     startDate?: Date; endDate?: Date;
     isActive?: boolean; showInStore?: boolean;
-    storeBadge?: string; storeImage?: string; storeVideo?: string; priority?: number;
+    storeBadge?: string; storeImage?: string; storeVideo?: string; storeFullDesign?: boolean; priority?: number;
     productIds?: string[];
     comboItems?: ComboItemInput[];
   }) {
