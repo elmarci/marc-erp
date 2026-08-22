@@ -125,11 +125,21 @@ function CategoryChipNav({ categories, categoryId, onSelect }: {
  * código de barras al pie con el número aparte en texto plano (no la
  * tipografía de JsBarcode, que se ve desalineada en el número). */
 function barcodeSvgMarkup(value: string): string {
+  // Los códigos de barra reales de los proveedores son EAN-13 (12-13
+  // dígitos) — se renderizan como tal para que salga el patrón correcto.
+  // Los códigos internos (cuando el producto no tiene barcode de fábrica)
+  // no son EAN-13 válido, así que caen a CODE128, que acepta cualquier texto.
+  const opts = { width: 1.5, height: 26, displayValue: false, margin: 0 };
+  if (/^\d{12,13}$/.test(value)) {
+    try {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      JsBarcode(svg, value, { format: 'EAN13', ...opts });
+      return svg.outerHTML;
+    } catch { /* dígito verificador inválido — cae a CODE128 abajo */ }
+  }
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    JsBarcode(svg, value, {
-      format: 'CODE128', width: 1.5, height: 26, displayValue: false, margin: 0,
-    });
+    JsBarcode(svg, value, { format: 'CODE128', ...opts });
     return svg.outerHTML;
   } catch {
     return '';
@@ -179,9 +189,9 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       .card {
         width: 90mm; height: 52mm;
         border-radius: 3.8mm; overflow: hidden;
-        border: 2.5px solid #1a3d8f; background: #fff; page-break-inside: avoid;
+        border: 2.5px solid #1e3a8a; background: #fff; page-break-inside: avoid;
         display: flex; flex-direction: column;
-        padding: 3.7mm; gap: 2mm;
+        padding: 3.7mm; gap: 2.5mm;
       }
       .row { flex: 1; min-height: 0; display: flex; align-items: center; gap: 2.8mm; }
       .logo {
@@ -191,29 +201,45 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       .logo img { position: absolute; top: 0; right: 0; height: 100%; width: auto; }
       .name-block { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.5px; }
       .title {
-        font-size: 21px; font-weight: 800; color: #12162b; text-transform: uppercase;
+        font-size: 21px; font-weight: 800; color: #111827; text-transform: uppercase;
         line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
       .title.long { font-size: 17px; }
       .title.verylong { font-size: 14px; }
       .subtitle {
-        font-size: 13px; font-weight: 700; color: #12162b; text-transform: uppercase;
+        font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase;
         line-height: 1.2;
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
       }
       .price-badge {
-        flex-shrink: 0; background: #1a3d8f; color: #fff;
+        flex-shrink: 0; background: #1e3a8a; color: #fff;
         border-radius: 3mm; padding: 2mm 3.4mm; min-width: 20mm;
         display: flex; flex-direction: column; align-items: center; line-height: 1;
       }
       .price-badge .currency { font-size: 10px; font-weight: 700; opacity: .9; }
       .price-badge .amount { font-size: 24px; font-weight: 800; }
-      .divider { flex-shrink: 0; height: 2px; background: #4ca324; border-radius: 1px; }
+      /* Ancho fijado por JS al ancho real de .name-block — así la línea no
+         se mete debajo del logo ni de la placa de precio. */
+      .divider { flex-shrink: 0; height: 3px; background: #22c55e; border-radius: 1.5px; width: 0; }
       .barcode-block { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
       .barcode-block svg { width: 100%; height: auto; max-height: 10mm; }
-      .barcode-code { font-size: 11px; font-weight: 600; color: #333; letter-spacing: .04em; margin-top: 0.5mm; }
+      .barcode-code { font-size: 11px; font-weight: 600; color: #333; letter-spacing: .04em; font-family: 'Courier New', monospace; margin-top: 0.5mm; }
     </style></head><body>
     <div class="grid">${cards}</div>
+    <script>
+      // Alinea cada línea verde al ancho y posición reales del bloque de
+      // nombre — el precio cambia de ancho según la cantidad de dígitos,
+      // así que no se puede fijar con un margen estático en CSS.
+      document.querySelectorAll('.card').forEach(function (card) {
+        var nameBlock = card.querySelector('.name-block');
+        var divider = card.querySelector('.divider');
+        var cardBox = card.getBoundingClientRect();
+        var nameBox = nameBlock.getBoundingClientRect();
+        var paddingLeft = parseFloat(getComputedStyle(card).paddingLeft);
+        divider.style.marginLeft = (nameBox.left - cardBox.left - paddingLeft) + 'px';
+        divider.style.width = nameBox.width + 'px';
+      });
+    </script>
     </body></html>`);
   win.document.close(); win.focus(); win.print();
 }
