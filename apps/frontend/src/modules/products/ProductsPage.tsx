@@ -120,30 +120,30 @@ function CategoryChipNav({ categories, categoryId, onSelect }: {
 }
 
 /* ─── Impresión de etiquetas de precio (para pegar en los portaprecios) ───
- * Tarjeta de ~5.2cm de alto, siguiendo el modelo de etiqueta que ya usa la
- * tienda: logo grande a la izquierda, nombre en dos niveles (tipo de
- * producto arriba en grande, marca/variante abajo) y precio en una píldora
- * azul — con el código de barras como franja delgada al pie. */
+ * Tarjeta horizontal de ~5.2cm de alto en 3 zonas: logo circular, bloque de
+ * nombre/variante con línea verde divisoria, precio en placa azul — y el
+ * código de barras al pie con el número aparte en texto plano (no la
+ * tipografía de JsBarcode, que se ve desalineada en el número). */
 function barcodeSvgMarkup(value: string): string {
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     JsBarcode(svg, value, {
-      format: 'CODE128', width: 1.4, height: 22, displayValue: true,
-      fontSize: 9, fontOptions: 'bold', margin: 0, textMargin: 2,
+      format: 'CODE128', width: 1.5, height: 26, displayValue: false, margin: 0,
     });
     return svg.outerHTML;
   } catch {
-    return `<p style="font-size:9px">${value}</p>`;
+    return '';
   }
 }
 
 // La mayoría de productos del catálogo se llaman "Tipo Marca Variante"
 // (ej. "Leche Bonle Protección 390g", "Detergente Ariel 1kg") — separar la
-// primera palabra como título grande y el resto como subtítulo reproduce
-// el mismo efecto visual de "tipo de producto" + "presentación" de la
-// etiqueta de referencia, sin necesitar un campo nuevo en el producto.
+// primera palabra como nombre grande y el resto como variante reproduce el
+// mismo efecto de "producto" + "presentación" sin un campo nuevo. Se filtra
+// el guión suelto de nombres tipo "Aceite - Beltrán Premium 1L" para que no
+// quede un "-" colgando al inicio del subtítulo.
 function splitProductName(name: string): { title: string; subtitle: string } {
-  const parts = name.trim().split(/\s+/);
+  const parts = name.trim().split(/\s+/).filter(p => p !== '-');
   if (parts.length <= 1) return { title: name, subtitle: '' };
   return { title: parts[0], subtitle: parts.slice(1).join(' ') };
 }
@@ -157,13 +157,17 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
     <div class="card">
       <div class="row">
         <div class="logo"><img src="${MARC_LOGO_DATA_URI}" /></div>
-        <div class="name">
-          <p class="title${title.length > 9 ? ' long' : ''}">${title}</p>
+        <div class="name-block">
+          <p class="title${title.length > 10 ? ' verylong' : title.length > 8 ? ' long' : ''}">${title}</p>
           ${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}
         </div>
-        <div class="price"><span class="currency">S/</span><span class="amount">${Number(p.salePrice).toFixed(2)}</span></div>
+        <div class="price-badge"><span class="currency">S/</span><span class="amount">${Number(p.salePrice).toFixed(2)}</span></div>
       </div>
-      <div class="barcode">${barcodeSvgMarkup(p.barcode)}</div>
+      <div class="divider"></div>
+      <div class="barcode-block">
+        ${barcodeSvgMarkup(p.barcode)}
+        <span class="barcode-code">${p.barcode}</span>
+      </div>
     </div>`;
   }).join('');
   win.document.write(`<html><head><title>Etiquetas de precio</title>
@@ -171,44 +175,43 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact; }
       @page { size: A4; margin: 8mm; }
       body { font-family: Arial, Helvetica, sans-serif; }
-      .grid { display: flex; flex-wrap: wrap; gap: 3mm; }
+      .grid { display: flex; flex-wrap: wrap; gap: 4.2mm; }
       .card {
         width: 90mm; height: 52mm;
-        border-radius: 4mm; overflow: hidden;
-        border: 1.5px solid #b9c6e0; background: #fff;
-        page-break-inside: avoid;
+        border-radius: 3.8mm; overflow: hidden;
+        border: 2.5px solid #1a3d8f; background: #fff; page-break-inside: avoid;
         display: flex; flex-direction: column;
+        padding: 3.7mm; gap: 2mm;
       }
-      .row {
-        flex: 1; min-height: 0; display: flex; align-items: center; gap: 3mm;
-        padding: 3mm 3mm 1mm;
-      }
+      .row { flex: 1; min-height: 0; display: flex; align-items: center; gap: 2.8mm; }
       .logo {
-        width: 20mm; height: 20mm; border-radius: 50%; overflow: hidden;
-        position: relative; flex-shrink: 0; background: #fff;
+        width: 50px; height: 50px; border-radius: 50%; overflow: hidden;
+        position: relative; flex-shrink: 0; background: #fff; border: 1px solid #eef1f6;
       }
       .logo img { position: absolute; top: 0; right: 0; height: 100%; width: auto; }
-      .name { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1mm; }
+      .name-block { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.5px; }
       .title {
-        font-size: 16px; font-weight: 900; color: #14203c; text-transform: uppercase;
-        line-height: 1.05; letter-spacing: .005em;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        font-size: 21px; font-weight: 800; color: #12162b; text-transform: uppercase;
+        line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
-      .title.long { font-size: 13.5px; }
+      .title.long { font-size: 17px; }
+      .title.verylong { font-size: 14px; }
       .subtitle {
-        font-size: 12px; font-weight: 700; color: #3d4a63; text-transform: uppercase;
+        font-size: 13px; font-weight: 700; color: #12162b; text-transform: uppercase;
         line-height: 1.2;
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
       }
-      .price {
-        flex-shrink: 0; background: linear-gradient(160deg, #2166cc, #184a98); color: #fff;
-        border-radius: 4mm; padding: 1.8mm 3mm;
+      .price-badge {
+        flex-shrink: 0; background: #1a3d8f; color: #fff;
+        border-radius: 3mm; padding: 2mm 3.4mm; min-width: 20mm;
         display: flex; flex-direction: column; align-items: center; line-height: 1;
       }
-      .price .currency { font-size: 9px; font-weight: 800; opacity: .85; }
-      .price .amount { font-size: 22px; font-weight: 900; }
-      .barcode { flex-shrink: 0; text-align: center; padding: 0 3mm 2mm; }
-      .barcode svg { max-width: 100%; height: auto; max-height: 11mm; }
+      .price-badge .currency { font-size: 10px; font-weight: 700; opacity: .9; }
+      .price-badge .amount { font-size: 24px; font-weight: 800; }
+      .divider { flex-shrink: 0; height: 2px; background: #4ca324; border-radius: 1px; }
+      .barcode-block { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
+      .barcode-block svg { width: 100%; height: auto; max-height: 10mm; }
+      .barcode-code { font-size: 11px; font-weight: 600; color: #333; letter-spacing: .04em; margin-top: 0.5mm; }
     </style></head><body>
     <div class="grid">${cards}</div>
     </body></html>`);
