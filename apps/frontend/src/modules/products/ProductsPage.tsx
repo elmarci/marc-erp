@@ -129,7 +129,7 @@ function barcodeSvgMarkup(value: string): string {
   // dígitos) — se renderizan como tal para que salga el patrón correcto.
   // Los códigos internos (cuando el producto no tiene barcode de fábrica)
   // no son EAN-13 válido, así que caen a CODE128, que acepta cualquier texto.
-  const opts = { width: 2.3, height: 34, displayValue: false, margin: 0 };
+  const opts = { width: 1.7, height: 24, displayValue: false, margin: 0 };
   if (/^\d{12,13}$/.test(value)) {
     try {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -168,7 +168,7 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       <div class="row">
         <div class="logo"><img src="${MARC_LOGO_DATA_URI}" /></div>
         <div class="name-block">
-          <p class="title${title.length > 10 ? ' verylong' : title.length > 8 ? ' long' : ''}">${title}</p>
+          <p class="title">${title}</p>
           ${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}
         </div>
         <div class="price-badge"><span class="currency">S/</span><span class="amount">${Number(p.salePrice).toFixed(2)}</span></div>
@@ -181,6 +181,9 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
     </div>`;
   }).join('');
   win.document.write(`<html><head><title>Etiquetas de precio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
     <style>
       * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact; }
       @page { size: A4; margin: 8mm; }
@@ -189,59 +192,104 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       .card {
         width: 90mm; height: 52mm;
         border-radius: 3.8mm; overflow: hidden;
-        border: 3.5px solid #1e3a8a; background: #fff; page-break-inside: avoid;
+        border: 5px solid #1e3a8a; background: #fff; page-break-inside: avoid;
         display: flex; flex-direction: column;
-        padding: 3.4mm; gap: 2.2mm;
+        padding: 3.4mm; gap: 2mm;
       }
-      .row { flex: 1; min-height: 0; display: flex; align-items: center; gap: 2.8mm; }
+      /* Sin flex:1 — el alto lo da el contenido, y ahora el contenido más
+         alto de la fila es la placa de precio (a propósito: es lo que más
+         quiere ver el cliente). El código de barras absorbe lo que sobra. */
+      .row { display: flex; align-items: center; gap: 2.2mm; }
       .logo {
-        width: 58px; height: 58px; border-radius: 50%; overflow: hidden;
+        width: 64px; height: 64px; border-radius: 50%; overflow: hidden;
         position: relative; flex-shrink: 0; background: #fff; border: 1px solid #eef1f6;
       }
       .logo img { position: absolute; top: 0; right: 0; height: 100%; width: auto; }
-      .name-block { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.5px; }
+      .name-block { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
       .title {
-        font-size: 21px; font-weight: 800; color: #111827; text-transform: uppercase;
-        line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        font-size: 27px; font-weight: 900; color: #111827; text-transform: uppercase;
+        line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
-      .title.long { font-size: 17px; }
-      .title.verylong { font-size: 14px; }
       .subtitle {
-        font-size: 13px; font-weight: 700; color: #111827; text-transform: uppercase;
+        font-size: 12px; font-weight: 700; color: #111827; text-transform: uppercase;
         line-height: 1.2;
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
       }
+      /* Placa de precio — el elemento más grande de la etiqueta. Bebas Neue
+         es una tipografía condensada (angosta por diseño): a igual tamaño
+         ocupa bastante menos ancho por dígito que Arial, así que el precio
+         puede verse grande sin robarle todo el espacio al nombre. */
       .price-badge {
         flex-shrink: 0; background: #1e3a8a; color: #fff;
-        border-radius: 3mm; padding: 2mm 3.4mm; min-width: 20mm;
+        border-radius: 3mm; padding: 3mm 4mm; min-width: 27mm;
         display: flex; flex-direction: column; align-items: center; line-height: 1;
+        font-family: 'Bebas Neue', Arial, sans-serif;
       }
-      .price-badge .currency { font-size: 10px; font-weight: 700; opacity: .9; }
-      .price-badge .amount { font-size: 26px; font-weight: 800; }
+      .price-badge .currency { font-size: 13px; font-weight: 400; opacity: .9; margin-bottom: 1px; }
+      .price-badge .amount { font-size: 58px; font-weight: 400; letter-spacing: .01em; }
       /* Ancho fijado por JS al ancho real de .name-block — así la línea no
          se mete debajo del logo ni de la placa de precio. */
       .divider { flex-shrink: 0; height: 3px; background: #22c55e; border-radius: 1.5px; width: 0; }
-      .barcode-block { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
-      .barcode-block svg { width: 100%; height: auto; max-height: 14mm; }
-      .barcode-code { font-size: 11px; font-weight: 600; color: #333; letter-spacing: .04em; font-family: 'Courier New', monospace; margin-top: 0.5mm; }
+      /* Absorbe el espacio vertical restante (flex:1) y empuja su
+         contenido hacia abajo — así no queda como flotando en medio de un
+         hueco. A la izquierda (no ocupa todo el ancho) para que no compita
+         en protagonismo con el nombre y el precio, pero ya no tan angosto
+         como para dejar un vacío grande a la derecha. */
+      .barcode-block {
+        flex: 1; min-height: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: flex-end;
+        align-self: flex-start; width: 76%;
+      }
+      .barcode-block svg { width: 100%; height: auto; max-height: 10mm; }
+      .barcode-code { font-size: 10px; font-weight: 600; color: #333; letter-spacing: .04em; font-family: 'Courier New', monospace; margin-top: 0.5mm; }
     </style></head><body>
     <div class="grid">${cards}</div>
     <script>
-      // Alinea cada línea verde al ancho y posición reales del bloque de
-      // nombre — el precio cambia de ancho según la cantidad de dígitos,
-      // así que no se puede fijar con un margen estático en CSS.
-      document.querySelectorAll('.card').forEach(function (card) {
-        var nameBlock = card.querySelector('.name-block');
-        var divider = card.querySelector('.divider');
-        var cardBox = card.getBoundingClientRect();
-        var nameBox = nameBlock.getBoundingClientRect();
-        var paddingLeft = parseFloat(getComputedStyle(card).paddingLeft);
-        divider.style.marginLeft = (nameBox.left - cardBox.left - paddingLeft) + 'px';
-        divider.style.width = nameBox.width + 'px';
-      });
+      // Se espera a que cargue Bebas Neue (fuente del precio) antes de
+      // medir nada — si no, la placa de precio mide su ancho con la
+      // tipografía de respaldo y el ajuste del nombre queda mal calculado
+      // (el precio cambia de ancho apenas la fuente real termina de cargar).
+      function layoutAndPrint() {
+        // El ancho disponible para el nombre depende de cuánto ocupe la
+        // placa de precio (varía según la cantidad de dígitos) — en vez de
+        // niveles fijos por cantidad de letras (que igual se cortaban en
+        // casos límite), se mide el ancho real y se achica la fuente sólo
+        // lo necesario para que el nombre completo siempre quepa entero.
+        // Se mide con canvas (measureText) en vez de leer scrollWidth del
+        // propio <p>: al ser un hijo de un flex column, se estira al ancho
+        // del contenedor (align-items:stretch por defecto), así que su
+        // scrollWidth termina siendo ~ su propio ancho ya estirado, no el
+        // ancho real del texto — compararlo contra sí mismo con ese error
+        // de redondeo hacía que el achicado nunca se detuviera.
+        var measureCanvas = document.createElement('canvas');
+        var measureCtx = measureCanvas.getContext('2d');
+        document.querySelectorAll('.card').forEach(function (card) {
+          var title = card.querySelector('.title');
+          var nameBlock = card.querySelector('.name-block');
+          var maxWidth = nameBlock.getBoundingClientRect().width - 2; // margen de seguridad
+          var text = title.textContent.toUpperCase();
+          var fontSize = 27;
+          function textWidthAt(size) {
+            measureCtx.font = '900 ' + size + 'px Arial, Helvetica, sans-serif';
+            return measureCtx.measureText(text).width;
+          }
+          while (textWidthAt(fontSize) > maxWidth && fontSize > 12) fontSize -= 1;
+          title.style.fontSize = fontSize + 'px';
+
+          var divider = card.querySelector('.divider');
+          var cardBox = card.getBoundingClientRect();
+          var nameBox = nameBlock.getBoundingClientRect();
+          var paddingLeft = parseFloat(getComputedStyle(card).paddingLeft);
+          divider.style.marginLeft = (nameBox.left - cardBox.left - paddingLeft) + 'px';
+          divider.style.width = nameBox.width + 'px';
+        });
+        window.print();
+      }
+      var fontsReady = (document.fonts && document.fonts.ready) || Promise.resolve();
+      Promise.race([fontsReady, new Promise(function (r) { setTimeout(r, 1000); })]).then(layoutAndPrint);
     </script>
     </body></html>`);
-  win.document.close(); win.focus(); win.print();
+  win.document.close(); win.focus();
 }
 
 /* ─── Impresión de lista de precios (A4, para dejar con los cajeros) ────── */
