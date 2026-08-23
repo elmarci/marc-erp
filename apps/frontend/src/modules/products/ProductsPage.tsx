@@ -171,7 +171,11 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
           <p class="title">${title}</p>
           ${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}
         </div>
-        <div class="price-badge"><span class="currency">S/</span><span class="amount">${Number(p.salePrice).toFixed(2)}</span></div>
+        <div class="price-badge">
+          <span class="tag">S/</span>
+          <span class="amount">${Number(p.salePrice).toFixed(2)}</span>
+          <span class="swoosh"></span>
+        </div>
       </div>
       <div class="divider"></div>
       <div class="barcode-block">
@@ -199,34 +203,48 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       /* Sin flex:1 — el alto lo da el contenido, y ahora el contenido más
          alto de la fila es la placa de precio (a propósito: es lo que más
          quiere ver el cliente). El código de barras absorbe lo que sobra. */
-      .row { display: flex; align-items: center; gap: 2.2mm; }
+      .row { display: flex; align-items: center; gap: 1.8mm; }
       .logo {
-        width: 64px; height: 64px; border-radius: 50%; overflow: hidden;
-        position: relative; flex-shrink: 0; background: #fff; border: 1px solid #eef1f6;
+        width: 70px; height: 70px; border-radius: 50%; overflow: hidden;
+        position: relative; flex-shrink: 0; background: #fff;
+        box-shadow: 0 0 0 3px #fff, 0 0 0 5px #22c55e;
       }
       .logo img { position: absolute; top: 0; right: 0; height: 100%; width: auto; }
-      .name-block { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+      .name-block { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
       .title {
         font-size: 27px; font-weight: 900; color: #111827; text-transform: uppercase;
         line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
+      /* Chip azul para la variante/presentación (ej. "390G", "PROTECCIÓN
+         390G") — imita el rótulo tipo "600ML" de la referencia en vez del
+         texto gris plano de antes. */
       .subtitle {
-        font-size: 12px; font-weight: 700; color: #111827; text-transform: uppercase;
-        line-height: 1.2;
-        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        display: inline-block; max-width: 100%; align-self: flex-start;
+        font-size: 11px; font-weight: 800; color: #fff; background: #1e3a8a;
+        text-transform: uppercase; letter-spacing: .02em;
+        padding: 1mm 2.4mm; border-radius: 1.5mm;
+        white-space: nowrap; overflow: hidden;
       }
       /* Placa de precio — el elemento más grande de la etiqueta. Bebas Neue
          es una tipografía condensada (angosta por diseño): a igual tamaño
          ocupa bastante menos ancho por dígito que Arial, así que el precio
-         puede verse grande sin robarle todo el espacio al nombre. */
+         puede verse grande sin robarle todo el espacio al nombre. El tag
+         verde "S/" y el subrayado imitan el panel de precio de la
+         referencia (Coca-Cola Zero) en vez del layout "S/ + monto en fila". */
       .price-badge {
         flex-shrink: 0; background: #1e3a8a; color: #fff;
-        border-radius: 3mm; padding: 3mm 4mm; min-width: 27mm;
-        display: flex; flex-direction: column; align-items: center; line-height: 1;
+        border-radius: 3mm; padding: 2mm 3.2mm 3mm; min-width: 26mm;
+        display: flex; flex-direction: column; align-items: center;
         font-family: 'Bebas Neue', Arial, sans-serif;
       }
-      .price-badge .currency { font-size: 13px; font-weight: 400; opacity: .9; margin-bottom: 1px; }
-      .price-badge .amount { font-size: 58px; font-weight: 400; letter-spacing: .01em; }
+      .price-badge .tag {
+        align-self: flex-end; transform: translateY(-1.5mm);
+        background: #22c55e; color: #fff; font-family: Arial, Helvetica, sans-serif;
+        font-size: 10px; font-weight: 800; text-transform: uppercase;
+        padding: 1mm 2.4mm; border-radius: 1.5mm; margin-bottom: -1mm;
+      }
+      .price-badge .amount { font-size: 64px; font-weight: 400; letter-spacing: .01em; line-height: .85; }
+      .price-badge .swoosh { margin-top: 1.2mm; width: 60%; height: 2.5px; background: #22c55e; border-radius: 2px; }
       /* Ancho fijado por JS al ancho real de .name-block — así la línea no
          se mete debajo del logo ni de la placa de precio. */
       .divider { flex-shrink: 0; height: 3px; background: #22c55e; border-radius: 1.5px; width: 0; }
@@ -273,8 +291,25 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
             measureCtx.font = '900 ' + size + 'px Arial, Helvetica, sans-serif';
             return measureCtx.measureText(text).width;
           }
-          while (textWidthAt(fontSize) > maxWidth && fontSize > 12) fontSize -= 1;
+          while (textWidthAt(fontSize) > maxWidth && fontSize > 11) fontSize -= 1;
           title.style.fontSize = fontSize + 'px';
+
+          // El chip de variante (antes texto gris con line-clamp) ahora es
+          // una sola línea con fondo — se achica igual que el nombre en vez
+          // de recortar con "..." para no perder info como "390G" o
+          // "PROTECCIÓN" en nombres largos.
+          var subtitle = card.querySelector('.subtitle');
+          if (subtitle) {
+            var subMaxWidth = nameBlock.getBoundingClientRect().width - 20; // padding horizontal del chip
+            var subText = subtitle.textContent.toUpperCase();
+            var subSize = 11;
+            function subWidthAt(size) {
+              measureCtx.font = '800 ' + size + 'px Arial, Helvetica, sans-serif';
+              return measureCtx.measureText(subText).width;
+            }
+            while (subWidthAt(subSize) > subMaxWidth && subSize > 7) subSize -= 1;
+            subtitle.style.fontSize = subSize + 'px';
+          }
 
           var divider = card.querySelector('.divider');
           var cardBox = card.getBoundingClientRect();
