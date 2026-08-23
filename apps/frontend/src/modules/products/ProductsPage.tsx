@@ -129,7 +129,7 @@ function barcodeSvgMarkup(value: string): string {
   // dígitos) — se renderizan como tal para que salga el patrón correcto.
   // Los códigos internos (cuando el producto no tiene barcode de fábrica)
   // no son EAN-13 válido, así que caen a CODE128, que acepta cualquier texto.
-  const opts = { width: 1.5, height: 26, displayValue: false, margin: 0 };
+  const opts = { width: 2.3, height: 34, displayValue: false, margin: 0 };
   if (/^\d{12,13}$/.test(value)) {
     try {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -189,13 +189,13 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       .card {
         width: 90mm; height: 52mm;
         border-radius: 3.8mm; overflow: hidden;
-        border: 2.5px solid #1e3a8a; background: #fff; page-break-inside: avoid;
+        border: 3.5px solid #1e3a8a; background: #fff; page-break-inside: avoid;
         display: flex; flex-direction: column;
-        padding: 3.7mm; gap: 2.5mm;
+        padding: 3.4mm; gap: 2.2mm;
       }
       .row { flex: 1; min-height: 0; display: flex; align-items: center; gap: 2.8mm; }
       .logo {
-        width: 50px; height: 50px; border-radius: 50%; overflow: hidden;
+        width: 58px; height: 58px; border-radius: 50%; overflow: hidden;
         position: relative; flex-shrink: 0; background: #fff; border: 1px solid #eef1f6;
       }
       .logo img { position: absolute; top: 0; right: 0; height: 100%; width: auto; }
@@ -207,7 +207,7 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
       .title.long { font-size: 17px; }
       .title.verylong { font-size: 14px; }
       .subtitle {
-        font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase;
+        font-size: 13px; font-weight: 700; color: #111827; text-transform: uppercase;
         line-height: 1.2;
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
       }
@@ -217,12 +217,12 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
         display: flex; flex-direction: column; align-items: center; line-height: 1;
       }
       .price-badge .currency { font-size: 10px; font-weight: 700; opacity: .9; }
-      .price-badge .amount { font-size: 24px; font-weight: 800; }
+      .price-badge .amount { font-size: 26px; font-weight: 800; }
       /* Ancho fijado por JS al ancho real de .name-block — así la línea no
          se mete debajo del logo ni de la placa de precio. */
       .divider { flex-shrink: 0; height: 3px; background: #22c55e; border-radius: 1.5px; width: 0; }
       .barcode-block { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
-      .barcode-block svg { width: 100%; height: auto; max-height: 10mm; }
+      .barcode-block svg { width: 100%; height: auto; max-height: 14mm; }
       .barcode-code { font-size: 11px; font-weight: 600; color: #333; letter-spacing: .04em; font-family: 'Courier New', monospace; margin-top: 0.5mm; }
     </style></head><body>
     <div class="grid">${cards}</div>
