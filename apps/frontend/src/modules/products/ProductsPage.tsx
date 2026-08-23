@@ -158,9 +158,13 @@ function splitProductName(name: string): { title: string; subtitle: string } {
   return { title: parts[0], subtitle: parts.slice(1).join(' ') };
 }
 
-function printBarcodeCatalog(products: Array<{ name: string; barcode: string; salePrice: number }>) {
-  const win = window.open('', '_blank', 'width=900,height=950');
-  if (!win) return;
+// `win` se recibe ya abierto (ver handlePrint): abrir la ventana recién acá
+// significaba hacerlo después del `await` de generar códigos, es decir fuera
+// del gesto de clic original — en ese caso algunos navegadores (sobre todo
+// en tablets/Android) ya no consideran el `window.print()` posterior como
+// disparado por el usuario y lo ignoran en silencio, obligando a un segundo
+// "Imprimir" manual dentro de la ventana para que recién ahí funcione.
+function printBarcodeCatalog(products: Array<{ name: string; barcode: string; salePrice: number }>, win: Window) {
   const cards = products.map(p => {
     const { title, subtitle } = splitProductName(p.name);
     return `
@@ -318,13 +322,21 @@ function printBarcodeCatalog(products: Array<{ name: string; barcode: string; sa
           divider.style.marginLeft = (nameBox.left - cardBox.left - paddingLeft) + 'px';
           divider.style.width = nameBox.width + 'px';
         });
+        // Reenfocar justo antes de imprimir: si la ventana perdió el foco
+        // mientras se esperaba la fuente, algunos navegadores ignoran el
+        // print() silenciosamente y hay que volver a pedirlo a mano.
+        window.focus();
         window.print();
       }
+      // La fuente ya se precarga desde la app principal antes de abrir esta
+      // ventana (ver useEffect en BarcodeCatalogModal), así que normalmente
+      // ya está en caché y esto resuelve casi al instante — el timeout de
+      // 400ms es sólo un respaldo, no el camino esperado.
       var fontsReady = (document.fonts && document.fonts.ready) || Promise.resolve();
-      Promise.race([fontsReady, new Promise(function (r) { setTimeout(r, 1000); })]).then(layoutAndPrint);
+      Promise.race([fontsReady, new Promise(function (r) { setTimeout(r, 400); })]).then(layoutAndPrint);
     </script>
     </body></html>`);
-  win.document.close(); win.focus();
+  win.document.close();
 }
 
 /* ─── Impresión de lista de precios (A4, para dejar con los cajeros) ────── */
@@ -424,9 +436,34 @@ function BarcodeCatalogModal({ onClose, categories }: { onClose: () => void; cat
     mutationFn: (productIds: string[]) => api.post<{ data: Array<{ id: string; barcode: string }> }>('/products/generate-barcodes-bulk', { productIds }),
   });
 
+  // Precarga la fuente del precio apenas se abre el modal (no al imprimir):
+  // así, cuando el usuario recién da clic en "Imprimir", el navegador ya la
+  // tiene en caché y la ventana de impresión no tiene que esperarla.
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap';
+    document.head.appendChild(link);
+    document.fonts?.load('64px "Bebas Neue"').catch(() => {});
+    return () => { document.head.removeChild(link); };
+  }, []);
+
   const handlePrint = async () => {
     const chosen = (allProducts ?? []).filter(p => selected.has(p.id));
     const needCodes = chosen.filter(p => !looksLikeScannedCode(p.barcode ?? '')).map(p => p.id);
+
+    // La ventana se abre AQUÍ, de forma síncrona dentro del clic, en vez de
+    // después del await de abajo — si se abre tras un await, ya no cuenta
+    // como "gesto del usuario" para el navegador, y el window.print() que
+    // dispara sola la ventana más adelante puede ser ignorado en silencio
+    // (de ahí que hiciera falta un segundo "Imprimir" manual para que
+    // recién funcione).
+    const win = window.open('', '_blank', 'width=900,height=950');
+    if (!win) {
+      toast.error('El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.');
+      return;
+    }
+    win.document.write('<title>Generando etiquetas…</title><body style="font-family:Arial,sans-serif;padding:2rem;color:#555">Generando etiquetas…</body>');
 
     let generated: Array<{ id: string; barcode: string }> = [];
     if (needCodes.length > 0) {
@@ -435,6 +472,7 @@ function BarcodeCatalogModal({ onClose, categories }: { onClose: () => void; cat
         queryClient.invalidateQueries({ queryKey: ['products'] });
         queryClient.invalidateQueries({ queryKey: ['products-barcode-catalog'] });
       } catch (err) {
+        win.close();
         toast.error(getErrorMessage(err));
         return;
       }
@@ -446,8 +484,12 @@ function BarcodeCatalogModal({ onClose, categories }: { onClose: () => void; cat
       barcode: (looksLikeScannedCode(p.barcode ?? '') ? p.barcode : null) ?? codeById.get(p.id) ?? '',
     })).filter(p => p.barcode);
 
-    if (toPrint.length === 0) { toast.error('No hay productos seleccionados con código.'); return; }
-    printBarcodeCatalog(toPrint);
+    if (toPrint.length === 0) {
+      win.close();
+      toast.error('No hay productos seleccionados con código.');
+      return;
+    }
+    printBarcodeCatalog(toPrint, win);
     toast.success(`Catálogo generado con ${toPrint.length} producto(s).`);
   };
 
