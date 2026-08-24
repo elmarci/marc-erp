@@ -1,12 +1,24 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
-import { Link, useSearchParams } from 'react-router-dom'
-import { Search, X, ChevronRight, ChevronDown, Home, LayoutGrid, Loader2 } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Search, X, ChevronDown, LayoutGrid, Loader2 } from 'lucide-react'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { VoiceSearchButton } from '../components/VoiceSearchButton'
 import { getCategoryIcon } from '../categoryIcons'
 import { useUIStore } from '../uiStore'
+
+// Mismo trato que los íconos de categoría del Inicio: un acento de color fijo
+// por posición, para que el banner "estás acá" sea consistente entre
+// categorías en vez de un gris genérico. Padre e hija comparten acento
+// (se busca el índice de la categoría de nivel superior) para que cambiar
+// entre subcategorías de un mismo padre no cambie el color de golpe.
+const BANNER_ACCENTS = [
+  'bg-gradient-to-r from-brand-green-600 to-brand-green-700',
+  'bg-gradient-to-r from-brand-blue-600 to-brand-blue-700',
+  'bg-gradient-to-r from-brand-magenta-600 to-brand-magenta-700',
+]
+const DEFAULT_BANNER_ACCENT = 'bg-gradient-to-r from-paper-ink to-brand-blue-800'
 
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -61,6 +73,15 @@ export function CatalogPage() {
   const subcategoryParent = activeTopCategory && activeTopCategory.children.length > 0 ? activeTopCategory : activeParent
   const subcategories = subcategoryParent?.children ?? []
 
+  // Banner "estás acá" — reemplaza al breadcrumb + h1 + selector aparte que
+  // había antes (demasiados elementos apuntando a lo mismo). El acento de
+  // color sale del índice de la categoría de nivel superior, así padre e
+  // hija comparten color.
+  const topCategoryIndex = categories.findIndex(c => c.id === (activeTopCategory?.id ?? activeParent?.id))
+  const bannerAccent = topCategoryIndex >= 0 ? BANNER_ACCENTS[topCategoryIndex % BANNER_ACCENTS.length] : DEFAULT_BANNER_ACCENT
+  const BannerIcon = activeCategory ? getCategoryIcon(activeCategory.name) : (search ? Search : LayoutGrid)
+  const bannerLabel = activeCategory ? activeCategory.name : search ? `"${search}"` : 'Catálogo de productos'
+
   useEffect(() => {
     const el = loadMoreRef.current
     if (!el || !hasNextPage) return
@@ -98,38 +119,21 @@ export function CatalogPage() {
 
   return (
     <main className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1.5 text-sm text-paper-ink-soft mb-4">
-        <Link to="/" className="hover:text-brand-green-600 transition-colors flex items-center gap-1"><Home className="h-3.5 w-3.5" />Inicio</Link>
-        <ChevronRight className="h-3.5 w-3.5 text-paper-ink-ghost" />
-        {activeParent && (
-          <>
-            <button onClick={() => handleCategory(activeParent.id)} className="hover:text-brand-green-600 transition-colors">{activeParent.name}</button>
-            <ChevronRight className="h-3.5 w-3.5 text-paper-ink-ghost" />
-          </>
-        )}
-        <span className="text-paper-ink font-medium">{activeCategory ? activeCategory.name : search ? `Búsqueda: "${search}"` : 'Catálogo'}</span>
-      </nav>
-
       <h1 className="hidden lg:block text-2xl font-bold mb-6 text-paper-ink">
         {activeCategory ? activeCategory.name : 'Catálogo de productos'}
       </h1>
 
-      {/* Selector rápido de categoría — solo mobile/tablet. Abre el mismo
-          panel de categorías/subcategorías del tab bar y del header, para
-          saltar directo a cualquier categoría sin tener que volver arriba
-          ni usar los pills (que solo alcanzan hasta donde el dedo desliza).
-          No reemplaza ninguna de las otras formas de navegar, sólo suma una
-          más rápida y siempre visible. */}
+      {/* Banner "estás acá" — solo mobile/tablet. Un solo elemento resaltante
+          en vez del breadcrumb de texto + el selector chico que había antes
+          (redundantes entre sí y con el sidebar/drawer). Tocar el banner
+          abre el mismo panel de categorías para saltar a cualquier otra. */}
       <button onClick={openCategoryDrawer}
-        className="lg:hidden w-full flex items-center gap-2.5 bg-white border border-paper-line rounded-2xl px-3.5 py-3 mb-4 shadow-sm active:bg-paper-surface transition-colors">
-        <div className="h-8 w-8 rounded-full bg-brand-green-50 flex items-center justify-center shrink-0">
-          {(() => { const Icon = activeCategory ? getCategoryIcon(activeCategory.name) : LayoutGrid; return <Icon className="h-4.5 w-4.5 text-brand-green-600" /> })()}
+        className={`lg:hidden w-full flex items-center gap-3 rounded-2xl px-4 py-4 mb-4 shadow-md text-left transition-transform active:scale-[0.98] ${bannerAccent}`}>
+        <div className="h-11 w-11 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+          <BannerIcon className="h-6 w-6 text-white" />
         </div>
-        <span className="flex-1 text-left font-bold text-paper-ink truncate">
-          {activeCategory ? activeCategory.name : 'Catálogo de productos'}
-        </span>
-        <ChevronDown className="h-4.5 w-4.5 text-paper-ink-ghost shrink-0" />
+        <span className="flex-1 text-lg font-black text-white truncate">{bannerLabel}</span>
+        <ChevronDown className="h-5 w-5 text-white/80 shrink-0" />
       </button>
 
       <div className="flex flex-col lg:flex-row gap-8">
@@ -173,56 +177,62 @@ export function CatalogPage() {
         </aside>
 
         <div className="flex-1 min-w-0">
-          {/* Search + filters */}
-          <div className="flex flex-col sm:flex-row gap-3 mb-6">
-            <form onSubmit={handleSearch} className="flex-1">
+          {/* Búsqueda — la X de limpiar vive dentro del campo (sólo aparece
+              si hay texto), ya no como botón aparte "Limpiar filtros" que
+              quedaba ahí siempre estorbando aunque no hubiera nada que
+              limpiar. Para quitar la categoría ya está el banner/pills. */}
+          <div className="mb-5">
+            <form onSubmit={handleSearch}>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-ink-ghost" />
                 <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Buscar productos..."
-                  className="w-full bg-white border border-paper-line rounded-full pl-9 pr-10 py-2 text-sm text-paper-ink placeholder-paper-ink-ghost focus:outline-none focus:border-brand-blue-400 transition-colors" />
+                  className="w-full bg-white border border-paper-line rounded-full pl-9 pr-16 py-2 text-sm text-paper-ink placeholder-paper-ink-ghost focus:outline-none focus:border-brand-blue-400 transition-colors" />
+                {search && (
+                  <button type="button" onClick={() => { setSearch(''); setSearchParams(prev => { prev.delete('search'); return prev }) }}
+                    aria-label="Borrar búsqueda"
+                    className="absolute right-9 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center text-paper-ink-ghost hover:text-paper-ink-soft">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
                 <VoiceSearchButton onResult={handleVoiceResult} className="absolute right-2.5 top-1/2 -translate-y-1/2" />
               </div>
             </form>
-            {(search || categoryId) && (
-              <button onClick={() => { setSearch(''); setCategoryId(''); setSearchParams({}) }}
-                className="flex items-center gap-2 text-sm text-paper-ink-soft hover:text-paper-ink px-4 py-2 border border-paper-line rounded-full transition-colors bg-white">
-                <X className="h-4 w-4" />Limpiar filtros
-              </button>
+          </div>
+
+          {/* Una sola fila de pills según el contexto — subcategorías si la
+              categoría activa tiene (o si estoy dentro de una hija, sus
+              hermanas), y si no, las categorías de nivel superior. Antes se
+              mostraban las dos filas siempre, una encima de la otra. */}
+          <div className="flex lg:hidden gap-2 overflow-x-auto h-scroll pb-4 mb-2">
+            {subcategoryParent && subcategories.length > 0 ? (
+              <>
+                <button onClick={() => handleCategory(subcategoryParent.id)}
+                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${categoryId === subcategoryParent.id ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
+                  Todo en {subcategoryParent.name}
+                </button>
+                {subcategories.map(child => (
+                  <button key={child.id} onClick={() => handleCategory(child.id)}
+                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${categoryId === child.id ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
+                    {child.name}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                <button onClick={() => handleCategory('')}
+                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${!categoryId ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
+                  Todos
+                </button>
+                {categories.map(cat => (
+                  <button key={cat.id} onClick={() => handleCategory(cat.id)}
+                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${categoryId === cat.id ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
+                    {cat.name}
+                  </button>
+                ))}
+              </>
             )}
           </div>
-
-          {/* Categories — pills, solo mobile/tablet */}
-          <div className="flex lg:hidden gap-2 overflow-x-auto h-scroll pb-3 mb-1">
-            <button onClick={() => handleCategory('')}
-              className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${!categoryId ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
-              Todos
-            </button>
-            {categories.map(cat => (
-              <button key={cat.id} onClick={() => handleCategory(cat.id)}
-                className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${categoryId === cat.id || activeParent?.id === cat.id ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
-                {cat.name}
-              </button>
-            ))}
-          </div>
-
-          {/* Subcategorías de la categoría activa — acceso rápido arriba,
-              en vez de obligar a volver al drawer/sidebar para cambiar de
-              subcategoría. Sólo aparece si la categoría tiene hijas. */}
-          {subcategoryParent && subcategories.length > 0 && (
-            <div className="flex lg:hidden gap-1.5 overflow-x-auto h-scroll pb-4 mb-2">
-              <button onClick={() => handleCategory(subcategoryParent.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${categoryId === subcategoryParent.id ? 'bg-brand-green-50 text-brand-green-700 border border-brand-green-200' : 'bg-paper-surface text-paper-ink-soft hover:bg-paper-line'}`}>
-                Todo en {subcategoryParent.name}
-              </button>
-              {subcategories.map(child => (
-                <button key={child.id} onClick={() => handleCategory(child.id)}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${categoryId === child.id ? 'bg-brand-green-600 text-white' : 'bg-paper-surface text-paper-ink-soft hover:bg-paper-line'}`}>
-                  {child.name}
-                </button>
-              ))}
-            </div>
-          )}
 
           {/* Results */}
           {isLoading ? (
