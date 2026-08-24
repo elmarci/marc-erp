@@ -46,7 +46,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
   }
 
   return (
-    <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+    <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-2">
       <div className="relative group">
         <div
           ref={scrollerRef}

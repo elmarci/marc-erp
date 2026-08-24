@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ChevronRight, Flame, LayoutGrid } from 'lucide-react'
+import { ChevronRight, Flame, LayoutGrid, Tag } from 'lucide-react'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { PromoCarousel } from '../components/PromoCarousel'
@@ -49,10 +49,17 @@ export function HomePage() {
     <main>
       {/* Promociones — lo primero que se ve al abrir la app, no una portada
           de "landing page" con copy publicitario que ya no aporta nada a
-          alguien que abre esto como una app hecha para volver seguido. */}
-      <div className="pt-3">
-        <PromoCarousel offers={offers} />
-      </div>
+          alguien que abre esto como una app hecha para volver seguido.
+          Título explícito porque sin él no se entendía que esa fila de
+          tarjetas eran ofertas y no, por ejemplo, productos destacados. */}
+      {offers.length > 0 && (
+        <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <Reveal><h2 className="text-lg font-bold text-paper-ink flex items-center gap-2">
+            <Tag className="h-4.5 w-4.5 text-brand-magenta-600" />Ofertas
+          </h2></Reveal>
+        </div>
+      )}
+      <PromoCarousel offers={offers} />
 
       {/* Categorías — acceso rápido tipo app (ícono uniforme + nombre), no
           una vitrina de fotos de productos sueltos. */}

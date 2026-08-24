@@ -1,17 +1,19 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, X, ChevronRight, Home, LayoutGrid, Loader2 } from 'lucide-react'
+import { Search, X, ChevronRight, ChevronDown, Home, LayoutGrid, Loader2 } from 'lucide-react'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { VoiceSearchButton } from '../components/VoiceSearchButton'
 import { getCategoryIcon } from '../categoryIcons'
+import { useUIStore } from '../uiStore'
 
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('search') ?? '')
   const [categoryId, setCategoryId] = useState(searchParams.get('categoryId') ?? '')
   const loadMoreRef = useRef<HTMLDivElement>(null)
+  const openCategoryDrawer = useUIStore(s => s.openCategoryDrawer)
 
   useEffect(() => {
     setSearch(searchParams.get('search') ?? '')
@@ -109,9 +111,26 @@ export function CatalogPage() {
         <span className="text-paper-ink font-medium">{activeCategory ? activeCategory.name : search ? `Búsqueda: "${search}"` : 'Catálogo'}</span>
       </nav>
 
-      <h1 className="text-2xl font-bold mb-6 text-paper-ink">
+      <h1 className="hidden lg:block text-2xl font-bold mb-6 text-paper-ink">
         {activeCategory ? activeCategory.name : 'Catálogo de productos'}
       </h1>
+
+      {/* Selector rápido de categoría — solo mobile/tablet. Abre el mismo
+          panel de categorías/subcategorías del tab bar y del header, para
+          saltar directo a cualquier categoría sin tener que volver arriba
+          ni usar los pills (que solo alcanzan hasta donde el dedo desliza).
+          No reemplaza ninguna de las otras formas de navegar, sólo suma una
+          más rápida y siempre visible. */}
+      <button onClick={openCategoryDrawer}
+        className="lg:hidden w-full flex items-center gap-2.5 bg-white border border-paper-line rounded-2xl px-3.5 py-3 mb-4 shadow-sm active:bg-paper-surface transition-colors">
+        <div className="h-8 w-8 rounded-full bg-brand-green-50 flex items-center justify-center shrink-0">
+          {(() => { const Icon = activeCategory ? getCategoryIcon(activeCategory.name) : LayoutGrid; return <Icon className="h-4.5 w-4.5 text-brand-green-600" /> })()}
+        </div>
+        <span className="flex-1 text-left font-bold text-paper-ink truncate">
+          {activeCategory ? activeCategory.name : 'Catálogo de productos'}
+        </span>
+        <ChevronDown className="h-4.5 w-4.5 text-paper-ink-ghost shrink-0" />
+      </button>
 
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar de categorías — solo desktop, en mobile se usan los pills */}
