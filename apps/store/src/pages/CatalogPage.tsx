@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, X, ChevronRight, Home, LayoutGrid } from 'lucide-react'
+import { Search, X, ChevronRight, Home, LayoutGrid, Loader2 } from 'lucide-react'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { VoiceSearchButton } from '../components/VoiceSearchButton'
@@ -11,12 +11,11 @@ export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('search') ?? '')
   const [categoryId, setCategoryId] = useState(searchParams.get('categoryId') ?? '')
-  const [page, setPage] = useState(1)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setSearch(searchParams.get('search') ?? '')
     setCategoryId(searchParams.get('categoryId') ?? '')
-    setPage(1)
   }, [searchParams])
 
   const { data: categoriesData } = useQuery({
@@ -24,21 +23,51 @@ export function CatalogPage() {
     queryFn: () => storeApi.getCategories(),
   })
 
-  const { data: productsData, isLoading } = useQuery({
-    queryKey: ['store-products', search, categoryId, page],
-    queryFn: () => storeApi.getProducts({
+  // Scroll infinito en vez de "página siguiente" — el celular ya no
+  // interrumpe el deslizado natural para forzar un tap en un botón de
+  // paginación al llegar al final de la grilla.
+  const {
+    data: productsData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['store-products', search, categoryId],
+    queryFn: ({ pageParam }) => storeApi.getProducts({
       ...(search ? { search } : {}),
       ...(categoryId ? { categoryId } : {}),
-      page, limit: 24,
+      page: pageParam, limit: 24,
     }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      const { page, totalPages } = lastPage.data.pagination
+      return page < totalPages ? page + 1 : undefined
+    },
   })
 
   const categories = categoriesData?.data.data ?? []
-  const activeCategory = categories.find(c => c.id === categoryId)
+  // Ojo: `activeTopCategory` es un `Category` real (con `.children`); el
+  // resultado de buscar entre los hijos aplanados es un `CategoryChild`, que
+  // NO tiene `.children` — mezclarlos en un solo `activeCategory` causaba un
+  // crash al leer `.children.length` cuando la categoría activa era una hoja.
+  const activeTopCategory = categories.find(c => c.id === categoryId)
+  const activeCategory = activeTopCategory
     ?? categories.flatMap(c => c.children).find(c => c.id === categoryId)
   const activeParent = categories.find(c => c.children.some(ch => ch.id === categoryId))
-  const products = productsData?.data.data ?? []
-  const pagination = productsData?.data.pagination
+  const products = useMemo(() => productsData?.pages.flatMap(p => p.data.data) ?? [], [productsData])
+  const pagination = productsData?.pages[0]?.data.pagination
+  // Subcategorías de acceso rápido arriba: si estoy viendo una categoría
+  // padre, sus hijas; si estoy dentro de una hija, sus hermanas (para poder
+  // saltar entre subcategorías sin volver al nivel de arriba primero).
+  const subcategoryParent = activeTopCategory && activeTopCategory.children.length > 0 ? activeTopCategory : activeParent
+  const subcategories = subcategoryParent?.children ?? []
+
+  useEffect(() => {
+    const el = loadMoreRef.current
+    if (!el || !hasNextPage) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage()
+    }, { rootMargin: '400px' })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, products.length])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -46,7 +75,6 @@ export function CatalogPage() {
       if (search) prev.set('search', search); else prev.delete('search')
       return prev
     })
-    setPage(1)
   }
 
   const handleVoiceResult = (transcript: string) => {
@@ -56,7 +84,6 @@ export function CatalogPage() {
       if (q) prev.set('search', q); else prev.delete('search')
       return prev
     })
-    setPage(1)
   }
 
   const handleCategory = (id: string) => {
@@ -65,7 +92,6 @@ export function CatalogPage() {
       if (id) prev.set('categoryId', id); else prev.delete('categoryId')
       return prev
     })
-    setPage(1)
   }
 
   return (
@@ -140,7 +166,7 @@ export function CatalogPage() {
               </div>
             </form>
             {(search || categoryId) && (
-              <button onClick={() => { setSearch(''); setCategoryId(''); setSearchParams({}); setPage(1) }}
+              <button onClick={() => { setSearch(''); setCategoryId(''); setSearchParams({}) }}
                 className="flex items-center gap-2 text-sm text-paper-ink-soft hover:text-paper-ink px-4 py-2 border border-paper-line rounded-full transition-colors bg-white">
                 <X className="h-4 w-4" />Limpiar filtros
               </button>
@@ -148,18 +174,36 @@ export function CatalogPage() {
           </div>
 
           {/* Categories — pills, solo mobile/tablet */}
-          <div className="flex lg:hidden gap-2 overflow-x-auto h-scroll pb-4 mb-2">
+          <div className="flex lg:hidden gap-2 overflow-x-auto h-scroll pb-3 mb-1">
             <button onClick={() => handleCategory('')}
               className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${!categoryId ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
               Todos
             </button>
             {categories.map(cat => (
               <button key={cat.id} onClick={() => handleCategory(cat.id)}
-                className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${categoryId === cat.id ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
+                className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${categoryId === cat.id || activeParent?.id === cat.id ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
                 {cat.name}
               </button>
             ))}
           </div>
+
+          {/* Subcategorías de la categoría activa — acceso rápido arriba,
+              en vez de obligar a volver al drawer/sidebar para cambiar de
+              subcategoría. Sólo aparece si la categoría tiene hijas. */}
+          {subcategoryParent && subcategories.length > 0 && (
+            <div className="flex lg:hidden gap-1.5 overflow-x-auto h-scroll pb-4 mb-2">
+              <button onClick={() => handleCategory(subcategoryParent.id)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${categoryId === subcategoryParent.id ? 'bg-brand-green-50 text-brand-green-700 border border-brand-green-200' : 'bg-paper-surface text-paper-ink-soft hover:bg-paper-line'}`}>
+                Todo en {subcategoryParent.name}
+              </button>
+              {subcategories.map(child => (
+                <button key={child.id} onClick={() => handleCategory(child.id)}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${categoryId === child.id ? 'bg-brand-green-600 text-white' : 'bg-paper-surface text-paper-ink-soft hover:bg-paper-line'}`}>
+                  {child.name}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Results */}
           {isLoading ? (
@@ -178,7 +222,7 @@ export function CatalogPage() {
             <>
               <div className="flex justify-between items-center mb-4 text-sm text-paper-ink-ghost">
                 <span>{pagination?.total ?? 0} productos</span>
-                <span>Pág. {page} / {pagination?.totalPages ?? 1}</span>
+                <span>Mostrando {products.length}</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                 {products.map(product => (
@@ -186,18 +230,15 @@ export function CatalogPage() {
                 ))}
               </div>
 
-              {/* Pagination */}
-              {pagination && pagination.totalPages > 1 && (
-                <div className="flex justify-center gap-3 mt-10">
-                  <button onClick={() => setPage(p => p - 1)} disabled={page === 1}
-                    className="px-6 py-2.5 bg-white hover:bg-paper-surface disabled:opacity-30 disabled:cursor-not-allowed border border-paper-line rounded-full text-sm text-paper-ink transition-colors">
-                    Anterior
-                  </button>
-                  <button onClick={() => setPage(p => p + 1)} disabled={page === pagination.totalPages}
-                    className="px-6 py-2.5 bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold rounded-full text-sm transition-colors">
-                    Siguiente
-                  </button>
+              {/* Sentinel de scroll infinito — al entrar en vista dispara la
+                  siguiente página sola, sin botón "Siguiente". */}
+              {hasNextPage && (
+                <div ref={loadMoreRef} className="flex justify-center py-10">
+                  <Loader2 className="h-6 w-6 text-brand-green-600 animate-spin" />
                 </div>
+              )}
+              {!hasNextPage && products.length > 0 && (
+                <p className="text-center text-xs text-paper-ink-ghost py-10">Ya viste todos los productos de esta lista.</p>
               )}
             </>
           )}

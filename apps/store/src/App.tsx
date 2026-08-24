@@ -2,11 +2,14 @@ import { Routes, Route, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Header } from './components/Header'
 import { CartDrawer } from './components/CartDrawer'
+import { CategoryDrawer } from './components/CategoryDrawer'
 import { InstallAppBanner } from './components/InstallAppBanner'
 import { MobileTabBar } from './components/MobileTabBar'
 import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
+import { WhatsAppFAB } from './components/WhatsAppFAB'
 import { AuthGate } from './pages/AuthGate'
 import { useAuthStore } from './authStore'
+import { useUIStore } from './uiStore'
 import { HomePage } from './pages/HomePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { ProductPage } from './pages/ProductPage'
@@ -19,6 +22,8 @@ export default function App() {
   const location = useLocation()
   const isLoggedIn = useAuthStore(s => s.isLoggedIn)
   const guestMode = useAuthStore(s => s.guestMode)
+  const isCategoryDrawerOpen = useUIStore(s => s.isCategoryDrawerOpen)
+  const closeCategoryDrawer = useUIStore(s => s.closeCategoryDrawer)
 
   // El registro es la vía principal (perfil real, historial, puntos) pero
   // quien no quiera crear cuenta puede seguir como invitado y pedir por
@@ -29,6 +34,7 @@ export default function App() {
     <div className="min-h-screen bg-paper-bg">
       <Header />
       <CartDrawer />
+      {isCategoryDrawerOpen && <CategoryDrawer onClose={closeCategoryDrawer} />}
       <InstallAppBanner />
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -52,6 +58,7 @@ export default function App() {
       </AnimatePresence>
       <MobileTabBar />
       {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/pedido') && <VoiceShoppingListButton />}
+      {!location.pathname.startsWith('/checkout') && <WhatsAppFAB />}
     </div>
   )
 }

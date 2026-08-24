@@ -182,38 +182,43 @@ export function ProductCard({ product }: { product: Product }) {
           </AnimatePresence>
         </div>
 
-        {/* Info — toda esta zona agrega al carrito (o abre la modal de
-            granel); es un blanco de toque mucho más grande que el botón
-            circular solo, así cuesta menos acertarle en el celular. */}
-        <div onClick={outOfStock ? undefined : handleAdd} className={outOfStock ? 'p-3' : 'p-3 cursor-pointer active:bg-paper-surface transition-colors'}>
+        {/* Info — toca el nombre/precio para ver el detalle del producto;
+            agregar al carrito es sólo la barra de abajo, para no competir
+            con el botón +/− de ancho completo (antes toda la zona agregaba,
+            lo que hacía fácil sumar sin querer al tocar cerca del precio). */}
+        <div onClick={goToProduct} className="p-3 pb-0 cursor-pointer">
           <p className="text-xs text-paper-ink-ghost mb-0.5">{product.category.name}</p>
-          <p className="font-semibold text-sm text-paper-ink line-clamp-2 leading-tight mb-2">{product.name}</p>
-
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <span className="text-paper-ink font-extrabold text-lg tabular-nums">S/ {Number(product.salePrice).toFixed(2)}</span>
-              {product.isBulk && <span className="text-paper-ink-ghost text-xs ml-1">/{product.bulkUnit ?? 'kg'}</span>}
-            </div>
-
-            {qty > 0 && !product.isBulk ? (
-              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => updateQuantity(product.id, qty - 1)}
-                  className="h-7 w-7 bg-paper-surface hover:bg-paper-line rounded-full flex items-center justify-center transition-colors">
-                  <Minus className="h-3 w-3 text-paper-ink-soft" />
-                </button>
-                <span className="w-5 text-center text-sm font-bold text-paper-ink">{qty}</span>
-                <button onClick={() => { addItem(product); flyToCart(imgRef.current) }} disabled={qty >= product.currentStock}
-                  className="h-7 w-7 bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-30 disabled:hover:bg-brand-green-600 text-white rounded-full flex items-center justify-center transition-colors">
-                  <Plus className="h-3 w-3" />
-                </button>
-              </div>
-            ) : (
-              <button onClick={outOfStock ? undefined : handleAdd} disabled={outOfStock}
-                className={`h-8 w-8 text-white rounded-full flex items-center justify-center transition-colors ${outOfStock ? 'bg-paper-ink-ghost cursor-not-allowed' : 'bg-brand-green-600 group-hover:bg-brand-green-700'}`}>
-                {product.isBulk ? <Scale className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
-              </button>
-            )}
+          <p className="font-semibold text-sm text-paper-ink line-clamp-2 leading-tight mb-2 min-h-[2.5em]">{product.name}</p>
+          <div>
+            <span className="text-paper-ink font-extrabold text-lg tabular-nums">S/ {Number(product.salePrice).toFixed(2)}</span>
+            {product.isBulk && <span className="text-paper-ink-ghost text-xs ml-1">/{product.bulkUnit ?? 'kg'}</span>}
           </div>
+        </div>
+
+        {/* Barra de agregar — ancho completo, pegada abajo del card (estilo
+            Rappi/PedidosYa): un solo "+" grande cuando no hay nada en el
+            carrito, y un stepper −/cantidad/+ de ancho completo cuando ya
+            se agregó, en vez del botón circular chico de antes. */}
+        <div className="p-3 pt-2">
+          {qty > 0 && !product.isBulk ? (
+            <div className="flex items-center justify-between bg-brand-green-600 rounded-xl overflow-hidden h-9">
+              <button onClick={() => updateQuantity(product.id, qty - 1)} aria-label="Quitar uno"
+                className="h-full w-11 flex items-center justify-center text-white hover:bg-brand-green-700 transition-colors">
+                <Minus className="h-4 w-4" />
+              </button>
+              <span className="flex-1 text-center text-sm font-bold text-white tabular-nums">{qty}</span>
+              <button onClick={() => { addItem(product); flyToCart(imgRef.current) }} disabled={qty >= product.currentStock} aria-label="Agregar uno más"
+                className="h-full w-11 flex items-center justify-center text-white hover:bg-brand-green-700 disabled:opacity-40 transition-colors">
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button onClick={outOfStock ? undefined : handleAdd} disabled={outOfStock} aria-label={product.isBulk ? 'Elegir cantidad' : 'Agregar al carrito'}
+              className={`w-full h-9 rounded-xl flex items-center justify-center gap-1.5 font-bold text-sm text-white transition-colors ${outOfStock ? 'bg-paper-ink-ghost cursor-not-allowed' : 'bg-brand-green-600 hover:bg-brand-green-700'}`}>
+              {product.isBulk ? <Scale className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {product.isBulk ? 'Elegir cantidad' : 'Agregar'}
+            </button>
+          )}
         </div>
       </motion.div>
 

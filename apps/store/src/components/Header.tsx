@@ -3,10 +3,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ShoppingCart, Search, Package, User, LogOut, Tag, ChevronDown, Menu } from 'lucide-react'
 import { useCartStore, cartCount } from '../cartStore'
 import { useAuthStore } from '../authStore'
+import { useUIStore } from '../uiStore'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
-import { CategoryDrawer } from './CategoryDrawer'
 import { CategoryMegaMenu } from './CategoryMegaMenu'
 import { VoiceSearchButton } from './VoiceSearchButton'
 
@@ -15,9 +15,9 @@ export function Header() {
   const openCart = useCartStore(s => s.openCart)
   const count = cartCount(items)
   const { customer, logout, exitGuestMode } = useAuthStore()
+  const openCategoryDrawer = useUIStore(s => s.openCategoryDrawer)
   const [search, setSearch] = useState('')
   const [showMenu, setShowMenu] = useState(false)
-  const [showDrawer, setShowDrawer] = useState(false)
   const navigate = useNavigate()
 
   const { data: offersData } = useQuery({
@@ -40,7 +40,7 @@ export function Header() {
         <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-3 sm:gap-4">
 
           {/* Hamburguesa — solo mobile, en desktop ya está el dropdown de Categorías */}
-          <button onClick={() => setShowDrawer(true)} aria-label="Abrir menú de categorías"
+          <button onClick={openCategoryDrawer} aria-label="Abrir menú de categorías"
             className="md:hidden flex items-center justify-center h-9 w-9 shrink-0 rounded-full text-paper-ink-soft hover:bg-paper-surface hover:text-brand-green-600 transition-colors">
             <Menu className="h-5 w-5" />
           </button>
@@ -135,8 +135,6 @@ export function Header() {
           </div>
         </div>
       </header>
-
-      {showDrawer && <CategoryDrawer onClose={() => setShowDrawer(false)} />}
     </>
   )
 }
