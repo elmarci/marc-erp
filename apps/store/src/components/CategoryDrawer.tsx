@@ -34,23 +34,27 @@ export function CategoryDrawer({ onClose }: { onClose: () => void }) {
 
           <div className="border-t border-paper-line my-2" />
 
+          {/* Más contraste entre nivel padre e hija: la fila padre es más
+              grande/negrita (lee como encabezado de sección) y las hijas
+              pasan de gris clarito a texto oscuro con guía vertical — antes
+              se perdían visualmente contra el fondo y contra el padre. */}
           {categories.map(cat => {
             const Icon = getCategoryIcon(cat.name)
             return (
-              <div key={cat.id}>
+              <div key={cat.id} className="border-b border-paper-line/70 last:border-b-0">
                 <Link to={`/catalogo?categoryId=${cat.id}`} onClick={onClose}
-                  className="flex items-center gap-3 px-4 py-2.5 text-paper-ink font-medium hover:bg-paper-surface hover:text-brand-green-700 transition-colors">
-                  <Icon className="h-4.5 w-4.5 text-brand-green-600 shrink-0" />
+                  className="flex items-center gap-3 px-4 py-3 text-paper-ink font-bold hover:bg-paper-surface hover:text-brand-green-700 transition-colors">
+                  <Icon className="h-5 w-5 text-brand-green-600 shrink-0" />
                   <span className="flex-1">{cat.name}</span>
-                  <span className="text-xs text-paper-ink-ghost">{cat._count.products}</span>
+                  <span className="text-xs text-paper-ink-ghost font-medium">{cat._count.products}</span>
                 </Link>
                 {cat.children.length > 0 && (
-                  <div className="pl-11">
+                  <div className="ml-8 pl-3 pb-2 border-l-2 border-paper-line space-y-0.5">
                     {cat.children.map(child => (
                       <Link key={child.id} to={`/catalogo?categoryId=${child.id}`} onClick={onClose}
-                        className="flex items-center gap-2 py-2 text-sm text-paper-ink-soft hover:text-brand-green-600 transition-colors">
+                        className="flex items-center gap-2 py-2 px-2 rounded-lg text-sm font-semibold text-paper-ink hover:bg-brand-green-50 hover:text-brand-green-700 transition-colors">
                         <span className="flex-1">{child.name}</span>
-                        <span className="text-xs text-paper-ink-ghost">{child._count.products}</span>
+                        <span className="text-xs text-paper-ink-ghost font-medium">{child._count.products}</span>
                       </Link>
                     ))}
                   </div>

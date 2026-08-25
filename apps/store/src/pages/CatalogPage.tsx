@@ -3,6 +3,7 @@ import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { Search, X, ChevronDown, LayoutGrid, Loader2 } from 'lucide-react'
 import { storeApi } from '../api'
+import type { Category, Product } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { VoiceSearchButton } from '../components/VoiceSearchButton'
 import { getCategoryIcon } from '../categoryIcons'
@@ -20,6 +21,34 @@ const BANNER_ACCENTS = [
 ]
 const DEFAULT_BANNER_ACCENT = 'bg-gradient-to-r from-paper-ink to-brand-blue-800'
 
+// Una "unidad" es lo mínimo navegable con productos propios: una
+// subcategoría (si la categoría de nivel superior tiene hijas) o la propia
+// categoría de nivel superior (si no tiene). Aplanar el árbol en una sola
+// secuencia permite "caminarlo" en orden sin importar en qué nivel esté el
+// usuario — así se puede saltar de una subcategoría a la siguiente, y al
+// acabar las subcategorías de un padre, seguir con la próxima categoría de
+// nivel superior, todo con la misma lógica.
+interface Unit { id: string; name: string; parentName?: string; parentId?: string }
+function buildSequence(categories: Category[]): Unit[] {
+  const units: Unit[] = []
+  categories.forEach(cat => {
+    if (cat.children.length > 0) {
+      cat.children.forEach(child => units.push({ id: child.id, name: child.name, parentName: cat.name, parentId: cat.id }))
+    } else {
+      units.push({ id: cat.id, name: cat.name })
+    }
+  })
+  return units
+}
+
+interface FeedSection { unit: Unit; products: Product[]; page: number; totalPages: number; total: number }
+
+// Referencia estable para cuando todavía no cargaron las categorías — un
+// `?? []` inline crea un arreglo NUEVO en cada render, lo que invalidaba el
+// useMemo/useEffect que dependen de `categories` y producía un loop
+// infinito de renders mientras se esperaba la respuesta del API.
+const EMPTY_CATEGORIES: Category[] = []
+
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('search') ?? '')
@@ -36,10 +65,102 @@ export function CatalogPage() {
     queryKey: ['store-categories'],
     queryFn: () => storeApi.getCategories(),
   })
+  const categories = categoriesData?.data.data ?? EMPTY_CATEGORIES
 
-  // Scroll infinito en vez de "página siguiente" — el celular ya no
-  // interrumpe el deslizado natural para forzar un tap en un botón de
-  // paginación al llegar al final de la grilla.
+  // Modo "encadenado": al elegir una categoría/subcategoría concreta (y no
+  // estar buscando texto), el feed camina la secuencia completa de
+  // categorías en vez de quedarse pegado a una sola. Buscar por texto sigue
+  // siendo una lista plana simple — no tiene un "orden de categorías" al
+  // que encadenarse.
+  const isChained = Boolean(categoryId) && !search
+  const sequence = useMemo(() => buildSequence(categories), [categories])
+  const startIndex = useMemo(() => {
+    if (!isChained) return -1
+    const exact = sequence.findIndex(u => u.id === categoryId)
+    if (exact >= 0) return exact
+    // El id elegido es una categoría padre (no está en la secuencia porque
+    // sus hijas son las unidades reales) — arrancar por la primera hija.
+    const parent = categories.find(c => c.id === categoryId)
+    if (parent && parent.children.length > 0) {
+      return sequence.findIndex(u => u.id === parent.children[0].id)
+    }
+    return -1
+  }, [sequence, categoryId, categories, isChained])
+
+  const [sections, setSections] = useState<FeedSection[]>([])
+  const [chainPos, setChainPos] = useState(0)
+  const [chainLoading, setChainLoading] = useState(false)
+  const [fetchingMore, setFetchingMore] = useState(false)
+  const generationRef = useRef(0)
+  const sectionRefs = useRef<Map<string, HTMLElement>>(new Map())
+  const [visibleUnit, setVisibleUnit] = useState<Unit | null>(null)
+
+  const fetchUnitPage = async (unit: Unit, page: number, gen: number, mode: 'reset' | 'append-page' | 'append-section') => {
+    if (mode === 'reset') setChainLoading(true); else setFetchingMore(true)
+    try {
+      const res = await storeApi.getProducts({ categoryId: unit.id, page, limit: 24 })
+      if (generationRef.current !== gen) return // el usuario ya navegó a otro lado
+      const { data, pagination } = res.data
+      setSections(prev => {
+        const section: FeedSection = { unit, products: data, page, totalPages: pagination.totalPages, total: pagination.total }
+        if (mode === 'reset') return [section]
+        if (mode === 'append-section') return [...prev, section]
+        return prev.map((s, i) => i === prev.length - 1 ? { ...s, products: [...s.products, ...data], page } : s)
+      })
+    } finally {
+      if (generationRef.current === gen) { setChainLoading(false); setFetchingMore(false) }
+    }
+  }
+
+  // Reinicia el feed encadenado cada vez que cambia la categoría elegida.
+  useEffect(() => {
+    if (!isChained || startIndex < 0 || sequence.length === 0) {
+      setSections(prev => prev.length === 0 ? prev : [])
+      setVisibleUnit(prev => prev === null ? prev : null)
+      return
+    }
+    const gen = ++generationRef.current
+    setChainPos(startIndex)
+    setVisibleUnit(null)
+    fetchUnitPage(sequence[startIndex], 1, gen, 'reset')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChained, startIndex, sequence])
+
+  const lastSection = sections[sections.length - 1]
+  const hasMoreChained = isChained && Boolean(lastSection) &&
+    (lastSection!.page < lastSection!.totalPages || chainPos + 1 < sequence.length)
+
+  const handleLoadMoreChained = () => {
+    if (fetchingMore || chainLoading || !lastSection) return
+    const gen = generationRef.current
+    if (lastSection.page < lastSection.totalPages) {
+      fetchUnitPage(lastSection.unit, lastSection.page + 1, gen, 'append-page')
+    } else if (chainPos + 1 < sequence.length) {
+      const nextPos = chainPos + 1
+      setChainPos(nextPos)
+      fetchUnitPage(sequence[nextPos], 1, gen, 'append-section')
+    }
+  }
+
+  // "Scrollspy": qué sección está actualmente a la vista, para que el
+  // banner fijo muestre la categoría/subcategoría correcta a medida que se
+  // sigue bajando, no sólo la que se eligió al entrar.
+  useEffect(() => {
+    if (!isChained || sections.length === 0) return
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(e => e.isIntersecting)
+      if (visible.length === 0) return
+      visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+      const id = visible[0].target.getAttribute('data-unit-id')
+      const unit = sequence.find(u => u.id === id)
+      if (unit) setVisibleUnit(unit)
+    }, { rootMargin: '-120px 0px -75% 0px', threshold: 0 })
+    sectionRefs.current.forEach(el => observer.observe(el))
+    return () => observer.disconnect()
+  }, [isChained, sections.length, sequence])
+
+  // Modo plano (sin categoría, o buscando texto) — scroll infinito de una
+  // sola lista, como antes.
   const {
     data: productsData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage,
   } = useInfiniteQuery({
@@ -54,9 +175,11 @@ export function CatalogPage() {
       const { page, totalPages } = lastPage.data.pagination
       return page < totalPages ? page + 1 : undefined
     },
+    enabled: !isChained,
   })
+  const flatProducts = useMemo(() => productsData?.pages.flatMap(p => p.data.data) ?? [], [productsData])
+  const flatPagination = productsData?.pages[0]?.data.pagination
 
-  const categories = categoriesData?.data.data ?? []
   // Ojo: `activeTopCategory` es un `Category` real (con `.children`); el
   // resultado de buscar entre los hijos aplanados es un `CategoryChild`, que
   // NO tiene `.children` — mezclarlos en un solo `activeCategory` causaba un
@@ -65,32 +188,41 @@ export function CatalogPage() {
   const activeCategory = activeTopCategory
     ?? categories.flatMap(c => c.children).find(c => c.id === categoryId)
   const activeParent = categories.find(c => c.children.some(ch => ch.id === categoryId))
-  const products = useMemo(() => productsData?.pages.flatMap(p => p.data.data) ?? [], [productsData])
-  const pagination = productsData?.pages[0]?.data.pagination
   // Subcategorías de acceso rápido arriba: si estoy viendo una categoría
   // padre, sus hijas; si estoy dentro de una hija, sus hermanas (para poder
   // saltar entre subcategorías sin volver al nivel de arriba primero).
   const subcategoryParent = activeTopCategory && activeTopCategory.children.length > 0 ? activeTopCategory : activeParent
   const subcategories = subcategoryParent?.children ?? []
 
-  // Banner "estás acá" — reemplaza al breadcrumb + h1 + selector aparte que
-  // había antes (demasiados elementos apuntando a lo mismo). El acento de
-  // color sale del índice de la categoría de nivel superior, así padre e
-  // hija comparten color.
-  const topCategoryIndex = categories.findIndex(c => c.id === (activeTopCategory?.id ?? activeParent?.id))
+  // Banner "estás acá" — fijo (sticky) y, en modo encadenado, refleja la
+  // sección que se está viendo AHORA mientras se hace scroll (no sólo la
+  // categoría con la que se entró), incluido el color de acento.
+  const currentUnit = isChained ? (visibleUnit ?? (startIndex >= 0 ? sequence[startIndex] : null)) : null
+  const bannerTopId = isChained ? (currentUnit?.parentId ?? currentUnit?.id) : (activeTopCategory?.id ?? activeParent?.id)
+  const topCategoryIndex = categories.findIndex(c => c.id === bannerTopId)
   const bannerAccent = topCategoryIndex >= 0 ? BANNER_ACCENTS[topCategoryIndex % BANNER_ACCENTS.length] : DEFAULT_BANNER_ACCENT
-  const BannerIcon = activeCategory ? getCategoryIcon(activeCategory.name) : (search ? Search : LayoutGrid)
-  const bannerLabel = activeCategory ? activeCategory.name : search ? `"${search}"` : 'Catálogo de productos'
+  const BannerIcon = isChained
+    ? (currentUnit ? getCategoryIcon(currentUnit.name) : LayoutGrid)
+    : (activeCategory ? getCategoryIcon(activeCategory.name) : (search ? Search : LayoutGrid))
+  const bannerLabel = isChained
+    ? (currentUnit?.name ?? 'Catálogo de productos')
+    : (activeCategory ? activeCategory.name : search ? `"${search}"` : 'Catálogo de productos')
+  const bannerParentLabel = isChained ? currentUnit?.parentName : undefined
 
   useEffect(() => {
     const el = loadMoreRef.current
-    if (!el || !hasNextPage) return
+    const showSentinel = isChained ? hasMoreChained : hasNextPage
+    const isFetchingAny = isChained ? fetchingMore : isFetchingNextPage
+    if (!el || !showSentinel) return
     const observer = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage()
+      if (entries[0].isIntersecting && !isFetchingAny) {
+        if (isChained) handleLoadMoreChained(); else fetchNextPage()
+      }
     }, { rootMargin: '400px' })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage, products.length])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChained, hasMoreChained, hasNextPage, fetchingMore, isFetchingNextPage, fetchNextPage, sections, chainPos, flatProducts.length])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -119,27 +251,31 @@ export function CatalogPage() {
 
   return (
     <main className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="hidden lg:block text-2xl font-bold mb-6 text-paper-ink">
-        {activeCategory ? activeCategory.name : 'Catálogo de productos'}
-      </h1>
+      <div className="hidden lg:block sticky top-20 z-30 bg-paper-bg/95 backdrop-blur py-2 mb-4">
+        <h1 className="text-2xl font-bold text-paper-ink">{bannerLabel}</h1>
+        {bannerParentLabel && <p className="text-sm font-medium text-paper-ink-ghost">{bannerParentLabel}</p>}
+      </div>
 
-      {/* Banner "estás acá" — solo mobile/tablet. Un solo elemento resaltante
-          en vez del breadcrumb de texto + el selector chico que había antes
-          (redundantes entre sí y con el sidebar/drawer). Tocar el banner
-          abre el mismo panel de categorías para saltar a cualquier otra. */}
+      {/* Banner "estás acá" — solo mobile/tablet, fijo mientras se scrollea.
+          Un solo elemento resaltante en vez del breadcrumb de texto + el
+          selector chico que había antes (redundantes entre sí y con el
+          sidebar/drawer). Tocar el banner abre el panel de categorías. */}
       <button onClick={openCategoryDrawer}
-        className={`lg:hidden w-full flex items-center gap-3 rounded-2xl px-4 py-4 mb-4 shadow-md text-left transition-transform active:scale-[0.98] ${bannerAccent}`}>
+        className={`lg:hidden sticky top-16 z-30 w-full flex items-center gap-3 rounded-2xl px-4 py-4 mb-4 shadow-lg text-left transition-transform active:scale-[0.98] ${bannerAccent}`}>
         <div className="h-11 w-11 rounded-full bg-white/20 flex items-center justify-center shrink-0">
           <BannerIcon className="h-6 w-6 text-white" />
         </div>
-        <span className="flex-1 text-lg font-black text-white truncate">{bannerLabel}</span>
+        <div className="flex-1 min-w-0">
+          {bannerParentLabel && <p className="text-[11px] font-bold text-white/75 uppercase tracking-wide truncate">{bannerParentLabel}</p>}
+          <p className="text-lg font-black text-white truncate leading-tight">{bannerLabel}</p>
+        </div>
         <ChevronDown className="h-5 w-5 text-white/80 shrink-0" />
       </button>
 
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar de categorías — solo desktop, en mobile se usan los pills */}
         <aside className="hidden lg:block w-56 shrink-0">
-          <div className="sticky top-24 bg-white border border-paper-line rounded-2xl shadow-sm p-3">
+          <div className="sticky top-44 bg-white border border-paper-line rounded-2xl shadow-sm p-3">
             <p className="text-xs font-bold text-paper-ink-ghost uppercase tracking-wide px-2 py-2">Categorías</p>
             <button onClick={() => handleCategory('')}
               className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors ${!categoryId ? 'bg-brand-green-600 text-white' : 'text-paper-ink-soft hover:bg-paper-surface'}`}>
@@ -202,18 +338,19 @@ export function CatalogPage() {
 
           {/* Una sola fila de pills según el contexto — subcategorías si la
               categoría activa tiene (o si estoy dentro de una hija, sus
-              hermanas), y si no, las categorías de nivel superior. Antes se
-              mostraban las dos filas siempre, una encima de la otra. */}
+              hermanas), y si no, las categorías de nivel superior. Más
+              contraste que antes (texto oscuro y borde grueso) para que no
+              se pierdan visualmente contra el fondo. */}
           <div className="flex lg:hidden gap-2 overflow-x-auto h-scroll pb-4 mb-2">
             {subcategoryParent && subcategories.length > 0 ? (
               <>
                 <button onClick={() => handleCategory(subcategoryParent.id)}
-                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${categoryId === subcategoryParent.id ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
+                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors ${categoryId === subcategoryParent.id ? 'bg-brand-green-600 text-white' : 'bg-white border-2 border-paper-line text-paper-ink hover:border-brand-green-300'}`}>
                   Todo en {subcategoryParent.name}
                 </button>
                 {subcategories.map(child => (
                   <button key={child.id} onClick={() => handleCategory(child.id)}
-                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${categoryId === child.id ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
+                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors whitespace-nowrap ${categoryId === child.id ? 'bg-brand-green-600 text-white' : 'bg-white border-2 border-paper-line text-paper-ink hover:border-brand-green-300'}`}>
                     {child.name}
                   </button>
                 ))}
@@ -221,12 +358,12 @@ export function CatalogPage() {
             ) : (
               <>
                 <button onClick={() => handleCategory('')}
-                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${!categoryId ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
+                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors ${!categoryId ? 'bg-brand-green-600 text-white' : 'bg-white border-2 border-paper-line text-paper-ink hover:border-brand-green-300'}`}>
                   Todos
                 </button>
                 {categories.map(cat => (
                   <button key={cat.id} onClick={() => handleCategory(cat.id)}
-                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${categoryId === cat.id ? 'bg-brand-green-600 text-white' : 'bg-white border border-paper-line text-paper-ink-soft hover:bg-paper-surface'}`}>
+                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors whitespace-nowrap ${categoryId === cat.id ? 'bg-brand-green-600 text-white' : 'bg-white border-2 border-paper-line text-paper-ink hover:border-brand-green-300'}`}>
                     {cat.name}
                   </button>
                 ))}
@@ -235,13 +372,57 @@ export function CatalogPage() {
           </div>
 
           {/* Results */}
-          {isLoading ? (
+          {isChained ? (
+            chainLoading && sections.length === 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <div key={i} className="bg-paper-surface rounded-2xl aspect-square animate-pulse" />
+                ))}
+              </div>
+            ) : sections.length === 0 ? (
+              <div className="text-center py-20 text-paper-ink-ghost">
+                <Search className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                <p className="text-lg text-paper-ink-soft">No se encontraron productos</p>
+              </div>
+            ) : (
+              <>
+                {sections.map((sec, i) => (
+                  <div key={`${sec.unit.id}-${i}`}
+                    ref={el => { if (el) sectionRefs.current.set(sec.unit.id, el); else sectionRefs.current.delete(sec.unit.id) }}
+                    data-unit-id={sec.unit.id}
+                    className="mb-8 scroll-mt-32">
+                    <div className="flex items-baseline gap-2 mb-3">
+                      <h2 className="text-lg font-black text-paper-ink">{sec.unit.name}</h2>
+                      <span className="text-xs text-paper-ink-ghost font-semibold">{sec.total} producto{sec.total === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+                      {sec.products.map(product => (
+                        <ProductCard key={product.id} product={product} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Sentinel de scroll infinito — al llegar al final de una
+                    categoría, sigue con la siguiente sola, sin que el
+                    usuario tenga que volver a elegir nada. */}
+                {hasMoreChained && (
+                  <div ref={loadMoreRef} className="flex justify-center py-10">
+                    <Loader2 className="h-6 w-6 text-brand-green-600 animate-spin" />
+                  </div>
+                )}
+                {!hasMoreChained && (
+                  <p className="text-center text-xs text-paper-ink-ghost py-10">Ya viste todo el catálogo.</p>
+                )}
+              </>
+            )
+          ) : isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
               {Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="bg-paper-surface rounded-2xl aspect-square animate-pulse" />
               ))}
             </div>
-          ) : products.length === 0 ? (
+          ) : flatProducts.length === 0 ? (
             <div className="text-center py-20 text-paper-ink-ghost">
               <Search className="h-12 w-12 mx-auto mb-3 opacity-40" />
               <p className="text-lg text-paper-ink-soft">No se encontraron productos</p>
@@ -250,11 +431,11 @@ export function CatalogPage() {
           ) : (
             <>
               <div className="flex justify-between items-center mb-4 text-sm text-paper-ink-ghost">
-                <span>{pagination?.total ?? 0} productos</span>
-                <span>Mostrando {products.length}</span>
+                <span>{flatPagination?.total ?? 0} productos</span>
+                <span>Mostrando {flatProducts.length}</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-                {products.map(product => (
+                {flatProducts.map(product => (
                   <ProductCard key={product.id} product={product} />
                 ))}
               </div>
@@ -266,7 +447,7 @@ export function CatalogPage() {
                   <Loader2 className="h-6 w-6 text-brand-green-600 animate-spin" />
                 </div>
               )}
-              {!hasNextPage && products.length > 0 && (
+              {!hasNextPage && flatProducts.length > 0 && (
                 <p className="text-center text-xs text-paper-ink-ghost py-10">Ya viste todos los productos de esta lista.</p>
               )}
             </>
