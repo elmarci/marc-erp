@@ -55,10 +55,12 @@ export function CatalogPage() {
   const [categoryId, setCategoryId] = useState(searchParams.get('categoryId') ?? '')
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const openCategoryDrawer = useUIStore(s => s.openCategoryDrawer)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
 
   useEffect(() => {
     setSearch(searchParams.get('search') ?? '')
     setCategoryId(searchParams.get('categoryId') ?? '')
+    setDropdownOpen(false)
   }, [searchParams])
 
   const { data: categoriesData } = useQuery({
@@ -201,9 +203,6 @@ export function CatalogPage() {
   const bannerTopId = isChained ? (currentUnit?.parentId ?? currentUnit?.id) : (activeTopCategory?.id ?? activeParent?.id)
   const topCategoryIndex = categories.findIndex(c => c.id === bannerTopId)
   const bannerAccent = topCategoryIndex >= 0 ? BANNER_ACCENTS[topCategoryIndex % BANNER_ACCENTS.length] : DEFAULT_BANNER_ACCENT
-  const BannerIcon = isChained
-    ? (currentUnit ? getCategoryIcon(currentUnit.name) : LayoutGrid)
-    : (activeCategory ? getCategoryIcon(activeCategory.name) : (search ? Search : LayoutGrid))
   const bannerLabel = isChained
     ? (currentUnit?.name ?? 'Catálogo de productos')
     : (activeCategory ? activeCategory.name : search ? `"${search}"` : 'Catálogo de productos')
@@ -256,21 +255,58 @@ export function CatalogPage() {
         {bannerParentLabel && <p className="text-sm font-medium text-paper-ink-ghost">{bannerParentLabel}</p>}
       </div>
 
-      {/* Banner "estás acá" — solo mobile/tablet, fijo mientras se scrollea.
-          Un solo elemento resaltante en vez del breadcrumb de texto + el
-          selector chico que había antes (redundantes entre sí y con el
-          sidebar/drawer). Tocar el banner abre el panel de categorías. */}
-      <button onClick={openCategoryDrawer}
-        className={`lg:hidden sticky top-16 z-30 w-full flex items-center gap-3 rounded-2xl px-4 py-4 mb-4 shadow-lg text-left transition-transform active:scale-[0.98] ${bannerAccent}`}>
-        <div className="h-11 w-11 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-          <BannerIcon className="h-6 w-6 text-white" />
-        </div>
-        <div className="flex-1 min-w-0">
-          {bannerParentLabel && <p className="text-[11px] font-bold text-white/75 uppercase tracking-wide truncate">{bannerParentLabel}</p>}
-          <p className="text-lg font-black text-white truncate leading-tight">{bannerLabel}</p>
-        </div>
-        <ChevronDown className="h-5 w-5 text-white/80 shrink-0" />
-      </button>
+      {/* Barra compacta "estás acá" — solo mobile/tablet, fija mientras se
+          scrollea. Sin ícono/logo (para ganar espacio) y de una sola línea
+          en vez del banner grande de antes, que tapaba demasiado contenido.
+          Tocarla despliega la navegación de subcategorías (o categorías,
+          según el contexto) ahí mismo — reemplaza a la fila de pills fija
+          que había antes, que siempre ocupaba espacio aunque no se usara. */}
+      <div className="lg:hidden sticky top-16 z-30">
+        <button onClick={() => setDropdownOpen(o => !o)}
+          className={`w-full flex items-center gap-2 px-4 py-2.5 shadow-md text-left transition-colors ${bannerAccent}`}>
+          {bannerParentLabel && <span className="text-[11px] font-bold text-white/70 uppercase tracking-wide shrink-0">{bannerParentLabel} ›</span>}
+          <span className="flex-1 text-sm font-black text-white truncate">{bannerLabel}</span>
+          <ChevronDown className={`h-4.5 w-4.5 text-white/90 shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {dropdownOpen && (
+          <div className="bg-white border-b border-paper-line shadow-lg max-h-[65vh] overflow-y-auto">
+            {subcategoryParent && subcategories.length > 0 ? (
+              <>
+                <button onClick={() => { handleCategory(subcategoryParent.id); setDropdownOpen(false) }}
+                  className={`w-full flex items-center justify-between px-4 py-3 text-sm font-bold border-b border-paper-line transition-colors ${categoryId === subcategoryParent.id ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
+                  Todo en {subcategoryParent.name}
+                </button>
+                {subcategories.map(child => (
+                  <button key={child.id} onClick={() => { handleCategory(child.id); setDropdownOpen(false) }}
+                    className={`w-full flex items-center justify-between px-4 py-3 text-sm font-semibold border-b border-paper-line transition-colors ${categoryId === child.id ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
+                    {child.name}
+                    <span className="text-xs text-paper-ink-ghost font-medium">{child._count.products}</span>
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                <button onClick={() => { handleCategory(''); setDropdownOpen(false) }}
+                  className={`w-full flex items-center justify-between px-4 py-3 text-sm font-bold border-b border-paper-line transition-colors ${!categoryId ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
+                  Todos los productos
+                </button>
+                {categories.map(cat => (
+                  <button key={cat.id} onClick={() => { handleCategory(cat.id); setDropdownOpen(false) }}
+                    className={`w-full flex items-center justify-between px-4 py-3 text-sm font-semibold border-b border-paper-line transition-colors ${categoryId === cat.id ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
+                    {cat.name}
+                    <span className="text-xs text-paper-ink-ghost font-medium">{cat._count.products}</span>
+                  </button>
+                ))}
+              </>
+            )}
+            <button onClick={() => { openCategoryDrawer(); setDropdownOpen(false) }}
+              className="w-full px-4 py-3 text-sm font-bold text-brand-blue-600 hover:bg-brand-blue-50 transition-colors">
+              Ver todas las categorías
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar de categorías — solo desktop, en mobile se usan los pills */}
@@ -334,41 +370,6 @@ export function CatalogPage() {
                 <VoiceSearchButton onResult={handleVoiceResult} className="absolute right-2.5 top-1/2 -translate-y-1/2" />
               </div>
             </form>
-          </div>
-
-          {/* Una sola fila de pills según el contexto — subcategorías si la
-              categoría activa tiene (o si estoy dentro de una hija, sus
-              hermanas), y si no, las categorías de nivel superior. Más
-              contraste que antes (texto oscuro y borde grueso) para que no
-              se pierdan visualmente contra el fondo. */}
-          <div className="flex lg:hidden gap-2 overflow-x-auto h-scroll pb-4 mb-2">
-            {subcategoryParent && subcategories.length > 0 ? (
-              <>
-                <button onClick={() => handleCategory(subcategoryParent.id)}
-                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors ${categoryId === subcategoryParent.id ? 'bg-brand-green-600 text-white' : 'bg-white border-2 border-paper-line text-paper-ink hover:border-brand-green-300'}`}>
-                  Todo en {subcategoryParent.name}
-                </button>
-                {subcategories.map(child => (
-                  <button key={child.id} onClick={() => handleCategory(child.id)}
-                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors whitespace-nowrap ${categoryId === child.id ? 'bg-brand-green-600 text-white' : 'bg-white border-2 border-paper-line text-paper-ink hover:border-brand-green-300'}`}>
-                    {child.name}
-                  </button>
-                ))}
-              </>
-            ) : (
-              <>
-                <button onClick={() => handleCategory('')}
-                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors ${!categoryId ? 'bg-brand-green-600 text-white' : 'bg-white border-2 border-paper-line text-paper-ink hover:border-brand-green-300'}`}>
-                  Todos
-                </button>
-                {categories.map(cat => (
-                  <button key={cat.id} onClick={() => handleCategory(cat.id)}
-                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors whitespace-nowrap ${categoryId === cat.id ? 'bg-brand-green-600 text-white' : 'bg-white border-2 border-paper-line text-paper-ink hover:border-brand-green-300'}`}>
-                    {cat.name}
-                  </button>
-                ))}
-              </>
-            )}
           </div>
 
           {/* Results */}
