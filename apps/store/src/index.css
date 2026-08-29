@@ -28,14 +28,20 @@
     -ms-overflow-style: none;
   }
   .no-scrollbar::-webkit-scrollbar { display: none; }
-  /* En una fila angosta de chips (categorías) dentro de una página que
-     también se desplaza verticalmente, el reconocedor de gestos táctiles a
-     veces se "traba" decidiendo el eje — un swipe que no es perfectamente
-     horizontal no mueve nada. pan-x le dice al navegador que esta fila sólo
-     atiende el eje horizontal, así cualquier componente vertical del gesto
-     se deja pasar de una y sigue el scroll normal de la página. */
+  /* Filas horizontales (categorías, más vendidos, promos, similares) dentro
+     de una página que también se desplaza verticalmente. OJO: "touch-action:
+     pan-x" a secas NO es "sólo maneja horizontal y deja pasar lo demás" —
+     por spec, el navegador calcula la intersección de touch-action con TODOS
+     los ancestros para decidir qué ejes atiende ese toque, así que pan-x
+     aquí bloqueaba también el scroll vertical de toda la página cada vez
+     que el dedo empezaba sobre una de estas filas (justo el reporte de que
+     "se queda paralizada la pantalla" al tocar una card). Declarando los dos
+     ejes explícitamente se deja que el navegador decida la dirección como
+     hace por defecto — el scroll vertical de la página nunca queda
+     bloqueado — y overscroll-behavior-x sigue evitando que un swipe
+     horizontal dispare el gesto de "atrás" del navegador en los bordes. */
   .h-scroll {
-    touch-action: pan-x;
+    touch-action: pan-x pan-y;
     overscroll-behavior-x: contain;
   }
 }
