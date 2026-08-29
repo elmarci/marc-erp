@@ -23,9 +23,11 @@ interface CartStore {
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, qty: number) => { finalQuantity: number; capped: boolean }
   renameItem: (productId: string, name: string) => void
-  // Reemplaza de una sola vez todas las líneas de un paquete (usado al
-  // agregar o re-elegir un combo/bundle) — nunca se suma sobre lo anterior.
-  setBundle: (bundleId: string, entries: Array<{ product: Product; quantity: number }>, meta: { label: string; totalPrice: number; totalQty: number }) => void
+  // Agrega un paquete/combo como grupo NUEVO e independiente — cada llamada
+  // genera su propio id de instancia, así que pedir la misma promo dos veces
+  // (ej. el cliente quiere repetir un combo) suma un segundo grupo en vez de
+  // reemplazar o bloquear el primero.
+  addBundle: (entries: Array<{ product: Product; quantity: number }>, meta: { label: string; totalPrice: number; totalQty: number }) => void
   removeBundle: (bundleId: string) => void
   clearCart: () => void
   openCart: () => void
@@ -64,11 +66,11 @@ export const useCartStore = create<CartStore>()(
       renameItem: (productId, name) =>
         set(s => ({ items: s.items.map(i => i.product.id === productId ? { ...i, product: { ...i.product, name } } : i) })),
 
-      setBundle: (bundleId, entries, meta) => {
+      addBundle: (entries, meta) => {
         const { items } = get()
-        const others = items.filter(i => i.bundle?.id !== bundleId)
+        const bundleId = `bundle-instance-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         const bundleItems = entries.map(({ product, quantity }) => ({ product, quantity, bundle: { id: bundleId, ...meta } }))
-        set({ items: [...others, ...bundleItems] })
+        set({ items: [...items, ...bundleItems] })
       },
 
       removeBundle: (bundleId) =>
