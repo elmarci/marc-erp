@@ -173,9 +173,13 @@ router.post('/upload-video', authorizeMinRole('ADMIN'), uploadVideo.single('vide
 });
 
 // Banner de oferta / hero de tienda — a diferencia de las fotos de producto
-// (recorte forzado a cuadrado en products.routes.ts), estas imágenes son
-// horizontales tipo flyer, así que se recortan a 3:2 (misma proporción que
-// la tarjeta del carrusel en la tienda) en vez de a cuadrado.
+// (recorte forzado a cuadrado en products.routes.ts), estas imágenes suelen
+// ser flyers ya diseñados con texto/precio pegado a los bordes (artes de
+// proveedores). Antes se forzaba un recorte a 3:2 con `fit: 'cover'`, que en
+// cualquier imagen con otra proporción (lo más común: banners tipo 16:9)
+// cortaba texto o productos en los bordes. Ahora sólo se reduce de tamaño si
+// hace falta (`fit: 'inside'`), sin recortar nada — la tienda se encarga de
+// encajar la proporción que sea al mostrarla (ver PromoCarousel).
 router.post('/upload-banner-image', authorizeMinRole('ADMIN'), uploadBannerImage.single('image'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.file) throw new ValidationError('No se recibió ninguna imagen.');
@@ -184,7 +188,7 @@ router.post('/upload-banner-image', authorizeMinRole('ADMIN'), uploadBannerImage
 
     const filename = `${uuidv4()}.jpg`;
     await sharp(req.file.buffer)
-      .resize(1200, 800, { fit: 'cover', position: 'attention' })
+      .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
       .jpeg({ quality: 85 })
       .toFile(path.join(BANNER_DIR, filename));
 

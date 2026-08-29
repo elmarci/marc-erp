@@ -299,8 +299,8 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
                 queda como respaldo si el navegador no puede reproducir el video.
               </p>
               <p className="text-xs text-muted-foreground -mt-2">
-                La imagen se recorta a proporción 3:2 (horizontal) — diséñala en ese formato (ej. 1200×800px) y
-                deja margen respecto a los bordes para que ningún texto quede pegado al límite del recorte.
+                La imagen se muestra completa, sin recortarla — cualquier proporción funciona. Para que se vea
+                "a pantalla completa" sin franjas de fondo, usa un formato horizontal ancho (ej. 1200×675px, 16:9).
               </p>
               <div className="flex flex-wrap gap-4">
                 <div>

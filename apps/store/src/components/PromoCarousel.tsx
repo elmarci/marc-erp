@@ -74,7 +74,18 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                     muted loop autoPlay playsInline
                   />
                 ) : offer.storeImage ? (
-                  <img src={offer.storeImage} alt={offer.name} className="absolute inset-0 h-full w-full object-cover" />
+                  // Nunca sabemos con qué proporción va a venir la imagen que
+                  // suban (flyers de proveedores casi siempre son más anchos
+                  // que la tarjeta 3:2) — en vez de recortarla a la fuerza
+                  // con object-cover (cortaba texto/productos en los bordes),
+                  // se rellena el espacio sobrante con una copia
+                  // desenfocada de la misma imagen de fondo, y la imagen
+                  // real se muestra completa encima sin recortar nada.
+                  <>
+                    <img src={offer.storeImage} alt="" aria-hidden
+                      className="absolute inset-0 h-full w-full object-cover scale-110 blur-2xl opacity-80" />
+                    <img src={offer.storeImage} alt={offer.name} className="absolute inset-0 h-full w-full object-contain" />
+                  </>
                 ) : (
                   <>
                     <div className="absolute -top-10 -right-10 h-48 w-48 rounded-full bg-white/10 blur-2xl animate-float-blob" />
