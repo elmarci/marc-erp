@@ -2,9 +2,16 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Product } from './api'
 
+// Un ítem marcado con `bundle` viene de un paquete de precio fijo (oferta
+// BUNDLE_PRICE/COMBO/BUY_X_GET_Y elegida en AddOfferModal): su `salePrice`
+// es sólo un promedio (totalPrice / totalQty), NO un precio real por unidad.
+// Por eso estos ítems no deben poder incrementarse/decrementarse sueltos
+// desde el carrito (eso permitiría "comprar 1 más" al precio rebajado del
+// paquete) — se muestran agrupados y sólo se pueden quitar como grupo.
 export interface CartItem {
   product: Product
   quantity: number
+  bundle?: { id: string; label: string; totalPrice: number; totalQty: number }
 }
 
 interface AddItemResult { addedQuantity: number; finalQuantity: number; capped: boolean }
@@ -16,6 +23,10 @@ interface CartStore {
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, qty: number) => { finalQuantity: number; capped: boolean }
   renameItem: (productId: string, name: string) => void
+  // Reemplaza de una sola vez todas las líneas de un paquete (usado al
+  // agregar o re-elegir un combo/bundle) — nunca se suma sobre lo anterior.
+  setBundle: (bundleId: string, entries: Array<{ product: Product; quantity: number }>, meta: { label: string; totalPrice: number; totalQty: number }) => void
+  removeBundle: (bundleId: string) => void
   clearCart: () => void
   openCart: () => void
   closeCart: () => void
@@ -52,6 +63,16 @@ export const useCartStore = create<CartStore>()(
 
       renameItem: (productId, name) =>
         set(s => ({ items: s.items.map(i => i.product.id === productId ? { ...i, product: { ...i.product, name } } : i) })),
+
+      setBundle: (bundleId, entries, meta) => {
+        const { items } = get()
+        const others = items.filter(i => i.bundle?.id !== bundleId)
+        const bundleItems = entries.map(({ product, quantity }) => ({ product, quantity, bundle: { id: bundleId, ...meta } }))
+        set({ items: [...others, ...bundleItems] })
+      },
+
+      removeBundle: (bundleId) =>
+        set(s => ({ items: s.items.filter(i => i.bundle?.id !== bundleId) })),
 
       updateQuantity: (productId, qty) => {
         if (qty <= 0) { get().removeItem(productId); return { finalQuantity: 0, capped: false } }

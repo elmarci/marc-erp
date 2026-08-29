@@ -1,5 +1,5 @@
-import { X, Plus, Minus, ShoppingBag, Trash2 } from 'lucide-react'
-import { useCartStore, cartTotal } from '../cartStore'
+import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck } from 'lucide-react'
+import { useCartStore, cartTotal, type CartItem } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { useNavigate } from 'react-router-dom'
 
@@ -11,10 +11,26 @@ export function CartDrawer() {
   const closeCart = useCartStore(s => s.closeCart)
   const removeItem = useCartStore(s => s.removeItem)
   const updateQuantity = useCartStore(s => s.updateQuantity)
+  const removeBundle = useCartStore(s => s.removeBundle)
   const clearCart = useCartStore(s => s.clearCart)
   const customer = useAuthStore(s => s.customer)
   const total = cartTotal(items)
   const navigate = useNavigate()
+
+  // Agrupa las líneas de un mismo paquete (bundle/combo) en una sola tarjeta
+  // — antes cada sabor/variante salía como una fila estirada aparte, lo que
+  // hacía el carrito larguísimo con paquetes de varios productos.
+  const seenBundles = new Set<string>()
+  const rows = items.reduce<Array<{ key: string; el: 'item' | 'bundle'; item?: CartItem; group?: CartItem[] }>>((acc, item) => {
+    if (item.bundle) {
+      if (seenBundles.has(item.bundle.id)) return acc
+      seenBundles.add(item.bundle.id)
+      acc.push({ key: item.bundle.id, el: 'bundle', group: items.filter(i => i.bundle?.id === item.bundle!.id) })
+    } else {
+      acc.push({ key: item.product.id, el: 'item', item })
+    }
+    return acc
+  }, [])
 
   // Opción de respaldo para quien no quiere crear cuenta — arma el pedido
   // completo en un mensaje estructurado y lo manda directo a WhatsApp.
@@ -83,10 +99,12 @@ export function CartDrawer() {
               </button>
             </div>
           ) : (
-            items.map((item, idx) => (
-              <div key={item.product.id} className={`flex gap-3 py-3 ${idx > 0 ? 'border-t border-dashed border-paper-line' : ''}`}>
-                {item.product.imageUrl ? (
-                  <img src={item.product.imageUrl} alt={item.product.name}
+            rows.map((row, idx) => row.el === 'bundle' && row.group ? (
+              <BundleRow key={row.key} group={row.group} isFirst={idx === 0} onRemove={() => removeBundle(row.key)} />
+            ) : row.item ? (
+              <div key={row.key} className={`flex gap-3 py-3 ${idx > 0 ? 'border-t border-dashed border-paper-line' : ''}`}>
+                {row.item.product.imageUrl ? (
+                  <img src={row.item.product.imageUrl} alt={row.item.product.name}
                     className="h-16 w-16 rounded-xl object-cover shrink-0" />
                 ) : (
                   <div className="h-16 w-16 rounded-xl bg-paper-surface shrink-0 flex items-center justify-center">
@@ -94,29 +112,29 @@ export function CartDrawer() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-paper-ink line-clamp-2 leading-tight">{item.product.name}</p>
+                  <p className="font-medium text-sm text-paper-ink line-clamp-2 leading-tight">{row.item.product.name}</p>
                   <p className="text-paper-ink-ghost text-xs mt-0.5">
-                    {item.product.description
-                      ? <span className="text-brand-green-600">{item.product.description}</span>
-                      : `S/ ${Number(item.product.salePrice).toFixed(2)} c/u`}
+                    {row.item.product.description
+                      ? <span className="text-brand-green-600">{row.item.product.description}</span>
+                      : `S/ ${Number(row.item.product.salePrice).toFixed(2)} c/u`}
                   </p>
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-1.5">
-                      <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                      <button onClick={() => updateQuantity(row.item!.product.id, row.item!.quantity - 1)}
                         className="h-6 w-6 rounded-full bg-paper-surface hover:bg-paper-line flex items-center justify-center transition-colors">
                         <Minus className="h-2.5 w-2.5 text-paper-ink-soft" />
                       </button>
-                      <span className="w-6 text-center text-sm font-bold text-paper-ink">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                      <span className="w-6 text-center text-sm font-bold text-paper-ink">{row.item.quantity}</span>
+                      <button onClick={() => updateQuantity(row.item!.product.id, row.item!.quantity + 1)}
                         className="h-6 w-6 rounded-full bg-paper-surface hover:bg-paper-line flex items-center justify-center transition-colors">
                         <Plus className="h-2.5 w-2.5 text-paper-ink-soft" />
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-paper-ink font-bold text-sm tabular-nums">
-                        S/ {(Number(item.product.salePrice) * item.quantity).toFixed(2)}
+                        S/ {(Number(row.item.product.salePrice) * row.item.quantity).toFixed(2)}
                       </span>
-                      <button onClick={() => removeItem(item.product.id)}
+                      <button onClick={() => removeItem(row.item!.product.id)}
                         className="text-brand-magenta-400 hover:text-brand-magenta-600 transition-colors">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -124,7 +142,7 @@ export function CartDrawer() {
                   </div>
                 </div>
               </div>
-            ))
+            ) : null)
           )}
         </div>
 
@@ -148,5 +166,39 @@ export function CartDrawer() {
         )}
       </div>
     </>
+  )
+}
+
+// Una fila por paquete/combo, no por producto — evita el carrito "estirado"
+// de N sabores y, sobre todo, no tiene +/- suelto: el precio por unidad ahí
+// dentro es sólo un promedio del paquete, incrementarlo aparte compraría más
+// unidades al precio rebajado. Para cambiar la mezcla hay que quitar el
+// paquete y volver a elegirlo desde la oferta.
+function BundleRow({ group, isFirst, onRemove }: { group: CartItem[]; isFirst: boolean; onRemove: () => void }) {
+  const bundle = group[0].bundle!
+  const totalQty = group.reduce((s, i) => s + i.quantity, 0)
+  const breakdown = group.map(i => `${i.quantity}× ${i.product.name}`).join(' · ')
+  return (
+    <div className={`flex gap-3 py-3 ${!isFirst ? 'border-t border-dashed border-paper-line' : ''}`}>
+      <div className="h-16 w-16 rounded-xl bg-brand-green-50 shrink-0 flex items-center justify-center">
+        <PackageCheck className="h-6 w-6 text-brand-green-600" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-sm text-paper-ink leading-tight">{bundle.label}</p>
+        <p className="text-paper-ink-ghost text-xs mt-0.5 line-clamp-2">{breakdown}</p>
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-[11px] font-semibold text-brand-green-700 bg-brand-green-50 px-2 py-0.5 rounded-full shrink-0">
+            {totalQty} un. · precio fijo
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-paper-ink font-bold text-sm tabular-nums">S/ {bundle.totalPrice.toFixed(2)}</span>
+            <button onClick={onRemove} aria-label="Quitar paquete"
+              className="text-brand-magenta-400 hover:text-brand-magenta-600 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

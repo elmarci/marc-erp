@@ -35,7 +35,7 @@ function getPackInfo(offer: Offer): { totalQty: number; totalPrice: number; hint
 }
 
 export function AddOfferModal({ offer, onClose }: { offer: Offer; onClose: () => void }) {
-  const { addItem, openCart } = useCartStore()
+  const { addItem, setBundle, openCart } = useCartStore()
   const pack = getPackInfo(offer)
   // HAPPY_HOUR también es % de descuento (con ventana horaria aparte que ya
   // filtra el backend) — se trata igual que un descuento simple para que el
@@ -74,20 +74,26 @@ export function AddOfferModal({ offer, onClose }: { offer: Offer; onClose: () =>
     } else if (pack) {
       // Precio parejo por unidad, salga la mezcla de sabores/variantes que
       // salga — la suma de todas las líneas da exactamente el precio del
-      // paquete, no un múltiplo de él.
+      // paquete, no un múltiplo de él. Se guardan agrupadas bajo `bundle`
+      // (setBundle, no addItem) para que el carrito las muestre como un solo
+      // paquete y NO se puedan incrementar sueltas ahí — si el precio por
+      // unidad quedara suelto, un +1 en el carrito compraría más al precio
+      // rebajado del paquete en vez del precio real del producto.
       const pricePerUnit = Math.round((pack.totalPrice / pack.totalQty) * 100) / 100
-      chosen.forEach(({ product }) => {
-        addItem({
+      const entries = chosen.map(({ product }) => ({
+        product: {
           id: `bundle-${offer.id}-${product.id}`,
-          name: `${product.name} (${offer.storeBadge ?? offer.name})`,
+          name: product.name,
           salePrice: pricePerUnit,
           currentStock: 99,
           imageUrl: product.imageUrl,
           barcode: null,
           category: { id: '', name: '' },
-          description: `Parte del paquete ${pack.totalQty} x S/ ${pack.totalPrice.toFixed(2)}`,
-        }, quantities[product.id])
-      })
+          description: null,
+        },
+        quantity: quantities[product.id],
+      }))
+      setBundle(offer.id, entries, { label: offer.storeBadge ?? offer.name, totalPrice: pack.totalPrice, totalQty: pack.totalQty })
     }
 
     toast.success(`${offer.name} agregado al carrito`, { action: { label: 'Ver carrito', onClick: openCart } })
