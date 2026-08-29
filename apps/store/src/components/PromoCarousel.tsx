@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
+import { ChevronLeft, ChevronRight, ShoppingBag, ShoppingCart } from 'lucide-react'
 import type { Offer } from '../api'
+import { AddOfferModal } from './AddOfferModal'
 
 // Fallback cuando la oferta no tiene foto/video de fondo subido desde el ERP —
 // para que igual se vea bien mientras el usuario sube las imágenes reales.
@@ -24,8 +26,11 @@ function getOfferBadgeText(offer: Offer) {
 export function PromoCarousel({ offers }: { offers: Offer[] }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [openOfferId, setOpenOfferId] = useState<string | null>(null)
 
   if (offers.length === 0) return null
+
+  const openOffer = offers.find(o => o.id === openOfferId) ?? null
 
   const scrollToIndex = (i: number) => {
     const el = scrollerRef.current
@@ -112,10 +117,29 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                     <p className="text-white/80 text-sm mb-3 hidden sm:block line-clamp-2">{offer.description}</p>
                   )}
                   <p className="text-2xl sm:text-3xl font-black mb-4">{getOfferBadgeText(offer)}</p>
-                  <span className="inline-block bg-white/95 text-paper-ink font-bold px-5 py-2.5 rounded-full text-sm">
-                    Ver oferta
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {offer.products.length > 0 && (
+                      <button onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenOfferId(offer.id) }}
+                        className="inline-flex items-center gap-1.5 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold px-5 py-2.5 rounded-full text-sm transition-colors">
+                        <ShoppingCart className="h-4 w-4" />Agregar
+                      </button>
+                    )}
+                    <span className="inline-block bg-white/95 text-paper-ink font-bold px-5 py-2.5 rounded-full text-sm">
+                      Ver oferta
+                    </span>
+                  </div>
                 </div>
+                )}
+
+                {/* Diseño ya armado (flyer sin overlay de texto propio) — el
+                    botón de agregar flota encima, es lo único que le
+                    superponemos. Antes esta tarjeta sólo llevaba a /ofertas
+                    y había que agregar los productos ahí uno por uno. */}
+                {isFullDesign && offer.products.length > 0 && (
+                  <button onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenOfferId(offer.id) }}
+                    className="absolute z-10 bottom-4 right-4 inline-flex items-center gap-1.5 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold px-4 py-2.5 rounded-full text-sm shadow-lg transition-colors">
+                    <ShoppingCart className="h-4 w-4" />Agregar
+                  </button>
                 )}
               </Link>
             )
@@ -154,6 +178,10 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
           </>
         )}
       </div>
+
+      <AnimatePresence>
+        {openOffer && <AddOfferModal offer={openOffer} onClose={() => setOpenOfferId(null)} />}
+      </AnimatePresence>
     </section>
   )
 }

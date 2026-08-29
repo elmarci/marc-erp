@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { AnimatePresence } from 'framer-motion'
 import { Tag, ShoppingCart, Clock, Package } from 'lucide-react'
 import { storeApi, type Offer } from '../api'
 import { useCartStore } from '../cartStore'
+import { AddOfferModal } from '../components/AddOfferModal'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
 
@@ -25,42 +28,22 @@ function getBuyXGetYPrice(originalPrice: number, offer: Offer): { pricePerUnit: 
 
 function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green' | 'blue' }) {
   const { addItem, openCart } = useCartStore()
+  const [showPackModal, setShowPackModal] = useState(false)
   // El badge grande del tipo de oferta ("20% OFF", "Lleva 3 paga 2") alterna
   // verde/azul entre tarjetas para que la grilla de ofertas no lea monocroma —
   // el borde en hover se mantiene azul en todas, igual que ProductCard.
   const accentText = accent === 'green' ? 'text-brand-green-700' : 'text-brand-blue-700'
   const accentGradient = accent === 'green' ? 'from-brand-green-50 to-white' : 'from-brand-blue-50 to-white'
+  // BUY_X_GET_Y / BUNDLE_PRICE son paquetes de precio fijo total, sin
+  // importar cuáles productos de la lista lo completen (ej. "3 sabores de
+  // Mike's x S/15") — antes cada fila se agregaba por separado al precio
+  // TOTAL del paquete, así que elegir 3 sabores cobraba 3 veces el paquete.
+  // Ahora una sola acción abre el selector de cantidades (AddOfferModal),
+  // que reparte el precio total entre las unidades elegidas.
+  const isPack = offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE'
 
   const handleAdd = (product: Offer['products'][0]['product']) => {
     const originalPrice = Number(product.salePrice)
-
-    // Ofertas de tipo pack/bundle (BUY_X_GET_Y o BUNDLE_PRICE)
-    if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
-      const paidUnits = offer.buyQuantity ?? 2
-      const totalUnits = offer.getQuantity ?? 3
-      // Precio exacto: paidUnits × precio unitario — sin dividir entre totalUnits
-      const bundlePrice = offer.type === 'BUNDLE_PRICE'
-        ? Number(offer.value)
-        : Math.round(originalPrice * paidUnits * 100) / 100 // 2×5.20=10.40 exacto
-
-      const label = offer.storeBadge ?? `Pack ${totalUnits}×${paidUnits}`
-
-      addItem({
-        id: `bundle-${offer.id}-${product.id}`,
-        name: `${product.name} — ${label}`,
-        salePrice: bundlePrice,
-        currentStock: 99,
-        imageUrl: product.imageUrl,
-        barcode: null,
-        description: `Llevas ${totalUnits} · precio normal S/ ${(originalPrice * totalUnits).toFixed(2)}`,
-        category: { id: '', name: '' },
-      }, 1)
-      toast.success(`${label} de ${product.name} agregado al carrito`, {
-        description: `S/ ${bundlePrice.toFixed(2)} total`,
-        action: { label: 'Ver carrito', onClick: openCart },
-      })
-      return
-    }
 
     // Descuento simple (% o monto fijo)
     const finalPrice = getDiscountedPrice(originalPrice, offer)
@@ -132,7 +115,8 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
       {offer.products.length > 0 && (
         <div className="p-4">
           <p className="text-xs text-paper-ink-ghost uppercase tracking-wider mb-3 font-semibold flex items-center gap-1.5">
-            <Package className="h-3.5 w-3.5" />Productos en esta oferta
+            <Package className="h-3.5 w-3.5" />
+            {isPack ? 'Elige entre estos productos' : 'Productos en esta oferta'}
           </p>
           <div className="space-y-2">
             {offer.products.map(({ product }) => {
@@ -145,7 +129,7 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
               return (
                 <div key={product.id}
                   className="flex items-center gap-3 bg-paper-surface hover:bg-paper-line/40 rounded-xl p-3 transition-colors cursor-pointer"
-                  onClick={() => handleAdd(product)}>
+                  onClick={() => isPack ? setShowPackModal(true) : handleAdd(product)}>
                   {/* Imagen */}
                   {product.imageUrl ? (
                     <img src={product.imageUrl} alt={product.name}
@@ -192,16 +176,31 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
                     )}
                   </div>
 
-                  {/* Botón agregar */}
-                  <button className="h-10 w-10 bg-brand-green-600 hover:bg-brand-green-700 text-white rounded-full flex items-center justify-center transition-colors shrink-0">
+                  {/* Botón agregar — en paquetes no agrega directo: abre el
+                      selector de cantidades (todas las filas comparten el
+                      mismo precio total, así que ninguna se agrega sola). */}
+                  <button
+                    onClick={e => { if (isPack) { e.stopPropagation(); setShowPackModal(true) } }}
+                    className="h-10 w-10 bg-brand-green-600 hover:bg-brand-green-700 text-white rounded-full flex items-center justify-center transition-colors shrink-0">
                     <ShoppingCart className="h-4 w-4" />
                   </button>
                 </div>
               )
             })}
           </div>
+
+          {isPack && (
+            <button onClick={() => setShowPackModal(true)}
+              className="w-full mt-3 py-3 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors text-sm">
+              <ShoppingCart className="h-4 w-4" />Elegir y agregar el paquete
+            </button>
+          )}
         </div>
       )}
+
+      <AnimatePresence>
+        {showPackModal && <AddOfferModal offer={offer} onClose={() => setShowPackModal(false)} />}
+      </AnimatePresence>
 
       {offer.products.length === 0 && (
         <div className="p-5 text-center">
