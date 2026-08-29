@@ -40,7 +40,7 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
   // TOTAL del paquete, así que elegir 3 sabores cobraba 3 veces el paquete.
   // Ahora una sola acción abre el selector de cantidades (AddOfferModal),
   // que reparte el precio total entre las unidades elegidas.
-  const isPack = offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE'
+  const isPack = offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE' || offer.type === 'COMBO'
 
   const handleAdd = (product: Offer['products'][0]['product']) => {
     const originalPrice = Number(product.salePrice)

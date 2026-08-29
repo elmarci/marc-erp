@@ -7,15 +7,20 @@ import { useCartStore } from '../cartStore'
 
 // "Paquete" = oferta de cantidad fija a un precio total (BUNDLE_PRICE:
 // "3 x S/15" del mismo producto o de variantes intercambiables, ej. sabores
-// de Mike's; BUY_X_GET_Y: "paga 2 lleva 3"). En ambos casos el precio total
-// es fijo sin importar CUÁLES productos elija el cliente para completarlo —
-// antes cada fila de producto se agregaba por separado al precio TOTAL del
-// paquete completo, así que elegir 3 sabores cobraba 3 veces el paquete en
-// vez de una. Acá se reparte el precio total entre las unidades elegidas.
+// de Mike's; BUY_X_GET_Y: "paga 2 lleva 3"; COMBO: "N productos por S/X" —
+// en la tienda se trata igual que BUNDLE_PRICE, cualquier mezcla de las
+// variantes listadas cuenta para el total de unidades, sin exigir 1 de cada
+// una en específico). En todos, el precio total es fijo sin importar CUÁLES
+// productos elija el cliente para completarlo — antes cada fila de producto
+// se agregaba por separado al precio TOTAL del paquete completo, así que
+// elegir varios sabores cobraba el paquete una vez por cada uno en vez de
+// una sola vez. Acá se reparte el precio total entre las unidades elegidas.
 function getPackInfo(offer: Offer): { totalQty: number; totalPrice: number; hint: string } | null {
   if (offer.products.length === 0) return null
-  if (offer.type === 'BUNDLE_PRICE') {
-    const totalQty = offer.getQuantity ?? offer.products.length
+  if (offer.type === 'BUNDLE_PRICE' || offer.type === 'COMBO') {
+    const totalQty = offer.type === 'COMBO'
+      ? offer.products.reduce((sum, p) => sum + (p.quantity || 1), 0)
+      : offer.getQuantity ?? offer.products.length
     const totalPrice = Number(offer.value)
     return { totalQty, totalPrice, hint: `Elige ${totalQty} unidades (de cualquier variante) por S/ ${totalPrice.toFixed(2)} en total` }
   }

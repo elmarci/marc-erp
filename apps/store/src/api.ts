@@ -54,6 +54,7 @@ export interface Offer {
   storeFullDesign: boolean
   endDate: string | null
   products: Array<{
+    quantity: number   // sólo tiene significado real para COMBO — el resto siempre manda 1
     product: { id: string; name: string; salePrice: number; imageUrl: string | null }
   }>
 }
