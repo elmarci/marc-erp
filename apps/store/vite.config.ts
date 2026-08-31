@@ -28,6 +28,12 @@ export default defineConfig({
       workbox: {
         navigateFallback: 'index.html',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        // Agrega el manejo de push/notificationclick (avisos de ofertas y
+        // hora feliz) dentro del mismo service worker que genera Workbox —
+        // sin esto el navegador no tiene ningún listener de 'push' registrado
+        // y las notificaciones nunca aparecerían aunque la suscripción sea
+        // válida. Ver public/push-sw.js.
+        importScripts: ['/push-sw.js'],
         // Sin runtimeCaching para la API ni /uploads a propósito: el backend
         // vive en otro origen (VITE_API_URL absoluto, apps/store/src/api.ts)
         // y se comprobó que interceptar esas peticiones cross-origin con

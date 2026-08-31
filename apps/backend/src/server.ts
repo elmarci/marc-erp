@@ -31,10 +31,12 @@ import purchasesRoutes from './modules/purchases/purchases.routes';
 import inventoryRoutes from './modules/inventory/inventory.routes';
 import storeRoutes from './modules/store/store.routes';
 import storeAuthRoutes from './modules/store/store-auth.routes';
+import pushRoutes from './modules/push/push.routes';
 import promotionsRoutes from './modules/promotions/promotions.routes';
 import couponsRoutes from './modules/coupons/coupons.routes';
 import treasuryRoutes from './modules/treasury/treasury.routes';
 import { treasuryService } from './modules/treasury/treasury.service';
+import { promotionsService } from './modules/promotions/promotions.service';
 import bottleDepositsRoutes from './modules/bottle-deposits/bottle-deposits.routes';
 
 const app = express();
@@ -138,6 +140,7 @@ app.use(`${API_PREFIX}/purchases`, purchasesRoutes);
 app.use(`${API_PREFIX}/inventory`, inventoryRoutes);
 app.use(`${API_PREFIX}/store`, storeRoutes);
 app.use(`${API_PREFIX}/store/auth`, storeAuthRoutes);
+app.use(`${API_PREFIX}/store/push`, pushRoutes);
 app.use(`${API_PREFIX}/promotions`, promotionsRoutes);
 app.use(`${API_PREFIX}/coupons`, couponsRoutes);
 app.use(`${API_PREFIX}/treasury`, treasuryRoutes);
@@ -211,6 +214,16 @@ async function bootstrap() {
         logger.error({ err }, 'Error al procesar gastos recurrentes'),
       );
     }, 6 * 60 * 60 * 1000);
+
+    // Notificaciones push de hora feliz: se revisa cada minuto si alguna
+    // arranca justo ahora (ver checkAndNotifyHappyHours) — la granularidad
+    // de "hora feliz" es por minuto, así que no alcanza con revisar cada
+    // pocas horas como los gastos recurrentes.
+    setInterval(() => {
+      promotionsService.checkAndNotifyHappyHours().catch((err) =>
+        logger.error({ err }, 'Error al revisar activación de horas felices'),
+      );
+    }, 60 * 1000);
 
     const PORT = Number(process.env.PORT) || env.BACKEND_PORT;
     httpServer.listen(PORT, '0.0.0.0', () => {

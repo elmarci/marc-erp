@@ -1,9 +1,17 @@
 import { prisma } from '../../database/client';
 import { NotFoundError } from '../../utils/errors';
+import { pushService } from '../push/push.service';
+import { logger } from '../../config/logger';
 
 interface ComboItemInput { productId: string; quantity: number }
 
 export class PromotionsService {
+  // Hora feliz ya notificada en el minuto exacto en que arrancó — evita
+  // reenviar el aviso si checkAndNotifyHappyHours corre más de una vez
+  // dentro del mismo minuto (ej. al reiniciar el proceso). Se vacía sola
+  // cuando crece demasiado; no necesita persistir entre despliegues.
+  private notifiedHappyHourMinutes = new Set<string>();
+
   async list(filters: { active?: boolean; page: number; limit: number }) {
     const where: Record<string, unknown> = {};
     if (filters.active !== undefined) where['isActive'] = filters.active;
@@ -52,7 +60,7 @@ export class PromotionsService {
       ? comboItems.map(i => ({ productId: i.productId, quantity: i.quantity }))
       : productIds?.map(productId => ({ productId }));
 
-    return prisma.promotion.create({
+    const promo = await prisma.promotion.create({
       data: {
         ...promoData,
         type: promoData.type as never,
@@ -63,6 +71,19 @@ export class PromotionsService {
         products: { include: { product: { select: { id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true } } } },
       },
     });
+
+    // Avisa a quien activó notificaciones en la tienda — no bloquea la
+    // respuesta ni hace fallar la creación si el envío push tiene algún
+    // problema (ver push.service.ts).
+    if (promo.isActive && promo.showInStore) {
+      pushService.broadcast({
+        title: '🎉 Nueva oferta en Tienda Marc',
+        body: promo.description ? `${promo.name} — ${promo.description}` : promo.name,
+        url: '/ofertas',
+      }).catch(err => logger.error({ err }, 'Error notificando nueva oferta por push'));
+    }
+
+    return promo;
   }
 
   async update(id: string, data: {
@@ -141,6 +162,35 @@ export class PromotionsService {
       (!p.startTime || hhmm >= p.startTime) &&
       (!p.endTime || hhmm <= p.endTime),
     );
+  }
+
+  // Se llama cada minuto desde server.ts — busca horas felices cuyo
+  // startTime coincide con el minuto actual (hora Lima) y avisa por push
+  // justo cuando arrancan, no sólo cuando alguien las crea en el ERP.
+  async checkAndNotifyHappyHours() {
+    const lima = new Date(Date.now() - 5 * 60 * 60 * 1000);
+    const hhmm = lima.toISOString().slice(11, 16);
+    const dow = lima.getUTCDay();
+    const dateKey = lima.toISOString().slice(0, 10);
+
+    const promos = await prisma.promotion.findMany({
+      where: { type: 'HAPPY_HOUR', isActive: true, showInStore: true, startTime: hhmm },
+    });
+
+    for (const promo of promos) {
+      if (promo.daysOfWeek.length > 0 && !promo.daysOfWeek.includes(dow)) continue;
+      const key = `${promo.id}-${dateKey}-${hhmm}`;
+      if (this.notifiedHappyHourMinutes.has(key)) continue;
+      this.notifiedHappyHourMinutes.add(key);
+
+      pushService.broadcast({
+        title: `⏰ ¡${promo.name} ya empezó!`,
+        body: promo.description || 'Precio especial por tiempo limitado — aprovecha ahora.',
+        url: '/ofertas',
+      }).catch(err => logger.error({ err }, 'Error notificando activación de hora feliz por push'));
+    }
+
+    if (this.notifiedHappyHourMinutes.size > 500) this.notifiedHappyHourMinutes.clear();
   }
 }
 

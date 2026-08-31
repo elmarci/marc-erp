@@ -156,4 +156,13 @@ export const storeApi = {
     api.post<{ data: { customer: { id: string; name: string; phone: string; email: string | null }; token: string } }>(
       '/store/auth/google', { idToken, phone, name }
     ),
+
+  getVapidPublicKey: () =>
+    api.get<{ data: { publicKey: string | null } }>('/store/push/vapid-public-key'),
+
+  subscribeToPush: (subscription: PushSubscriptionJSON) =>
+    api.post('/store/push/subscribe', { subscription }),
+
+  unsubscribeFromPush: (endpoint: string) =>
+    api.post('/store/push/unsubscribe', { endpoint }),
 }

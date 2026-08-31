@@ -4,6 +4,7 @@ import { Header } from './components/Header'
 import { CartDrawer } from './components/CartDrawer'
 import { CategoryDrawer } from './components/CategoryDrawer'
 import { InstallAppBanner } from './components/InstallAppBanner'
+import { NotifyOptInBanner } from './components/NotifyOptInBanner'
 import { MobileTabBar } from './components/MobileTabBar'
 import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
 import { WhatsAppFAB } from './components/WhatsAppFAB'
@@ -36,6 +37,7 @@ export default function App() {
       <CartDrawer />
       {isCategoryDrawerOpen && <CategoryDrawer onClose={closeCategoryDrawer} />}
       <InstallAppBanner />
+      <NotifyOptInBanner />
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={location.pathname}

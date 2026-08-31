@@ -18,6 +18,13 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_FILE_SIZE_MB: z.coerce.number().default(10),
   GOOGLE_CLIENT_ID: z.string().optional(),
+  // Notificaciones push (ofertas nuevas, activación de hora feliz) — si no
+  // están configuradas, el envío simplemente se omite (ver push.service.ts)
+  // en vez de tumbar el servidor, para no bloquear despliegues antes de
+  // generar las llaves.
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:contacto@tiendamarc.com'),
 });
 
 function validateEnv() {

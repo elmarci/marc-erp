@@ -1431,14 +1431,34 @@ model StoreCustomer {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  customer  Customer?      @relation(fields: [customerId], references: [id])
-  orders    StoreOrder[]
-  addresses StoreAddress[]
+  customer          Customer?          @relation(fields: [customerId], references: [id])
+  orders            StoreOrder[]
+  addresses         StoreAddress[]
+  pushSubscriptions PushSubscription[]
 
   @@index([phone])
   @@index([email])
   @@index([customerId])
   @@map("store_customers")
+}
+
+// Suscripción push del navegador (Web Push API) para avisar de ofertas
+// nuevas y activación de horas felices sin depender de que el cliente tenga
+// la tienda abierta. No requiere cuenta — cualquier visitante puede activar
+// avisos; customerId sólo se llena si además inició sesión, para uso futuro
+// (ej. filtrar por preferencias). endpoint es único por navegador/dispositivo.
+model PushSubscription {
+  id         String   @id @default(uuid())
+  endpoint   String   @unique @db.Text
+  p256dh     String
+  auth       String
+  customerId String?  @map("customer_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer StoreCustomer? @relation(fields: [customerId], references: [id])
+
+  @@index([customerId])
+  @@map("push_subscriptions")
 }
 
 model StoreAddress {
