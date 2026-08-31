@@ -325,6 +325,18 @@ export class ReportsService {
    * una venta pasada no cambia cuando el costo sigue moviéndose después.
    * Las ventas de antes de este cambio no tienen ese costo guardado; se
    * cuentan aparte (itemsWithoutCost) en vez de tratarlas como costo cero.
+   *
+   * El ingreso del resumen y del gráfico se calcula desde sales.total_amount
+   * (no SUM(sale_items.subtotal)) — a propósito, para que coincida con el
+   * Dashboard y la pestaña "Ventas": total_amount ya resta el descuento a
+   * nivel de venta completa (cupón, redención de puntos, rebaja manual del
+   * cajero), mientras que sumar el subtotal de cada línea ignora ese
+   * descuento por completo. Antes de este cambio, cualquier venta con
+   * descuento de venta completa hacía que Margen mostrara más ingreso del
+   * que realmente entró a caja — la diferencia era exactamente la suma de
+   * esos descuentos. El desglose por producto (byProduct) sí sigue usando el
+   * subtotal de línea: un descuento de venta completa no pertenece a un
+   * producto en particular, así que no hay forma correcta de repartirlo ahí.
    */
   async getMarginReport(range: DateRange, groupBy: 'day' | 'week' | 'month' = 'day') {
     const groupFormat = {
@@ -333,10 +345,15 @@ export class ReportsService {
       month: 'YYYY-MM',
     }[groupBy];
 
-    const [summaryRows, chart, byProduct] = await Promise.all([
-      prisma.$queryRaw<{ revenue: number; cost: number; items_without_cost: bigint }[]>`
+    const statusFilter = ['COMPLETED', 'PARTIALLY_RETURNED'] as const;
+
+    const [revenueAgg, costRows, revenueByPeriod, costByPeriod, byProduct] = await Promise.all([
+      prisma.sale.aggregate({
+        where: { status: { in: [...statusFilter] }, createdAt: { gte: range.from, lte: range.to } },
+        _sum: { totalAmount: true },
+      }),
+      prisma.$queryRaw<{ cost: number; items_without_cost: bigint }[]>`
         SELECT
-          SUM(si.subtotal)::float as revenue,
           SUM(si.quantity * COALESCE(si.cost_price, 0))::float as cost,
           COUNT(*) FILTER (WHERE si.cost_price IS NULL)::bigint as items_without_cost
         FROM sale_items si
@@ -344,17 +361,24 @@ export class ReportsService {
         WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
           AND s.created_at BETWEEN ${range.from} AND ${range.to}
       `,
-      prisma.$queryRaw<{ period: string; revenue: number; cost: number }[]>`
+      prisma.$queryRaw<{ period: string; revenue: number }[]>`
         SELECT
           TO_CHAR(s.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
-          SUM(si.subtotal)::float as revenue,
+          SUM(s.total_amount)::float as revenue
+        FROM sales s
+        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
+          AND s.created_at BETWEEN ${range.from} AND ${range.to}
+        GROUP BY period
+      `,
+      prisma.$queryRaw<{ period: string; cost: number }[]>`
+        SELECT
+          TO_CHAR(s.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
           SUM(si.quantity * COALESCE(si.cost_price, 0))::float as cost
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
         WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
           AND s.created_at BETWEEN ${range.from} AND ${range.to}
         GROUP BY period
-        ORDER BY period ASC
       `,
       prisma.$queryRaw<{ product_id: string; name: string; revenue: number; cost: number; quantity: number }[]>`
         SELECT
@@ -374,10 +398,25 @@ export class ReportsService {
       `,
     ]);
 
-    const row = summaryRows[0];
-    const revenue = Number(row?.revenue ?? 0);
-    const cost = Number(row?.cost ?? 0);
+    const revenue = Number(revenueAgg._sum.totalAmount ?? 0);
+    const cost = Number(costRows[0]?.cost ?? 0);
     const margin = revenue - cost;
+
+    // El gráfico junta ingreso (de sales) y costo (de sale_items) por
+    // separado — un período puede tener uno sin el otro (ej. una venta con
+    // costo sin registrar, o redondeos de zona horaria en el borde del día).
+    const periodMap = new Map<string, { revenue: number; cost: number }>();
+    for (const r of revenueByPeriod) {
+      periodMap.set(r.period, { revenue: Number(r.revenue ?? 0), cost: 0 });
+    }
+    for (const c of costByPeriod) {
+      const existing = periodMap.get(c.period) ?? { revenue: 0, cost: 0 };
+      existing.cost = Number(c.cost ?? 0);
+      periodMap.set(c.period, existing);
+    }
+    const chart = [...periodMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([period, v]) => ({ period, revenue: v.revenue, cost: v.cost, margin: v.revenue - v.cost }));
 
     return {
       range,
@@ -386,14 +425,9 @@ export class ReportsService {
         cost,
         margin,
         marginPercent: revenue > 0 ? (margin / revenue) * 100 : 0,
-        itemsWithoutCost: Number(row?.items_without_cost ?? 0),
+        itemsWithoutCost: Number(costRows[0]?.items_without_cost ?? 0),
       },
-      chart: chart.map((c) => ({
-        period: c.period,
-        revenue: Number(c.revenue ?? 0),
-        cost: Number(c.cost ?? 0),
-        margin: Number(c.revenue ?? 0) - Number(c.cost ?? 0),
-      })),
+      chart,
       byProduct: byProduct.map((p) => {
         const pRevenue = Number(p.revenue ?? 0);
         const pCost = Number(p.cost ?? 0);
