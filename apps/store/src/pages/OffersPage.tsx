@@ -4,7 +4,7 @@ import { AnimatePresence } from 'framer-motion'
 import { Tag, ShoppingCart, Clock, Package } from 'lucide-react'
 import { storeApi, type Offer } from '../api'
 import { useCartStore } from '../cartStore'
-import { AddOfferModal } from '../components/AddOfferModal'
+import { AddOfferModal, autoAddPack, canAutoAddPack } from '../components/AddOfferModal'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
 
@@ -27,7 +27,7 @@ function getBuyXGetYPrice(originalPrice: number, offer: Offer): { pricePerUnit: 
 }
 
 function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green' | 'blue' }) {
-  const { addItem, openCart } = useCartStore()
+  const { addItem, addBundle, openCart } = useCartStore()
   const [showPackModal, setShowPackModal] = useState(false)
   // El badge grande del tipo de oferta ("20% OFF", "Lleva 3 paga 2") alterna
   // verde/azul entre tarjetas para que la grilla de ofertas no lea monocroma —
@@ -41,6 +41,19 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
   // Ahora una sola acción abre el selector de cantidades (AddOfferModal),
   // que reparte el precio total entre las unidades elegidas.
   const isPack = offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE' || offer.type === 'COMBO'
+
+  // Un paquete de un solo producto no tiene nada que elegir (ej. "Pack
+  // Aceite x2" con sólo Aceite Vegetal) — se agrega directo sin abrir el
+  // selector, que sólo tiene sentido cuando sí hay variantes entre las
+  // cuales repartir las unidades.
+  const handlePackClick = () => {
+    if (canAutoAddPack(offer)) {
+      autoAddPack(offer, addBundle)
+      toast.success(`${offer.name} agregado al carrito`, { action: { label: 'Ver carrito', onClick: openCart } })
+      return
+    }
+    setShowPackModal(true)
+  }
 
   const handleAdd = (product: Offer['products'][0]['product']) => {
     const originalPrice = Number(product.salePrice)
@@ -116,7 +129,7 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
         <div className="p-4">
           <p className="text-xs text-paper-ink-ghost uppercase tracking-wider mb-3 font-semibold flex items-center gap-1.5">
             <Package className="h-3.5 w-3.5" />
-            {isPack ? 'Elige entre estos productos' : 'Productos en esta oferta'}
+            {isPack ? (canAutoAddPack(offer) ? 'Este producto' : 'Elige entre estos productos') : 'Productos en esta oferta'}
           </p>
           <div className="space-y-2">
             {offer.products.map(({ product }) => {
@@ -129,7 +142,7 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
               return (
                 <div key={product.id}
                   className="flex items-center gap-3 bg-paper-surface hover:bg-paper-line/40 rounded-xl p-3 transition-colors cursor-pointer"
-                  onClick={() => isPack ? setShowPackModal(true) : handleAdd(product)}>
+                  onClick={() => isPack ? handlePackClick() : handleAdd(product)}>
                   {/* Imagen */}
                   {product.imageUrl ? (
                     <img src={product.imageUrl} alt={product.name}
@@ -180,7 +193,7 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
                       selector de cantidades (todas las filas comparten el
                       mismo precio total, así que ninguna se agrega sola). */}
                   <button
-                    onClick={e => { if (isPack) { e.stopPropagation(); setShowPackModal(true) } }}
+                    onClick={e => { if (isPack) { e.stopPropagation(); handlePackClick() } }}
                     className="h-10 w-10 bg-brand-green-600 hover:bg-brand-green-700 text-white rounded-full flex items-center justify-center transition-colors shrink-0">
                     <ShoppingCart className="h-4 w-4" />
                   </button>
@@ -190,9 +203,10 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
           </div>
 
           {isPack && (
-            <button onClick={() => setShowPackModal(true)}
+            <button onClick={handlePackClick}
               className="w-full mt-3 py-3 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors text-sm">
-              <ShoppingCart className="h-4 w-4" />Elegir y agregar el paquete
+              <ShoppingCart className="h-4 w-4" />
+              {canAutoAddPack(offer) ? 'Agregar el paquete' : 'Elegir y agregar el paquete'}
             </button>
           )}
         </div>

@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import type { Offer } from '../api'
 import { useCartStore } from '../cartStore'
 
+type PackInfo = { totalQty: number; totalPrice: number; hint: string }
+
 // "Paquete" = oferta de cantidad fija a un precio total (BUNDLE_PRICE:
 // "3 x S/15" del mismo producto o de variantes intercambiables, ej. sabores
 // de Mike's; BUY_X_GET_Y: "paga 2 lleva 3"; COMBO: "N productos por S/X" —
@@ -15,7 +17,7 @@ import { useCartStore } from '../cartStore'
 // se agregaba por separado al precio TOTAL del paquete completo, así que
 // elegir varios sabores cobraba el paquete una vez por cada uno en vez de
 // una sola vez. Acá se reparte el precio total entre las unidades elegidas.
-function getPackInfo(offer: Offer): { totalQty: number; totalPrice: number; hint: string } | null {
+export function getPackInfo(offer: Offer): PackInfo | null {
   if (offer.products.length === 0) return null
   if (offer.type === 'BUNDLE_PRICE' || offer.type === 'COMBO') {
     const totalQty = offer.type === 'COMBO'
@@ -32,6 +34,47 @@ function getPackInfo(offer: Offer): { totalQty: number; totalPrice: number; hint
     return { totalQty: get, totalPrice, hint: `Elige ${get} unidades — pagas ${buy}, llevas ${get}` }
   }
   return null
+}
+
+// Arma las líneas de carrito de un paquete repartiendo el precio total parejo
+// entre las unidades elegidas — la suma da siempre pack.totalPrice exacto,
+// sin importar la mezcla. Compartido entre el selector manual (AddOfferModal)
+// y el auto-agregado de paquetes de un solo producto (ver más abajo).
+function buildBundleEntries(offer: Offer, pack: PackInfo, quantities: Record<string, number>) {
+  const pricePerUnit = Math.round((pack.totalPrice / pack.totalQty) * 100) / 100
+  return offer.products
+    .filter(({ product }) => (quantities[product.id] ?? 0) > 0)
+    .map(({ product }) => ({
+      product: {
+        id: `bundle-${offer.id}-${product.id}`,
+        name: product.name,
+        salePrice: pricePerUnit,
+        currentStock: 99,
+        imageUrl: product.imageUrl,
+        barcode: null,
+        category: { id: '', name: '' },
+        description: null,
+      },
+      quantity: quantities[product.id],
+    }))
+}
+
+// Un paquete con un solo producto listado no tiene nada que elegir — es el
+// mismo producto en cantidad de paquete (ej. "Pack Aceite x2" con sólo
+// Aceite Vegetal 900ml). Pedirle al cliente que abra un selector y confirme
+// una elección que no existe es fricción sin sentido, así que estos se
+// agregan directo al carrito sin mostrar el modal.
+export function canAutoAddPack(offer: Offer): boolean {
+  return offer.products.length === 1 && getPackInfo(offer) !== null
+}
+
+export function autoAddPack(offer: Offer, addBundle: ReturnType<typeof useCartStore.getState>['addBundle']): boolean {
+  const pack = getPackInfo(offer)
+  if (!pack || offer.products.length !== 1) return false
+  const soleProductId = offer.products[0].product.id
+  const entries = buildBundleEntries(offer, pack, { [soleProductId]: pack.totalQty })
+  addBundle(entries, { label: offer.storeBadge ?? offer.name, totalPrice: pack.totalPrice, totalQty: pack.totalQty })
+  return true
 }
 
 export function AddOfferModal({ offer, onClose }: { offer: Offer; onClose: () => void }) {
@@ -72,30 +115,14 @@ export function AddOfferModal({ offer, onClose }: { offer: Offer; onClose: () =>
         }, quantities[product.id])
       })
     } else if (pack) {
-      // Precio parejo por unidad, salga la mezcla de sabores/variantes que
-      // salga — la suma de todas las líneas da exactamente el precio del
-      // paquete, no un múltiplo de él. Se guardan agrupadas bajo `bundle`
-      // (addBundle, no addItem) para que el carrito las muestre como un solo
-      // paquete y NO se puedan incrementar sueltas ahí — si el precio por
-      // unidad quedara suelto, un +1 en el carrito compraría más al precio
-      // rebajado del paquete en vez del precio real del producto. addBundle
-      // siempre agrega un grupo nuevo (nunca reemplaza uno existente), así
-      // que pedir la misma promo dos veces suma dos paquetes en vez de
-      // bloquear o pisar el primero.
-      const pricePerUnit = Math.round((pack.totalPrice / pack.totalQty) * 100) / 100
-      const entries = chosen.map(({ product }) => ({
-        product: {
-          id: `bundle-${offer.id}-${product.id}`,
-          name: product.name,
-          salePrice: pricePerUnit,
-          currentStock: 99,
-          imageUrl: product.imageUrl,
-          barcode: null,
-          category: { id: '', name: '' },
-          description: null,
-        },
-        quantity: quantities[product.id],
-      }))
+      // Se guardan agrupadas bajo `bundle` (addBundle, no addItem) para que
+      // el carrito las muestre como un solo paquete y NO se puedan
+      // incrementar sueltas ahí — si el precio por unidad quedara suelto, un
+      // +1 en el carrito compraría más al precio rebajado del paquete en vez
+      // del precio real del producto. addBundle siempre agrega un grupo
+      // nuevo (nunca reemplaza uno existente), así que pedir la misma promo
+      // dos veces suma dos paquetes en vez de bloquear o pisar el primero.
+      const entries = buildBundleEntries(offer, pack, quantities)
       addBundle(entries, { label: offer.storeBadge ?? offer.name, totalPrice: pack.totalPrice, totalQty: pack.totalQty })
     }
 

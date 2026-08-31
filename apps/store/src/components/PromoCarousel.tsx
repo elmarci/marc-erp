@@ -2,8 +2,10 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
 import { ChevronLeft, ChevronRight, ShoppingBag, ShoppingCart } from 'lucide-react'
+import { toast } from 'sonner'
 import type { Offer } from '../api'
-import { AddOfferModal } from './AddOfferModal'
+import { AddOfferModal, autoAddPack, canAutoAddPack } from './AddOfferModal'
+import { useCartStore } from '../cartStore'
 
 // Fallback cuando la oferta no tiene foto/video de fondo subido desde el ERP —
 // para que igual se vea bien mientras el usuario sube las imágenes reales.
@@ -27,10 +29,26 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [openOfferId, setOpenOfferId] = useState<string | null>(null)
+  const { addBundle, openCart } = useCartStore()
 
   if (offers.length === 0) return null
 
   const openOffer = offers.find(o => o.id === openOfferId) ?? null
+
+  // Un paquete de un solo producto no tiene nada que elegir (ej. "Pack
+  // Aceite x2" con sólo Aceite Vegetal) — se agrega directo sin abrir el
+  // selector, que sólo tiene sentido cuando sí hay variantes entre las
+  // cuales repartir las unidades (ej. sabores de Mike's).
+  const handleAddClick = (offer: Offer) => (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (canAutoAddPack(offer)) {
+      autoAddPack(offer, addBundle)
+      toast.success(`${offer.name} agregado al carrito`, { action: { label: 'Ver carrito', onClick: openCart } })
+      return
+    }
+    setOpenOfferId(offer.id)
+  }
 
   const scrollToIndex = (i: number) => {
     const el = scrollerRef.current
@@ -119,7 +137,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                   <p className="text-2xl sm:text-3xl font-black mb-4">{getOfferBadgeText(offer)}</p>
                   <div className="flex items-center gap-2">
                     {offer.products.length > 0 && (
-                      <button onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenOfferId(offer.id) }}
+                      <button onClick={handleAddClick(offer)}
                         className="inline-flex items-center gap-1.5 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold px-5 py-2.5 rounded-full text-sm transition-colors">
                         <ShoppingCart className="h-4 w-4" />Agregar
                       </button>
@@ -132,13 +150,18 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                 )}
 
                 {/* Diseño ya armado (flyer sin overlay de texto propio) — el
-                    botón de agregar flota encima, es lo único que le
-                    superponemos. Antes esta tarjeta sólo llevaba a /ofertas
-                    y había que agregar los productos ahí uno por uno. */}
+                    flyer ya trae su propio precio/texto, así que el botón se
+                    reduce a un ícono chico en la esquina superior (donde los
+                    flyers casi nunca ponen nada importante) en vez de una
+                    píldora ancha abajo que tapaba precio/CTA del diseño
+                    original. Semitransparente hasta que se le pasa el dedo o
+                    el mouse por encima, para molestar lo menos posible a la
+                    vista. Antes esta tarjeta sólo llevaba a /ofertas y había
+                    que agregar los productos ahí uno por uno. */}
                 {isFullDesign && offer.products.length > 0 && (
-                  <button onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenOfferId(offer.id) }}
-                    className="absolute z-10 bottom-4 right-4 inline-flex items-center gap-1.5 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold px-4 py-2.5 rounded-full text-sm shadow-lg transition-colors">
-                    <ShoppingCart className="h-4 w-4" />Agregar
+                  <button onClick={handleAddClick(offer)} aria-label="Agregar al carrito"
+                    className="absolute z-10 top-3 right-3 h-10 w-10 flex items-center justify-center rounded-full bg-white/80 hover:bg-brand-green-600 text-brand-green-700 hover:text-white backdrop-blur-sm shadow-md transition-colors">
+                    <ShoppingCart className="h-4.5 w-4.5" />
                   </button>
                 )}
               </Link>
