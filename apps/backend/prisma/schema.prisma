@@ -1216,6 +1216,12 @@ model SaleItem {
   costPrice       Decimal? @map("cost_price") @db.Decimal(10, 4)
   productName     String   @map("product_name") // snapshot del nombre al momento de la venta
   productBarcode  String?  @map("product_barcode")
+  // "kg"/"g"/"l"/"ml" si el producto se vendía a granel en ese momento,
+  // "und" si no — se guarda derivado del producto en el propio backend
+  // (nunca del cliente, mismo criterio que costPrice/productName) para que
+  // el ticket pueda mostrar una columna "Unidad" clara incluso al
+  // reimprimir una venta antigua. Null = venta de antes de este campo.
+  unit            String?  @map("unit")
 
   sale        Sale             @relation(fields: [saleId], references: [id])
   product     Product          @relation(fields: [productId], references: [id])

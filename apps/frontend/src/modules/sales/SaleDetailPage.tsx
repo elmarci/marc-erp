@@ -26,7 +26,7 @@ export function SaleDetailPage() {
         discountAmount: number; status: string; createdAt: string; documentType: string; notes: string | null;
         cashier: { firstName: string; lastName: string };
         customer: { firstName: string; lastName: string } | null;
-        items: Array<{ id: string; productName: string; quantity: number; unitPrice: number; subtotal: number }>;
+        items: Array<{ id: string; productName: string; quantity: number; unitPrice: number; subtotal: number; unit: string | null }>;
         payments: Array<{ method: string; amount: number }>;
       };
     },
@@ -146,7 +146,7 @@ export function SaleDetailPage() {
             customerName: sale.customer ? `${sale.customer.firstName} ${sale.customer.lastName}` : null,
             documentType: sale.documentType,
             notes: sale.notes,
-            items: sale.items.map(i => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice, subtotal: i.subtotal })),
+            items: sale.items.map(i => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice, subtotal: i.subtotal, unit: i.unit ?? undefined })),
             subtotal: sale.subtotal,
             discountAmount: sale.discountAmount,
             taxAmount: sale.taxAmount,

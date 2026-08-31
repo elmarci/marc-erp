@@ -14,6 +14,9 @@ interface ReceiptItem {
   quantity: number;
   unitPrice: number;
   subtotal: number;
+  // "kg"/"g"/"l"/"ml"/"und" — ausente sólo en ventas de antes de este campo
+  // (ver sales.service.ts/store.service.ts, que lo derivan del producto).
+  unit?: string;
 }
 
 interface ReceiptPayment {
@@ -81,6 +84,24 @@ function useBusinessSettings() {
 }
 
 const QR_SIZE_PX = 120;
+
+// La tienda online (a diferencia del POS) pega el peso al nombre del
+// producto, ej. "Arroz Costeño 1kg (2.041 kg)" — así quedó guardado en
+// ventas de antes de que existiera item.unit (ver sales.service.ts/
+// store.service.ts). Se limpia ese sufijo del nombre mostrado y, si
+// item.unit no vino (venta vieja), se recupera la unidad de ahí mismo.
+// Ojo: nombres como "Aceite Cocinero 900ml (combo)" NO deben interpretarse
+// como granel — sólo se reconoce el paréntesis si termina en una unidad de
+// peso/volumen real (kg, g, l, ml) o "und"/"unidad".
+function splitProductNameAndUnit(name: string): { displayName: string; unit: string | null } {
+  const match = name.match(/^(.*)\s\([\d.,]+\s*(kg|g|l|ml|und|unidad)\)\s*$/i);
+  if (match) return { displayName: match[1].trim(), unit: match[2].toLowerCase() };
+  return { displayName: name, unit: null };
+}
+
+function formatQty(qty: number): string {
+  return Number.isInteger(qty) ? String(qty) : qty.toFixed(3);
+}
 
 export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
   const printRef = useRef<HTMLDivElement>(null);
@@ -255,16 +276,45 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             )}
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
 
-            {/* Items */}
-            {data.items.map((item, i) => (
-              <div key={i}>
-                <p className="bold" style={{ fontWeight: 'bold' }}>{item.productName}</p>
-                <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>  {item.quantity} x {formatCurrency(item.unitPrice)}</span>
-                  <span>{formatCurrency(item.subtotal)}</span>
-                </div>
-              </div>
-            ))}
+            {/* Items — tabla real de 5 columnas (Cant./Unid./Producto/P.Unit/
+                Total) en una sola fila por producto, como en una boleta
+                normal. table-layout:fixed reparte el ancho según las
+                columnas de abajo sin importar qué tan largo sea el nombre —
+                si no entra en una línea, lo envuelve dentro de su celda en
+                vez de desbordar o desalinear el resto. */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '9px' }}>
+              <colgroup>
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '38%' }} />
+                <col style={{ width: '17%' }} />
+                <col style={{ width: '20%' }} />
+              </colgroup>
+              <thead>
+                <tr style={{ borderBottom: '1px dashed #000' }}>
+                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0' }}>Cant.</th>
+                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0' }}>Unid.</th>
+                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0' }}>Producto</th>
+                  <th style={{ textAlign: 'right', padding: '0 1px 2px 0' }}>P.Unit</th>
+                  <th style={{ textAlign: 'right', padding: '0 0 2px 0' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.items.map((item, i) => {
+                  const { displayName, unit: legacyUnit } = splitProductNameAndUnit(item.productName);
+                  const unit = item.unit ?? legacyUnit ?? 'und';
+                  return (
+                    <tr key={i}>
+                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top' }}>{formatQty(item.quantity)}</td>
+                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top' }}>{unit}</td>
+                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', wordBreak: 'break-word' }}>{displayName}</td>
+                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', textAlign: 'right' }}>{item.unitPrice.toFixed(2)}</td>
+                      <td style={{ padding: '2px 0 2px 0', verticalAlign: 'top', textAlign: 'right' }}>{item.subtotal.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
             {Number(data.discountAmount) > 0 && (

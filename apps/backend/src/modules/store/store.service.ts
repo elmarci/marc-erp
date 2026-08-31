@@ -402,6 +402,7 @@ export class StoreService {
       let subtotal = 0;
       const saleItems = order.items.map(item => {
         subtotal += Number(item.subtotal);
+        const product = productMap.get(item.productId);
         return {
           productId: item.productId,
           productName: item.name,
@@ -411,6 +412,9 @@ export class StoreService {
           discountAmount: 0,
           discountPercent: 0,
           subtotal: Number(item.subtotal),
+          // Para el ticket si se reimprime desde el ERP: columna "Unidad"
+          // clara (kg/g/l/ml o "und"), igual que sales.service.ts.
+          unit: product ? (product.isBulk ? (product.bulkUnit ?? 'kg') : 'und') : 'und',
         };
       });
 

@@ -548,6 +548,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       discountPercent: 0,
       stock: product.currentStock,
       bottleDepositUnit: Number(product.bottleDeposit ?? 0) || undefined,
+      unit: product.isBulk ? (product.bulkUnit ?? 'kg') : undefined,
     });
     // El nombre mostrado en el carrito incluye el peso para productos a
     // granel — si la cantidad terminó topada por el stock (o ya había algo

@@ -217,6 +217,10 @@ export class SalesService {
         // "Sin costo registrado" en el reporte de margen.
         costPrice: product.isMiscItem ? null : Number(product.costPrice),
         productName: product.isMiscItem && item.productName ? item.productName : product.name,
+        // Para el ticket: columna "Unidad" clara (kg/g/l/ml o "und") sin
+        // depender de que el nombre del producto la mencione. isMiscItem
+        // queda sin unidad — cada venta "Otros/Varios" es algo distinto.
+        unit: product.isMiscItem ? null : (product.isBulk ? (product.bulkUnit ?? 'kg') : 'und'),
         productBarcode: product.barcode,
       };
     });

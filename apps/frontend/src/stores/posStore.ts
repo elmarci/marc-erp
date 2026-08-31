@@ -7,6 +7,11 @@ export interface CartItem {
   quantity: number;
   unitPrice: number;
   originalPrice: number;
+  // Para la columna "Unidad" del ticket: "kg"/"g"/"l"/"ml" si es a granel,
+  // "und" si no. Ausente = se asume "und" al armar el ticket (paquetes,
+  // ventas excepcionales) — sólo handleAddProduct (PosProductPanel.tsx) lo
+  // llena de verdad, para el único caso donde puede no ser "und".
+  unit?: string;
   discountAmount: number;
   discountPercent: number;
   subtotal: number;
