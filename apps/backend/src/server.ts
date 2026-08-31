@@ -37,6 +37,7 @@ import couponsRoutes from './modules/coupons/coupons.routes';
 import treasuryRoutes from './modules/treasury/treasury.routes';
 import { treasuryService } from './modules/treasury/treasury.service';
 import { promotionsService } from './modules/promotions/promotions.service';
+import { pushService } from './modules/push/push.service';
 import bottleDepositsRoutes from './modules/bottle-deposits/bottle-deposits.routes';
 
 const app = express();
@@ -222,6 +223,18 @@ async function bootstrap() {
     setInterval(() => {
       promotionsService.checkAndNotifyHappyHours().catch((err) =>
         logger.error({ err }, 'Error al revisar activación de horas felices'),
+      );
+    }, 60 * 1000);
+
+    // Notificaciones programadas a mano desde el ERP (ver push.service.ts) —
+    // se revisa también al iniciar por si el servidor estuvo caído justo
+    // cuando le tocaba a alguna, y luego cada minuto mientras siga corriendo.
+    await pushService.checkAndSendPendingNotifications().catch((err) =>
+      logger.error({ err }, 'Error al revisar notificaciones programadas pendientes'),
+    );
+    setInterval(() => {
+      pushService.checkAndSendPendingNotifications().catch((err) =>
+        logger.error({ err }, 'Error al revisar notificaciones programadas pendientes'),
       );
     }, 60 * 1000);
 

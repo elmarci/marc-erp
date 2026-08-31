@@ -15,6 +15,7 @@ import { PurchasesPage } from '@/modules/purchases/PurchasesPage';
 import { InventoryPage } from '@/modules/inventory/InventoryPage';
 import { ReportsPage } from '@/modules/reports/ReportsPage';
 import { OffersPage } from '@/modules/offers/OffersPage';
+import { NotificationsPage } from '@/modules/notifications/NotificationsPage';
 import { StoreOrdersPage } from '@/modules/store-orders/StoreOrdersPage';
 import { CashPage } from '@/modules/cash/CashPage';
 import { UsersPage } from '@/modules/users/UsersPage';
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="cash" element={<CashPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="offers" element={<OffersPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="store-orders" element={<StoreOrdersPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="categories" element={<CategoriesPage />} />

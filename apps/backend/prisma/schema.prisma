@@ -1461,6 +1461,25 @@ model PushSubscription {
   @@map("push_subscriptions")
 }
 
+// Notificación push que el admin arma a mano desde el ERP (ej. "Bajo el
+// pollo: S/6.50, pídelo ahora") — a diferencia de las automáticas (oferta
+// nueva, hora feliz), esta la dispara o programa la persona cuando quiere.
+// scheduledAt en el pasado/ahora = se envía casi de inmediato (el chequeo
+// corre cada minuto); en el futuro = queda pendiente hasta esa hora exacta.
+model ScheduledNotification {
+  id          String    @id @default(uuid())
+  title       String
+  body        String
+  url         String    @default("/ofertas")
+  scheduledAt DateTime  @map("scheduled_at")
+  sentAt      DateTime? @map("sent_at")
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([scheduledAt, sentAt])
+  @@map("scheduled_notifications")
+}
+
 model StoreAddress {
   id         String  @id @default(uuid())
   customerId String  @map("customer_id")
