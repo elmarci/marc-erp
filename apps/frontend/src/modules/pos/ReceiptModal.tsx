@@ -282,7 +282,12 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
                 columnas de abajo sin importar qué tan largo sea el nombre —
                 si no entra en una línea, lo envuelve dentro de su celda en
                 vez de desbordar o desalinear el resto. */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '9px' }}>
+            {/* fontWeight explícito en cada th/td, no sólo heredado de
+                body — las celdas de tabla son las únicas partes del ticket
+                que no lo tenían puesto directo, y en la impresora térmica
+                del cliente salían finas/borrosas mientras el resto (que sí
+                lo trae en cada elemento) salía nítido. */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '9px', fontWeight: 700 }}>
               <colgroup>
                 <col style={{ width: '12%' }} />
                 <col style={{ width: '13%' }} />
@@ -292,11 +297,11 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
               </colgroup>
               <thead>
                 <tr style={{ borderBottom: '1px dashed #000' }}>
-                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0' }}>Cant.</th>
-                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0' }}>Unid.</th>
-                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0' }}>Producto</th>
-                  <th style={{ textAlign: 'right', padding: '0 1px 2px 0' }}>P.Unit</th>
-                  <th style={{ textAlign: 'right', padding: '0 0 2px 0' }}>Total</th>
+                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0', fontWeight: 700 }}>Cant.</th>
+                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0', fontWeight: 700 }}>Unid.</th>
+                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0', fontWeight: 700 }}>Producto</th>
+                  <th style={{ textAlign: 'right', padding: '0 1px 2px 0', fontWeight: 700 }}>P.Unit</th>
+                  <th style={{ textAlign: 'right', padding: '0 0 2px 0', fontWeight: 700 }}>Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -305,11 +310,11 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
                   const unit = item.unit ?? legacyUnit ?? 'und';
                   return (
                     <tr key={i}>
-                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top' }}>{formatQty(item.quantity)}</td>
-                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top' }}>{unit}</td>
-                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', wordBreak: 'break-word' }}>{displayName}</td>
-                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', textAlign: 'right' }}>{item.unitPrice.toFixed(2)}</td>
-                      <td style={{ padding: '2px 0 2px 0', verticalAlign: 'top', textAlign: 'right' }}>{item.subtotal.toFixed(2)}</td>
+                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', fontWeight: 700 }}>{formatQty(item.quantity)}</td>
+                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', fontWeight: 700 }}>{unit}</td>
+                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', wordBreak: 'break-word', fontWeight: 700 }}>{displayName}</td>
+                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', textAlign: 'right', fontWeight: 700 }}>{item.unitPrice.toFixed(2)}</td>
+                      <td style={{ padding: '2px 0 2px 0', verticalAlign: 'top', textAlign: 'right', fontWeight: 700 }}>{item.subtotal.toFixed(2)}</td>
                     </tr>
                   );
                 })}
