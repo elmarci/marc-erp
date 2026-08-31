@@ -239,6 +239,7 @@ export class PurchasesService {
   }) {
     const supplier = await prisma.supplier.findFirst({ where: { id: data.supplierId, deletedAt: null } });
     if (!supplier) throw new NotFoundError('Proveedor');
+    await this.assertNoMiscItem(data.items.map(i => i.productId));
 
     let subtotal = 0;
     for (const item of data.items) {
@@ -579,6 +580,22 @@ export class PurchasesService {
         user: `${p.user.firstName} ${p.user.lastName}`,
       })),
     };
+  }
+
+  // El producto comodín ("Otros/Venta varios") no tiene costo real — cada
+  // venta suya es algo distinto con un monto libre que el cajero escribe a
+  // mano. Registrar una compra contra él le infla el costo promedio
+  // ponderado (weighted-average) a un número que después se copia a
+  // CUALQUIER venta de "Otros/Varios", sin relación con lo que en verdad se
+  // vendió. Ya pasó: varias compras aquí llevaron su costo a S/8.19 y eso
+  // hizo que el margen del día se viera en casi 0% aunque las ventas reales
+  // tenían margen normal (ver sales.service.ts, que además ya no copia el
+  // costo de este producto a las ventas por la misma razón).
+  private async assertNoMiscItem(productIds: string[]) {
+    const miscProduct = await prisma.product.findFirst({ where: { isMiscItem: true }, select: { id: true } });
+    if (miscProduct && productIds.includes(miscProduct.id)) {
+      throw new BusinessError('"Otros/Venta varios" es sólo para vender algo fuera de catálogo — no registres compras contra él. Crea el producto real primero.');
+    }
   }
 
   private async trackSupplierProduct(supplierId: string, productId: string, price: number, confirmed = false) {
@@ -985,6 +1002,7 @@ export class PurchasesService {
     const supplier = await prisma.supplier.findFirst({ where: { id: data.supplierId, deletedAt: null } });
     if (!supplier) throw new NotFoundError('Proveedor');
     if (data.items.length === 0) throw new BusinessError('La compra debe tener al menos un producto.');
+    await this.assertNoMiscItem(data.items.map(i => i.productId));
 
     const payer = data.payerId
       ? await prisma.payer.findFirst({ where: { id: data.payerId, deletedAt: null } })

@@ -206,7 +206,16 @@ export class SalesService {
         // Costo promedio de este producto en el momento exacto de la venta —
         // para poder calcular el margen real de esta venta después, aunque
         // el costo del producto siga cambiando con compras futuras.
-        costPrice: Number(product.costPrice),
+        // El producto comodín (isMiscItem) no tiene costo real: cada venta es
+        // algo distinto con un monto libre que el cajero escribe a mano, así
+        // que su costPrice es sólo un promedio ponderado que arrastra de
+        // compras registradas por error contra él (ver products.service.ts,
+        // getOrCreateMiscItem lo crea en 0) — usarlo infla artificialmente el
+        // costo de CUALQUIER venta "Otros/Varios", sin importar qué tan
+        // barato fue lo que realmente se vendió. Se guarda null (costo no
+        // rastreado) en vez de copiar ese número, que es justo lo que separa
+        // "Sin costo registrado" en el reporte de margen.
+        costPrice: product.isMiscItem ? null : Number(product.costPrice),
         productName: product.isMiscItem && item.productName ? item.productName : product.name,
         productBarcode: product.barcode,
       };
