@@ -7,18 +7,40 @@ import type { Product } from '../api'
 import { toast } from 'sonner'
 import { flyToCart } from '../lib/flyToCart'
 
+// Redondeo a gramo (o su equivalente) al calcular el peso desde un monto —
+// evita arrastrar error de punto flotante (ej. 0.267000000004).
+const BULK_WEIGHT_STEP = 0.001
+
 /* ── Modal para productos a granel ─────────────────────────────────── */
 function BulkModal({ product, onClose }: { product: Product; onClose: () => void }) {
   const { addItem, renameItem, openCart } = useCartStore()
+  // Sólo tiene sentido "pedir por monto" en unidades que se pesan/miden de
+  // verdad (kg, g, L) — para "unidad" (ej. a granel por pieza suelta) el
+  // precio ya es exacto sin necesidad de pesar nada.
+  const isWeighable = product.bulkUnit === 'kg' || product.bulkUnit === 'g' || product.bulkUnit === 'L'
+  const [mode, setMode] = useState<'peso' | 'monto'>(isWeighable ? 'monto' : 'peso')
   const [qty, setQty] = useState('')
+  const [amount, setAmount] = useState('')
   const unit = product.bulkUnit ?? 'kg'
   const price = Number(product.salePrice)
-  const total = parseFloat(qty || '0') * price
+
+  // Modo "por monto": quien compra a distancia no tiene forma de saber
+  // cuánto pesa "un pecho de pollo" — pero sí sabe cuánto quiere gastar. Se
+  // calcula el peso aproximado sólo como referencia; lo que se cobra es
+  // exactamente el monto que eligió, sin sorpresas al pesar en tienda.
+  const amountNum = parseFloat(amount)
+  const computedQty = amountNum > 0 && price > 0
+    ? Number((Math.round((amountNum / price) / BULK_WEIGHT_STEP) * BULK_WEIGHT_STEP).toFixed(3))
+    : 0
+
+  const finalQty = mode === 'monto' ? computedQty : parseFloat(qty || '0')
+  const total = (finalQty > 0 ? finalQty : 0) * price
   const presets = ['0.25', '0.5', '1', '1.5', '2', '3']
+  const amountPresets = ['5', '10', '15', '20']
 
   const handleAdd = () => {
-    const q = parseFloat(qty)
-    if (!q || q <= 0) { toast.error('Ingresa una cantidad válida'); return }
+    const q = finalQty
+    if (!q || q <= 0) { toast.error(mode === 'monto' ? 'Ingresa un monto válido' : 'Ingresa una cantidad válida'); return }
     const result = addItem({
       ...product,
       name: `${product.name} (${q} ${unit})`,
@@ -37,7 +59,7 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
     if (result.capped) {
       toast.warning(`Solo se agregaron ${result.finalQuantity} ${unit} de "${product.name}" — stock disponible: ${product.currentStock} ${unit}.`)
     } else {
-      toast.success(`${product.name} (${q} ${unit}) agregado`, {
+      toast.success(`${product.name} (${result.finalQuantity} ${unit}) agregado`, {
         action: { label: 'Ver carrito', onClick: openCart }
       })
     }
@@ -66,30 +88,70 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
         </div>
 
         <div className="p-4 space-y-4">
-          <div>
-            <label className="text-sm text-paper-ink-soft mb-2 block">
-              Cantidad ({unit}) <span className="text-paper-ink-ghost">· disponible: {product.currentStock} {unit}</span>
-            </label>
-            <input type="number" min={0.01} max={product.currentStock} step={0.01} value={qty} onChange={e => setQty(e.target.value)}
-              placeholder={`Ej: 0.5 ${unit}`} autoFocus
-              className="w-full bg-paper-surface border border-paper-line focus:border-brand-green-400 rounded-xl px-4 py-3 text-lg font-bold text-paper-ink text-center placeholder-paper-ink-ghost outline-none transition-colors" />
-          </div>
-
-          {/* Presets */}
-          <div className="flex flex-wrap gap-2">
-            {presets.map(p => (
-              <button key={p} onClick={() => setQty(p)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${qty === p ? 'bg-brand-green-600 text-white' : 'bg-paper-surface hover:bg-paper-line text-paper-ink-soft'}`}>
-                {p} {unit}
+          {isWeighable && (
+            <div className="flex rounded-xl bg-paper-surface p-1 text-sm font-semibold">
+              <button onClick={() => setMode('monto')}
+                className={`flex-1 rounded-lg py-1.5 transition-colors ${mode === 'monto' ? 'bg-white shadow-sm text-paper-ink' : 'text-paper-ink-ghost'}`}>
+                Por monto (S/)
               </button>
-            ))}
-          </div>
+              <button onClick={() => setMode('peso')}
+                className={`flex-1 rounded-lg py-1.5 transition-colors ${mode === 'peso' ? 'bg-white shadow-sm text-paper-ink' : 'text-paper-ink-ghost'}`}>
+                Por peso
+              </button>
+            </div>
+          )}
 
-          {qty && parseFloat(qty) > 0 && (
+          {mode === 'monto' ? (
+            <>
+              <div>
+                <label className="text-sm text-paper-ink-soft mb-2 block">¿Cuánto quieres gastar?</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-paper-ink-ghost">S/</span>
+                  <input type="number" min={0.5} step={0.5} value={amount} onChange={e => setAmount(e.target.value)}
+                    placeholder="Ej: 10" autoFocus
+                    className="w-full bg-paper-surface border border-paper-line focus:border-brand-green-400 rounded-xl pl-11 pr-4 py-3 text-lg font-bold text-paper-ink text-center placeholder-paper-ink-ghost outline-none transition-colors" />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {amountPresets.map(p => (
+                  <button key={p} onClick={() => setAmount(p)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${amount === p ? 'bg-brand-green-600 text-white' : 'bg-paper-surface hover:bg-paper-line text-paper-ink-soft'}`}>
+                    S/ {p}
+                  </button>
+                ))}
+              </div>
+              {computedQty > 0 && (
+                <p className="text-paper-ink-ghost text-xs text-center">
+                  Equivale aprox. a <span className="font-bold text-paper-ink-soft">{computedQty} {unit}</span> — el peso final se ajusta al pesar en tienda.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="text-sm text-paper-ink-soft mb-2 block">
+                  Cantidad ({unit}) <span className="text-paper-ink-ghost">· disponible: {product.currentStock} {unit}</span>
+                </label>
+                <input type="number" min={0.01} max={product.currentStock} step={0.01} value={qty} onChange={e => setQty(e.target.value)}
+                  placeholder={`Ej: 0.5 ${unit}`} autoFocus={!isWeighable}
+                  className="w-full bg-paper-surface border border-paper-line focus:border-brand-green-400 rounded-xl px-4 py-3 text-lg font-bold text-paper-ink text-center placeholder-paper-ink-ghost outline-none transition-colors" />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {presets.map(p => (
+                  <button key={p} onClick={() => setQty(p)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${qty === p ? 'bg-brand-green-600 text-white' : 'bg-paper-surface hover:bg-paper-line text-paper-ink-soft'}`}>
+                    {p} {unit}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {finalQty > 0 && (
             <div className="bg-brand-green-50 border border-brand-green-200 rounded-xl p-3 text-center">
               <p className="text-paper-ink-soft text-xs mb-0.5">Total a cobrar</p>
               <p className="text-2xl font-black text-brand-green-700">S/ {total.toFixed(2)}</p>
-              <p className="text-paper-ink-ghost text-xs">{qty} {unit} × S/ {price.toFixed(2)}</p>
+              <p className="text-paper-ink-ghost text-xs">{finalQty} {unit} × S/ {price.toFixed(2)}</p>
             </div>
           )}
 
@@ -98,7 +160,7 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
               className="flex-1 py-3 border border-paper-line hover:border-paper-ink-ghost rounded-xl text-sm text-paper-ink-soft hover:text-paper-ink transition-colors">
               Cancelar
             </button>
-            <button onClick={handleAdd} disabled={!qty || parseFloat(qty) <= 0}
+            <button onClick={handleAdd} disabled={!(finalQty > 0)}
               className="flex-1 py-3 bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-40 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors">
               <ShoppingCart className="h-4 w-4" />Agregar
             </button>

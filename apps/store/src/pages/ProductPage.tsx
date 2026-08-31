@@ -28,10 +28,17 @@ function PricePlate({ price }: { price: string }) {
   )
 }
 
+// Redondeo a gramo (o su equivalente) al calcular el peso desde un monto —
+// evita arrastrar error de punto flotante (ej. 0.267000000004). Mismo valor
+// que usa el POS y el BulkModal de ProductCard.
+const BULK_WEIGHT_STEP = 0.001
+
 export function ProductPage() {
   const { id } = useParams<{ id: string }>()
   const { addItem, updateQuantity, renameItem, items, openCart } = useCartStore()
+  const [bulkMode, setBulkMode] = useState<'peso' | 'monto'>('monto')
   const [bulkQty, setBulkQty] = useState('')
+  const [bulkAmount, setBulkAmount] = useState('')
   const imgRef = useRef<HTMLImageElement>(null)
 
   const { data, isLoading } = useQuery({
@@ -81,11 +88,24 @@ export function ProductPage() {
   const outOfStock = product.currentStock <= 0
   const lowStock = !outOfStock && product.currentStock <= 5
   const unit = product.bulkUnit ?? 'kg'
-  const bulkTotal = parseFloat(bulkQty || '0') * product.salePrice
+  // Sólo tiene sentido "pedir por monto" en unidades que se pesan/miden de
+  // verdad (kg, g, L) — quien compra a distancia no tiene forma de saber
+  // cuánto pesa "un pecho de pollo", pero sí sabe cuánto quiere gastar.
+  const isWeighable = unit === 'kg' || unit === 'g' || unit === 'L'
+  // Para "unidad" (a granel por pieza suelta, no pesable) "por monto" no
+  // aplica — el precio ya es exacto, así que se fuerza siempre "por peso"
+  // sin mostrar el selector.
+  const effectiveBulkMode = isWeighable ? bulkMode : 'peso'
+  const bulkAmountNum = parseFloat(bulkAmount)
+  const computedBulkQty = bulkAmountNum > 0 && product.salePrice > 0
+    ? Number((Math.round((bulkAmountNum / product.salePrice) / BULK_WEIGHT_STEP) * BULK_WEIGHT_STEP).toFixed(3))
+    : 0
+  const finalBulkQty = effectiveBulkMode === 'monto' ? computedBulkQty : parseFloat(bulkQty || '0')
+  const bulkTotal = (finalBulkQty > 0 ? finalBulkQty : 0) * product.salePrice
 
   const handleAddBulk = () => {
-    const q = parseFloat(bulkQty)
-    if (!q || q <= 0) { toast.error('Ingresa una cantidad válida'); return }
+    const q = finalBulkQty
+    if (!q || q <= 0) { toast.error(effectiveBulkMode === 'monto' ? 'Ingresa un monto válido' : 'Ingresa una cantidad válida'); return }
     const result = addItem({ ...product, name: `${product.name} (${q} ${unit})` }, q)
     if (result.addedQuantity <= 0) {
       toast.error(`No hay más stock disponible (máximo ${product.currentStock} ${unit}).`)
@@ -95,6 +115,7 @@ export function ProductPage() {
     flyToCart(imgRef.current)
     toast.success(`${product.name} agregado`, { action: { label: 'Ver carrito', onClick: openCart } })
     setBulkQty('')
+    setBulkAmount('')
   }
 
   const handleAdd = () => {
@@ -169,19 +190,58 @@ export function ProductPage() {
               </div>
             ) : product.isBulk ? (
               <div className="space-y-3">
-                <label className="text-sm text-paper-ink-soft block">
-                  Cantidad ({unit}) <span className="text-paper-ink-ghost">· disponible: {product.currentStock} {unit}</span>
-                </label>
-                <div className="flex gap-3">
-                  <input type="number" min={0.01} max={product.currentStock} step={0.01} value={bulkQty}
-                    onChange={e => setBulkQty(e.target.value)} placeholder={`Ej: 0.5 ${unit}`}
-                    className="flex-1 bg-paper-surface border border-paper-line focus:border-brand-green-400 rounded-xl px-4 py-3 text-lg font-bold text-paper-ink text-center outline-none transition-colors" />
-                  <button onClick={handleAddBulk} disabled={!bulkQty || parseFloat(bulkQty) <= 0}
-                    className="bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-40 text-white font-bold px-6 rounded-xl shadow-sm shadow-brand-green-600/20 flex items-center gap-2 transition-colors">
-                    <ShoppingCart className="h-4 w-4" />Agregar
-                  </button>
-                </div>
-                {bulkQty && parseFloat(bulkQty) > 0 && (
+                {isWeighable && (
+                  <div className="flex rounded-xl bg-paper-surface p-1 text-sm font-semibold max-w-xs">
+                    <button onClick={() => setBulkMode('monto')}
+                      className={`flex-1 rounded-lg py-1.5 transition-colors ${bulkMode === 'monto' ? 'bg-white shadow-sm text-paper-ink' : 'text-paper-ink-ghost'}`}>
+                      Por monto (S/)
+                    </button>
+                    <button onClick={() => setBulkMode('peso')}
+                      className={`flex-1 rounded-lg py-1.5 transition-colors ${bulkMode === 'peso' ? 'bg-white shadow-sm text-paper-ink' : 'text-paper-ink-ghost'}`}>
+                      Por peso
+                    </button>
+                  </div>
+                )}
+
+                {effectiveBulkMode === 'monto' ? (
+                  <>
+                    <label className="text-sm text-paper-ink-soft block">¿Cuánto quieres gastar?</label>
+                    <div className="flex gap-3">
+                      <div className="relative flex-1">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-bold text-paper-ink-ghost">S/</span>
+                        <input type="number" min={0.5} step={0.5} value={bulkAmount}
+                          onChange={e => setBulkAmount(e.target.value)} placeholder="Ej: 10"
+                          className="w-full bg-paper-surface border border-paper-line focus:border-brand-green-400 rounded-xl pl-11 pr-4 py-3 text-lg font-bold text-paper-ink text-center outline-none transition-colors" />
+                      </div>
+                      <button onClick={handleAddBulk} disabled={!(finalBulkQty > 0)}
+                        className="bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-40 text-white font-bold px-6 rounded-xl shadow-sm shadow-brand-green-600/20 flex items-center gap-2 transition-colors">
+                        <ShoppingCart className="h-4 w-4" />Agregar
+                      </button>
+                    </div>
+                    {computedBulkQty > 0 && (
+                      <p className="text-xs text-paper-ink-ghost">
+                        Equivale aprox. a <span className="font-bold text-paper-ink-soft">{computedBulkQty} {unit}</span> — el peso final se ajusta al pesar en tienda.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <label className="text-sm text-paper-ink-soft block">
+                      Cantidad ({unit}) <span className="text-paper-ink-ghost">· disponible: {product.currentStock} {unit}</span>
+                    </label>
+                    <div className="flex gap-3">
+                      <input type="number" min={0.01} max={product.currentStock} step={0.01} value={bulkQty}
+                        onChange={e => setBulkQty(e.target.value)} placeholder={`Ej: 0.5 ${unit}`}
+                        className="flex-1 bg-paper-surface border border-paper-line focus:border-brand-green-400 rounded-xl px-4 py-3 text-lg font-bold text-paper-ink text-center outline-none transition-colors" />
+                      <button onClick={handleAddBulk} disabled={!(finalBulkQty > 0)}
+                        className="bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-40 text-white font-bold px-6 rounded-xl shadow-sm shadow-brand-green-600/20 flex items-center gap-2 transition-colors">
+                        <ShoppingCart className="h-4 w-4" />Agregar
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {finalBulkQty > 0 && (
                   <p className="text-sm text-paper-ink-soft">Total: <span className="font-extrabold text-paper-ink">S/ {bulkTotal.toFixed(2)}</span></p>
                 )}
               </div>
