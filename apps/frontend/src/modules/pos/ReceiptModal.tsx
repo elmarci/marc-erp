@@ -286,8 +286,10 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
                 body — las celdas de tabla son las únicas partes del ticket
                 que no lo tenían puesto directo, y en la impresora térmica
                 del cliente salían finas/borrosas mientras el resto (que sí
-                lo trae en cada elemento) salía nítido. */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '9px', fontWeight: 700 }}>
+                lo trae en cada elemento) salía nítido. fontSize igual al
+                resto del cuerpo del ticket (11px, no el 9px de "letra
+                chica" de antes) — se quejaron de que costaba leerla. */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: '11px', fontWeight: 700 }}>
               <colgroup>
                 <col style={{ width: '12%' }} />
                 <col style={{ width: '13%' }} />
