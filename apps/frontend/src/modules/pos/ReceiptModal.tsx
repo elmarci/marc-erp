@@ -287,7 +287,12 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
                 <span>Canal:</span><span>🌐 Venta Online</span>
               </div>
             )}
-            <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
+            {/* Espacio arriba (separa del bloque anterior) pero nada abajo —
+                esta línea debe quedar pegada a los encabezados de la tabla,
+                como si fuera el borde superior de la tabla misma, para que
+                se lea de un tirón "línea + CANT./UNID./PRODUCTO..." como el
+                encabezado de la descripción de la venta. */}
+            <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0 0 0' }} />
 
             {/* Items — tabla real de 5 columnas (Cant./Unid./Producto/P.Unit/
                 Total) en una sola fila por producto, como en una boleta
@@ -349,9 +354,12 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
               </tbody>
             </table>
 
-            <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
+            {/* Una sola línea entre la tabla y el total — antes había dos
+                (una justo después de la tabla y otra antes de TOTAL) que,
+                sin descuento de por medio, quedaban una pegada a la otra y
+                se veían como una línea doble/gruesa sin sentido. */}
             {Number(data.discountAmount) > 0 && (
-              <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="row" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
                 <span>Descuento{data.pointsRedeemed ? ` (${data.pointsRedeemed} pts)` : ''}:</span>
                 <span>-{formatCurrency(data.discountAmount)}</span>
               </div>
