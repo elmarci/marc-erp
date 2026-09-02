@@ -99,6 +99,16 @@ function splitProductNameAndUnit(name: string): { displayName: string; unit: str
   return { displayName: name, unit: null };
 }
 
+// La columna Unidad debe leer siempre igual para "no es a granel" — pero
+// según de dónde venga (product.bulkUnit configurado como "unidad" en vez
+// de "und", o el sufijo legado del nombre) a veces llegaba "und" y otras
+// veces "unidad", inconsistencia que se nota fea en el ticket. Se reduce
+// siempre a "und"; kg/g/l/ml quedan tal cual.
+function normalizeUnit(unit: string): string {
+  const u = unit.trim().toLowerCase();
+  return u === 'unidad' || u === 'unidades' || u === 'u' ? 'und' : u;
+}
+
 function formatQty(qty: number): string {
   return Number.isInteger(qty) ? String(qty) : qty.toFixed(3);
 }
@@ -309,14 +319,18 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
               <tbody>
                 {data.items.map((item, i) => {
                   const { displayName, unit: legacyUnit } = splitProductNameAndUnit(item.productName);
-                  const unit = item.unit ?? legacyUnit ?? 'und';
+                  const unit = normalizeUnit(item.unit ?? legacyUnit ?? 'und');
+                  // Línea entre cada fila (estilo tabla de verdad, no un
+                  // bloque de texto corrido) — sólo abajo, nunca a los
+                  // lados, mismo criterio de las tablas de tres líneas
+                  // (formato tipo APA): separa filas sin enjaular columnas.
                   return (
-                    <tr key={i}>
-                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', fontWeight: 700 }}>{formatQty(item.quantity)}</td>
-                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', fontWeight: 700 }}>{unit}</td>
-                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', wordBreak: 'break-word', fontWeight: 700 }}>{displayName}</td>
-                      <td style={{ padding: '2px 1px 2px 0', verticalAlign: 'top', textAlign: 'right', fontWeight: 700 }}>{item.unitPrice.toFixed(2)}</td>
-                      <td style={{ padding: '2px 0 2px 0', verticalAlign: 'top', textAlign: 'right', fontWeight: 700 }}>{item.subtotal.toFixed(2)}</td>
+                    <tr key={i} style={{ borderBottom: '1px dashed #000' }}>
+                      <td style={{ padding: '3px 1px 3px 0', verticalAlign: 'top', fontWeight: 700 }}>{formatQty(item.quantity)}</td>
+                      <td style={{ padding: '3px 1px 3px 0', verticalAlign: 'top', fontWeight: 700 }}>{unit}</td>
+                      <td style={{ padding: '3px 1px 3px 0', verticalAlign: 'top', wordBreak: 'break-word', fontWeight: 700 }}>{displayName}</td>
+                      <td style={{ padding: '3px 1px 3px 0', verticalAlign: 'top', textAlign: 'right', fontWeight: 700 }}>{item.unitPrice.toFixed(2)}</td>
+                      <td style={{ padding: '3px 0 3px 0', verticalAlign: 'top', textAlign: 'right', fontWeight: 700 }}>{item.subtotal.toFixed(2)}</td>
                     </tr>
                   );
                 })}
