@@ -184,7 +184,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
         img { max-width: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
         .center { text-align: center; }
         .bold { font-weight: 700; }
-        .line { border-top: 2px solid #000; margin: 4px 0; }
+        .line { border-top: 2px solid #000; margin: 8px 0; }
         .row { display: flex; justify-content: space-between; }
         .total-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
       </style></head>
@@ -266,7 +266,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             {s.ruc && <p className="center" style={{ textAlign: 'center' }}>RUC: {s.ruc}</p>}
             {s.address && <p className="center" style={{ textAlign: 'center', fontSize: '10px' }}>{s.address}</p>}
             {s.phone && <p className="center" style={{ textAlign: 'center', fontSize: '10px' }}>Tel: {s.phone}</p>}
-            <div className="line" style={{ borderTop: '1px solid #000', margin: '4px 0' }} />
+            <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
             <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>{data.documentType === 'BOLETA' ? 'BOLETA' : data.documentType === 'FACTURA' ? 'FACTURA' : 'TICKET'}</span>
               <span className="bold" style={{ fontWeight: 'bold' }}>{data.saleNumber}</span>
@@ -287,7 +287,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
                 <span>Canal:</span><span>🌐 Venta Online</span>
               </div>
             )}
-            <div className="line" style={{ borderTop: '1px solid #000', margin: '4px 0' }} />
+            <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
 
             {/* Items — tabla real de 5 columnas (Cant./Unid./Producto/P.Unit/
                 Total) en una sola fila por producto, como en una boleta
@@ -349,21 +349,21 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
               </tbody>
             </table>
 
-            <div className="line" style={{ borderTop: '1px solid #000', margin: '4px 0' }} />
+            <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
             {Number(data.discountAmount) > 0 && (
               <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Descuento{data.pointsRedeemed ? ` (${data.pointsRedeemed} pts)` : ''}:</span>
                 <span>-{formatCurrency(data.discountAmount)}</span>
               </div>
             )}
-            <div className="line" style={{ borderTop: '1px solid #000', margin: '4px 0' }} />
+            <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
             <div className="total-row" style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px' }}>
               <span>TOTAL:</span><span>{formatCurrency(data.totalAmount)}</span>
             </div>
             <div className="row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#666', marginTop: '2px' }}>
               <span>Precios incluyen impuestos</span><span>RTE</span>
             </div>
-            <div className="line" style={{ borderTop: '1px solid #000', margin: '4px 0' }} />
+            <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
 
             {/* Pagos */}
             {data.payments.map((p, i) => (
@@ -378,7 +378,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
               </div>
             )}
 
-            <div className="line" style={{ borderTop: '1px solid #000', margin: '4px 0' }} />
+            <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
             <p className="center" style={{ textAlign: 'center' }}>{s.footer}</p>
 
             {s.showPoints && Number(data.pointsEarned) > 0 && (
@@ -389,7 +389,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
 
             {s.showCoupon && data.generatedCoupon && (
               <>
-                <div className="line" style={{ borderTop: '1px solid #000', margin: '4px 0' }} />
+                <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
                 <div className="center" style={{ textAlign: 'center', border: '2px solid #000', padding: '4px', marginTop: '2px' }}>
                   <p className="bold" style={{ fontWeight: 'bold', fontSize: '12px' }}>¡GANASTE UN CUPÓN!</p>
                   <p style={{ fontSize: '11px' }}>{data.generatedCoupon.discountPercent}% de descuento en tu próxima compra</p>
@@ -403,7 +403,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
 
             {s.showQr && qrDataUrl && (
               <>
-                <div className="line" style={{ borderTop: '1px solid #000', margin: '4px 0' }} />
+                <div className="line" style={{ borderTop: '1px solid #000', margin: '8px 0' }} />
                 <div className="center" style={{ textAlign: 'center', marginTop: '4px' }}>
                   <img src={qrDataUrl} alt="Visítanos en línea" style={{ display: 'inline-block', width: `${QR_SIZE_PX}px`, height: `${QR_SIZE_PX}px` }} />
                   <p style={{ fontSize: '10px', marginTop: '2px' }}>Visítanos en línea</p>
