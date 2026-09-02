@@ -308,12 +308,20 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
                 <col style={{ width: '20%' }} />
               </colgroup>
               <thead>
-                <tr style={{ borderBottom: '1px dashed #000' }}>
-                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0', fontWeight: 700 }}>Cant.</th>
-                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0', fontWeight: 700 }}>Unid.</th>
-                  <th style={{ textAlign: 'left', padding: '0 1px 2px 0', fontWeight: 700 }}>Producto</th>
-                  <th style={{ textAlign: 'right', padding: '0 1px 2px 0', fontWeight: 700 }}>P.Unit</th>
-                  <th style={{ textAlign: 'right', padding: '0 0 2px 0', fontWeight: 700 }}>Total</th>
+                {/* Mayúsculas + fontWeight 900 (más pesado que el 700 del
+                    resto de la tabla) + letterSpacing, para que el
+                    encabezado se distinga de las filas de datos a simple
+                    vista — el navegador simula un trazo más grueso (negrita
+                    sintética) cuando se pide un peso que la fuente no trae
+                    de fábrica, por encima del 700 real que ya usa el resto.
+                    Línea sólida (no punteada) para que se lea como el borde
+                    de una tabla, no como parte del contenido. */}
+                <tr style={{ borderBottom: '1.5px solid #000' }}>
+                  <th style={{ textAlign: 'left', padding: '0 1px 3px 0', fontWeight: 900, letterSpacing: '0.4px' }}>CANT.</th>
+                  <th style={{ textAlign: 'left', padding: '0 1px 3px 0', fontWeight: 900, letterSpacing: '0.4px' }}>UNID.</th>
+                  <th style={{ textAlign: 'left', padding: '0 1px 3px 0', fontWeight: 900, letterSpacing: '0.4px' }}>PRODUCTO</th>
+                  <th style={{ textAlign: 'right', padding: '0 1px 3px 0', fontWeight: 900, letterSpacing: '0.4px' }}>P.UNIT</th>
+                  <th style={{ textAlign: 'right', padding: '0 0 3px 0', fontWeight: 900, letterSpacing: '0.4px' }}>TOTAL</th>
                 </tr>
               </thead>
               <tbody>
@@ -324,8 +332,9 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
                   // bloque de texto corrido) — sólo abajo, nunca a los
                   // lados, mismo criterio de las tablas de tres líneas
                   // (formato tipo APA): separa filas sin enjaular columnas.
+                  // Sólida, no punteada — se pidió que no se vea "a guiones".
                   return (
-                    <tr key={i} style={{ borderBottom: '1px dashed #000' }}>
+                    <tr key={i} style={{ borderBottom: '1px solid #000' }}>
                       <td style={{ padding: '3px 1px 3px 0', verticalAlign: 'top', fontWeight: 700 }}>{formatQty(item.quantity)}</td>
                       <td style={{ padding: '3px 1px 3px 0', verticalAlign: 'top', fontWeight: 700 }}>{unit}</td>
                       <td style={{ padding: '3px 1px 3px 0', verticalAlign: 'top', wordBreak: 'break-word', fontWeight: 700 }}>{displayName}</td>
