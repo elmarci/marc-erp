@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Bell, Send, Clock, X, Users } from 'lucide-react'
+import { Bell, Send, Clock, X, Users, Search, Package } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { api, getErrorMessage } from '@/services/api'
 import { formatDateTime, cn } from '@/lib/utils'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 interface ScheduledNotification {
   id: string
@@ -32,7 +33,10 @@ const URL_OPTIONS = [
   { value: '/ofertas', label: 'Ofertas' },
   { value: '/catalogo', label: 'Catálogo' },
   { value: '/', label: 'Inicio' },
+  { value: '__product__', label: 'Un producto específico...' },
 ]
+
+interface ProductOption { id: string; name: string; salePrice: number; imageUrl: string | null }
 
 export function NotificationsPage() {
   const queryClient = useQueryClient()
@@ -41,6 +45,20 @@ export function NotificationsPage() {
   const [body, setBody] = useState('')
   const [url, setUrl] = useState('/ofertas')
   const [scheduledAt, setScheduledAt] = useState(nowForInput())
+
+  // Destino "producto específico": en vez de mandar al catálogo/ofertas
+  // generales, la notificación abre directo /producto/:id — útil para avisos
+  // puntuales tipo "bajó el huevo" donde el cliente quiere llegar al
+  // producto ya, no navegar hasta encontrarlo.
+  const [productSearch, setProductSearch] = useState('')
+  const debouncedProductSearch = useDebouncedValue(productSearch, 300)
+  const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null)
+
+  const { data: productResults } = useQuery({
+    queryKey: ['notification-product-search', debouncedProductSearch],
+    queryFn: async () => (await api.get<{ data: ProductOption[] }>(`/products?q=${encodeURIComponent(debouncedProductSearch)}&limit=8`)).data.data,
+    enabled: url === '__product__' && debouncedProductSearch.length >= 2 && !selectedProduct,
+  })
 
   const { data: subscriberCount } = useQuery({
     queryKey: ['push-subscriber-count'],
@@ -61,6 +79,7 @@ export function NotificationsPage() {
       const isNow = new Date(vars.scheduledAt) <= new Date()
       toast.success(isNow ? 'Notificación enviada.' : 'Notificación programada.')
       setTitle(''); setBody(''); setUrl('/ofertas'); setScheduledAt(nowForInput()); setMode('now')
+      setSelectedProduct(null); setProductSearch('')
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   })
@@ -74,12 +93,14 @@ export function NotificationsPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim() || !body.trim()) { toast.error('Completa el título y el mensaje.'); return }
+    if (url === '__product__' && !selectedProduct) { toast.error('Busca y elige el producto al que debe llevar la notificación.'); return }
     if (mode === 'later' && new Date(scheduledAt) <= new Date()) {
       toast.error('Elige una fecha/hora futura para programar el envío.')
       return
     }
     const when = mode === 'now' ? new Date().toISOString() : new Date(scheduledAt).toISOString()
-    sendMutation.mutate({ title: title.trim(), body: body.trim(), url, scheduledAt: when })
+    const targetUrl = url === '__product__' ? `/producto/${selectedProduct!.id}` : url
+    sendMutation.mutate({ title: title.trim(), body: body.trim(), url: targetUrl, scheduledAt: when })
   }
 
   const pending = (notifications ?? []).filter(n => !n.sentAt)
@@ -116,11 +137,54 @@ export function NotificationsPage() {
             <div className="flex flex-wrap gap-4">
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Al tocarla, abre</label>
-                <select value={url} onChange={e => setUrl(e.target.value)}
+                <select value={url} onChange={e => { setUrl(e.target.value); setSelectedProduct(null); setProductSearch('') }}
                   className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                   {URL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
+
+              {url === '__product__' && (
+                <div className="w-full basis-full">
+                  {selectedProduct ? (
+                    <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                      {selectedProduct.imageUrl ? (
+                        <img src={selectedProduct.imageUrl} alt="" className="h-6 w-6 rounded object-cover" />
+                      ) : (
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className="flex-1 font-medium">{selectedProduct.name}</span>
+                      <button type="button" onClick={() => { setSelectedProduct(null); setProductSearch('') }}
+                        className="text-muted-foreground hover:text-foreground" aria-label="Cambiar producto">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <Input startIcon={<Search className="h-4 w-4" />} value={productSearch}
+                        onChange={e => setProductSearch(e.target.value)}
+                        placeholder="Busca el producto (ej: huevo)..." className="max-w-sm" />
+                      {debouncedProductSearch.length >= 2 && (productResults?.length ?? 0) > 0 && (
+                        <div className="absolute z-10 mt-1 max-w-sm w-full rounded-md border bg-popover shadow-md divide-y">
+                          {productResults!.map(p => (
+                            <button key={p.id} type="button" onClick={() => { setSelectedProduct(p); setProductSearch('') }}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted">
+                              {p.imageUrl ? (
+                                <img src={p.imageUrl} alt="" className="h-6 w-6 rounded object-cover" />
+                              ) : (
+                                <Package className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <span className="flex-1 truncate">{p.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {debouncedProductSearch.length >= 2 && productResults?.length === 0 && (
+                        <p className="mt-1 text-xs text-muted-foreground">Ningún producto coincide.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium">¿Cuándo?</label>
