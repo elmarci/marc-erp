@@ -1514,7 +1514,7 @@ model StoreOrder {
   notes           String?
   status          String         @default("PENDING")
   // PENDING | CONFIRMED | PREPARING | READY | DELIVERED | CANCELLED
-  paymentMethod   String         @map("payment_method") // YAPE | PLIN | CASH
+  paymentMethod   String         @map("payment_method") // YAPE | PLIN | CASH | YAPE_CONTRAENTREGA
   paymentStatus   String         @default("PENDING") @map("payment_status")
   // PENDING | VERIFIED | REJECTED
   paymentProof    String?        @map("payment_proof")
@@ -1524,6 +1524,11 @@ model StoreOrder {
   subtotal        Decimal        @db.Decimal(12, 2)
   deliveryCost    Decimal        @default(0) @map("delivery_cost") @db.Decimal(12, 2)
   total           Decimal        @db.Decimal(12, 2)
+  // Ubicación GPS que el cliente comparte desde el navegador al hacer el
+  // pedido (botón "Compartir mi ubicación" en el checkout) — opcional, sólo
+  // para afinar la entrega; nunca reemplaza la dirección escrita.
+  latitude        Float?
+  longitude       Float?
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 

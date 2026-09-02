@@ -50,7 +50,10 @@ export function SaleDetailPage() {
     <div className="space-y-6 max-w-3xl animate-fade-in">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/sales')}>
+          {/* navigate(-1) en vez de navigate('/sales') fijo — así vuelve a la
+              página, fila y filtros exactos de donde vino en vez de resetear
+              siempre al inicio de la lista. */}
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>

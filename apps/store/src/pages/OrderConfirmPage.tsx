@@ -8,8 +8,12 @@ import { io } from 'socket.io-client'
 const WHATSAPP_NUMBER = '51930555831'
 const API_BASE = import.meta.env['VITE_API_URL']?.replace('/api/v1', '') ?? 'http://localhost:3001'
 
-const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo' }
-const PAYMENT_ICONS: Record<string, string> = { YAPE: '/yape.png', PLIN: '/plin.png', CASH: '/cash.png' }
+const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega' }
+const PAYMENT_ICONS: Record<string, string> = { YAPE: '/yape.png', PLIN: '/plin.png', CASH: '/cash.png', YAPE_CONTRAENTREGA: '/yape.png' }
+// Métodos que se cobran ANTES de entregar y por eso necesitan verificación de
+// comprobante — CASH y YAPE_CONTRAENTREGA se cobran recién al entregar, así
+// que nunca quedan "pendientes de pago" en este sentido.
+const PAYS_UPFRONT = new Set(['YAPE', 'PLIN'])
 
 const STATUS_FLOW = [
   { key: 'PENDING', icon: Clock, label: 'Recibido', desc: 'Tu pedido fue recibido y está esperando confirmación' },
@@ -60,7 +64,7 @@ export function OrderConfirmPage() {
 
   const isCancelled = order.status === 'CANCELLED'
   const currentStep = isCancelled ? -1 : STATUS_FLOW.findIndex(s => s.key === order.status)
-  const needsPayment = order.paymentMethod !== 'CASH' && order.paymentStatus === 'PENDING'
+  const needsPayment = PAYS_UPFRONT.has(order.paymentMethod) && order.paymentStatus === 'PENDING'
   const whatsappMsg = `Hola! Mi pedido es *${order.orderNumber}* — quiero enviar el comprobante de pago por ${PAYMENT_LABELS[order.paymentMethod]}.`
 
   return (
@@ -187,7 +191,7 @@ export function OrderConfirmPage() {
           <p>{order.deliveryType === 'DELIVERY' ? `🚚 Delivery${order.address ? ` — ${order.address}, ${order.district}` : ''}` : '🏪 Recojo en tienda — Av. Manchay, Pachacamac'}</p>
           <p className="flex items-center gap-1.5">
             <img src={PAYMENT_ICONS[order.paymentMethod]} alt="" className="h-4 w-4 rounded object-contain" />
-            {PAYMENT_LABELS[order.paymentMethod]} — {order.paymentStatus === 'VERIFIED' ? '✅ Pago verificado' : order.paymentMethod === 'CASH' ? 'Al recibir' : '⏳ Pendiente de verificación'}
+            {PAYMENT_LABELS[order.paymentMethod]} — {order.paymentStatus === 'VERIFIED' ? '✅ Pago verificado' : !PAYS_UPFRONT.has(order.paymentMethod) ? 'Al recibir' : '⏳ Pendiente de verificación'}
           </p>
         </div>
         </div>

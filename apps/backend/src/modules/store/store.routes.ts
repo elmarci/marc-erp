@@ -72,7 +72,13 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
       // PLIN deshabilitado temporalmente en la tienda — no hay cuenta Plin
       // activa todavía; se reactiva agregando el valor de vuelta acá y en
       // CheckoutPage.tsx cuando haya una.
-      paymentMethod: z.enum(['YAPE', 'CASH']),
+      // YAPE_CONTRAENTREGA = paga por Yape recién cuando le llega el pedido
+      // (no antes) — mismo espíritu que CASH pero por Yape en vez de billetes.
+      paymentMethod: z.enum(['YAPE', 'CASH', 'YAPE_CONTRAENTREGA']),
+      // Ubicación GPS opcional que el cliente comparte desde el navegador —
+      // nunca se confía en ella para nada crítico, sólo ayuda a la entrega.
+      latitude: z.coerce.number().min(-90).max(90).optional(),
+      longitude: z.coerce.number().min(-180).max(180).optional(),
       items: z.array(z.object({
         // Acepta UUID normal O IDs de bundle (bundle-offerId-productId)
         productId: z.string().min(1),

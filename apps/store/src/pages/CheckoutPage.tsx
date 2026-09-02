@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store, Plus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store, Plus, LocateFixed, CheckCircle2 } from 'lucide-react'
 import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
@@ -21,6 +21,8 @@ export function CheckoutPage() {
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
   const [showNewAddressForm, setShowNewAddressForm] = useState(false)
   const [saveNewAddress, setSaveNewAddress] = useState(false)
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [locating, setLocating] = useState(false)
 
   const { data: profileData } = useQuery({
     queryKey: ['store-profile'],
@@ -35,12 +37,31 @@ export function CheckoutPage() {
     customerEmail: customer?.email ?? '',
     deliveryType: '' as 'DELIVERY' | 'PICKUP' | '',
     address: '', district: 'Pachacamac', reference: '',
-    paymentMethod: '' as 'YAPE' | 'CASH' | '',
+    paymentMethod: '' as 'YAPE' | 'CASH' | 'YAPE_CONTRAENTREGA' | '',
     notes: '',
   })
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(v => ({ ...v, [k]: e.target.value }))
+
+  // Ubicación GPS del navegador — sólo ayuda a ubicar mejor la entrega, nunca
+  // reemplaza la dirección escrita a mano (que sigue siendo obligatoria).
+  const shareLocation = () => {
+    if (!navigator.geolocation) { toast.error('Tu navegador no soporta compartir ubicación.'); return }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        setLocating(false)
+        toast.success('Ubicación compartida ✓')
+      },
+      () => {
+        setLocating(false)
+        toast.error('No pudimos acceder a tu ubicación. Revisa los permisos del navegador.')
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  }
 
   const pickSavedAddress = (id: string) => {
     const addr = savedAddresses.find(a => a.id === id)
@@ -70,6 +91,8 @@ export function CheckoutPage() {
       reference: form.reference || undefined,
       notes: form.notes || undefined,
       paymentMethod: form.paymentMethod,
+      latitude: coords?.lat,
+      longitude: coords?.lng,
       items: items.map(i => ({
         productId: i.product.id,
         quantity: i.quantity,
@@ -273,6 +296,25 @@ export function CheckoutPage() {
                         )}
                       </>
                     )}
+
+                    {/* Ubicación GPS — ayuda a que el repartidor llegue más
+                        rápido y directo, sobre todo en zonas sin numeración
+                        clara. Es un extra: nunca bloquea el pedido. */}
+                    {coords ? (
+                      <div className="flex items-center gap-2 text-sm text-brand-green-700 bg-brand-green-50 border border-brand-green-200 rounded-xl px-3 py-2.5">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        Ubicación GPS compartida — llegaremos más directo
+                      </div>
+                    ) : (
+                      <button type="button" onClick={shareLocation} disabled={locating}
+                        className="w-full flex items-center justify-center gap-2 text-sm font-medium text-brand-blue-700 bg-brand-blue-50 hover:bg-brand-blue-100 border border-brand-blue-200 rounded-xl px-3 py-2.5 transition-colors disabled:opacity-60">
+                        {locating ? (
+                          <><div className="h-4 w-4 border-2 border-brand-blue-300 border-t-brand-blue-700 rounded-full animate-spin" />Obteniendo ubicación...</>
+                        ) : (
+                          <><LocateFixed className="h-4 w-4" />Compartir mi ubicación (opcional)</>
+                        )}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -316,6 +358,12 @@ export function CheckoutPage() {
                   {([
                     { val: 'YAPE', icon: '/yape.png', title: 'Yape', desc: 'Paga con tu app Yape', sub: 'Escanea el QR y listo' },
                     {
+                      val: 'YAPE_CONTRAENTREGA', icon: '/yape.png',
+                      title: 'Yape contra entrega',
+                      desc: form.deliveryType === 'PICKUP' ? 'Yapeas cuando recojas tu pedido' : 'Yapeas cuando te llegue el pedido',
+                      sub: 'Pagas después, no antes'
+                    },
+                    {
                       val: 'CASH', icon: '/cash.png',
                       title: form.deliveryType === 'PICKUP' ? 'Efectivo en tienda' : 'Pago contra entrega',
                       desc: form.deliveryType === 'PICKUP' ? 'Paga cuando recojas tu pedido' : 'Paga en efectivo al recibir',
@@ -352,6 +400,15 @@ export function CheckoutPage() {
                     <img src="/yape-qr.png" alt="QR de Yape para pagar" className="w-40 rounded-xl border border-paper-line" />
                     <p className="text-paper-ink-soft">
                       Paga <strong className="text-paper-ink">S/ {total.toFixed(2)}</strong> y guarda tu captura — te la pedimos apenas confirmes el pedido.
+                    </p>
+                  </div>
+                )}
+
+                {form.paymentMethod === 'YAPE_CONTRAENTREGA' && (
+                  <div className="bg-brand-blue-50 border border-brand-blue-200 rounded-xl p-4 text-sm flex flex-col items-center text-center gap-2">
+                    <p className="font-semibold text-paper-ink">Yapeas cuando te llegue el pedido</p>
+                    <p className="text-paper-ink-soft">
+                      No necesitas pagar ahora. {form.deliveryType === 'PICKUP' ? 'Al recoger tu pedido' : 'Cuando el repartidor llegue'} te mostramos el QR o número para que Yapees <strong className="text-paper-ink">S/ {total.toFixed(2)}</strong>.
                     </p>
                   </div>
                 )}
@@ -436,7 +493,9 @@ export function CheckoutPage() {
                   {form.deliveryType === 'DELIVERY' && form.address && <p>📍 {form.address}, {form.district}</p>}
                   {form.deliveryType === 'PICKUP' && <p>🏪 Recojo en Av. Manchay, Pachacamac</p>}
                   {form.paymentMethod === 'YAPE' && <p className="flex items-center gap-1.5"><img src="/yape.png" alt="" className="h-4 w-4 rounded object-contain" />Pago por Yape</p>}
+                  {form.paymentMethod === 'YAPE_CONTRAENTREGA' && <p className="flex items-center gap-1.5"><img src="/yape.png" alt="" className="h-4 w-4 rounded object-contain" />Yape contra entrega</p>}
                   {form.paymentMethod === 'CASH' && <p className="flex items-center gap-1.5"><img src="/cash.png" alt="" className="h-4 w-4 object-contain" />{form.deliveryType === 'PICKUP' ? 'Efectivo en tienda' : 'Contra entrega'}</p>}
+                  {coords && <p>📍 Ubicación GPS compartida</p>}
                 </div>
               )}
               </div>

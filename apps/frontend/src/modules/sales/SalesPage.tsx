@@ -64,22 +64,42 @@ export function SalesPage() {
   const page = parseInt(searchParams.get('page') ?? '1');
 
   const [pageTab, setPageTab] = useState<'historial' | 'envases'>('historial');
-  const [search, setSearch] = useState('');
+
+  // Todos los filtros viven en la URL (igual que Productos) para que al
+  // volver de ver el detalle de una venta (navigate(-1)) se restaure la
+  // página, la fila y los filtros exactos de donde salió el usuario, en vez
+  // de resetear todo al estado inicial.
+  const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [preset, setPreset] = useState(3); // "Todo" por defecto
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [status, setStatus] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [documentType, setDocumentType] = useState('');
-  const [cashierId, setCashierId] = useState('');
-  const [isCredit, setIsCredit] = useState<'' | 'true' | 'false'>('');
-  const [minTotal, setMinTotal] = useState('');
-  const [maxTotal, setMaxTotal] = useState('');
-  const [sortBy, setSortBy] = useState<SortField>('createdAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const preset = parseInt(searchParams.get('preset') ?? '3');
+  const dateFrom = searchParams.get('dateFrom') ?? '';
+  const dateTo = searchParams.get('dateTo') ?? '';
+  const status = searchParams.get('status') ?? '';
+  const paymentMethod = searchParams.get('paymentMethod') ?? '';
+  const documentType = searchParams.get('documentType') ?? '';
+  const cashierId = searchParams.get('cashierId') ?? '';
+  const isCredit = (searchParams.get('isCredit') ?? '') as '' | 'true' | 'false';
+  const minTotal = searchParams.get('minTotal') ?? '';
+  const maxTotal = searchParams.get('maxTotal') ?? '';
+  const sortBy = (searchParams.get('sortBy') ?? 'createdAt') as SortField;
+  const sortOrder = (searchParams.get('sortOrder') ?? 'desc') as 'asc' | 'desc';
 
   const setPage = (n: number) => setSearchParams((p) => { const q = new URLSearchParams(p); q.set('page', String(n)); return q; });
+
+  // Cambia un filtro y vuelve a la página 1 — mismo patrón que ProductsPage.
+  const setParam = (key: string, value: string, resetPage = true) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value); else next.delete(key);
+      if (resetPage) next.set('page', '1');
+      return next;
+    });
+  };
+
+  const handleSearch = (q: string) => {
+    setSearch(q);
+    setParam('search', q);
+  };
 
   const activeRange = dateFrom && dateTo ? { from: dateFrom, to: dateTo } : preset >= 0 && PRESETS[preset].days >= 0
     ? { from: limaDateStr(new Date(Date.now() - PRESETS[preset].days * 86400000)), to: limaDateStr(new Date()) }
@@ -88,9 +108,14 @@ export function SalesPage() {
   const hasFilters = !!(debouncedSearch || status || paymentMethod || documentType || cashierId || isCredit || minTotal || maxTotal || dateFrom || dateTo || preset !== 3);
 
   const clearFilters = () => {
-    setSearch(''); setPreset(3); setDateFrom(''); setDateTo(''); setStatus('');
-    setPaymentMethod(''); setDocumentType(''); setCashierId(''); setIsCredit('');
-    setMinTotal(''); setMaxTotal(''); setPage(1);
+    setSearch('');
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      ['search', 'preset', 'dateFrom', 'dateTo', 'status', 'paymentMethod', 'documentType', 'cashierId', 'isCredit', 'minTotal', 'maxTotal']
+        .forEach((k) => next.delete(k));
+      next.set('page', '1');
+      return next;
+    });
   };
 
   const filterParams = useMemo(() => {
@@ -133,8 +158,8 @@ export function SalesPage() {
   });
 
   const toggleSort = (field: SortField) => {
-    if (sortBy === field) setSortOrder((o) => (o === 'desc' ? 'asc' : 'desc'));
-    else { setSortBy(field); setSortOrder('desc'); }
+    if (sortBy === field) setParam('sortOrder', sortOrder === 'desc' ? 'asc' : 'desc', false);
+    else { setParam('sortBy', field, false); setParam('sortOrder', 'desc', false); }
   };
 
   const sortIcon = (field: SortField) => sortBy !== field
@@ -309,24 +334,28 @@ export function SalesPage() {
             <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Buscar por N° venta, cliente, documento o cajero..."
-                value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+                value={search} onChange={(e) => handleSearch(e.target.value)} />
             </div>
             <div className="flex gap-1 rounded-lg border p-1">
               {PRESETS.map((p, i) => (
                 <button key={p.label} type="button"
-                  onClick={() => { setPreset(i); setDateFrom(''); setDateTo(''); setPage(1); }}
+                  onClick={() => setSearchParams((prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set('preset', String(i)); next.delete('dateFrom'); next.delete('dateTo'); next.set('page', '1');
+                    return next;
+                  })}
                   className={cn('px-3 py-1.5 text-xs rounded-md transition-colors',
                     preset === i && !dateFrom && !dateTo ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
                   {p.label}
                 </button>
               ))}
             </div>
-            <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="w-40" title="Desde" />
-            <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="w-40" title="Hasta" />
+            <Input type="date" value={dateFrom} onChange={(e) => setParam('dateFrom', e.target.value)} className="w-40" title="Desde" />
+            <Input type="date" value={dateTo} onChange={(e) => setParam('dateTo', e.target.value)} className="w-40" title="Hasta" />
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+            <select value={status} onChange={(e) => setParam('status', e.target.value)}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <option value="">Todos los estados</option>
               <option value="COMPLETED">Completada</option>
@@ -335,25 +364,25 @@ export function SalesPage() {
               <option value="PARTIALLY_RETURNED">Dev. parcial</option>
             </select>
 
-            <select value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setPage(1); }}
+            <select value={paymentMethod} onChange={(e) => setParam('paymentMethod', e.target.value)}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <option value="">Todos los métodos de pago</option>
               {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
 
-            <select value={documentType} onChange={(e) => { setDocumentType(e.target.value); setPage(1); }}
+            <select value={documentType} onChange={(e) => setParam('documentType', e.target.value)}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <option value="">Todo tipo de documento</option>
               {Object.entries(DOCUMENT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
 
-            <select value={cashierId} onChange={(e) => { setCashierId(e.target.value); setPage(1); }}
+            <select value={cashierId} onChange={(e) => setParam('cashierId', e.target.value)}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <option value="">Todos los cajeros</option>
               {(cashiers ?? []).map((c) => <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>)}
             </select>
 
-            <select value={isCredit} onChange={(e) => { setIsCredit(e.target.value as '' | 'true' | 'false'); setPage(1); }}
+            <select value={isCredit} onChange={(e) => setParam('isCredit', e.target.value)}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <option value="">Al contado y fiado</option>
               <option value="false">Solo al contado</option>
@@ -361,9 +390,9 @@ export function SalesPage() {
             </select>
 
             <Input type="number" inputMode="decimal" placeholder="Monto mín." value={minTotal}
-              onChange={(e) => { setMinTotal(e.target.value); setPage(1); }} className="w-28" />
+              onChange={(e) => setParam('minTotal', e.target.value)} className="w-28" />
             <Input type="number" inputMode="decimal" placeholder="Monto máx." value={maxTotal}
-              onChange={(e) => { setMaxTotal(e.target.value); setPage(1); }} className="w-28" />
+              onChange={(e) => setParam('maxTotal', e.target.value)} className="w-28" />
 
             {hasFilters && (
               <Button variant="ghost" size="sm" onClick={clearFilters}>

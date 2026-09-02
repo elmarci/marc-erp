@@ -15,6 +15,7 @@ interface StoreOrder {
   status: string; paymentMethod: string; paymentStatus: string
   subtotal: number; deliveryCost: number; total: number; createdAt: string; notes: string | null
   saleId: string | null
+  latitude: number | null; longitude: number | null
   items: Array<{ id: string; name: string; quantity: number; unitPrice: number; subtotal: number }>
 }
 
@@ -33,8 +34,11 @@ const NEXT_STATUS: Record<string, string> = {
   CONFIRMED: 'PREPARING', PREPARING: 'READY', READY: 'DELIVERED',
 }
 
-const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo' }
-const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵' }
+const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega' }
+const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵', YAPE_CONTRAENTREGA: '💜' }
+// Se cobran recién al entregar — nunca quedan "pago pendiente de verificar"
+// como sí pasa con un Yape/Plin pagado por adelantado.
+const PAYS_ON_DELIVERY = new Set(['CASH', 'YAPE_CONTRAENTREGA'])
 
 // Notification system - requires explicit user activation
 let audioUnlocked = false
@@ -307,7 +311,7 @@ export function StoreOrdersPage() {
                             <Receipt className="h-3 w-3" />Venta generada
                           </span>
                         )}
-                        {order.paymentStatus === 'PENDING' && order.paymentMethod !== 'CASH' && (
+                        {order.paymentStatus === 'PENDING' && !PAYS_ON_DELIVERY.has(order.paymentMethod) && (
                           <Badge variant="destructive" className="text-xs">Pago pendiente</Badge>
                         )}
                       </div>
@@ -345,7 +349,16 @@ export function StoreOrdersPage() {
                       </div>
 
                       {order.address && (
-                        <p className="text-sm text-muted-foreground">📍 {order.address}, {order.district}</p>
+                        <p className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
+                          📍 {order.address}, {order.district}
+                          {order.latitude != null && order.longitude != null && (
+                            <a href={`https://www.google.com/maps?q=${order.latitude},${order.longitude}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-primary hover:underline text-xs font-medium">
+                              <ExternalLink className="h-3 w-3" />Ver ubicación GPS del cliente
+                            </a>
+                          )}
+                        </p>
                       )}
                       {order.notes && (
                         <p className="text-sm text-muted-foreground italic">"{order.notes}"</p>
@@ -371,7 +384,7 @@ export function StoreOrdersPage() {
                         )}
 
                         {/* Verify payment */}
-                        {order.paymentMethod !== 'CASH' && order.paymentStatus === 'PENDING' && (
+                        {!PAYS_ON_DELIVERY.has(order.paymentMethod) && order.paymentStatus === 'PENDING' && (
                           <Button size="sm" variant="outline"
                             onClick={() => updateMutation.mutate({ id: order.id, paymentStatus: 'VERIFIED' })}>
                             ✓ Verificar pago {PAYMENT_LABELS[order.paymentMethod]}

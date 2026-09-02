@@ -127,6 +127,7 @@ export const storeApi = {
     customerName: string; customerPhone: string; customerEmail?: string;
     deliveryType: string; address?: string; district?: string;
     reference?: string; notes?: string; paymentMethod: string;
+    latitude?: number; longitude?: number;
     items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) =>
     api.post<{ data: StoreOrder }>('/store/orders', data),

@@ -1,15 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { cn } from '@/lib/utils';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
+import { useScrollRestoration } from '@/hooks/useScrollRestoration';
 
 export function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
   useRealtimeSync();
+  useScrollRestoration(mainRef);
 
   // Cerrar sidebar móvil al cambiar de ruta
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
@@ -58,7 +61,7 @@ export function AppLayout() {
         sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64',  // desktop: margen del sidebar
       )}>
         <Header onMenuClick={() => setMobileOpen(v => !v)} />
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
           <Outlet />
         </main>
       </div>

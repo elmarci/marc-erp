@@ -219,7 +219,8 @@ export class StoreService {
     customerName: string; customerPhone: string; customerEmail?: string;
     deliveryType: 'DELIVERY' | 'PICKUP';
     address?: string; district?: string; reference?: string; notes?: string;
-    paymentMethod: 'YAPE' | 'PLIN' | 'CASH';
+    paymentMethod: 'YAPE' | 'PLIN' | 'CASH' | 'YAPE_CONTRAENTREGA';
+    latitude?: number; longitude?: number;
     storeCustomerId?: string;
     items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) {
@@ -307,6 +308,8 @@ export class StoreService {
         notes: data.notes,
         paymentMethod: data.paymentMethod,
         storeCustomerId: data.storeCustomerId,
+        latitude: data.latitude,
+        longitude: data.longitude,
         subtotal,
         deliveryCost,
         total,
@@ -375,9 +378,11 @@ export class StoreService {
     });
     if (!session) throw new Error('No hay una sesión de caja abierta con ese ID.');
 
-    // Map payment method
+    // Map payment method — YAPE_CONTRAENTREGA sigue siendo un pago por Yape
+    // en la contabilidad del ERP, sólo cambia CUÁNDO se cobra (no antes de
+    // entregar), así que cae en el mismo enum PaymentMethod.YAPE de la venta.
     const paymentMethodMap: Record<string, string> = {
-      YAPE: 'YAPE', PLIN: 'PLIN', CASH: 'CASH',
+      YAPE: 'YAPE', PLIN: 'PLIN', CASH: 'CASH', YAPE_CONTRAENTREGA: 'YAPE',
     };
     const paymentMethod = paymentMethodMap[order.paymentMethod] ?? 'CASH';
 

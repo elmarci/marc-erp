@@ -18,7 +18,7 @@ const STATUS: Record<string, { label: string; color: string; emoji: string }> = 
   DELIVERED: { label: 'Entregado',   color: 'text-brand-green-700', emoji: '✅' },
   CANCELLED: { label: 'Cancelado',   color: 'text-brand-magenta-600', emoji: '❌' },
 }
-const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo' }
+const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega' }
 const DISTRICTS = ['Pachacamac', 'Villa María del Triunfo', 'San Juan de Miraflores', 'Villa El Salvador', 'Lurín', 'Cieneguilla', 'Otro']
 
 /* ── Libreta de direcciones ──────────────────────────────────────────── */
