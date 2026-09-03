@@ -65,7 +65,10 @@ interface OrderDetail extends PurchaseOrder {
     product: { id: string; name: string; barcode: string | null; currentStock: number };
   }>;
   receipts: Array<{ id: string; receivedAt: string; notes: string | null }>;
-  payments: Array<{ id: string; amount: number; method: string; paidAt: string; reference: string | null; notes: string | null }>;
+  payments: Array<{
+    id: string; amount: number; method: string; paidAt: string; reference: string | null; notes: string | null;
+    reversedAt: string | null; reversalReason: string | null; reversedBy: { firstName: string; lastName: string } | null;
+  }>;
 }
 
 interface PayableOrder extends PurchaseOrder {
@@ -2209,9 +2212,21 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                   {detail.payments.length > 0 && (
                     <div className="space-y-1">
                       {detail.payments.map(p => (
-                        <div key={p.id} className="flex justify-between text-xs text-muted-foreground">
-                          <span>{formatDateTime(p.paidAt)} · {PAYMENT_METHOD_LABELS[p.method] ?? p.method}{p.reference ? ` · ${p.reference}` : ''}</span>
-                          <span className="font-semibold tabular-nums text-foreground">{formatCurrency(p.amount)}</span>
+                        <div key={p.id} className={cn('text-xs', p.reversedAt ? 'text-destructive' : 'text-muted-foreground')}>
+                          <div className="flex justify-between">
+                            <span className={cn(p.reversedAt && 'line-through')}>
+                              {formatDateTime(p.paidAt)} · {PAYMENT_METHOD_LABELS[p.method] ?? p.method}{p.reference ? ` · ${p.reference}` : ''}
+                            </span>
+                            <span className={cn('font-semibold tabular-nums', p.reversedAt ? 'line-through' : 'text-foreground')}>
+                              {formatCurrency(p.amount)}
+                            </span>
+                          </div>
+                          {p.reversedAt && (
+                            <p className="italic">
+                              Revertido{p.reversedBy ? ` por ${p.reversedBy.firstName} ${p.reversedBy.lastName}` : ''}
+                              {p.reversalReason ? ` — "${p.reversalReason}"` : ''}
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2802,6 +2817,7 @@ interface PayerDebt {
 interface PaymentHistoryRow {
   id: string; paidAt: string; amount: number; method: string;
   reference: string | null; notes: string | null; batchId: string | null; orderNumber: string; user: string;
+  reversedAt: string | null; reversalReason: string | null; reversedBy: string | null;
 }
 interface PayerStatement {
   payer: { id: string; name: string; phone: string | null; creditLimit: number };
@@ -2873,21 +2889,33 @@ function NewPayerModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 // una sola salida de Caja); se agrupan para mostrar "un pago, N compras"
 // en vez de una fila repetida por cada orden que tocó.
 function groupRepaymentBatches(rows: PaymentHistoryRow[]) {
-  const map = new Map<string, { key: string; paidAt: string; amount: number; method: string; reference: string | null; user: string; orders: string[] }>();
+  const map = new Map<string, {
+    key: string; paidAt: string; amount: number; method: string; reference: string | null; user: string; orders: string[];
+    allReversed: boolean; reversedAt: string | null; reversalReason: string | null; reversedBy: string | null;
+  }>();
   for (const r of rows) {
     const key = r.batchId ?? r.id;
     const existing = map.get(key);
     if (existing) {
       existing.amount += r.amount;
       existing.orders.push(r.orderNumber);
+      existing.allReversed = existing.allReversed && !!r.reversedAt;
     } else {
-      map.set(key, { key, paidAt: r.paidAt, amount: r.amount, method: r.method, reference: r.reference, user: r.user, orders: [r.orderNumber] });
+      map.set(key, {
+        key, paidAt: r.paidAt, amount: r.amount, method: r.method, reference: r.reference, user: r.user, orders: [r.orderNumber],
+        allReversed: !!r.reversedAt, reversedAt: r.reversedAt, reversalReason: r.reversalReason, reversedBy: r.reversedBy,
+      });
     }
   }
   return Array.from(map.values());
 }
 
-function RepaymentHistoryTable({ batches }: { batches: ReturnType<typeof groupRepaymentBatches> }) {
+function RepaymentHistoryTable({ batches, canRevert, onRevert, revertingKey }: {
+  batches: ReturnType<typeof groupRepaymentBatches>;
+  canRevert?: boolean;
+  onRevert?: (batchKey: string) => void;
+  revertingKey?: string | null;
+}) {
   if (batches.length === 0) return null;
   return (
     <div>
@@ -2900,16 +2928,37 @@ function RepaymentHistoryTable({ batches }: { batches: ReturnType<typeof groupRe
             <th className="py-2 font-semibold">Compras cubiertas</th>
             <th className="py-2 font-semibold text-right">Monto</th>
             <th className="py-2 font-semibold">Usuario</th>
+            {canRevert && <th className="py-2 font-semibold"></th>}
           </tr>
         </thead>
         <tbody className="divide-y">
           {batches.map((b) => (
-            <tr key={b.key}>
+            <tr key={b.key} className={cn(b.allReversed && 'opacity-60')}>
               <td className="py-2 text-muted-foreground">{formatDateTime(b.paidAt)}</td>
               <td className="py-2">{PAYMENT_METHOD_LABELS[b.method] ?? b.method}{b.reference ? ` (${b.reference})` : ''}</td>
               <td className="py-2 text-xs text-muted-foreground">{b.orders.join(', ')}</td>
-              <td className="py-2 text-right font-bold tabular-nums text-success">{formatCurrency(b.amount)}</td>
-              <td className="py-2 text-xs text-muted-foreground">{b.user}</td>
+              <td className={cn('py-2 text-right font-bold tabular-nums', b.allReversed ? 'text-muted-foreground line-through' : 'text-success')}>
+                {formatCurrency(b.amount)}
+              </td>
+              <td className="py-2 text-xs text-muted-foreground">
+                {b.user}
+                {b.allReversed && (
+                  <div className="mt-0.5 flex flex-col text-destructive">
+                    <span className="font-semibold">Revertido{b.reversedBy ? ` por ${b.reversedBy}` : ''}</span>
+                    {b.reversalReason && <span className="italic">"{b.reversalReason}"</span>}
+                  </div>
+                )}
+              </td>
+              {canRevert && (
+                <td className="py-2 text-right">
+                  {!b.allReversed && onRevert && (
+                    <Button size="sm" variant="outline" className="text-destructive hover:text-destructive"
+                      loading={revertingKey === b.key} onClick={() => onRevert(b.key)}>
+                      Revertir
+                    </Button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -2924,9 +2973,27 @@ function RepaymentHistoryTable({ batches }: { batches: ReturnType<typeof groupRe
 // de reposiciones ya hechas (para saber qué se le pagó, cuándo y con qué
 // compras se cubrió).
 function PayerDetail({ payerId, payerName, onPay }: { payerId: string; payerName: string; onPay: () => void }) {
+  const queryClient = useQueryClient();
   const { data: statement, isLoading } = useQuery({
     queryKey: ['purchases-payer-statement', payerId],
     queryFn: async () => (await api.get<{ data: PayerStatement }>(`/purchases/payers/${payerId}/statement`)).data.data,
+  });
+
+  const revertMutation = useMutation({
+    mutationFn: (batchId: string) => {
+      const reason = window.prompt('Motivo de la reversión (ej: se le repuso al pagador equivocado, monto mal tipeado):');
+      if (!reason?.trim()) throw new Error('__cancelled__');
+      return api.post(`/purchases/payer-repayment-batches/${batchId}/revert`, { reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases-payer-statement', payerId] });
+      queryClient.invalidateQueries({ queryKey: ['purchases-payers'] });
+      toast.success('Reposición revertida — el dinero volvió y la deuda con el pagador se restauró.');
+    },
+    onError: (err: unknown) => {
+      if (err instanceof Error && err.message === '__cancelled__') return;
+      toast.error(getErrorMessage(err));
+    },
   });
 
   if (isLoading) return <div className="py-4 text-center text-xs text-muted-foreground">Cargando...</div>;
@@ -2982,7 +3049,9 @@ function PayerDetail({ payerId, payerName, onPay }: { payerId: string; payerName
       </table>
       </div>
       )}
-      <RepaymentHistoryTable batches={repaymentBatches} />
+      <RepaymentHistoryTable batches={repaymentBatches} canRevert
+        onRevert={(batchId) => revertMutation.mutate(batchId)}
+        revertingKey={revertMutation.isPending ? revertMutation.variables ?? null : null} />
     </div>
   );
 }
@@ -3087,10 +3156,29 @@ interface SupplierStatement {
 // (que solo muestra lo ya pagado), esto muestra la deuda pendiente real con
 // sus compras de origen, fechas y montos.
 function SupplierDebtCard({ supplierId, businessName }: { supplierId: string; businessName: string }) {
+  const queryClient = useQueryClient();
   const [payOpen, setPayOpen] = useState(false);
   const { data: statement, isLoading } = useQuery({
     queryKey: ['purchases-supplier-statement', supplierId],
     queryFn: async () => (await api.get<{ data: SupplierStatement }>(`/purchases/suppliers/${supplierId}/statement`)).data.data,
+  });
+
+  const revertMutation = useMutation({
+    mutationFn: (batchId: string) => {
+      const reason = window.prompt('Motivo de la reversión (ej: lote pagado por error, monto mal tipeado):');
+      if (!reason?.trim()) throw new Error('__cancelled__');
+      return api.post(`/purchases/payment-batches/${batchId}/revert`, { reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases-supplier-statement', supplierId] });
+      queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['purchases-payable-summary'] });
+      toast.success('Pago revertido — el dinero volvió a Caja y el saldo pendiente se restauró.');
+    },
+    onError: (err: unknown) => {
+      if (err instanceof Error && err.message === '__cancelled__') return;
+      toast.error(getErrorMessage(err));
+    },
   });
 
   if (isLoading) return <div className="py-8 text-center text-muted-foreground">Cargando estado de cuenta...</div>;
@@ -3149,7 +3237,9 @@ function SupplierDebtCard({ supplierId, businessName }: { supplierId: string; bu
       )}
       {statement.recentPayments.length > 0 && (
         <CardContent>
-          <RepaymentHistoryTable batches={groupRepaymentBatches(statement.recentPayments)} />
+          <RepaymentHistoryTable batches={groupRepaymentBatches(statement.recentPayments)} canRevert
+            onRevert={(batchId) => revertMutation.mutate(batchId)}
+            revertingKey={revertMutation.isPending ? revertMutation.variables ?? null : null} />
         </CardContent>
       )}
       {payOpen && (

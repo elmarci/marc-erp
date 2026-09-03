@@ -221,8 +221,8 @@ export class PurchasesService {
           include: { items: true },
           orderBy: { createdAt: 'desc' },
         },
-        payments: { orderBy: { paidAt: 'desc' } },
-        payerRepayments: { orderBy: { paidAt: 'desc' } },
+        payments: { include: { reversedBy: { select: { firstName: true, lastName: true } } }, orderBy: { paidAt: 'desc' } },
+        payerRepayments: { include: { reversedBy: { select: { firstName: true, lastName: true } } }, orderBy: { paidAt: 'desc' } },
       },
     });
     if (!order) throw new NotFoundError('Orden de compra');
@@ -545,7 +545,11 @@ export class PurchasesService {
         where: { purchaseOrder: { supplierId } },
         orderBy: { paidAt: 'desc' },
         take: 30,
-        include: { purchaseOrder: { select: { orderNumber: true } }, user: { select: { firstName: true, lastName: true } } },
+        include: {
+          purchaseOrder: { select: { orderNumber: true } },
+          user: { select: { firstName: true, lastName: true } },
+          reversedBy: { select: { firstName: true, lastName: true } },
+        },
       }),
     ]);
 
@@ -578,6 +582,8 @@ export class PurchasesService {
         reference: p.reference, notes: p.notes, batchId: p.batchId,
         orderNumber: p.purchaseOrder.orderNumber,
         user: `${p.user.firstName} ${p.user.lastName}`,
+        reversedAt: p.reversedAt, reversalReason: p.reversalReason,
+        reversedBy: p.reversedBy ? `${p.reversedBy.firstName} ${p.reversedBy.lastName}` : null,
       })),
     };
   }
@@ -1338,9 +1344,14 @@ export class PurchasesService {
       }
 
       // Los pagos contra saldo pendiente (Cuentas por Pagar) también quedan
-      // sin efecto — ya se devolvió el dinero arriba, dejarlos crearía un
-      // historial de "pagos" que en realidad nunca ocurrieron.
-      await tx.supplierPayment.deleteMany({ where: { purchaseOrderId: orderId } });
+      // sin efecto — ya se devolvió el dinero arriba. Se marcan revertidos en
+      // vez de borrarse: el estado de cuenta del proveedor debe poder seguir
+      // mostrando que esta orden se pagó por error y luego se corrigió, con
+      // quién y por qué — no que nunca hubo ningún pago.
+      await tx.supplierPayment.updateMany({
+        where: { purchaseOrderId: orderId, reversedAt: null },
+        data: { reversedAt: new Date(), reversedById: userId, reversalReason: `Corrección de registro: ${reason}` },
+      });
 
       if (hasPayerAmount) {
         await payerLedgerService.recordMovementInTx(
@@ -1787,7 +1798,11 @@ export class PurchasesService {
         where: { payerId },
         orderBy: { paidAt: 'desc' },
         take: 30,
-        include: { purchaseOrder: { select: { orderNumber: true } }, user: { select: { firstName: true, lastName: true } } },
+        include: {
+          purchaseOrder: { select: { orderNumber: true } },
+          user: { select: { firstName: true, lastName: true } },
+          reversedBy: { select: { firstName: true, lastName: true } },
+        },
       }),
       payerLedgerService.getBalance(payerId),
     ]);
@@ -1821,8 +1836,146 @@ export class PurchasesService {
         reference: p.reference, notes: p.notes, batchId: p.batchId,
         orderNumber: p.purchaseOrder.orderNumber,
         user: `${p.user.firstName} ${p.user.lastName}`,
+        reversedAt: p.reversedAt, reversalReason: p.reversalReason,
+        reversedBy: p.reversedBy ? `${p.reversedBy.firstName} ${p.reversedBy.lastName}` : null,
       })),
     };
+  }
+
+  /* ─── Reversión de pagos/reposiciones ya registrados ─────────────────────
+   * A diferencia de revertPurchasePayment (que corrige "esta orden nunca
+   * debió marcarse como pagada" y deshace TODO su saldo pagado), estas dos
+   * funciones revierten UN evento de pago puntual — un batch completo, tal
+   * como quedó armado al pagarse (por monto, repartido en varias OC) — sin
+   * tocar el resto del historial. Nunca se borra la fila: se marca revertida
+   * (quién, cuándo, por qué) para que el estado de cuenta siga mostrando que
+   * ese pago existió y fue corregido, en vez de desaparecer sin dejar rastro.
+   */
+
+  async revertSupplierPaymentBatch(batchId: string, userId: string, reason: string) {
+    if (!reason?.trim()) throw new BusinessError('Indica el motivo de la reversión.');
+    const batch = await prisma.supplierPaymentBatch.findUnique({
+      where: { id: batchId },
+      include: { supplier: { select: { businessName: true } }, payments: true },
+    });
+    if (!batch) throw new NotFoundError('Lote de pago');
+    if (batch.reversedAt) throw new BusinessError('Este pago ya fue revertido antes.');
+
+    const activePayments = batch.payments.filter((p) => !p.reversedAt);
+    if (activePayments.length === 0) throw new BusinessError('Este pago ya fue revertido antes.');
+
+    const treasuryMovements = await prisma.treasuryMovement.findMany({
+      where: { referenceType: 'PURCHASE_PAYMENT_BATCH', referenceId: batchId, type: 'WITHDRAWAL' },
+    });
+    const cashMovements = await prisma.cashMovement.findMany({
+      where: { referenceType: 'PURCHASE_PAYMENT_BATCH', referenceId: batchId, type: 'WITHDRAWAL' },
+    });
+
+    const description = `Reversión de pago a proveedor (${batch.supplier.businessName}) — ${reason}`;
+
+    await prisma.$transaction(async (tx) => {
+      const byOrder = new Map<string, number>();
+      for (const p of activePayments) byOrder.set(p.purchaseOrderId, (byOrder.get(p.purchaseOrderId) ?? 0) + Number(p.amount));
+
+      for (const [orderId, reverted] of byOrder) {
+        const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
+        const newPaidAmount = Math.max(0, Number(order.paidAmount) - reverted);
+        const newStatus = newPaidAmount <= 0.009 ? 'CREDIT' : newPaidAmount >= Number(order.totalAmount) - 0.009 ? 'PAID' : 'PARTIAL';
+        await tx.purchaseOrder.update({ where: { id: orderId }, data: { paidAmount: newPaidAmount, paymentStatus: newStatus } });
+      }
+
+      for (const pm of treasuryMovements) {
+        await treasuryService.recordMovementInTx(tx, 'DEPOSIT', Number(pm.amount), description, userId, 'PURCHASE_PAYMENT_BATCH_REVERT', batchId, pm.account);
+      }
+      for (const cm of cashMovements) {
+        const session = await tx.cashSession.findUnique({ where: { id: cm.cashSessionId } });
+        if (session?.status === 'OPEN') {
+          await tx.cashMovement.create({
+            data: { cashSessionId: cm.cashSessionId, type: 'DEPOSIT', amount: cm.amount, reason: description, referenceType: 'PURCHASE_PAYMENT_BATCH_REVERT', referenceId: batchId },
+          });
+        } else {
+          await treasuryService.recordMovementInTx(tx, 'DEPOSIT', Number(cm.amount), `${description} (caja ya cerrada)`, userId, 'PURCHASE_PAYMENT_BATCH_REVERT', batchId, 'CASH');
+        }
+      }
+
+      await tx.supplierPayment.updateMany({
+        where: { batchId, reversedAt: null },
+        data: { reversedAt: new Date(), reversedById: userId, reversalReason: reason },
+      });
+      await tx.supplierPaymentBatch.update({
+        where: { id: batchId },
+        data: { reversedAt: new Date(), reversedById: userId, reversalReason: reason },
+      });
+    });
+
+    emitEvent('erp:cash-updated');
+    return this.getSupplierStatement(batch.supplierId);
+  }
+
+  async revertPayerRepaymentBatch(batchId: string, userId: string, reason: string) {
+    if (!reason?.trim()) throw new BusinessError('Indica el motivo de la reversión.');
+    const batch = await prisma.payerRepaymentBatch.findUnique({
+      where: { id: batchId },
+      include: { payer: { select: { name: true } }, payments: true },
+    });
+    if (!batch) throw new NotFoundError('Lote de reposición');
+    if (batch.reversedAt) throw new BusinessError('Esta reposición ya fue revertida antes.');
+
+    const activePayments = batch.payments.filter((p) => !p.reversedAt);
+    if (activePayments.length === 0) throw new BusinessError('Esta reposición ya fue revertida antes.');
+
+    const treasuryMovements = await prisma.treasuryMovement.findMany({
+      where: { referenceType: 'PAYER_REPAYMENT_BATCH', referenceId: batchId, type: 'WITHDRAWAL' },
+    });
+    const cashMovements = await prisma.cashMovement.findMany({
+      where: { referenceType: 'PAYER_REPAYMENT_BATCH', referenceId: batchId, type: 'WITHDRAWAL' },
+    });
+
+    const description = `Reversión de reposición a ${batch.payer.name} — ${reason}`;
+    const totalReverted = activePayments.reduce((s, p) => s + Number(p.amount), 0);
+
+    await prisma.$transaction(async (tx) => {
+      const byOrder = new Map<string, number>();
+      for (const p of activePayments) byOrder.set(p.purchaseOrderId, (byOrder.get(p.purchaseOrderId) ?? 0) + Number(p.amount));
+
+      for (const [orderId, reverted] of byOrder) {
+        const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
+        await tx.purchaseOrder.update({
+          where: { id: orderId },
+          data: { payerReimbursedAmount: Math.max(0, Number(order.payerReimbursedAmount) - reverted) },
+        });
+      }
+
+      for (const pm of treasuryMovements) {
+        await treasuryService.recordMovementInTx(tx, 'DEPOSIT', Number(pm.amount), description, userId, 'PAYER_REPAYMENT_BATCH_REVERT', batchId, pm.account);
+      }
+      for (const cm of cashMovements) {
+        const session = await tx.cashSession.findUnique({ where: { id: cm.cashSessionId } });
+        if (session?.status === 'OPEN') {
+          await tx.cashMovement.create({
+            data: { cashSessionId: cm.cashSessionId, type: 'DEPOSIT', amount: cm.amount, reason: description, referenceType: 'PAYER_REPAYMENT_BATCH_REVERT', referenceId: batchId },
+          });
+        } else {
+          await treasuryService.recordMovementInTx(tx, 'DEPOSIT', Number(cm.amount), `${description} (caja ya cerrada)`, userId, 'PAYER_REPAYMENT_BATCH_REVERT', batchId, 'CASH');
+        }
+      }
+
+      // Deshace el ABONO original con un CARGO — la empresa vuelve a deberle
+      // este monto al pagador, tal como antes de la reposición errónea.
+      await payerLedgerService.recordMovementInTx(tx, batch.payerId, 'CARGO', totalReverted, description, userId, 'PAYER_REPAYMENT_BATCH_REVERT', batchId);
+
+      await tx.payerRepayment.updateMany({
+        where: { batchId, reversedAt: null },
+        data: { reversedAt: new Date(), reversedById: userId, reversalReason: reason },
+      });
+      await tx.payerRepaymentBatch.update({
+        where: { id: batchId },
+        data: { reversedAt: new Date(), reversedById: userId, reversalReason: reason },
+      });
+    });
+
+    emitEvent('erp:cash-updated');
+    return this.getPayerStatement(batch.payerId);
   }
 }
 

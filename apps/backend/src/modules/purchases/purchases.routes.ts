@@ -149,6 +149,17 @@ router.post('/suppliers/:supplierId/pay', authorizeMinRole('WAREHOUSE'), async (
   } catch (err) { next(err); }
 });
 
+// Revierte un pago a proveedor ya registrado (ej. lote pagado por error, monto
+// mal tipeado) — devuelve el dinero, recalcula el saldo de cada OC afectada y
+// marca el lote/las filas como revertidas sin borrar el historial.
+router.post('/payment-batches/:batchId/revert', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { reason } = z.object({ reason: z.string().min(3, 'Indica el motivo de la reversión.') }).parse(req.body);
+    const result = await purchasesService.revertSupplierPaymentBatch(req.params.batchId, req.user!.sub, reason);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 // Pagadores (terceros que ponen el dinero de su bolsillo) — también antes de "/:id".
 router.get('/payers', async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -195,6 +206,18 @@ router.post('/payers/:payerId/pay', authorizeMinRole('WAREHOUSE'), async (req: R
   try {
     const { legs, reference, notes } = payAmountSchema.parse(req.body);
     const result = await purchasesService.payToPayer(req.params.payerId, req.user!.sub, legs, reference, notes);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+// Revierte una reposición a pagador ya registrada (ej. se le repuso al
+// pagador equivocado, monto mal tipeado) — devuelve el dinero, vuelve a subir
+// la deuda de la empresa hacia ese pagador y marca el lote/las filas como
+// revertidas sin borrar el historial.
+router.post('/payer-repayment-batches/:batchId/revert', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { reason } = z.object({ reason: z.string().min(3, 'Indica el motivo de la reversión.') }).parse(req.body);
+    const result = await purchasesService.revertPayerRepaymentBatch(req.params.batchId, req.user!.sub, reason);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

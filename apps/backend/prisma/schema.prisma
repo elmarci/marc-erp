@@ -193,10 +193,14 @@ model User {
   treasuryMovements         TreasuryMovement[]
   expenses                  Expense[]
   recurringExpenseTemplates RecurringExpenseTemplate[]
-  supplierPayments          SupplierPayment[]
-  supplierPaymentBatches    SupplierPaymentBatch[]
-  payerRepayments           PayerRepayment[]
-  payerRepaymentBatches     PayerRepaymentBatch[]
+  supplierPayments          SupplierPayment[]          @relation("SupplierPaymentUser")
+  supplierPaymentsReversed  SupplierPayment[]          @relation("SupplierPaymentReversedBy")
+  supplierPaymentBatches    SupplierPaymentBatch[]     @relation("SupplierPaymentBatchUser")
+  supplierPaymentBatchesReversed SupplierPaymentBatch[] @relation("SupplierPaymentBatchReversedBy")
+  payerRepayments           PayerRepayment[]           @relation("PayerRepaymentUser")
+  payerRepaymentsReversed   PayerRepayment[]           @relation("PayerRepaymentReversedBy")
+  payerRepaymentBatches     PayerRepaymentBatch[]      @relation("PayerRepaymentBatchUser")
+  payerRepaymentBatchesReversed PayerRepaymentBatch[]  @relation("PayerRepaymentBatchReversedBy")
   bottleDepositMovements    BottleDepositMovement[]
   payerMovements            PayerMovement[]
   treasuryReconciliations   TreasuryReconciliation[]
@@ -789,10 +793,17 @@ model SupplierPayment {
   // cada fila siga apuntando a UNA orden (mismo esquema de siempre, nada se
   // rompe para pagos de una sola orden donde batchId queda null).
   batchId         String?       @map("batch_id")
+  // Reversión (corrección de un pago mal registrado): se marca en vez de
+  // borrarse, para que el historial siga mostrando que este pago existió y
+  // por qué se dejó sin efecto — quién, cuándo y con qué motivo.
+  reversedAt      DateTime?     @map("reversed_at")
+  reversedById    String?       @map("reversed_by_id")
+  reversalReason  String?       @map("reversal_reason")
 
   purchaseOrder PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
-  user          User                  @relation(fields: [userId], references: [id])
+  user          User                  @relation("SupplierPaymentUser", fields: [userId], references: [id])
   batch         SupplierPaymentBatch? @relation(fields: [batchId], references: [id])
+  reversedBy    User?                 @relation("SupplierPaymentReversedBy", fields: [reversedById], references: [id])
 
   @@index([purchaseOrderId])
   @@index([batchId])
@@ -804,17 +815,21 @@ model SupplierPayment {
 // las filas de SupplierPayment que genera para poder mostrarlas/anularlas
 // juntas sin perder la trazabilidad por orden.
 model SupplierPaymentBatch {
-  id          String   @id @default(uuid())
-  supplierId  String   @map("supplier_id")
-  userId      String   @map("user_id")
-  totalAmount Decimal  @map("total_amount") @db.Decimal(12, 2)
-  reference   String?
-  notes       String?
-  paidAt      DateTime @default(now()) @map("paid_at")
+  id             String    @id @default(uuid())
+  supplierId     String    @map("supplier_id")
+  userId         String    @map("user_id")
+  totalAmount    Decimal   @map("total_amount") @db.Decimal(12, 2)
+  reference      String?
+  notes          String?
+  paidAt         DateTime  @default(now()) @map("paid_at")
+  reversedAt     DateTime? @map("reversed_at")
+  reversedById   String?   @map("reversed_by_id")
+  reversalReason String?   @map("reversal_reason")
 
-  supplier Supplier          @relation(fields: [supplierId], references: [id])
-  user     User              @relation(fields: [userId], references: [id])
-  payments SupplierPayment[]
+  supplier   Supplier          @relation(fields: [supplierId], references: [id])
+  user       User              @relation("SupplierPaymentBatchUser", fields: [userId], references: [id])
+  reversedBy User?             @relation("SupplierPaymentBatchReversedBy", fields: [reversedById], references: [id])
+  payments   SupplierPayment[]
 
   @@index([supplierId])
   @@map("supplier_payment_batches")
@@ -836,11 +851,17 @@ model PayerRepayment {
   reference       String?
   notes           String?
   paidAt          DateTime      @default(now()) @map("paid_at")
+  // Reversión (ej. reposición registrada al pagador equivocado, monto mal
+  // tipeado, etc.) — se marca en vez de borrarse, igual que SupplierPayment.
+  reversedAt      DateTime?     @map("reversed_at")
+  reversedById    String?       @map("reversed_by_id")
+  reversalReason  String?       @map("reversal_reason")
 
   payer         Payer                @relation(fields: [payerId], references: [id])
   purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
   batch         PayerRepaymentBatch? @relation(fields: [batchId], references: [id])
-  user          User                 @relation(fields: [userId], references: [id])
+  user          User                 @relation("PayerRepaymentUser", fields: [userId], references: [id])
+  reversedBy    User?                @relation("PayerRepaymentReversedBy", fields: [reversedById], references: [id])
 
   @@index([payerId])
   @@index([purchaseOrderId])
@@ -849,17 +870,21 @@ model PayerRepayment {
 }
 
 model PayerRepaymentBatch {
-  id          String   @id @default(uuid())
-  payerId     String   @map("payer_id")
-  userId      String   @map("user_id")
-  totalAmount Decimal  @map("total_amount") @db.Decimal(12, 2)
-  reference   String?
-  notes       String?
-  paidAt      DateTime @default(now()) @map("paid_at")
+  id             String    @id @default(uuid())
+  payerId        String    @map("payer_id")
+  userId         String    @map("user_id")
+  totalAmount    Decimal   @map("total_amount") @db.Decimal(12, 2)
+  reference      String?
+  notes          String?
+  paidAt         DateTime  @default(now()) @map("paid_at")
+  reversedAt     DateTime? @map("reversed_at")
+  reversedById   String?   @map("reversed_by_id")
+  reversalReason String?   @map("reversal_reason")
 
-  payer    Payer            @relation(fields: [payerId], references: [id])
-  user     User             @relation(fields: [userId], references: [id])
-  payments PayerRepayment[]
+  payer      Payer            @relation(fields: [payerId], references: [id])
+  user       User             @relation("PayerRepaymentBatchUser", fields: [userId], references: [id])
+  reversedBy User?            @relation("PayerRepaymentBatchReversedBy", fields: [reversedById], references: [id])
+  payments   PayerRepayment[]
 
   @@index([payerId])
   @@map("payer_repayment_batches")
