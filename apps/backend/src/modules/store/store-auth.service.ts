@@ -167,6 +167,43 @@ export class StoreAuthService {
     return prisma.storeAddress.update({ where: { id: addressId }, data: { isDefault: true } });
   }
 
+  // "Reporte de consumos" del perfil — cantidad comprada por producto en un
+  // rango de fechas. Se lee directo de las Ventas reales del ERP (no de los
+  // pedidos web nada más) para que cuente TODO lo que compró, incluida la
+  // mercadería que llevó pagando en caja física con el mismo teléfono.
+  async getConsumptionReport(storeCustomerId: string, from: Date, to: Date) {
+    const storeCustomer = await prisma.storeCustomer.findUnique({ where: { id: storeCustomerId } });
+    if (!storeCustomer?.customerId) return { items: [], totalUnits: 0, totalSpent: 0 };
+
+    const grouped = await prisma.saleItem.groupBy({
+      by: ['productId', 'productName'],
+      where: {
+        sale: {
+          customerId: storeCustomer.customerId,
+          status: { in: ['COMPLETED', 'PARTIALLY_RETURNED'] },
+          createdAt: { gte: from, lte: to },
+        },
+      },
+      _sum: { quantity: true, subtotal: true },
+      _count: { _all: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+    });
+
+    const items = grouped.map(g => ({
+      productId: g.productId,
+      productName: g.productName,
+      quantity: Number(g._sum.quantity ?? 0),
+      spent: Number(g._sum.subtotal ?? 0),
+      timesPurchased: g._count._all,
+    }));
+
+    return {
+      items,
+      totalUnits: items.reduce((s, i) => s + i.quantity, 0),
+      totalSpent: items.reduce((s, i) => s + i.spent, 0),
+    };
+  }
+
   verifyToken(token: string): string {
     const payload = jwt.verify(token, CUSTOMER_JWT_SECRET) as { sub: string };
     return payload.sub;

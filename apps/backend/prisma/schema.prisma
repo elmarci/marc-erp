@@ -1554,6 +1554,14 @@ model StoreOrder {
   // para afinar la entrega; nunca reemplaza la dirección escrita.
   latitude        Float?
   longitude       Float?
+  // Canje de puntos de fidelización — mismo mecanismo y mismas settings
+  // (loyalty_point_value) que ya usa el POS del ERP (ver sales.service.ts),
+  // para que "cuánto vale un punto" nunca se desalinee entre canal online y
+  // tienda física. Se valida al crear el pedido y se descuenta de verdad
+  // recién al confirmarlo (mismo momento en que hoy se SUMAN los puntos
+  // ganados), con el mismo resguardo atómico contra doble-canje.
+  pointsRedeemed        Int     @default(0) @map("points_redeemed")
+  pointsDiscountAmount  Decimal @default(0) @map("points_discount_amount") @db.Decimal(12, 2)
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 

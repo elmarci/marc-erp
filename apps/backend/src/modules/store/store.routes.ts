@@ -79,6 +79,10 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
       // nunca se confía en ella para nada crítico, sólo ayuda a la entrega.
       latitude: z.coerce.number().min(-90).max(90).optional(),
       longitude: z.coerce.number().min(-180).max(180).optional(),
+      // Canje de puntos de fidelización — solo tiene efecto si hay sesión
+      // (storeAuthMiddleware la resuelve más abajo); un invitado no puede
+      // canjear puntos que no tiene forma de tener.
+      pointsToRedeem: z.coerce.number().int().min(0).optional(),
       items: z.array(z.object({
         // Acepta UUID normal O IDs de bundle (bundle-offerId-productId)
         productId: z.string().min(1),

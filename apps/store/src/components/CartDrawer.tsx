@@ -1,7 +1,9 @@
-import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck } from 'lucide-react'
+import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck, Sparkles } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useCartStore, cartTotal, type CartItem } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { useNavigate } from 'react-router-dom'
+import { storeApi } from '../api'
 
 const WHATSAPP_NUMBER = '51930555831'
 
@@ -14,8 +16,22 @@ export function CartDrawer() {
   const removeBundle = useCartStore(s => s.removeBundle)
   const clearCart = useCartStore(s => s.clearCart)
   const customer = useAuthStore(s => s.customer)
+  const addItem = useCartStore(s => s.addItem)
   const total = cartTotal(items)
   const navigate = useNavigate()
+
+  // "¿Se te olvidó algo?" — v1 simple: productos destacados que todavía no
+  // están en el carrito. No es una recomendación inteligente por combinación
+  // de compra (eso necesita datos de qué se vende junto con qué, que hoy no
+  // se registra) — ver la propuesta de analítica para esa versión más fina.
+  const { data: featuredData } = useQuery({
+    queryKey: ['store-featured-upsell'],
+    queryFn: () => storeApi.getFeaturedProducts(8),
+    enabled: items.length > 0,
+    staleTime: 300000,
+  })
+  const cartProductIds = new Set(items.map(i => i.product.id))
+  const upsellProducts = (featuredData?.data.data ?? []).filter(p => !cartProductIds.has(p.id)).slice(0, 3)
 
   // Agrupa las líneas de un mismo paquete (bundle/combo) en una sola tarjeta
   // — antes cada sabor/variante salía como una fila estirada aparte, lo que
@@ -70,10 +86,14 @@ export function CartDrawer() {
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-dashed border-paper-line">
-          <h2 className="text-sm font-bold tracking-[.08em] uppercase flex items-center gap-2 text-paper-ink">
+          {/* "Carrito", no "Ticket" — el ticket/recibo es la pantalla de
+              después de confirmar (OrderConfirmPage), esto todavía se puede
+              editar. Antes decía "Ticket · Tu pedido", mezclando los dos
+              momentos. */}
+          <h2 className="text-sm font-bold tracking-[.08em] uppercase flex items-center gap-2 text-paper-ink font-display normal-case text-base">
             <ShoppingBag className="h-4 w-4 text-brand-green-600" />
-            Ticket · Tu pedido
-            {items.length > 0 && <span className="text-xs font-normal normal-case text-paper-ink-ghost">({items.length})</span>}
+            Tu carrito
+            {items.length > 0 && <span className="text-xs font-normal normal-case text-paper-ink-ghost font-sans">({items.length})</span>}
           </h2>
           <div className="flex items-center gap-1">
             {items.length > 0 && (
@@ -143,6 +163,30 @@ export function CartDrawer() {
                 </div>
               </div>
             ) : null)
+          )}
+          {upsellProducts.length > 0 && (
+            <div className="mt-2 pt-4 border-t border-dashed border-paper-line">
+              <p className="font-display font-semibold text-sm text-paper-ink flex items-center gap-1.5 mb-3">
+                <Sparkles className="h-3.5 w-3.5 text-brand-achiote-600" />¿Se te olvidó algo?
+              </p>
+              <div className="flex gap-2.5 overflow-x-auto no-scrollbar -mx-1 px-1">
+                {upsellProducts.map(p => (
+                  <button key={p.id} onClick={() => addItem(p)}
+                    className="shrink-0 w-24 bg-brand-achiote-50 border border-brand-achiote-200 rounded-xl p-2 text-left hover:border-brand-achiote-400 transition-colors">
+                    <div className="h-12 w-12 rounded-lg bg-white overflow-hidden mb-1.5 flex items-center justify-center mx-auto">
+                      {p.imageUrl
+                        ? <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />
+                        : <ShoppingBag className="h-4 w-4 text-paper-ink-ghost" />}
+                    </div>
+                    <p className="text-[10.5px] font-semibold text-paper-ink line-clamp-2 leading-tight text-center">{p.name}</p>
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <span className="text-[10px] font-mono text-paper-ink-soft">S/ {Number(p.salePrice).toFixed(2)}</span>
+                      <span className="h-3.5 w-3.5 rounded-full bg-brand-achiote-500 text-white flex items-center justify-center text-[9px] font-bold leading-none">+</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 

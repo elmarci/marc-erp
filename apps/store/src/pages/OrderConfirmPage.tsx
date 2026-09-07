@@ -163,26 +163,66 @@ export function OrderConfirmPage() {
         </div>
       )}
 
-      {/* Order details - estilo ticket */}
+      {/* Tu ticket — mismo formato de columnas que el ticket físico
+          (Cant./Unid./Producto/P.Unit/Total), con la foto de cada producto.
+          Esta es la pantalla donde el cliente de verdad puede ver/guardar
+          su comprobante — antes solo había un resumen de 2 columnas sin
+          nombre de "ticket" en ningún lado. */}
       <div className="bg-white rounded-2xl shadow-sm mb-4 border border-paper-line overflow-hidden">
         <div className="h-2 shrink-0" style={{ backgroundImage: 'radial-gradient(circle, rgba(32,30,29,.18) 1.5px, transparent 1.5px)', backgroundSize: '10px 10px', backgroundPosition: 'center' }} />
         <div className="p-5">
-        <h3 className="font-bold mb-4 text-paper-ink">Detalle del pedido</h3>
-        <div className="space-y-0 mb-4">
-          {order.items.map((item, idx) => (
-            <div key={item.id} className={`flex justify-between text-sm py-2 ${idx > 0 ? 'border-t border-dashed border-paper-line' : ''}`}>
-              <span className="text-paper-ink-soft">{item.name} <span className="text-paper-ink-ghost">×{item.quantity}</span></span>
-              <span className="font-medium text-paper-ink">S/ {Number(item.subtotal).toFixed(2)}</span>
-            </div>
-          ))}
-        </div>
-        <div className="border-t border-dashed border-paper-line pt-3 space-y-2 text-sm">
-          <div className="flex justify-between text-paper-ink-soft">
-            <span>Subtotal</span><span>S/ {Number(order.subtotal).toFixed(2)}</span>
+        <div className="flex flex-col items-center text-center mb-4">
+          <div className="h-11 w-11 rounded-full border-2 border-brand-green-600 flex items-center justify-center -rotate-6 mb-2">
+            <span className="text-[10px] font-display font-semibold text-brand-green-600 rotate-6">MARC</span>
           </div>
-          <div className="flex justify-between font-black text-base text-paper-ink">
+          <h3 className="font-display font-semibold text-paper-ink">Tu ticket</h3>
+          <p className="text-[10px] tracking-[.08em] uppercase text-paper-ink-ghost font-mono">Pachacamac · {order.orderNumber}</p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono min-w-[420px]">
+            <thead>
+              <tr className="border-b-2 border-paper-ink text-paper-ink-ghost uppercase tracking-wide text-[10px]">
+                <th className="text-left font-semibold pb-2">Cant.</th>
+                <th className="text-left font-semibold pb-2">Unid.</th>
+                <th className="text-left font-semibold pb-2">Producto</th>
+                <th className="text-right font-semibold pb-2">P.Unit</th>
+                <th className="text-right font-semibold pb-2">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.items.map(item => {
+                const unit = Number.isInteger(Number(item.quantity)) ? 'und' : 'kg'
+                return (
+                  <tr key={item.id} className="border-b border-dashed border-paper-line">
+                    <td className="py-2 text-paper-ink-soft align-middle tabular-nums">{Number(item.quantity)}</td>
+                    <td className="py-2 text-paper-ink-soft align-middle">{unit}</td>
+                    <td className="py-2 align-middle">
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 rounded-md bg-paper-surface shrink-0 overflow-hidden flex items-center justify-center">
+                          {item.imageUrl
+                            ? <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+                            : <Package className="h-3 w-3 text-paper-ink-ghost" />}
+                        </div>
+                        <span className="text-paper-ink font-semibold truncate max-w-[140px]">{item.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2 text-right text-paper-ink-soft tabular-nums">{Number(item.unitPrice).toFixed(2)}</td>
+                    <td className="py-2 text-right text-paper-ink font-semibold tabular-nums">{Number(item.subtotal).toFixed(2)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="border-t border-dashed border-paper-line mt-3 pt-3 space-y-2 text-sm">
+          <div className="flex justify-between text-paper-ink-soft">
+            <span>Subtotal</span><span className="tabular-nums">S/ {Number(order.subtotal).toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between font-display font-semibold text-base text-paper-ink">
             <span>TOTAL</span>
-            <span className="text-brand-green-700">S/ {Number(order.total).toFixed(2)}</span>
+            <span className="text-brand-green-700 tabular-nums">S/ {Number(order.total).toFixed(2)}</span>
           </div>
         </div>
 

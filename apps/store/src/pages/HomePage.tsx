@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ChevronRight, Flame, LayoutGrid, Tag } from 'lucide-react'
+import { ChevronRight, Flame, LayoutGrid, Tag, ShoppingBag } from 'lucide-react'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { PromoCarousel } from '../components/PromoCarousel'
@@ -42,8 +42,14 @@ export function HomePage() {
   })
 
   const categories = categoriesData?.data.data ?? []
-  const featured = featuredData?.data.data ?? []
+  const allFeatured = featuredData?.data.data ?? []
   const offers = offersData?.data.data ?? []
+
+  // "Llegó fresco hoy" toma sus 3 primeros de los mismos destacados que ya
+  // se cargan para "Los más vendidos" (sin pedir nada nuevo al backend) — el
+  // resto de la fila de abajo excluye esos 3 para no repetir producto.
+  const freshPicks = allFeatured.slice(0, 3)
+  const featured = allFeatured.slice(3)
 
   return (
     <main>
@@ -54,18 +60,45 @@ export function HomePage() {
           tarjetas eran ofertas y no, por ejemplo, productos destacados. */}
       {offers.length > 0 && (
         <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-4">
-          <Reveal><h2 className="text-lg font-bold text-paper-ink flex items-center gap-2">
+          <Reveal><h2 className="text-lg font-display font-semibold text-paper-ink flex items-center gap-2">
             <Tag className="h-4.5 w-4.5 text-brand-magenta-600" />Ofertas
           </h2></Reveal>
         </div>
       )}
       <PromoCarousel offers={offers} />
 
+      {/* "Llegó fresco hoy" — algo que ninguna app de delivery agregadora
+          (Rappi, PedidosYa) podría poner con la misma honestidad, porque es
+          específico de tener una bodega real. Usa los mismos productos
+          destacados que ya se cargan abajo, sin pedir nada nuevo. */}
+      {freshPicks.length > 0 && (
+        <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-5">
+          <Reveal><h2 className="text-lg font-display font-semibold text-paper-ink flex items-center gap-2 mb-4">
+            <span className="h-2 w-2 rounded-full bg-brand-achiote-500 shrink-0" />Llegó fresco hoy
+          </h2></Reveal>
+          <StaggerGroup className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0">
+            {freshPicks.map(p => (
+              <StaggerItem key={p.id} className="shrink-0 w-32 snap-start">
+                <Link to={`/producto/${p.id}`}
+                  className="block bg-brand-achiote-50 border border-brand-achiote-200 rounded-2xl p-3 hover:border-brand-achiote-400 transition-colors">
+                  <div className="h-14 w-14 rounded-xl bg-white overflow-hidden flex items-center justify-center mb-2">
+                    {p.imageUrl
+                      ? <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />
+                      : <ShoppingBag className="h-5 w-5 text-paper-ink-ghost" />}
+                  </div>
+                  <p className="text-xs font-semibold text-paper-ink line-clamp-2 leading-tight">{p.name}</p>
+                </Link>
+              </StaggerItem>
+            ))}
+          </StaggerGroup>
+        </div>
+      )}
+
       {/* Categorías — acceso rápido tipo app (ícono uniforme + nombre), no
           una vitrina de fotos de productos sueltos. */}
       {categories.length > 0 && (
         <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <Reveal><h2 className="text-lg font-bold mb-4 text-paper-ink">Categorías</h2></Reveal>
+          <Reveal><h2 className="text-lg font-display font-semibold mb-4 text-paper-ink">Categorías</h2></Reveal>
           <StaggerGroup className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-10">
             <StaggerItem className="shrink-0 w-16 snap-start sm:w-auto">
               <MotionLink to="/catalogo" whileTap={{ scale: 0.94 }}
@@ -98,7 +131,7 @@ export function HomePage() {
       {/* Featured products — más vendidos reales, no un listado alfabético */}
       <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-16">
         <Reveal className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-paper-ink flex items-center gap-2">
+          <h2 className="text-xl font-display font-semibold text-paper-ink flex items-center gap-2">
             <Flame className="h-5 w-5 text-amber-500" />Los más vendidos
           </h2>
           <Link to="/catalogo" className="text-brand-blue-600 hover:text-brand-blue-700 text-sm flex items-center gap-1 transition-colors group">
@@ -112,7 +145,7 @@ export function HomePage() {
             </StaggerItem>
           ))}
         </StaggerGroup>
-        {featured.length === 0 && (
+        {allFeatured.length === 0 && (
           <div className="text-center py-16 text-paper-ink-ghost">
             <p>Cargando productos...</p>
           </div>

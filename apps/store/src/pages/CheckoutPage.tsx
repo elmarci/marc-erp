@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store, Plus, LocateFixed, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store, Plus, LocateFixed, CheckCircle2, Gift } from 'lucide-react'
 import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
@@ -30,6 +30,23 @@ export function CheckoutPage() {
     enabled: !!isLoggedIn,
   })
   const savedAddresses = profileData?.data.data.addresses ?? []
+
+  // Canje de puntos — mismo valor por punto (loyalty_point_value) que ya
+  // usa el POS del ERP, así "cuánto vale un punto" nunca se desalinea entre
+  // canal online y tienda física (ver store.service.ts).
+  const { data: displaySettings } = useQuery({
+    queryKey: ['store-display-settings'],
+    queryFn: () => storeApi.getDisplaySettings(),
+  })
+  const pointValue = displaySettings?.data.data.loyaltyPointValue ?? 0.03
+  const pointsAvailable = profileData?.data.data.loyaltyPoints ?? 0
+  const [usePoints, setUsePoints] = useState(false)
+  // No canjea más puntos de los necesarios para cubrir el pedido — si tiene
+  // 1000 puntos y el pedido cuesta S/10, no le conviene gastarlos todos acá.
+  const pointsNeeded = pointValue > 0 ? Math.ceil(total / pointValue) : 0
+  const pointsToRedeem = usePoints ? Math.min(pointsAvailable, pointsNeeded) : 0
+  const pointsDiscount = Math.min(pointsToRedeem * pointValue, total)
+  const finalTotal = total - pointsDiscount
 
   const [form, setForm] = useState({
     customerName: customer?.name ?? '',
@@ -93,6 +110,7 @@ export function CheckoutPage() {
       paymentMethod: form.paymentMethod,
       latitude: coords?.lat,
       longitude: coords?.lng,
+      pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
       items: items.map(i => ({
         productId: i.product.id,
         quantity: i.quantity,
@@ -399,7 +417,7 @@ export function CheckoutPage() {
                     <p className="font-semibold text-paper-ink">Escanea y paga con Yape</p>
                     <img src="/yape-qr.png" alt="QR de Yape para pagar" className="w-40 rounded-xl border border-paper-line" />
                     <p className="text-paper-ink-soft">
-                      Paga <strong className="text-paper-ink">S/ {total.toFixed(2)}</strong> y guarda tu captura — te la pedimos apenas confirmes el pedido.
+                      Paga <strong className="text-paper-ink">S/ {finalTotal.toFixed(2)}</strong> y guarda tu captura — te la pedimos apenas confirmes el pedido.
                     </p>
                   </div>
                 )}
@@ -408,7 +426,7 @@ export function CheckoutPage() {
                   <div className="bg-brand-blue-50 border border-brand-blue-200 rounded-xl p-4 text-sm flex flex-col items-center text-center gap-2">
                     <p className="font-semibold text-paper-ink">Yapeas cuando te llegue el pedido</p>
                     <p className="text-paper-ink-soft">
-                      No necesitas pagar ahora. {form.deliveryType === 'PICKUP' ? 'Al recoger tu pedido' : 'Cuando el repartidor llegue'} te mostramos el QR o número para que Yapees <strong className="text-paper-ink">S/ {total.toFixed(2)}</strong>.
+                      No necesitas pagar ahora. {form.deliveryType === 'PICKUP' ? 'Al recoger tu pedido' : 'Cuando el repartidor llegue'} te mostramos el QR o número para que Yapees <strong className="text-paper-ink">S/ {finalTotal.toFixed(2)}</strong>.
                     </p>
                   </div>
                 )}
@@ -425,7 +443,7 @@ export function CheckoutPage() {
                     {mutation.isPending ? (
                       <><div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Procesando...</>
                     ) : (
-                      <><Check className="h-5 w-5" />Confirmar pedido · S/ {total.toFixed(2)}</>
+                      <><Check className="h-5 w-5" />Confirmar pedido · S/ {finalTotal.toFixed(2)}</>
                     )}
                   </button>
                 </div>
@@ -462,11 +480,35 @@ export function CheckoutPage() {
                 ))}
               </div>
 
+              {/* Canje de puntos — el saldo es el real del ERP (mismo que ve
+                  un cajero en el POS), no un número aparte de la tienda. */}
+              {isLoggedIn && pointsAvailable > 0 && (
+                <label className={`flex items-center gap-3 rounded-xl border p-3 mb-4 cursor-pointer transition-colors ${
+                  usePoints ? 'border-brand-green-400 bg-brand-green-50' : 'border-paper-line hover:border-paper-ink-faint'
+                }`}>
+                  <input type="checkbox" checked={usePoints} onChange={e => setUsePoints(e.target.checked)}
+                    className="rounded border-paper-line text-brand-green-600 focus:ring-brand-green-400 h-4 w-4 shrink-0" />
+                  <Gift className="h-4 w-4 text-brand-green-600 shrink-0" />
+                  <span className="flex-1 text-xs text-paper-ink-soft">
+                    Tienes <b className="text-paper-ink">{pointsAvailable} pts</b> — canjea {pointsToRedeem > 0 ? pointsToRedeem : Math.min(pointsAvailable, pointsNeeded)} y ahorra
+                  </span>
+                  <span className="text-sm font-bold text-brand-green-700 shrink-0 tabular-nums">
+                    -S/ {(usePoints ? pointsDiscount : Math.min(pointsAvailable * pointValue, total)).toFixed(2)}
+                  </span>
+                </label>
+              )}
+
               <div className="border-t border-dashed border-paper-line pt-3 space-y-2 text-sm">
                 <div className="flex justify-between text-paper-ink-soft">
                   <span>Subtotal ({items.reduce((s, i) => s + i.quantity, 0)} items)</span>
-                  <span>S/ {total.toFixed(2)}</span>
+                  <span className="tabular-nums">S/ {total.toFixed(2)}</span>
                 </div>
+                {usePoints && pointsDiscount > 0 && (
+                  <div className="flex justify-between text-brand-green-700">
+                    <span>Puntos canjeados ({pointsToRedeem})</span>
+                    <span className="tabular-nums">-S/ {pointsDiscount.toFixed(2)}</span>
+                  </div>
+                )}
                 {form.deliveryType === 'DELIVERY' && (
                   <div className="flex justify-between text-paper-ink-soft">
                     <span>Delivery</span>
@@ -483,7 +525,7 @@ export function CheckoutPage() {
 
               <div className="flex justify-between font-black text-lg border-t border-dashed border-paper-line mt-3 pt-3 text-paper-ink">
                 <span>TOTAL</span>
-                <span className="text-brand-green-700">S/ {total.toFixed(2)}</span>
+                <span className="text-brand-green-700 tabular-nums">S/ {finalTotal.toFixed(2)}</span>
               </div>
 
               {/* Summary of selected options */}

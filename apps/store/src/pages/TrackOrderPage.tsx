@@ -1,14 +1,104 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Package, LogOut, ChevronRight, RefreshCw, Star, ShoppingBag,
-  MapPin, Plus, Trash2, Pencil, Check, X, CalendarDays,
+  Package, LogOut, ChevronRight, RefreshCw, ShoppingBag,
+  MapPin, Plus, Trash2, Pencil, Check, X, CalendarDays, Gift, BarChart3,
 } from 'lucide-react'
 import { storeApi, type StoreAddress } from '../api'
 import { useAuthStore } from '../authStore'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useCartStore } from '../cartStore'
 import { toast } from 'sonner'
+
+// yyyy-mm-dd para <input type="date">, en hora local — evita que un "hoy"
+// en UTC se muestre como "ayer" para quien está en Perú (UTC-5).
+function toDateInput(d: Date): string {
+  const tz = d.getTimezoneOffset()
+  return new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10)
+}
+
+/* ── Reporte de consumos: cuánto compró de cada producto, en un rango ──── */
+function ConsumptionReport() {
+  const [from, setFrom] = useState(toDateInput(new Date(Date.now() - 90 * 86400000)))
+  const [to, setTo] = useState(toDateInput(new Date()))
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['consumption-report', from, to],
+    queryFn: () => storeApi.getConsumptionReport(from, `${to}T23:59:59`),
+  })
+  const items = data?.data.data.items ?? []
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-paper-line p-5">
+      <h3 className="font-display font-semibold text-paper-ink flex items-center gap-2 mb-1">
+        <BarChart3 className="h-4 w-4 text-brand-blue-600" />Reporte de consumos
+      </h3>
+      <p className="text-xs text-paper-ink-ghost mb-4">Cuánto compraste de cada producto, en el rango que elijas.</p>
+
+      <div className="flex items-center gap-2 mb-4">
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} max={to}
+          className="flex-1 bg-paper-surface border border-transparent focus:border-brand-blue-400 rounded-xl px-3 py-2 text-xs text-paper-ink outline-none transition-colors" />
+        <span className="text-xs text-paper-ink-ghost">a</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} min={from} max={toDateInput(new Date())}
+          className="flex-1 bg-paper-surface border border-transparent focus:border-brand-blue-400 rounded-xl px-3 py-2 text-xs text-paper-ink outline-none transition-colors" />
+      </div>
+
+      {isLoading ? (
+        <p className="text-sm text-paper-ink-ghost py-4 text-center">Calculando...</p>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-paper-ink-ghost py-4 text-center">Sin compras registradas en ese rango.</p>
+      ) : (
+        <div className="divide-y divide-paper-line">
+          {items.map(item => (
+            <div key={item.productId} className="flex items-center justify-between gap-3 py-2.5">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-paper-ink truncate">{item.productName}</p>
+                <p className="text-xs text-paper-ink-ghost">{item.timesPurchased} {item.timesPurchased === 1 ? 'compra' : 'compras'}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-bold text-paper-ink tabular-nums">{item.quantity} u.</p>
+                <p className="text-xs text-paper-ink-ghost tabular-nums">S/ {item.spent.toFixed(2)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Puntos y zona de canje ────────────────────────────────────────────── */
+function PointsZone({ points }: { points: number }) {
+  const { data } = useQuery({
+    queryKey: ['store-display-settings'],
+    queryFn: () => storeApi.getDisplaySettings(),
+  })
+  const pointValue = data?.data.data.loyaltyPointValue ?? 0.03
+  const worth = points * pointValue
+
+  return (
+    <div className="bg-gradient-to-br from-brand-green-600 to-brand-green-700 rounded-2xl shadow-sm p-5 text-white">
+      <h3 className="font-display font-semibold flex items-center gap-2 mb-1">
+        <Gift className="h-4 w-4" />Zona de canje
+      </h3>
+      <p className="text-xs text-white/75 mb-4">Tus puntos valen dinero real en tu próxima compra.</p>
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-3xl font-display font-semibold tabular-nums">{points}</p>
+          <p className="text-xs text-white/75">puntos disponibles</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xl font-bold tabular-nums">S/ {worth.toFixed(2)}</p>
+          <p className="text-xs text-white/75">valor equivalente</p>
+        </div>
+      </div>
+      <Link to="/" className="mt-4 flex items-center justify-center gap-1.5 bg-white/15 hover:bg-white/25 rounded-xl py-2.5 text-sm font-semibold transition-colors">
+        Usarlos en mi próxima compra <ChevronRight className="h-4 w-4" />
+      </Link>
+      <p className="text-[10px] text-white/60 mt-2 text-center">Se canjean solos al pagar — eliges cuánto usar en el checkout.</p>
+    </div>
+  )
+}
 
 const STATUS: Record<string, { label: string; color: string; emoji: string }> = {
   PENDING:   { label: 'Pendiente',   color: 'text-amber-600',      emoji: '⏳' },
@@ -163,6 +253,7 @@ function ProfileEditor({ name, email }: { name: string; email: string | null }) 
 export function TrackOrderPage() {
   const { customer, logout, exitGuestMode } = useAuthStore()
   const { addItem, openCart } = useCartStore()
+  const location = useLocation()
 
   const { data: profileData } = useQuery({
     queryKey: ['store-profile'],
@@ -180,6 +271,18 @@ export function TrackOrderPage() {
 
   const orders = data?.data.data ?? []
   const totalSpent = orders.reduce((s, o) => s + Number(o.total), 0)
+
+  // Deep links del menú lateral (#canje, #consumo, #direcciones) — se espera
+  // un tick a que el contenido real se pinte (llega por query async) antes
+  // de hacer scroll, si no el offset queda calculado sobre el layout viejo.
+  useEffect(() => {
+    if (!location.hash) return
+    const id = location.hash.slice(1)
+    const timer = setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [location.hash, profile])
 
   const repeatOrder = (order: typeof orders[0]) => {
     order.items.forEach(item => {
@@ -216,12 +319,13 @@ export function TrackOrderPage() {
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-12">
-      {/* Header */}
+      {/* Header — mismo sello circular que el ticket, para que se sienta la
+          misma identidad de marca en toda la tienda. */}
       <div className="text-center mb-8">
-        <div className="h-16 w-16 bg-brand-blue-500 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-3 shadow-sm">
+        <div className="h-16 w-16 rounded-full border-2 border-brand-green-600 flex items-center justify-center text-brand-green-600 text-2xl font-display font-semibold mx-auto mb-3 -rotate-3 bg-white shadow-sm">
           {customer!.name[0].toUpperCase()}
         </div>
-        <h1 className="text-2xl font-black text-paper-ink">{customer!.name}</h1>
+        <h1 className="text-2xl font-display font-semibold text-paper-ink">{customer!.name}</h1>
         <p className="text-paper-ink-soft text-sm">{customer!.phone}{customer!.email ? ` · ${customer!.email}` : ''}</p>
         {profile && (
           <p className="text-xs text-paper-ink-faint flex items-center justify-center gap-1 mt-1">
@@ -236,33 +340,36 @@ export function TrackOrderPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-8">
+      {/* Stats rápidas */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
           <ShoppingBag className="h-4 w-4 text-brand-blue-600 mx-auto mb-1" />
-          <p className="text-lg font-black text-paper-ink">{orders.length}</p>
+          <p className="text-lg font-display font-semibold text-paper-ink">{orders.length}</p>
           <p className="text-xs text-paper-ink-ghost">Pedidos</p>
         </div>
         <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
-          <span className="text-sm font-black text-brand-blue-600 block mb-1">S/</span>
-          <p className="text-lg font-black text-paper-ink">{totalSpent.toFixed(0)}</p>
+          <span className="text-sm font-bold text-brand-blue-600 block mb-1">S/</span>
+          <p className="text-lg font-display font-semibold text-paper-ink">{totalSpent.toFixed(0)}</p>
           <p className="text-xs text-paper-ink-ghost">Comprado</p>
         </div>
-        <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
-          <div className="h-6 w-6 mx-auto mb-1 rounded-full border border-dashed border-brand-magenta-300 flex items-center justify-center">
-            <Star className="h-3 w-3 text-brand-magenta-500" />
-          </div>
-          <p className="text-lg font-black text-paper-ink">{profile?.loyaltyPoints ?? 0}</p>
-          <p className="text-xs text-paper-ink-ghost">Puntos</p>
-        </div>
+      </div>
+
+      {/* Puntos y zona de canje */}
+      <div id="canje" className="mb-4 scroll-mt-20">
+        <PointsZone points={profile?.loyaltyPoints ?? 0} />
+      </div>
+
+      {/* Reporte de consumos */}
+      <div id="consumo" className="mb-4 scroll-mt-20">
+        <ConsumptionReport />
       </div>
 
       {/* Libreta de direcciones */}
-      <div className="mb-8">
+      <div id="direcciones" className="mb-8 scroll-mt-20">
         <AddressBook />
       </div>
 
-      <h2 className="text-lg font-bold text-paper-ink mb-4">Historial de pedidos</h2>
+      <h2 className="text-lg font-display font-semibold text-paper-ink mb-4">Historial de pedidos</h2>
 
       {/* Lista de pedidos */}
       {isLoading && (

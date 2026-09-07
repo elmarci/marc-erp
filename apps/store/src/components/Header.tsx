@@ -3,21 +3,21 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ShoppingCart, Search, Package, User, LogOut, Tag, ChevronDown, Menu } from 'lucide-react'
 import { useCartStore, cartCount } from '../cartStore'
 import { useAuthStore } from '../authStore'
-import { useUIStore } from '../uiStore'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
 import { CategoryMegaMenu } from './CategoryMegaMenu'
 import { VoiceSearchButton } from './VoiceSearchButton'
+import { SideMenu } from './SideMenu'
 
 export function Header() {
   const items = useCartStore(s => s.items)
   const openCart = useCartStore(s => s.openCart)
   const count = cartCount(items)
   const { customer, logout, exitGuestMode } = useAuthStore()
-  const openCategoryDrawer = useUIStore(s => s.openCategoryDrawer)
   const [search, setSearch] = useState('')
   const [showMenu, setShowMenu] = useState(false)
+  const [showSideMenu, setShowSideMenu] = useState(false)
   const navigate = useNavigate()
 
   const { data: offersData } = useQuery({
@@ -36,11 +36,19 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 bg-paper-bg/95 backdrop-blur border-b border-paper-line">
+      {/* Sticky + translúcida (blur real, no un fondo opaco) para que al bajar
+          la lista de productos siga viéndose de fondo y nunca se pierda el
+          buscador — antes, en mobile, el buscador iba apretado en la misma
+          fila que logo/menú/carrito y quedaba reducido a puros íconos sin
+          espacio para escribir. Ahora es su propia fila, ancho completo,
+          debajo del logo — pegada y visible todo el scroll. */}
+      <header className="sticky top-0 z-50 bg-paper-bg/80 backdrop-blur-md border-b border-paper-line">
         <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-3 sm:gap-4">
 
-          {/* Hamburguesa — solo mobile, en desktop ya está el dropdown de Categorías */}
-          <button onClick={openCategoryDrawer} aria-label="Abrir menú de categorías"
+          {/* Hamburguesa — solo mobile. Abre el menú lateral real (perfil,
+              navegación completa, puntos, soporte) en vez de duplicar el
+              botón "Categorías" de la barra inferior. */}
+          <button onClick={() => setShowSideMenu(true)} aria-label="Abrir menú"
             className="md:hidden flex items-center justify-center h-9 w-9 shrink-0 rounded-full text-paper-ink-soft hover:bg-paper-surface hover:text-brand-green-600 transition-colors">
             <Menu className="h-5 w-5" />
           </button>
@@ -58,8 +66,9 @@ export function Header() {
           {/* Categorías — dropdown, reemplaza la barra sólida anterior */}
           <CategoryMegaMenu />
 
-          {/* Search */}
-          <form onSubmit={handleSearch} className="flex-1 max-w-xl">
+          {/* Search — solo desktop/tablet, con espacio real de sobra.
+              En mobile vive en su propia fila debajo (ver más abajo). */}
+          <form onSubmit={handleSearch} className="hidden md:block flex-1 max-w-xl">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-ink-ghost" />
               <input type="text" value={search} onChange={e => setSearch(e.target.value)}
@@ -68,6 +77,8 @@ export function Header() {
               <VoiceSearchButton onResult={handleVoiceResult} className="absolute right-2 top-1/2 -translate-y-1/2" />
             </div>
           </form>
+
+          <div className="md:hidden flex-1" />
 
           {/* Actions */}
           <div className="flex items-center gap-1 shrink-0">
@@ -134,7 +145,21 @@ export function Header() {
             </motion.button>
           </div>
         </div>
+
+        {/* Fila de búsqueda — solo mobile, ancho completo, siempre visible
+            (misma cabecera sticky, así que baja con el resto). */}
+        <form onSubmit={handleSearch} className="md:hidden px-4 pb-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-ink-ghost" />
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar en tu bodega..."
+              className="w-full bg-paper-surface border border-transparent rounded-xl pl-9 pr-9 py-2.5 text-sm text-paper-ink placeholder-paper-ink-ghost focus:outline-none focus:bg-white focus:border-brand-blue-400 transition-colors" />
+            <VoiceSearchButton onResult={handleVoiceResult} className="absolute right-2 top-1/2 -translate-y-1/2" />
+          </div>
+        </form>
       </header>
+
+      <SideMenu open={showSideMenu} onClose={() => setShowSideMenu(false)} />
     </>
   )
 }

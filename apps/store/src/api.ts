@@ -68,6 +68,12 @@ export interface StoreAddress {
   isDefault: boolean
 }
 
+export interface ConsumptionReport {
+  items: Array<{ productId: string; productName: string; quantity: number; spent: number; timesPurchased: number }>
+  totalUnits: number
+  totalSpent: number
+}
+
 export interface StoreProfile {
   id: string
   name: string
@@ -92,6 +98,8 @@ export interface StoreOrder {
   subtotal: number
   deliveryCost: number
   total: number
+  pointsRedeemed: number
+  pointsDiscountAmount: number
   createdAt: string
   items: Array<{
     id: string
@@ -121,13 +129,13 @@ export const storeApi = {
     api.get<{ data: Offer[] }>('/store/offers'),
 
   getDisplaySettings: () =>
-    api.get<{ data: { heroVideoUrl: string | null; heroPosterUrl: string | null } }>('/store/display-settings'),
+    api.get<{ data: { heroVideoUrl: string | null; heroPosterUrl: string | null; loyaltyPointValue: number } }>('/store/display-settings'),
 
   createOrder: (data: {
     customerName: string; customerPhone: string; customerEmail?: string;
     deliveryType: string; address?: string; district?: string;
     reference?: string; notes?: string; paymentMethod: string;
-    latitude?: number; longitude?: number;
+    latitude?: number; longitude?: number; pointsToRedeem?: number;
     items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) =>
     api.post<{ data: StoreOrder }>('/store/orders', data),
@@ -143,6 +151,9 @@ export const storeApi = {
 
   updateProfile: (data: { name?: string; email?: string }) =>
     api.put<{ data: StoreProfile }>('/store/auth/profile', data),
+
+  getConsumptionReport: (from?: string, to?: string) =>
+    api.get<{ data: ConsumptionReport }>('/store/auth/consumption-report', { params: { from, to } }),
 
   addAddress: (data: { label: string; address: string; district: string; reference?: string; isDefault?: boolean }) =>
     api.post<{ data: StoreAddress }>('/store/auth/addresses', data),

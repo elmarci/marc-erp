@@ -9,10 +9,14 @@ export class StoreService {
 
   /* ── Configuración de portada (hero) ──────────────────────────────────── */
   async getDisplaySettings() {
-    const values = await getSettingValues(['store_hero_video_url', 'store_hero_poster_url']);
+    const values = await getSettingValues(['store_hero_video_url', 'store_hero_poster_url', 'loyalty_point_value']);
     return {
       heroVideoUrl: values['store_hero_video_url'] || null,
       heroPosterUrl: values['store_hero_poster_url'] || null,
+      // Cuánto vale un punto en soles — la misma cifra que ya usa el POS del
+      // ERP (sales.service.ts), para que el checkout pueda mostrar "tienes
+      // N puntos = S/ X de descuento" sin inventar su propia tasa.
+      loyaltyPointValue: Number(values['loyalty_point_value'] ?? 0.03),
     };
   }
 
@@ -222,6 +226,7 @@ export class StoreService {
     paymentMethod: 'YAPE' | 'PLIN' | 'CASH' | 'YAPE_CONTRAENTREGA';
     latitude?: number; longitude?: number;
     storeCustomerId?: string;
+    pointsToRedeem?: number;
     items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) {
     // Extraer IDs reales
@@ -289,7 +294,31 @@ export class StoreService {
     });
 
     const deliveryCost = data.deliveryType === 'DELIVERY' ? 0 : 0; // free for now
-    const total = subtotal + deliveryCost;
+
+    // Canje de puntos — mismo valor por punto que el POS (loyalty_point_value).
+    // Solo se VALIDA acá (saldo suficiente ahora); el descuento real de
+    // puntos ocurre recién al confirmar el pedido (mismo momento en que se
+    // suman los ganados), con el mismo resguardo atómico que el POS para
+    // evitar canjear el mismo punto dos veces en pedidos simultáneos.
+    const pointsToRedeem = data.pointsToRedeem ?? 0;
+    let pointsDiscountAmount = 0;
+    if (pointsToRedeem > 0) {
+      if (!data.storeCustomerId) {
+        throw new BusinessError('Debes iniciar sesión para canjear puntos.');
+      }
+      const storeCustomer = await prisma.storeCustomer.findUnique({ where: { id: data.storeCustomerId } });
+      const customer = storeCustomer?.customerId
+        ? await prisma.customer.findUnique({ where: { id: storeCustomer.customerId } })
+        : null;
+      if (!customer || customer.loyaltyPoints < pointsToRedeem) {
+        throw new BusinessError('No tienes suficientes puntos disponibles para canjear esa cantidad.');
+      }
+      const { loyalty_point_value } = await getSettingValues(['loyalty_point_value']);
+      const pointValue = Number(loyalty_point_value ?? 0.03);
+      pointsDiscountAmount = Math.min(pointsToRedeem * pointValue, subtotal + deliveryCost);
+    }
+
+    const total = subtotal + deliveryCost - pointsDiscountAmount;
 
     // Generate order number
     const count = await prisma.storeOrder.count();
@@ -310,6 +339,8 @@ export class StoreService {
         storeCustomerId: data.storeCustomerId,
         latitude: data.latitude,
         longitude: data.longitude,
+        pointsRedeemed: pointsToRedeem,
+        pointsDiscountAmount,
         subtotal,
         deliveryCost,
         total,
@@ -423,9 +454,15 @@ export class StoreService {
         };
       });
 
+      // El descuento por puntos ya se calculó (y mostró) al crear el
+      // pedido — acá se aplica de verdad a la venta del ERP, igual que
+      // cualquier otro descuento de una venta hecha en el POS.
+      const pointsDiscountAmount = Number(order.pointsDiscountAmount);
+      const discountedSubtotal = subtotal - pointsDiscountAmount;
+
       const taxRate = 0.18;
-      const netAmount = subtotal / (1 + taxRate);
-      const taxAmount = subtotal - netAmount;
+      const netAmount = discountedSubtotal / (1 + taxRate);
+      const taxAmount = discountedSubtotal - netAmount;
 
       // Generate sale number — fecha de Lima explícita, no la del proceso
       // Node (en producción corre en UTC).
@@ -444,22 +481,38 @@ export class StoreService {
           documentType: 'NOTA_VENTA',
           subtotal: netAmount,
           taxAmount,
-          totalAmount: subtotal,
-          discountAmount: 0,
+          totalAmount: discountedSubtotal,
+          discountAmount: pointsDiscountAmount,
           status: 'COMPLETED',
           pointsEarned,
-          notes: `Pedido web ${order.orderNumber} — ${order.deliveryType === 'DELIVERY' ? 'Delivery' : 'Recojo en tienda'}`,
+          notes: `Pedido web ${order.orderNumber} — ${order.deliveryType === 'DELIVERY' ? 'Delivery' : 'Recojo en tienda'}`
+            + (order.pointsRedeemed > 0 ? ` — canjeó ${order.pointsRedeemed} pts (S/ ${pointsDiscountAmount.toFixed(2)})` : ''),
           items: {
             create: saleItems,
           },
           payments: {
             create: [{
               method: paymentMethod as never,
-              amount: subtotal,
+              amount: discountedSubtotal,
             }],
           },
         },
       });
+
+      // Canje de puntos: resta atómica con resguardo — si por cualquier
+      // motivo el cliente ya no tiene suficientes puntos al momento de
+      // confirmar (ej. se le canjearon en otra venta mientras el pedido
+      // esperaba confirmación), se corta toda la transacción en vez de
+      // dejar puntos en negativo. Mismo mecanismo que usa el POS.
+      if (customerId && Number(order.pointsRedeemed) > 0) {
+        const redemption = await tx.customer.updateMany({
+          where: { id: customerId, loyaltyPoints: { gte: order.pointsRedeemed } },
+          data: { loyaltyPoints: { decrement: order.pointsRedeemed } },
+        });
+        if (redemption.count === 0) {
+          throw new BusinessError('El cliente ya no tiene suficientes puntos disponibles para este pedido — confírmalo sin canjear puntos.');
+        }
+      }
 
       if (customerId && pointsEarned > 0) {
         await tx.customer.update({

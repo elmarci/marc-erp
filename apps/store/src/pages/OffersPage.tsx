@@ -26,14 +26,14 @@ function getBuyXGetYPrice(originalPrice: number, offer: Offer): { pricePerUnit: 
   return { pricePerUnit, totalUnits, paidUnits }
 }
 
-function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green' | 'blue' }) {
+function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green' | 'achiote' }) {
   const { addItem, addBundle, openCart } = useCartStore()
   const [showPackModal, setShowPackModal] = useState(false)
-  // El badge grande del tipo de oferta ("20% OFF", "Lleva 3 paga 2") alterna
-  // verde/azul entre tarjetas para que la grilla de ofertas no lea monocroma —
-  // el borde en hover se mantiene azul en todas, igual que ProductCard.
-  const accentText = accent === 'green' ? 'text-brand-green-700' : 'text-brand-blue-700'
-  const accentGradient = accent === 'green' ? 'from-brand-green-50 to-white' : 'from-brand-blue-50 to-white'
+  // Cada oferta se presenta como un paquete propio — franja de color sólido
+  // (no gradiente sutil) con un borde perforado real separándola de los
+  // productos, como si se "cortara" el cupón de la promo. Alterna verde/
+  // achiote entre tarjetas para que la grilla no lea monocroma.
+  const headerBg = accent === 'green' ? 'bg-brand-green-600' : 'bg-brand-achiote-500'
   // BUY_X_GET_Y / BUNDLE_PRICE son paquetes de precio fijo total, sin
   // importar cuáles productos de la lista lo completen (ej. "3 sabores de
   // Mike's x S/15") — antes cada fila se agregaba por separado al precio
@@ -88,45 +88,53 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
   }
 
   return (
-    <div className="bg-white border border-paper-line hover:border-brand-blue-200 hover:shadow-md rounded-2xl shadow-sm overflow-hidden transition-all">
-      {/* Header oferta */}
-      <div className={`relative bg-gradient-to-r ${accentGradient} p-5 border-b border-paper-line`}>
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <h3 className="font-black text-lg text-paper-ink">{offer.name}</h3>
-            {offer.description && <p className="text-sm text-paper-ink-soft mt-0.5">{offer.description}</p>}
+    <div className="bg-white border border-paper-line hover:shadow-lg rounded-2xl shadow-sm overflow-hidden transition-all">
+      {/* Header oferta — franja de color sólido tipo empaque de promo, con el
+          "descuento" en grande como si fuera el precio destacado de la caja. */}
+      <div className={`relative ${headerBg} text-white px-5 pt-5 pb-8`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-mono uppercase tracking-[0.15em] text-white/70 mb-1">Paquete</p>
+            <h3 className="font-display font-semibold text-lg leading-tight">{offer.name}</h3>
+            {offer.description && <p className="text-sm text-white/80 mt-1">{offer.description}</p>}
           </div>
           {offer.storeBadge && (
-            <span className="shrink-0 bg-brand-magenta-500 text-white text-xs font-black px-3 py-1 rounded-full">
+            <span className="shrink-0 bg-white text-paper-ink text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">
               {offer.storeBadge}
             </span>
           )}
         </div>
 
-        {/* Descripción visual de la oferta */}
-        <div className="bg-white rounded-xl p-3 border border-paper-line">
-          <p className={`font-black text-xl ${accentText}`}>{getOfferBadgeText()}</p>
+        <div className="mt-4 inline-flex flex-col bg-white/15 rounded-xl px-3.5 py-2.5">
+          <span className="font-display font-semibold text-2xl leading-tight">{getOfferBadgeText()}</span>
           {offer.type === 'BUY_X_GET_Y' && (
-            <p className="text-paper-ink-soft text-xs mt-1">
-              Agrega {offer.getQuantity ?? 3} unidades al carrito — pagas solo {offer.buyQuantity ?? 2}
-            </p>
+            <span className="text-white/80 text-xs mt-0.5">Pagas {offer.buyQuantity ?? 2}, llevas {offer.getQuantity ?? 3}</span>
           )}
           {(offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'FIXED_DISCOUNT') && (
-            <p className="text-paper-ink-soft text-xs mt-1">Descuento aplicado automáticamente al agregar</p>
+            <span className="text-white/80 text-xs mt-0.5">Se aplica solo al agregar</span>
           )}
         </div>
 
         {offer.endDate && (
-          <div className="flex items-center gap-1.5 text-xs text-amber-600 mt-3">
+          <div className="flex items-center gap-1.5 text-xs text-white/75 mt-3">
             <Clock className="h-3.5 w-3.5" />
-            Válido hasta el {new Date(offer.endDate).toLocaleDateString('es-PE', { day: 'numeric', month: 'long' })}
+            Hasta el {new Date(offer.endDate).toLocaleDateString('es-PE', { day: 'numeric', month: 'long' })}
           </div>
         )}
       </div>
 
+      {/* Borde perforado — como si se cortara el cupón de la promo del resto
+          del empaque, separando el "precio destacado" de los productos. */}
+      <div className="h-3 bg-white" style={{
+        WebkitMaskImage: 'radial-gradient(circle 6px at 10px 6px, transparent 6px, black 6.5px)',
+        maskImage: 'radial-gradient(circle 6px at 10px 6px, transparent 6px, black 6.5px)',
+        WebkitMaskRepeat: 'repeat-x', maskRepeat: 'repeat-x',
+        WebkitMaskSize: '20px 12px', maskSize: '20px 12px',
+      }} />
+
       {/* Productos de la oferta */}
       {offer.products.length > 0 && (
-        <div className="p-4">
+        <div className="p-4 pt-1">
           <p className="text-xs text-paper-ink-ghost uppercase tracking-wider mb-3 font-semibold flex items-center gap-1.5">
             <Package className="h-3.5 w-3.5" />
             {isPack ? (canAutoAddPack(offer) ? 'Este producto' : 'Elige entre estos productos') : 'Productos en esta oferta'}
@@ -238,14 +246,14 @@ export function OffersPage() {
   const offers = data?.data.data ?? []
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-10">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="h-12 w-12 bg-brand-blue-100 border border-brand-blue-200 rounded-2xl flex items-center justify-center">
-          <Tag className="h-6 w-6 text-brand-blue-700" />
+    <main className="max-w-4xl mx-auto px-4 py-8 sm:py-10">
+      <div className="flex items-center gap-3 mb-6 sm:mb-8">
+        <div className="h-12 w-12 bg-brand-achiote-500 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+          <Tag className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-black text-paper-ink">Ofertas especiales</h1>
-          <p className="text-paper-ink-soft text-sm">Aprovecha nuestras promociones por tiempo limitado</p>
+          <h1 className="text-2xl font-display font-semibold text-paper-ink">Ofertas de hoy</h1>
+          <p className="text-paper-ink-soft text-sm">Arma tu pedido y ahorra en cada paquete</p>
         </div>
       </div>
 
@@ -267,7 +275,7 @@ export function OffersPage() {
 
       {!isLoading && offers.length > 0 && (
         <div className="grid sm:grid-cols-2 gap-5">
-          {offers.map((offer, i) => <OfferCard key={offer.id} offer={offer} accent={i % 2 === 0 ? 'green' : 'blue'} />)}
+          {offers.map((offer, i) => <OfferCard key={offer.id} offer={offer} accent={i % 2 === 0 ? 'green' : 'achiote'} />)}
         </div>
       )}
     </main>

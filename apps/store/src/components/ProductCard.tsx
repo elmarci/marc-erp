@@ -150,7 +150,7 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
           {finalQty > 0 && (
             <div className="bg-brand-green-50 border border-brand-green-200 rounded-xl p-3 text-center">
               <p className="text-paper-ink-soft text-xs mb-0.5">Total a cobrar</p>
-              <p className="text-2xl font-black text-brand-green-700">S/ {total.toFixed(2)}</p>
+              <p className="text-2xl font-display font-semibold text-brand-green-700">S/ {total.toFixed(2)}</p>
               <p className="text-paper-ink-ghost text-xs">{finalQty} {unit} × S/ {price.toFixed(2)}</p>
             </div>
           )}
@@ -217,9 +217,12 @@ export function ProductCard({ product }: { product: Product }) {
 
           {/* Badges */}
           {product.isBulk && (
-            <div className="absolute top-2 left-2 flex items-center gap-1 bg-white/90 border border-paper-line rounded-full px-2 py-0.5">
-              <Scale className="h-3 w-3 text-brand-blue-600" />
-              <span className="text-[10px] text-paper-ink-soft font-medium">por {product.bulkUnit ?? 'kg'}</span>
+            // Sin ícono — la etiqueta "por kg" ya se explica sola, y el
+            // ícono de balanza genérico (el mismo que usa cualquier
+            // e-commerce) no aportaba nada. Mono, en mayúscula, como en el
+            // ticket real.
+            <div className="absolute top-2 left-2 bg-white/90 border border-paper-line rounded-full px-2.5 py-0.5">
+              <span className="text-[10px] font-mono font-semibold text-paper-ink-soft tracking-wide">POR {(product.bulkUnit ?? 'kg').toUpperCase()}</span>
             </div>
           )}
           {lowStock && !product.isBulk && (

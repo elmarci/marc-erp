@@ -4,11 +4,19 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+        // Public Sans: cuerpo/transaccional — precios, botones, formularios,
+        // todo el checkout. Reemplaza a Plus Jakarta Sans, que ya se sentía
+        // "segura" (la usa cualquier app moderna, sin nada propio).
+        sans: ['"Public Sans"', 'system-ui', 'sans-serif'],
+        // Fredoka: voz de marca — logo, títulos de sección, precio grande de
+        // una oferta. Nunca en párrafos largos ni en formularios (ver
+        // memoria de diseño "Marc, de Barrio").
+        display: ['Fredoka', 'ui-rounded', '"Public Sans"', 'sans-serif'],
       },
       colors: {
         // Extraído del logo (logomarc.png): azul del wordmark "Marc" y del
-        // carrito, verde de "MINIMARKET" y el aro del ícono.
+        // carrito, verde de "MINIMARKET" y el aro del ícono. Sin cambios —
+        // es marca real, no parte de lo que se corrige.
         brand: {
           blue: {
             50: '#eef4fb', 100: '#d7e6f6', 200: '#aecdee', 300: '#7fb0e3',
@@ -27,17 +35,29 @@ export default {
             400: '#e3308a', 500: '#d6006c', 600: '#b3005a', 700: '#8a0446',
             800: '#630632', 900: '#3d0620',
           },
+          // Achiote — el color de la sazón de mercado. Nuevo en esta pasada:
+          // reemplaza el ámbar genérico de e-commerce para "fresco/oferta
+          // real", algo que ninguna plantilla de delivery agregadora usa.
+          achiote: {
+            50: '#fbede4', 100: '#f3ddce', 200: '#e7b799', 300: '#da9268',
+            400: '#d1723e', 500: '#c9552a', 600: '#ac4522', 700: '#85361b',
+            800: '#5f2713', 900: '#3d190c',
+          },
         },
-        // Paleta neutra de la tienda — fondos/texto, tono "app" limpio en vez
-        // del beige de imprenta de la primera pasada.
+        // Paleta neutra de la tienda — fondo blanco real (pedido explícito:
+        // el tono mostaza/papel de la pasada anterior no se queda), con
+        // superficies secundarias en gris neutro clarísimo para diferenciar
+        // tarjetas/inputs del fondo sin volver al gris frío de "app de
+        // oficina" ni al beige de mercado.
         paper: {
-          bg: '#f7f7f9',
-          surface: '#eef0f3',
-          line: '#e4e6eb',
-          ink: '#15171c',
-          'ink-soft': '#565b66',
-          'ink-faint': '#7c8190',
-          'ink-ghost': '#b0b4bf',
+          bg: '#ffffff',
+          surface: '#f4f4f2',
+          raised: '#ffffff',
+          line: '#e5e3dc',
+          ink: '#26241c',
+          'ink-soft': '#5b5744',
+          'ink-faint': '#8a8570',
+          'ink-ghost': '#b3ad94',
         },
         process: { yellow: '#edbb00' },
       },

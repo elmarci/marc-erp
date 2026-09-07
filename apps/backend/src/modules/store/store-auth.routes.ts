@@ -67,6 +67,23 @@ router.get('/profile', storeAuthMiddleware, requireStoreAuth, async (req: Reques
   } catch (err) { next(err); }
 });
 
+// Reporte de consumos — "cuánto compré de X producto entre estas fechas".
+// Por defecto, los últimos 90 días si no se especifica rango.
+router.get('/consumption-report', storeAuthMiddleware, requireStoreAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = (req as Request & { customerId: string }).customerId;
+    const { from, to } = z.object({
+      from: z.coerce.date().optional(),
+      to: z.coerce.date().optional(),
+    }).parse(req.query);
+    const now = new Date();
+    const rangeTo = to ?? now;
+    const rangeFrom = from ?? new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const report = await storeAuthService.getConsumptionReport(customerId, rangeFrom, rangeTo);
+    res.json({ success: true, data: report });
+  } catch (err) { next(err); }
+});
+
 router.put('/profile', storeAuthMiddleware, requireStoreAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const customerId = (req as Request & { customerId: string }).customerId;

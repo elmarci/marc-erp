@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import { Search, X, ChevronDown, LayoutGrid, Loader2 } from 'lucide-react'
 import { storeApi } from '../api'
 import type { Category, Product } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { VoiceSearchButton } from '../components/VoiceSearchButton'
 import { getCategoryIcon } from '../categoryIcons'
-import { useUIStore } from '../uiStore'
 
 // Mismo trato que los íconos de categoría del Inicio: un acento de color fijo
 // por posición, para que el banner "estás acá" sea consistente entre
@@ -54,7 +53,6 @@ export function CatalogPage() {
   const [search, setSearch] = useState(searchParams.get('search') ?? '')
   const [categoryId, setCategoryId] = useState(searchParams.get('categoryId') ?? '')
   const loadMoreRef = useRef<HTMLDivElement>(null)
-  const openCategoryDrawer = useUIStore(s => s.openCategoryDrawer)
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
   useEffect(() => {
@@ -300,10 +298,10 @@ export function CatalogPage() {
                 ))}
               </>
             )}
-            <button onClick={() => { openCategoryDrawer(); setDropdownOpen(false) }}
-              className="w-full px-4 py-3 text-sm font-bold text-brand-blue-600 hover:bg-brand-blue-50 transition-colors">
+            <Link to="/categorias" onClick={() => setDropdownOpen(false)}
+              className="block w-full px-4 py-3 text-sm font-bold text-brand-blue-600 hover:bg-brand-blue-50 transition-colors">
               Ver todas las categorías
-            </button>
+            </Link>
           </div>
         )}
       </div>
