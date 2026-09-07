@@ -25,7 +25,10 @@ export class StoreService {
     search?: string; categoryId?: string; excludeId?: string; page: number; limit: number;
   }) {
     const where: Record<string, unknown> = {
-      deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 },
+      // isMiscItem: el producto comodín "Otros/Venta varios" del POS — es un
+      // artificio para cobrar algo fuera de catálogo (precio libre, sin
+      // costo real), no algo que un cliente pueda pedir por la tienda.
+      deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 }, isMiscItem: false,
     };
     if (filters.search) {
       where['OR'] = [
@@ -99,7 +102,7 @@ export class StoreService {
       take: limit * 2, // margen por si algunos ya no están activos / sin stock
     });
 
-    const baseWhere = { deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 } } as const;
+    const baseWhere = { deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 }, isMiscItem: false } as const;
     const productSelect = {
       id: true, name: true, barcode: true, salePrice: true,
       currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
@@ -132,7 +135,7 @@ export class StoreService {
 
   async getProductById(id: string) {
     const product = await prisma.product.findFirst({
-      where: { id, deletedAt: null, status: 'ACTIVE' },
+      where: { id, deletedAt: null, status: 'ACTIVE', isMiscItem: false },
       select: {
         id: true, name: true, barcode: true, salePrice: true,
         currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
@@ -153,7 +156,7 @@ export class StoreService {
       where: { isActive: true },
       select: {
         id: true, name: true, description: true, imageUrl: true, parentId: true, sortOrder: true,
-        _count: { select: { products: { where: { deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 } } } } },
+        _count: { select: { products: { where: { deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 }, isMiscItem: false } } } },
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
@@ -186,7 +189,7 @@ export class StoreService {
       const sample = await prisma.product.findFirst({
         where: {
           categoryId: { in: [cat.id, ...childIds] },
-          deletedAt: null, status: 'ACTIVE', imageUrl: { not: null },
+          deletedAt: null, status: 'ACTIVE', imageUrl: { not: null }, isMiscItem: false,
         },
         select: { imageUrl: true },
         orderBy: { updatedAt: 'desc' },
@@ -243,7 +246,9 @@ export class StoreService {
 
     const realProductIds = [...new Set(resolvedItems.map(i => i.realProductId))];
     const products = await prisma.product.findMany({
-      where: { id: { in: realProductIds }, deletedAt: null, status: 'ACTIVE' },
+      // isMiscItem: false — no es un producto real de catálogo, no se puede
+      // pedir por acá aunque alguien arme el request a mano con su id.
+      where: { id: { in: realProductIds }, deletedAt: null, status: 'ACTIVE', isMiscItem: false },
     });
 
     const productMap = new Map(products.map(p => [p.id, p]));
@@ -448,6 +453,15 @@ export class StoreService {
           discountAmount: 0,
           discountPercent: 0,
           subtotal: Number(item.subtotal),
+          // Costo en el momento de la venta — sin esto (bug real, ya
+          // corregido) toda venta generada desde un pedido web quedaba con
+          // costPrice vacío, y el reporte de margen la trata como costo 0
+          // (100% margen), inflando el profit de CUALQUIER pedido online.
+          // Mismo criterio que el POS (sales.service.ts): el producto
+          // comodín no tiene costo real, se asume 15% de margen en vez de
+          // 0 de costo — no debería llegar a vender por acá (no aparece en
+          // la tienda), pero por si acaso queda igual de protegido.
+          costPrice: product ? (product.isMiscItem ? Number(item.unitPrice) * 0.85 : Number(product.costPrice)) : null,
           // Para el ticket si se reimprime desde el ERP: columna "Unidad"
           // clara (kg/g/l/ml o "und"), igual que sales.service.ts.
           unit: product ? (product.isBulk ? (product.bulkUnit ?? 'kg') : 'und') : 'und',
