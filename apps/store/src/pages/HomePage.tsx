@@ -90,8 +90,12 @@ export function HomePage() {
         </div>
       )}
 
-      {/* Categorías — acceso rápido tipo app (ícono uniforme + nombre), no
-          una vitrina de fotos de productos sueltos. */}
+      {/* Categorías — acceso rápido tipo app. Antes era sólo un ícono
+          uniforme (se veía "pobre" — feedback real de testeo); ahora usa la
+          foto real de la categoría cuando existe (el backend ya la resuelve
+          sola desde un producto representativo si nadie subió una propia),
+          y sólo cae al ícono de color cuando de verdad no hay ninguna foto
+          disponible todavía. */}
       {categories.length > 0 && (
         <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <Reveal><h2 className="text-lg font-display font-semibold mb-4 text-paper-ink">Categorías</h2></Reveal>
@@ -112,8 +116,10 @@ export function HomePage() {
                 <StaggerItem key={cat.id} className="shrink-0 w-16 snap-start sm:w-auto">
                   <MotionLink to={`/catalogo?categoryId=${cat.id}`} whileTap={{ scale: 0.94 }}
                     className="group flex flex-col items-center gap-2 text-center">
-                    <div className={`h-14 w-14 sm:h-16 sm:w-16 rounded-2xl flex items-center justify-center transition-colors ${accent.bg}`}>
-                      <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${accent.icon}`} />
+                    <div className={`h-14 w-14 sm:h-16 sm:w-16 rounded-2xl overflow-hidden flex items-center justify-center transition-colors ${cat.imageUrl ? 'bg-paper-surface' : accent.bg}`}>
+                      {cat.imageUrl
+                        ? <img src={cat.imageUrl} alt="" className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        : <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${accent.icon}`} />}
                     </div>
                     <span className="text-xs font-medium text-paper-ink-soft leading-tight line-clamp-2">{cat.name}</span>
                   </MotionLink>

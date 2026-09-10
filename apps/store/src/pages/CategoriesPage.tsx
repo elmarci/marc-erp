@@ -49,19 +49,35 @@ export function CategoriesPage() {
 
           return (
             <Fragment key={cat.id}>
+              {/* Foto real de la categoría como elemento principal — antes
+                  era sólo un ícono chico de 40px en una fila, se sentía
+                  pobre (feedback real de testeo). El nombre/contador van
+                  superpuestos con un degradé abajo para que se lean bien
+                  encima de cualquier foto; el ícono de color sólo aparece
+                  como respaldo cuando la categoría de verdad no tiene
+                  ninguna foto todavía (ni propia ni de un producto suyo). */}
               <button
                 onClick={() => hasChildren ? setExpanded(isOpen ? null : cat.id) : navigate(`/catalogo?categoryId=${cat.id}`)}
-                className={`flex items-center gap-2.5 text-left bg-white border rounded-2xl p-3 shadow-sm transition-colors ${isOpen ? 'border-brand-green-300' : 'border-paper-line hover:border-brand-green-200'}`}>
-                <div className="h-10 w-10 rounded-xl bg-brand-green-50 flex items-center justify-center shrink-0">
-                  <Icon className="h-5 w-5 text-brand-green-600" />
+                className={`relative text-left bg-white border rounded-2xl overflow-hidden shadow-sm transition-colors ${isOpen ? 'border-brand-green-300 ring-2 ring-brand-green-100' : 'border-paper-line hover:border-brand-green-200'}`}>
+                <div className="relative aspect-[4/3] bg-paper-surface">
+                  {cat.imageUrl ? (
+                    <img src={cat.imageUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center bg-brand-green-50">
+                      <Icon className="h-8 w-8 text-brand-green-600" />
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-2.5">
+                    <p className="text-sm font-display font-semibold text-white leading-tight">{cat.name}</p>
+                    <p className="text-[11px] text-white/80 font-mono mt-0.5">{cat._count.products} productos</p>
+                  </div>
+                  {hasChildren && (
+                    <span className="absolute top-2 right-2 h-6 w-6 rounded-full bg-white/90 flex items-center justify-center shadow-sm">
+                      <ChevronDown className={`h-3.5 w-3.5 text-paper-ink transition-transform ${isOpen ? 'rotate-180 text-brand-green-600' : ''}`} />
+                    </span>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-display font-semibold text-paper-ink leading-tight">{cat.name}</p>
-                  <p className="text-[11px] text-paper-ink-ghost font-mono mt-0.5">{cat._count.products} productos</p>
-                </div>
-                {hasChildren && (
-                  <ChevronDown className={`h-4 w-4 text-paper-ink-ghost shrink-0 transition-transform ${isOpen ? 'rotate-180 text-brand-green-600' : ''}`} />
-                )}
               </button>
 
               {hasChildren && isOpen && (
