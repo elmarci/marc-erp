@@ -281,9 +281,20 @@ function DebtPaymentModal({ customer, onClose, onPaid }: {
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
-          <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-4 text-center">
-            <p className="text-sm text-muted-foreground">Deuda pendiente (total)</p>
-            <p className="text-3xl font-bold text-destructive">{formatCurrency(debt)}</p>
+          <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-4 text-center space-y-2.5">
+            <div>
+              <p className="text-sm text-muted-foreground">Deuda pendiente (total)</p>
+              <p className="text-3xl font-bold text-destructive">{formatCurrency(debt)}</p>
+            </div>
+            {/* Acción principal cuando la intención es saldar todo — sin
+                esto había que marcar cada venta fiada una por una aunque se
+                fuera a pagar el total completo. */}
+            {unpaidSales && unpaidSales.length > 0 && !(selectedIds.size === unpaidSales.length) && (
+              <Button size="sm" variant="destructive" className="w-full"
+                onClick={() => { setSelectedIds(new Set(unpaidSales.map((s) => s.id))); setAmountTouched(false) }}>
+                Pagar toda la deuda
+              </Button>
+            )}
           </div>
 
           <div>
@@ -364,6 +375,70 @@ function DebtPaymentModal({ customer, onClose, onPaid }: {
   );
 }
 
+/* ─── Reporte de consumos por cliente ────────────────────────────────────
+   Mismo cálculo que ya usa el cliente para ver su propio consumo desde la
+   tienda online, pero acá cualquiera del equipo lo consulta directo desde
+   el ERP para CUALQUIER cliente — no hace falta que tenga cuenta en la
+   tienda ni sumar sus compras a mano venta por venta. ────────────────── */
+interface ConsumptionItem { productId: string; productName: string; quantity: number; spent: number; timesPurchased: number }
+
+// yyyy-mm-dd en hora local para <input type="date"> — evita que un "hoy" en
+// UTC se muestre como "ayer" acá en Perú (UTC-5).
+function toDateInput(d: Date): string {
+  const tz = d.getTimezoneOffset();
+  return new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
+}
+
+function ConsumptionReportTab({ customerId }: { customerId: string }) {
+  const [from, setFrom] = useState(toDateInput(new Date(Date.now() - 90 * 86400000)));
+  const [to, setTo] = useState(toDateInput(new Date()));
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['customer-consumption-report', customerId, from, to],
+    queryFn: async () => (await api.get<{ data: { items: ConsumptionItem[]; totalUnits: number; totalSpent: number } }>(
+      `/customers/${customerId}/consumption-report`, { params: { from, to: `${to}T23:59:59` } },
+    )).data.data,
+  });
+  const items = data?.items ?? [];
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <Input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="text-xs" />
+        <span className="text-xs text-muted-foreground shrink-0">a</span>
+        <Input type="date" value={to} min={from} max={toDateInput(new Date())} onChange={(e) => setTo(e.target.value)} className="text-xs" />
+      </div>
+
+      {isLoading ? (
+        <p className="text-center text-sm text-muted-foreground py-6">Calculando...</p>
+      ) : items.length === 0 ? (
+        <p className="text-center text-sm text-muted-foreground py-6">Sin compras registradas en ese rango.</p>
+      ) : (
+        <>
+          <div className="flex justify-between text-xs text-muted-foreground mb-2 px-1">
+            <span>{items.length} producto{items.length !== 1 ? 's' : ''} distintos</span>
+            <span>{data!.totalUnits} unidad{data!.totalUnits !== 1 ? 'es' : ''} · {formatCurrency(data!.totalSpent)}</span>
+          </div>
+          <div className="divide-y border rounded-lg max-h-96 overflow-y-auto">
+            {items.map((item) => (
+              <div key={item.productId} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{item.productName}</p>
+                  <p className="text-xs text-muted-foreground">{item.timesPurchased} compra{item.timesPurchased !== 1 ? 's' : ''}</p>
+                </div>
+                <div className="text-right shrink-0 pl-3">
+                  <p className="font-bold">{item.quantity} u.</p>
+                  <p className="text-xs text-muted-foreground">{formatCurrency(item.spent)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─── Customer Detail Panel ──────────────────────────────────────────────── */
 function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
   customer: Customer; onEdit: () => void; onClose: () => void; onRefresh: (c: Customer) => void;
@@ -371,7 +446,7 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
   const queryClient = useQueryClient();
   const [salesPage, setSalesPage] = useState(1);
   const [showPayment, setShowPayment] = useState(false);
-  const [activeTab, setActiveTab] = useState<'sales' | 'debt'>('sales');
+  const [activeTab, setActiveTab] = useState<'sales' | 'debt' | 'consumption'>('sales');
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
 
   const { data: salesData } = useQuery({
@@ -475,7 +550,7 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
 
           {/* Tabs */}
           <div className="flex gap-1 border-b">
-            {([['sales', `Compras (${salesData?.pagination.total ?? 0})`], ['debt', 'Pagos de deuda']] as const).map(([key, label]) => (
+            {([['sales', `Compras (${salesData?.pagination.total ?? 0})`], ['consumption', 'Reporte de consumos'], ['debt', 'Pagos de deuda']] as const).map(([key, label]) => (
               <button key={key} onClick={() => setActiveTab(key)}
                 className={cn('px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
                   activeTab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
@@ -531,6 +606,9 @@ function CustomerDetail({ customer, onEdit, onClose, onRefresh }: {
               </>
             )}
           </div>}
+
+          {/* Reporte de consumos */}
+          {activeTab === 'consumption' && <ConsumptionReportTab customerId={customer.id} />}
 
           {/* Debt payments history */}
           {activeTab === 'debt' && (

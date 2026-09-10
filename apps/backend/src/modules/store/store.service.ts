@@ -7,6 +7,26 @@ import { nowInLima } from '../../utils/timezone';
 
 export class StoreService {
 
+  // Mismo criterio que storeAuthService.findOrCreateErpCustomer al
+  // registrarse — el teléfono es el identificador real del cliente en el
+  // ERP, con o sin cuenta en la tienda.
+  private async findOrCreateCustomerByPhone(name: string, phone: string) {
+    const existing = await prisma.customer.findFirst({ where: { phone } });
+    if (existing) return existing.id;
+
+    const [firstName, ...rest] = name.trim().split(/\s+/);
+    const created = await prisma.customer.create({
+      data: {
+        firstName: firstName || name,
+        lastName: rest.join(' ') || null,
+        phone,
+        type: 'REGULAR',
+        notes: 'Creado automáticamente al confirmar un pedido de la tienda online.',
+      },
+    });
+    return created.id;
+  }
+
   /* ── Configuración de portada (hero) ──────────────────────────────────── */
   async getDisplaySettings() {
     const values = await getSettingValues(['store_hero_video_url', 'store_hero_poster_url', 'loyalty_point_value']);
@@ -433,6 +453,17 @@ export class StoreService {
     if (order.storeCustomerId) {
       const storeCustomer = await prisma.storeCustomer.findUnique({ where: { id: order.storeCustomerId } });
       customerId = storeCustomer?.customerId ?? null;
+    }
+    // Pedido como invitado (sin sesión iniciada) — antes la venta quedaba
+    // sin cliente aunque el teléfono fuera el de alguien ya registrado (bug
+    // real: el reporte de consumos y los puntos dependen de este vínculo,
+    // y "Mis pedidos" sí encuentra el pedido por teléfono aunque la venta no
+    // tenga dueño, así que se veía en el historial pero no en el reporte).
+    // Se busca un Customer con ese teléfono igual que al registrarse en la
+    // tienda; si tampoco existe ahí, se crea uno — ningún pedido queda sin
+    // cliente asociado en el ERP, sea que haya iniciado sesión o no.
+    if (!customerId) {
+      customerId = await this.findOrCreateCustomerByPhone(order.customerName, order.customerPhone);
     }
     const loyaltyConfig = customerId ? await getSettingValues(['loyalty_points_per_sol']) : {};
     const pointsPerSol = Number(loyaltyConfig['loyalty_points_per_sol'] ?? 1);

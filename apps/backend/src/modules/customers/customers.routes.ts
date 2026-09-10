@@ -326,6 +326,54 @@ router.get('/:id/debt-payments', async (req: Request, res: Response, next: NextF
   } catch (err) { next(err); }
 });
 
+// Reporte de consumos del cliente: cuánto compró de cada producto en un
+// rango de fechas — mismo cálculo que ya usa el cliente para ver su propio
+// consumo desde la tienda online (store-auth.service.ts), pero acá entra
+// cualquiera del equipo directo por el id real del cliente en el ERP, sin
+// depender de que tenga cuenta en la tienda ni de sumarlo a mano venta por
+// venta.
+router.get('/:id/consumption-report', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customer = await prisma.customer.findFirst({ where: { id: req.params.id, deletedAt: null } });
+    if (!customer) { res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Cliente no encontrado.' } }); return; }
+
+    const { from, to } = z.object({
+      from: z.coerce.date().optional(),
+      to: z.coerce.date().optional(),
+    }).parse(req.query);
+    const now = new Date();
+    const rangeTo = to ?? now;
+    const rangeFrom = from ?? new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    const grouped = await prisma.saleItem.groupBy({
+      by: ['productId', 'productName'],
+      where: {
+        sale: {
+          customerId: req.params.id,
+          status: { in: ['COMPLETED', 'PARTIALLY_RETURNED'] },
+          createdAt: { gte: rangeFrom, lte: rangeTo },
+        },
+      },
+      _sum: { quantity: true, subtotal: true },
+      _count: { _all: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+    });
+
+    const items = grouped.map((g) => ({
+      productId: g.productId,
+      productName: g.productName,
+      quantity: Number(g._sum.quantity ?? 0),
+      spent: Number(g._sum.subtotal ?? 0),
+      timesPurchased: g._count._all,
+    }));
+
+    res.json({
+      success: true,
+      data: { items, totalUnits: items.reduce((s, i) => s + i.quantity, 0), totalSpent: items.reduce((s, i) => s + i.spent, 0) },
+    });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id/sales', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page = '1', limit = '20' } = req.query as Record<string, string>;
