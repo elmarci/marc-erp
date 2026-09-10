@@ -8,10 +8,12 @@ export default {
         // todo el checkout. Reemplaza a Plus Jakarta Sans, que ya se sentía
         // "segura" (la usa cualquier app moderna, sin nada propio).
         sans: ['"Public Sans"', 'system-ui', 'sans-serif'],
-        // Fredoka: voz de marca — logo, títulos de sección, precio grande de
-        // una oferta. Nunca en párrafos largos ni en formularios (ver
-        // memoria de diseño "Marc, de Barrio").
-        display: ['Fredoka', 'ui-rounded', '"Public Sans"', 'sans-serif'],
+        // Outfit: voz de marca — títulos de sección, precio grande de una
+        // oferta. Reemplaza a Fredoka (se sentía "de caricatura" — feedback
+        // real de testeo): geométrica y con calidez propia de app de
+        // delivery moderna (Rappi/PedidosYa), sin el efecto burbuja
+        // redondeada. Nunca en párrafos largos ni en formularios.
+        display: ['Outfit', '"Public Sans"', 'sans-serif'],
       },
       colors: {
         // Extraído del logo (logomarc.png): azul del wordmark "Marc" y del

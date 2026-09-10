@@ -212,7 +212,12 @@ export class StoreService {
         products: {
           include: {
             product: {
-              select: { id: true, name: true, salePrice: true, imageUrl: true },
+              // category: para poder segmentar "Ofertas" por categoría en la
+              // tienda sin depender de PromotionCategory (esa tabla no tiene
+              // una relación Prisma armada hacia Category todavía, y no
+              // todas las promos la usan) — se deriva de los productos
+              // reales que trae cada oferta, que sí siempre están.
+              select: { id: true, name: true, salePrice: true, imageUrl: true, category: { select: { id: true, name: true } } },
             },
           },
         },

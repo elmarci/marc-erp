@@ -46,38 +46,34 @@ export default function App() {
       <CartDrawer />
       <InstallAppBanner />
       <NotifyOptInBanner />
-      {/* Entorno de navegación con profundidad real: cada pantalla entra
-          girando levemente en el eje Y con perspectiva (no un simple
-          slide 2D), como una tarjeta que rota hacia el centro — se nota
-          más en pantallas donde el cambio es grande (Home → Producto,
-          Categorías → Catálogo) sin marear en las transiciones chicas
-          porque el ángulo es sutil (10°) y dura poco (0.42s). Respeta
-          prefers-reduced-motion — Framer Motion baja la animación a un
-          simple fade cuando el sistema lo pide. */}
-      <div style={{ perspective: 1400 }} className="overflow-x-clip">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, rotateY: -10, x: 32, scale: 0.97 }}
-            animate={{ opacity: 1, rotateY: 0, x: 0, scale: 1 }}
-            exit={{ opacity: 0, rotateY: 10, x: -24, scale: 0.97 }}
-            transition={{ duration: 0.42, ease: [0.22, 0.85, 0.25, 1] }}
-            style={{ transformOrigin: 'center center', transformStyle: 'preserve-3d' }}
-            className="pb-16 md:pb-0"
-          >
-            <Routes location={location}>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/catalogo" element={<CatalogPage />} />
-              <Route path="/categorias" element={<CategoriesPage />} />
-              <Route path="/producto/:id" element={<ProductPage />} />
-              <Route path="/checkout" element={<CheckoutPage />} />
-              <Route path="/pedido/:orderNumber" element={<OrderConfirmPage />} />
-              <Route path="/mis-pedidos" element={<TrackOrderPage />} />
-              <Route path="/ofertas" element={<OffersPage />} />
-            </Routes>
-          </motion.div>
-        </AnimatePresence>
-      </div>
+      {/* Transición entre pantallas — deliberadamente discreta: la versión
+          anterior (rotación 3D + desplazamiento + escala a la vez, 0.42s)
+          se sintió "de diapositiva de PowerPoint" en testeo real. Ahora es
+          sólo un fundido + un desplazamiento vertical chico (8px), rápido
+          (0.18s) — se nota que cambió de pantalla sin llamar la atención
+          sobre la animación misma. Respeta prefers-reduced-motion (Framer
+          Motion lo baja a un fade puro cuando el sistema lo pide). */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="pb-16 md:pb-0"
+        >
+          <Routes location={location}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/catalogo" element={<CatalogPage />} />
+            <Route path="/categorias" element={<CategoriesPage />} />
+            <Route path="/producto/:id" element={<ProductPage />} />
+            <Route path="/checkout" element={<CheckoutPage />} />
+            <Route path="/pedido/:orderNumber" element={<OrderConfirmPage />} />
+            <Route path="/mis-pedidos" element={<TrackOrderPage />} />
+            <Route path="/ofertas" element={<OffersPage />} />
+          </Routes>
+        </motion.div>
+      </AnimatePresence>
       <MobileTabBar />
       {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/pedido') && <VoiceShoppingListButton />}
       {!location.pathname.startsWith('/checkout') && <WhatsAppFAB />}

@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AnimatePresence } from 'framer-motion'
-import { Tag, ShoppingCart, Clock, Package } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Tag, ShoppingCart, Clock, Package, X, ChevronRight } from 'lucide-react'
 import { storeApi, type Offer } from '../api'
 import { useCartStore } from '../cartStore'
 import { AddOfferModal, autoAddPack, canAutoAddPack } from '../components/AddOfferModal'
+import { getCategoryIcon } from '../categoryIcons'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
 
@@ -26,26 +27,36 @@ function getBuyXGetYPrice(originalPrice: number, offer: Offer): { pricePerUnit: 
   return { pricePerUnit, totalUnits, paidUnits }
 }
 
-function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green' | 'achiote' }) {
+// Texto corto del badge — se usa tanto en la card compacta de la lista como
+// en el detalle, antes vivía sólo dentro de OfferCard.
+function getOfferBadgeText(offer: Offer): string {
+  if (offer.type === 'PERCENTAGE_DISCOUNT') return `${offer.value}% OFF`
+  if (offer.type === 'FIXED_DISCOUNT') return `S/ ${offer.value} OFF`
+  if (offer.type === 'BUY_X_GET_Y') {
+    const b = offer.buyQuantity ?? 2, g = offer.getQuantity ?? 3
+    return `${g}×${b} — Lleva ${g} paga ${b}`
+  }
+  return 'Precio especial'
+}
+
+// Imagen representativa de la oferta: la que subió el dueño de la tienda
+// para esa promo si existe, si no la del primer producto que trae, si no
+// nada (placeholder con ícono).
+function getOfferImage(offer: Offer): string | null {
+  return offer.storeImage ?? offer.products[0]?.product.imageUrl ?? null
+}
+
+/* ── Detalle completo de una oferta — arma el carrito de verdad ────────── */
+function OfferDetail({ offer, accent = 'green' }: { offer: Offer; accent?: 'green' | 'achiote' }) {
   const { addItem, addBundle, openCart } = useCartStore()
   const [showPackModal, setShowPackModal] = useState(false)
-  // Cada oferta se presenta como un paquete propio — franja de color sólido
-  // (no gradiente sutil) con un borde perforado real separándola de los
-  // productos, como si se "cortara" el cupón de la promo. Alterna verde/
-  // achiote entre tarjetas para que la grilla no lea monocroma.
   const headerBg = accent === 'green' ? 'bg-brand-green-600' : 'bg-brand-achiote-500'
   // BUY_X_GET_Y / BUNDLE_PRICE son paquetes de precio fijo total, sin
   // importar cuáles productos de la lista lo completen (ej. "3 sabores de
-  // Mike's x S/15") — antes cada fila se agregaba por separado al precio
-  // TOTAL del paquete, así que elegir 3 sabores cobraba 3 veces el paquete.
-  // Ahora una sola acción abre el selector de cantidades (AddOfferModal),
-  // que reparte el precio total entre las unidades elegidas.
+  // Mike's x S/15") — una sola acción abre el selector de cantidades
+  // (AddOfferModal), que reparte el precio total entre las unidades elegidas.
   const isPack = offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE' || offer.type === 'COMBO'
 
-  // Un paquete de un solo producto no tiene nada que elegir (ej. "Pack
-  // Aceite x2" con sólo Aceite Vegetal) — se agrega directo sin abrir el
-  // selector, que sólo tiene sentido cuando sí hay variantes entre las
-  // cuales repartir las unidades.
   const handlePackClick = () => {
     if (canAutoAddPack(offer)) {
       autoAddPack(offer, addBundle)
@@ -57,8 +68,6 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
 
   const handleAdd = (product: Offer['products'][0]['product']) => {
     const originalPrice = Number(product.salePrice)
-
-    // Descuento simple (% o monto fijo)
     const finalPrice = getDiscountedPrice(originalPrice, offer)
     const savings = Math.round((originalPrice - finalPrice) * 100) / 100
     addItem({
@@ -77,18 +86,8 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
     })
   }
 
-  const getOfferBadgeText = () => {
-    if (offer.type === 'PERCENTAGE_DISCOUNT') return `${offer.value}% OFF`
-    if (offer.type === 'FIXED_DISCOUNT') return `S/ ${offer.value} OFF`
-    if (offer.type === 'BUY_X_GET_Y') {
-      const b = offer.buyQuantity ?? 2, g = offer.getQuantity ?? 3
-      return `${g}×${b} — Lleva ${g} paga ${b}`
-    }
-    return 'Precio especial'
-  }
-
   return (
-    <div className="bg-white border border-paper-line hover:shadow-lg rounded-2xl shadow-sm overflow-hidden transition-all">
+    <div className="bg-white rounded-2xl overflow-hidden">
       {/* Header oferta — franja de color sólido tipo empaque de promo, con el
           "descuento" en grande como si fuera el precio destacado de la caja. */}
       <div className={`relative ${headerBg} text-white px-5 pt-5 pb-8`}>
@@ -106,7 +105,7 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
         </div>
 
         <div className="mt-4 inline-flex flex-col bg-white/15 rounded-xl px-3.5 py-2.5">
-          <span className="font-display font-semibold text-2xl leading-tight">{getOfferBadgeText()}</span>
+          <span className="font-display font-semibold text-2xl leading-tight">{getOfferBadgeText(offer)}</span>
           {offer.type === 'BUY_X_GET_Y' && (
             <span className="text-white/80 text-xs mt-0.5">Pagas {offer.buyQuantity ?? 2}, llevas {offer.getQuantity ?? 3}</span>
           )}
@@ -151,7 +150,6 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
                 <div key={product.id}
                   className="flex items-center gap-3 bg-paper-surface hover:bg-paper-line/40 rounded-xl p-3 transition-colors cursor-pointer"
                   onClick={() => isPack ? handlePackClick() : handleAdd(product)}>
-                  {/* Imagen */}
                   {product.imageUrl ? (
                     <img src={product.imageUrl} alt={product.name}
                       className="h-14 w-14 rounded-lg object-cover shrink-0 bg-white border border-paper-line" />
@@ -161,13 +159,9 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
                     </div>
                   )}
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-paper-ink line-clamp-1">{product.name}</p>
 
-                    {/* Precio según tipo de oferta — precio final siempre en negro
-                        sólido (convención de ProductCard), el verde queda solo
-                        para el badge del % de descuento. */}
                     {isDiscount && (
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-paper-ink-ghost line-through text-xs">S/ {original.toFixed(2)}</span>
@@ -197,9 +191,6 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
                     )}
                   </div>
 
-                  {/* Botón agregar — en paquetes no agrega directo: abre el
-                      selector de cantidades (todas las filas comparten el
-                      mismo precio total, así que ninguna se agrega sola). */}
                   <button
                     onClick={e => { if (isPack) { e.stopPropagation(); handlePackClick() } }}
                     className="h-10 w-10 bg-brand-green-600 hover:bg-brand-green-700 text-white rounded-full flex items-center justify-center transition-colors shrink-0">
@@ -236,6 +227,33 @@ function OfferCard({ offer, accent = 'green' }: { offer: Offer; accent?: 'green'
   )
 }
 
+/* ── Card compacta de la lista — estilo "promociones" de una app de pagos:
+   una fila angosta con imagen, nombre y el ahorro, sin todo el desglose de
+   productos a la vista. Tocarla abre el detalle completo (OfferDetail) en
+   una hoja modal. Antes cada oferta ocupaba una tarjeta larga siempre
+   desplegada — mucho scroll para ver cuántas promos hay disponibles. ──── */
+function OfferRow({ offer, accent, onOpen }: { offer: Offer; accent: 'green' | 'achiote'; onOpen: () => void }) {
+  const image = getOfferImage(offer)
+  const accentText = accent === 'green' ? 'text-brand-green-700 bg-brand-green-50' : 'text-brand-achiote-700 bg-brand-achiote-50'
+
+  return (
+    <button onClick={onOpen}
+      className="w-full flex items-center gap-3 bg-white border border-paper-line hover:border-brand-blue-200 hover:shadow-md rounded-2xl p-3 shadow-sm transition-all text-left">
+      <div className="h-16 w-16 rounded-xl overflow-hidden bg-paper-surface shrink-0 flex items-center justify-center">
+        {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : <Tag className="h-6 w-6 text-paper-ink-ghost" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-display font-semibold text-sm text-paper-ink line-clamp-1">{offer.name}</p>
+        {offer.description && <p className="text-xs text-paper-ink-ghost line-clamp-1 mt-0.5">{offer.description}</p>}
+        <span className={`inline-block mt-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full ${accentText}`}>
+          {getOfferBadgeText(offer)}
+        </span>
+      </div>
+      <ChevronRight className="h-4 w-4 text-paper-ink-ghost shrink-0" />
+    </button>
+  )
+}
+
 export function OffersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['store-offers'],
@@ -244,22 +262,68 @@ export function OffersPage() {
   })
 
   const offers = data?.data.data ?? []
+  const [categoryId, setCategoryId] = useState<string | null>(null)
+  const [openOffer, setOpenOffer] = useState<Offer | null>(null)
+
+  // Categorías presentes en las ofertas activas — se derivan de los
+  // productos reales que trae cada oferta (no de PromotionCategory, que no
+  // todas las promos usan). Se cuenta cuántas ofertas caen en cada una para
+  // no mostrar categorías vacías en los chips.
+  const categoryChips = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number }>()
+    for (const offer of offers) {
+      const seen = new Set<string>()
+      for (const { product } of offer.products) {
+        if (!product.category || seen.has(product.category.id)) continue
+        seen.add(product.category.id)
+        const entry = map.get(product.category.id) ?? { ...product.category, count: 0 }
+        entry.count += 1
+        map.set(product.category.id, entry)
+      }
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count)
+  }, [offers])
+
+  const filteredOffers = categoryId
+    ? offers.filter(o => o.products.some(({ product }) => product.category?.id === categoryId))
+    : offers
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-8 sm:py-10">
-      <div className="flex items-center gap-3 mb-6 sm:mb-8">
+    <main className="max-w-lg mx-auto px-4 py-8 sm:py-10">
+      <div className="flex items-center gap-3 mb-5">
         <div className="h-12 w-12 bg-brand-achiote-500 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
           <Tag className="h-6 w-6 text-white" />
         </div>
         <div>
           <h1 className="text-2xl font-display font-semibold text-paper-ink">Ofertas de hoy</h1>
-          <p className="text-paper-ink-soft text-sm">Arma tu pedido y ahorra en cada paquete</p>
+          <p className="text-paper-ink-soft text-sm">Toca una promo para ver el detalle</p>
         </div>
       </div>
 
+      {/* Chips de categoría — sólo si hay más de una con ofertas, no tiene
+          sentido segmentar cuando todo cae en la misma. */}
+      {categoryChips.length > 1 && (
+        <div className="flex overflow-x-auto no-scrollbar gap-2 mb-5 -mx-4 px-4">
+          <button onClick={() => setCategoryId(null)}
+            className={`shrink-0 px-3.5 py-2 rounded-full text-sm font-semibold border transition-colors ${!categoryId ? 'bg-brand-green-600 border-brand-green-600 text-white' : 'bg-white border-paper-line text-paper-ink-soft hover:border-brand-green-300'}`}>
+            Todas
+          </button>
+          {categoryChips.map(cat => {
+            const Icon = getCategoryIcon(cat.name)
+            const active = categoryId === cat.id
+            return (
+              <button key={cat.id} onClick={() => setCategoryId(active ? null : cat.id)}
+                className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-semibold border transition-colors ${active ? 'bg-brand-green-600 border-brand-green-600 text-white' : 'bg-white border-paper-line text-paper-ink-soft hover:border-brand-green-300'}`}>
+                <Icon className="h-4 w-4" />{cat.name}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {isLoading && (
-        <div className="grid sm:grid-cols-2 gap-4">
-          {[1, 2].map(i => <div key={i} className="bg-paper-surface rounded-2xl h-64 animate-pulse" />)}
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => <div key={i} className="bg-paper-surface rounded-2xl h-20 animate-pulse" />)}
         </div>
       )}
 
@@ -273,11 +337,42 @@ export function OffersPage() {
         </div>
       )}
 
-      {!isLoading && offers.length > 0 && (
-        <div className="grid sm:grid-cols-2 gap-5">
-          {offers.map((offer, i) => <OfferCard key={offer.id} offer={offer} accent={i % 2 === 0 ? 'green' : 'achiote'} />)}
+      {!isLoading && filteredOffers.length === 0 && offers.length > 0 && (
+        <div className="text-center py-16 text-paper-ink-ghost">
+          <p>No hay ofertas en esta categoría por ahora.</p>
         </div>
       )}
+
+      {!isLoading && filteredOffers.length > 0 && (
+        <div className="space-y-2.5">
+          {filteredOffers.map((offer, i) => (
+            <OfferRow key={offer.id} offer={offer} accent={i % 2 === 0 ? 'green' : 'achiote'} onOpen={() => setOpenOffer(offer)} />
+          ))}
+        </div>
+      )}
+
+      {/* Detalle — hoja modal, mismo trato visual (bottom-sheet en mobile,
+          centrado en desktop) que el selector de paquetes. */}
+      <AnimatePresence>
+        {openOffer && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setOpenOffer(null)}
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-paper-ink/50 backdrop-blur-sm p-0 sm:p-4">
+            <motion.div
+              initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[88vh] overflow-y-auto relative">
+              <button onClick={() => setOpenOffer(null)} aria-label="Cerrar"
+                className="absolute top-3 right-3 z-10 h-8 w-8 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-sm text-paper-ink-soft">
+                <X className="h-4 w-4" />
+              </button>
+              <OfferDetail offer={openOffer} accent={filteredOffers.findIndex(o => o.id === openOffer.id) % 2 === 0 ? 'green' : 'achiote'} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   )
 }

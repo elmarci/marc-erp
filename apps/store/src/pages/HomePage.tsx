@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ChevronRight, Flame, LayoutGrid, Tag, ShoppingBag } from 'lucide-react'
+import { ChevronRight, Flame, LayoutGrid, Tag } from 'lucide-react'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { PromoCarousel } from '../components/PromoCarousel'
@@ -70,7 +70,11 @@ export function HomePage() {
       {/* "Llegó fresco hoy" — algo que ninguna app de delivery agregadora
           (Rappi, PedidosYa) podría poner con la misma honestidad, porque es
           específico de tener una bodega real. Usa los mismos productos
-          destacados que ya se cargan abajo, sin pedir nada nuevo. */}
+          destacados que ya se cargan abajo, sin pedir nada nuevo.
+          Misma ProductCard que el resto de la tienda (antes era una tarjeta
+          propia, chica y de un color durazno que no combinaba con nada más
+          de la app) — la sección se distingue sólo por el título con el
+          punto de acento, no por un tratamiento visual aparte. */}
       {freshPicks.length > 0 && (
         <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-5">
           <Reveal><h2 className="text-lg font-display font-semibold text-paper-ink flex items-center gap-2 mb-4">
@@ -78,16 +82,8 @@ export function HomePage() {
           </h2></Reveal>
           <StaggerGroup className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0">
             {freshPicks.map(p => (
-              <StaggerItem key={p.id} className="shrink-0 w-32 snap-start">
-                <Link to={`/producto/${p.id}`}
-                  className="block bg-brand-achiote-50 border border-brand-achiote-200 rounded-2xl p-3 hover:border-brand-achiote-400 transition-colors">
-                  <div className="h-14 w-14 rounded-xl bg-white overflow-hidden flex items-center justify-center mb-2">
-                    {p.imageUrl
-                      ? <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />
-                      : <ShoppingBag className="h-5 w-5 text-paper-ink-ghost" />}
-                  </div>
-                  <p className="text-xs font-semibold text-paper-ink line-clamp-2 leading-tight">{p.name}</p>
-                </Link>
+              <StaggerItem key={p.id} className="shrink-0 w-40 snap-start">
+                <ProductCard product={p} />
               </StaggerItem>
             ))}
           </StaggerGroup>
