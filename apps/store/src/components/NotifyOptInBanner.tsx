@@ -67,9 +67,9 @@ export function NotifyOptInBanner() {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 100, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed bottom-14 md:bottom-0 inset-x-0 z-40 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-3"
+          className="fixed bottom-40 md:bottom-0 inset-x-0 z-40 px-3 pointer-events-none md:pb-3"
         >
-          <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-xl border border-paper-line p-3.5 flex items-center gap-3">
+          <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-xl border border-paper-line p-3.5 flex items-center gap-3 pointer-events-auto">
             <div className="h-11 w-11 shrink-0 rounded-xl bg-brand-green-50 flex items-center justify-center">
               <Bell className="h-5 w-5 text-brand-green-600" />
             </div>
