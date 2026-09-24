@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Wallet, Plus, Minus, X, ChevronDown, ChevronUp, TrendingUp,
-  TrendingDown, Clock, CheckCircle, ArrowDownUp, ShoppingCart, Printer, FileSpreadsheet, PackageOpen,
+  TrendingDown, Clock, CheckCircle, ArrowDownUp, ShoppingCart, Printer, FileSpreadsheet, PackageOpen, HandCoins,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -947,6 +947,17 @@ interface ExpenseRow {
   method: string; expenseDate: string; templateId: string | null;
 }
 
+interface TransferRow {
+  id: string; fromAccount: string; toAccount: string; amount: number; notes: string | null;
+  createdAt: string; user: { firstName: string; lastName: string };
+}
+
+interface LoanRow {
+  id: string; borrowerName: string; phone: string | null; amount: number; account: string;
+  status: 'OPEN' | 'PAID'; paidAmount: number; outstanding: number; notes: string | null;
+  loanDate: string; user: { firstName: string; lastName: string };
+}
+
 interface RecurringTemplate {
   id: string; category: string; description: string; amount: number;
   dayOfMonth: number; isActive: boolean; lastGeneratedPeriod: string | null;
@@ -1091,6 +1102,219 @@ function DepositModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// Traspaso entre cuentas de Caja General (ej. "saco S/200 de Yape y los
+// meto a Efectivo") — NO es un gasto ni un ingreso, solo cambia de formato.
+// Antes esto se registraba a mano como un "Gasto" (categoría Otro), lo que
+// inflaba los gastos reales y descuadraba Caja General porque sólo se veía
+// la salida, nunca la entrada al otro lado.
+function TransferModal({ balances, onClose }: {
+  balances: { cash: number; yape: number; plin: number } | undefined;
+  onClose: () => void;
+}) {
+  const [fromAccount, setFromAccount] = useState<'CASH' | 'YAPE' | 'PLIN'>('YAPE');
+  const [toAccount, setToAccount] = useState<'CASH' | 'YAPE' | 'PLIN'>('CASH');
+  const [amount, setAmount] = useState('');
+  const [notes, setNotes] = useState('');
+  const queryClient = useQueryClient();
+
+  const balanceOf = (acc: 'CASH' | 'YAPE' | 'PLIN') => (acc === 'CASH' ? balances?.cash : acc === 'YAPE' ? balances?.yape : balances?.plin) ?? 0;
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/treasury/transfers', {
+      fromAccount, toAccount, amount: parseFloat(amount), notes: notes || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-transfers'] });
+      toast.success('Traspaso registrado.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 pb-4">
+          <h2 className="text-lg font-bold">Traspasar entre cuentas</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="overflow-y-auto px-6 pb-6 space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Para cuando el dinero solo cambia de formato (ej. sacas Yape y lo metes a Efectivo) — no afecta gastos ni ingresos, solo mueve el saldo entre cuentas.
+          </p>
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">De</label>
+              <select value={fromAccount} onChange={(e) => setFromAccount(e.target.value as typeof fromAccount)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                {Object.entries(TREASURY_ACCOUNT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">Saldo: {formatCurrency(balanceOf(fromAccount))}</p>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">A</label>
+              <select value={toAccount} onChange={(e) => setToAccount(e.target.value as typeof toAccount)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                {Object.entries(TREASURY_ACCOUNT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">Saldo: {formatCurrency(balanceOf(toAccount))}</p>
+            </div>
+          </div>
+          {fromAccount === toAccount && (
+            <p className="text-sm text-destructive">La cuenta de origen y destino no pueden ser la misma.</p>
+          )}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Monto (S/)</label>
+            <Input type="number" min={0.01} step={0.01} value={amount}
+              onChange={(e) => setAmount(e.target.value)} className="text-lg font-bold" autoFocus />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Notas (opcional)</label>
+            <Input placeholder="Ej: vuelto a clientes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          <Button className="w-full" onClick={() => mutation.mutate()} loading={mutation.isPending}
+            disabled={!amount || parseFloat(amount) <= 0 || fromAccount === toAccount}>
+            Confirmar Traspaso
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Dinero prestado a una persona (negocio familiar: se facilita plata y
+// luego se devuelve) — NO es un gasto: el dinero sigue siendo del negocio,
+// solo está afuera temporalmente. Sale de una cuenta al prestarse; ver
+// LoanPaymentModal para cuando la persona devuelve.
+function LoanModal({ onClose }: { onClose: () => void }) {
+  const [borrowerName, setBorrowerName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [amount, setAmount] = useState('');
+  const [account, setAccount] = useState<'CASH' | 'YAPE' | 'PLIN'>('CASH');
+  const [notes, setNotes] = useState('');
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/loans', {
+      borrowerName, phone: phone || undefined, amount: parseFloat(amount), account, notes: notes || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      toast.success('Préstamo registrado.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 pb-4">
+          <h2 className="text-lg font-bold">Nuevo Préstamo</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="overflow-y-auto px-6 pb-6 space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">¿A quién le prestas?</label>
+            <Input placeholder="Nombre" value={borrowerName} onChange={(e) => setBorrowerName(e.target.value)} autoFocus />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Teléfono (opcional)</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Monto (S/)</label>
+              <Input type="number" min={0.01} step={0.01} value={amount} onChange={(e) => setAmount(e.target.value)} className="text-lg font-bold" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Sale de</label>
+              <select value={account} onChange={(e) => setAccount(e.target.value as typeof account)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                {Object.entries(TREASURY_ACCOUNT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Notas (opcional)</label>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          <Button className="w-full" onClick={() => mutation.mutate()} loading={mutation.isPending}
+            disabled={!borrowerName || !amount || parseFloat(amount) <= 0}>
+            Confirmar Préstamo
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoanPaymentModal({ loan, onClose }: {
+  loan: { id: string; borrowerName: string; outstanding: number; account: string };
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState(loan.outstanding.toFixed(2));
+  const [account, setAccount] = useState(loan.account);
+  const [notes, setNotes] = useState('');
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/loans/${loan.id}/payments`, {
+      amount: parseFloat(amount), account, notes: notes || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['treasury-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['treasury-movements'] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      toast.success('Pago registrado.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 pb-4">
+          <h2 className="text-lg font-bold">Registrar devolución</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="overflow-y-auto px-6 pb-6 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {loan.borrowerName} debe <span className="font-semibold text-foreground">{formatCurrency(loan.outstanding)}</span>
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Monto (S/)</label>
+              <Input type="number" min={0.01} step={0.01} max={loan.outstanding} value={amount}
+                onChange={(e) => setAmount(e.target.value)} className="text-lg font-bold" autoFocus />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Entra a</label>
+              <select value={account} onChange={(e) => setAccount(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                {Object.entries(TREASURY_ACCOUNT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Notas (opcional)</label>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          <Button className="w-full" onClick={() => mutation.mutate()} loading={mutation.isPending}
+            disabled={!amount || parseFloat(amount) <= 0 || parseFloat(amount) > loan.outstanding + 0.01}>
+            Confirmar Devolución
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ExpenseModal({ onClose }: { onClose: () => void }) {
   const [category, setCategory] = useState('PERSONNEL');
   const [description, setDescription] = useState('');
@@ -1221,7 +1445,10 @@ function TreasuryPanel() {
   const [showExpense, setShowExpense] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
   const [showReconcile, setShowReconcile] = useState(false);
-  const [tab, setTab] = useState<'movimientos' | 'gastos' | 'recurrentes' | 'arqueo'>('movimientos');
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [showLoan, setShowLoan] = useState(false);
+  const [payingLoan, setPayingLoan] = useState<LoanRow | null>(null);
+  const [tab, setTab] = useState<'movimientos' | 'gastos' | 'traspasos' | 'prestamos' | 'recurrentes' | 'arqueo'>('movimientos');
 
   const { data: depositsOutstanding } = useQuery({
     queryKey: ['bottle-deposits-totals'],
@@ -1244,6 +1471,18 @@ function TreasuryPanel() {
     queryKey: ['treasury-expenses'],
     queryFn: async () => (await api.get<{ data: ExpenseRow[] }>('/treasury/expenses?limit=50')).data.data,
     enabled: tab === 'gastos',
+  });
+
+  const { data: transfers } = useQuery({
+    queryKey: ['treasury-transfers'],
+    queryFn: async () => (await api.get<{ data: TransferRow[] }>('/treasury/transfers?limit=50')).data.data,
+    enabled: tab === 'traspasos',
+  });
+
+  const { data: loans } = useQuery({
+    queryKey: ['loans'],
+    queryFn: async () => (await api.get<{ data: LoanRow[] }>('/loans?limit=50')).data.data,
+    enabled: tab === 'prestamos',
   });
 
   const { data: templates } = useQuery({
@@ -1293,6 +1532,9 @@ function TreasuryPanel() {
             <Button variant="outline" onClick={() => setShowDeposit(true)}>
               <Plus className="mr-1.5 h-4 w-4" />Depositar
             </Button>
+            <Button variant="outline" onClick={() => setShowTransfer(true)}>
+              <ArrowDownUp className="mr-1.5 h-4 w-4" />Traspasar
+            </Button>
             <Button variant="destructive" onClick={() => setShowExpense(true)}>
               <Minus className="mr-1.5 h-4 w-4" />Registrar Gasto
             </Button>
@@ -1308,7 +1550,7 @@ function TreasuryPanel() {
       </Card>
 
       <div className="flex gap-1 border-b">
-        {([['movimientos', 'Movimientos'], ['gastos', 'Gastos'], ['recurrentes', 'Gastos recurrentes'], ['arqueo', 'Arqueo']] as const).map(([key, label]) => (
+        {([['movimientos', 'Movimientos'], ['gastos', 'Gastos'], ['traspasos', 'Traspasos'], ['prestamos', 'Préstamos'], ['recurrentes', 'Gastos recurrentes'], ['arqueo', 'Arqueo']] as const).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={cn('px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
               tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
@@ -1382,6 +1624,93 @@ function TreasuryPanel() {
             </table>
           </div>
         </Card>
+      )}
+
+      {tab === 'traspasos' && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Movimientos de dinero entre cuentas (ej. Yape → Efectivo) — no son gastos ni ingresos, no afectan el margen del negocio.
+          </p>
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50 text-left">
+                    <th className="px-4 py-3 font-medium">Fecha</th>
+                    <th className="px-4 py-3 font-medium">De</th>
+                    <th className="px-4 py-3 font-medium">A</th>
+                    <th className="px-4 py-3 font-medium">Notas</th>
+                    <th className="px-4 py-3 font-medium">Registrado por</th>
+                    <th className="px-4 py-3 font-medium text-right">Monto</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {(transfers ?? []).map((t) => (
+                    <tr key={t.id}>
+                      <td className="px-4 py-3 text-muted-foreground">{formatDateTime(t.createdAt)}</td>
+                      <td className="px-4 py-3"><Badge variant="outline">{TREASURY_ACCOUNT_LABELS[t.fromAccount] ?? t.fromAccount}</Badge></td>
+                      <td className="px-4 py-3"><Badge variant="outline">{TREASURY_ACCOUNT_LABELS[t.toAccount] ?? t.toAccount}</Badge></td>
+                      <td className="px-4 py-3 text-muted-foreground">{t.notes ?? '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{t.user.firstName} {t.user.lastName}</td>
+                      <td className="px-4 py-3 text-right font-semibold">{formatCurrency(t.amount)}</td>
+                    </tr>
+                  ))}
+                  {(!transfers || transfers.length === 0) && (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Sin traspasos registrados</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {tab === 'prestamos' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Dinero prestado a una persona — no es gasto al prestarlo ni ingreso al devolverse, solo sale y vuelve a entrar.
+            </p>
+            <Button size="sm" onClick={() => setShowLoan(true)}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />Nuevo Préstamo
+            </Button>
+          </div>
+          <Card>
+            <CardContent className="p-4">
+              {!loans || loans.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground py-8">Sin préstamos registrados</p>
+              ) : loans.map((l) => (
+                <div key={l.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted">
+                      <HandCoins className="h-4 w-4 text-muted-foreground" />
+                    </span>
+                    <div>
+                      <p className="font-medium">
+                        {l.borrowerName}
+                        {l.phone && <span className="ml-1.5 text-xs text-muted-foreground">{l.phone}</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateTime(l.loanDate)} · Prestado {formatCurrency(l.amount)} ({TREASURY_ACCOUNT_LABELS[l.account] ?? l.account})
+                        {l.paidAmount > 0 && ` · Devuelto ${formatCurrency(l.paidAmount)}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {l.status === 'PAID' ? (
+                      <Badge variant="success">Pagado</Badge>
+                    ) : (
+                      <>
+                        <span className="text-sm font-semibold text-destructive">Debe {formatCurrency(l.outstanding)}</span>
+                        <Button variant="outline" size="sm" onClick={() => setPayingLoan(l)}>Registrar devolución</Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {tab === 'recurrentes' && (
@@ -1469,6 +1798,9 @@ function TreasuryPanel() {
 
       {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
       {showExpense && <ExpenseModal onClose={() => setShowExpense(false)} />}
+      {showTransfer && <TransferModal balances={balances} onClose={() => setShowTransfer(false)} />}
+      {showLoan && <LoanModal onClose={() => setShowLoan(false)} />}
+      {payingLoan && <LoanPaymentModal loan={payingLoan} onClose={() => setPayingLoan(null)} />}
       {showTemplate && <RecurringTemplateModal onClose={() => setShowTemplate(false)} />}
       {showReconcile && <ReconcileModal balances={balances} onClose={() => setShowReconcile(false)} />}
     </div>

@@ -24,6 +24,7 @@ const schema = z.object({
   description: z.string().optional(),
   isBulk: z.boolean().default(false),
   bulkUnit: z.string().optional(),
+  trackExpiry: z.boolean().default(false),
   bottleDeposit: z.coerce.number().min(0).default(0),
   imageUrl: z.string().optional(),
 });
@@ -93,6 +94,7 @@ export function ProductFormPage() {
         description: (p['description'] as string) ?? '',
         isBulk: Boolean(p['isBulk']),
         bulkUnit: (p['bulkUnit'] as string) ?? '',
+        trackExpiry: Boolean(p['trackExpiry']),
         bottleDeposit: Number(p['bottleDeposit'] ?? 0),
         imageUrl: (p['imageUrl'] as string) ?? '',
       });
@@ -253,6 +255,18 @@ export function ProductFormPage() {
                   <p className="text-xs text-muted-foreground mt-1">El precio de venta es por esta unidad. Ej: S/ 3.50 / kg</p>
                 </div>
               )}
+            </div>
+
+            {/* Control de vencimiento */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="trackExpiry" {...register('trackExpiry')}
+                  className="h-4 w-4 rounded border-input" />
+                <div>
+                  <label htmlFor="trackExpiry" className="text-sm font-medium cursor-pointer">Controla fecha de vencimiento</label>
+                  <p className="text-xs text-muted-foreground">Lácteos, embutidos y similares. Al recibir compras de este producto se pedirá la fecha de vencimiento, y aparecerá en Inventario → Alertas antes de que se venza.</p>
+                </div>
+              </div>
             </div>
 
             {/* Garantía de envase retornable */}

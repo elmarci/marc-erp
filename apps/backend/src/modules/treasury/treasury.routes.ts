@@ -48,6 +48,33 @@ router.post('/deposits', async (req: Request, res: Response, next: NextFunction)
   } catch (err) { next(err); }
 });
 
+// Traspaso entre cuentas de Caja General (ej. Yape → Efectivo) — no es un
+// gasto, ver nota en treasury.service.ts.
+router.get('/transfers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { account, page, limit } = z.object({
+      account: z.enum(['CASH', 'YAPE', 'PLIN']).optional(),
+      page: z.coerce.number().min(1).default(1),
+      limit: z.coerce.number().min(1).max(100).default(25),
+    }).parse(req.query);
+    const result = await treasuryService.listTransfers({ account, page, limit });
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.post('/transfers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { fromAccount, toAccount, amount, notes } = z.object({
+      fromAccount: z.enum(['CASH', 'YAPE', 'PLIN']),
+      toAccount: z.enum(['CASH', 'YAPE', 'PLIN']),
+      amount: z.number().positive(),
+      notes: z.string().optional(),
+    }).parse(req.body);
+    const transfer = await treasuryService.createTransfer({ fromAccount, toAccount, amount, notes, userId: req.user!.sub });
+    res.status(201).json({ success: true, data: transfer });
+  } catch (err) { next(err); }
+});
+
 router.get('/expenses', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { category, dateFrom, dateTo, page, limit } = z.object({

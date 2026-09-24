@@ -246,10 +246,8 @@ export class ReportsService {
       }),
       prisma.batch.findMany({
         where: {
-          expiryDate: {
-            gte: new Date(),
-            lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          },
+          resolvedAt: null,
+          expiryDate: { lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
         },
         include: {
           product: { select: { name: true, currentStock: true } },

@@ -107,6 +107,24 @@ router.get('/low-stock', async (req: Request, res: Response, next: NextFunction)
   } catch (err) { next(err); }
 });
 
+router.get('/expiring-batches', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const batches = await productsService.listExpiringBatches();
+    res.json({ success: true, data: batches });
+  } catch (err) { next(err); }
+});
+
+router.post('/batches/:batchId/resolve', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { notes, lossQuantity } = z.object({
+      notes: z.string().optional(),
+      lossQuantity: z.number().min(0).optional(),
+    }).parse(req.body);
+    const batch = await productsService.resolveBatch(req.params.batchId, req.user!.sub, { notes, lossQuantity });
+    res.json({ success: true, data: batch });
+  } catch (err) { next(err); }
+});
+
 router.get('/misc-item', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const product = await productsService.getOrCreateMiscItem();

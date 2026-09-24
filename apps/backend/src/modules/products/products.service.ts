@@ -527,6 +527,52 @@ export class ProductsService {
     return prisma.product.findUnique({ where: { id: productId } });
   }
 
+  // Lotes con fecha de vencimiento próxima (o ya vencida) que aún no se
+  // resolvieron — no descuenta stock por lote (eso requeriría FEFO en la
+  // venta), solo avisa a tiempo para rotar o dar de baja antes de la merma.
+  async listExpiringBatches(daysAhead = 30) {
+    return prisma.batch.findMany({
+      where: {
+        resolvedAt: null,
+        expiryDate: { lte: new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000) },
+      },
+      include: {
+        product: { select: { id: true, name: true, currentStock: true, unitOfMeasure: true, category: { select: { name: true } } } },
+      },
+      orderBy: { expiryDate: 'asc' },
+    });
+  }
+
+  async resolveBatch(
+    batchId: string,
+    userId: string,
+    input: { notes?: string; lossQuantity?: number },
+  ) {
+    const batch = await prisma.batch.findUnique({ where: { id: batchId }, include: { product: true } });
+    if (!batch) throw new NotFoundError('Lote');
+    if (batch.resolvedAt) throw new BusinessError('Este lote ya fue resuelto.');
+
+    let resolvedNotes = input.notes ?? null;
+    if (input.lossQuantity && input.lossQuantity > 0) {
+      const currentStock = Number(batch.product.currentStock);
+      const physicalQuantity = Math.max(0, currentStock - input.lossQuantity);
+      const expiry = batch.expiryDate ? batch.expiryDate.toLocaleDateString('es-PE') : 'sin fecha';
+      await this.adjustStock(
+        batch.productId,
+        userId,
+        physicalQuantity,
+        'Vencimiento',
+        input.notes || `Lote${batch.batchNumber ? ` ${batch.batchNumber}` : ''} vencido (${expiry}) — ${input.lossQuantity} unid.`,
+      );
+      resolvedNotes = resolvedNotes ?? `Merma registrada: ${input.lossQuantity} unid.`;
+    }
+
+    return prisma.batch.update({
+      where: { id: batchId },
+      data: { resolvedAt: new Date(), resolvedNotes },
+    });
+  }
+
   async getMovements(productId: string, page: number, limit: number) {
     const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');

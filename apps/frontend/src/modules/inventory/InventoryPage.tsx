@@ -40,6 +40,10 @@ interface Adjustment {
   items: Array<{ productId: string; productName: string; systemQuantity: number; physicalQuantity: number; difference: number }>;
 }
 interface Category { id: string; name: string }
+interface ExpiringBatch {
+  id: string; batchNumber: string | null; quantity: number; expiryDate: string | null;
+  product: { id: string; name: string; currentStock: number; unitOfMeasure: string; category: { name: string } };
+}
 interface SupplierPrice {
   supplierId: string; supplierName: string; supplierPhone: string | null;
   price: number; supplierSku: string | null; isPreferred: boolean; isCheapest: boolean; lastPurchaseAt: string | null;
@@ -55,6 +59,14 @@ const isEntry = (t: string) => ['PURCHASE_IN', 'ADJUSTMENT_IN', 'RETURN_IN', 'IN
 
 const STATUS_LABEL: Record<string, string> = { ok: 'Normal', low: 'Stock bajo', out: 'Sin stock' };
 const STATUS_VARIANT: Record<string, 'success' | 'default' | 'destructive'> = { ok: 'success', low: 'default', out: 'destructive' };
+
+// Días calendario hasta el vencimiento (negativo = ya venció) — se compara
+// contra la medianoche de hoy para que "vence hoy" no salga como -1.
+const daysUntil = (dateStr: string) => {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr); target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+};
 
 /* ─── Price Comparison Modal (mismo producto, distintos proveedores) ───────── */
 function PriceComparisonModal({ product, onClose }: { product: StockProduct; onClose: () => void }) {
@@ -854,6 +866,81 @@ function AdjustmentsTab() {
   );
 }
 
+/* ─── Resolver lote por vencer (vendido / merma) ────────────────────────── */
+function ResolveBatchModal({ batch, onClose }: { batch: ExpiringBatch; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [mode, setMode] = useState<'sold' | 'loss'>('sold');
+  const [lossQty, setLossQty] = useState(String(Math.min(batch.quantity, batch.product.currentStock)));
+  const [notes, setNotes] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/products/batches/${batch.id}/resolve`, {
+      notes: notes || undefined,
+      lossQuantity: mode === 'loss' ? Number(lossQty) : undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inv-expiring-batches'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-expiring-batches-count'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-movements'] });
+      toast.success(mode === 'loss' ? 'Merma registrada — stock actualizado.' : 'Lote marcado como resuelto.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const maxLoss = batch.product.currentStock;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-4">
+          <div>
+            <h3 className="font-semibold">Resolver alerta de vencimiento</h3>
+            <p className="text-sm text-muted-foreground truncate max-w-[260px]">{batch.product.name}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant={mode === 'sold' ? 'default' : 'outline'} className="flex-1"
+              onClick={() => setMode('sold')}>
+              Ya se vendió / rotó
+            </Button>
+            <Button type="button" size="sm" variant={mode === 'loss' ? 'destructive' : 'outline'} className="flex-1"
+              onClick={() => setMode('loss')}>
+              Se venció (merma)
+            </Button>
+          </div>
+          {mode === 'loss' && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Unidades vencidas</label>
+              <Input type="number" min={0} max={maxLoss} value={lossQty} onChange={e => setLossQty(e.target.value)}
+                className="text-lg font-bold text-center" autoFocus />
+              <p className="text-xs text-muted-foreground mt-1">
+                Stock actual: {maxLoss} uds. Esto descuenta el stock y queda registrado como ajuste por vencimiento (no como gasto).
+              </p>
+            </div>
+          )}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Notas (opcional)</label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones..." />
+          </div>
+        </div>
+        <div className="border-t p-4 flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
+          <Button className="flex-1" loading={mutation.isPending}
+            disabled={mode === 'loss' && (Number(lossQty) <= 0 || Number(lossQty) > maxLoss)}
+            onClick={() => mutation.mutate()}>
+            Confirmar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Tab: Alertas ───────────────────────────────────────────────────────── */
 function AlertsTab() {
   const { data, isLoading } = useQuery({
@@ -862,11 +949,67 @@ function AlertsTab() {
     refetchInterval: 60000,
   });
 
+  const { data: batches, isLoading: batchesLoading } = useQuery({
+    queryKey: ['inv-expiring-batches'],
+    queryFn: async () => (await api.get<{ data: ExpiringBatch[] }>('/products/expiring-batches')).data.data,
+    refetchInterval: 60000,
+  });
+
+  const [resolvingBatch, setResolvingBatch] = useState<ExpiringBatch | null>(null);
+
   const outOfStock = (data ?? []).filter(p => p.current_stock === 0);
   const lowStock = (data ?? []).filter(p => p.current_stock > 0);
+  const expired = (batches ?? []).filter(b => b.expiryDate && daysUntil(b.expiryDate) < 0);
+  const expiringSoon = (batches ?? []).filter(b => b.expiryDate && daysUntil(b.expiryDate) >= 0);
 
   return (
     <div className="space-y-4">
+      {!batchesLoading && (expired.length > 0 || expiringSoon.length > 0) && (
+        <Card>
+          <CardHeader><CardTitle className="text-base flex items-center gap-2 text-amber-600">
+            <AlertTriangle className="h-4 w-4" />Por vencer — {expired.length + expiringSoon.length} lote(s)
+          </CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b bg-amber-500/5">
+                <th className="px-4 py-2 text-left font-medium">Producto</th>
+                <th className="px-4 py-2 text-left font-medium">Lote</th>
+                <th className="px-4 py-2 text-center font-medium">Cantidad</th>
+                <th className="px-4 py-2 text-center font-medium">Stock actual</th>
+                <th className="px-4 py-2 text-center font-medium">Vence</th>
+                <th className="px-4 py-2" />
+              </tr></thead>
+              <tbody className="divide-y">
+                {[...expired, ...expiringSoon].map(b => {
+                  const days = b.expiryDate ? daysUntil(b.expiryDate) : null;
+                  return (
+                    <tr key={b.id} className={cn('hover:bg-muted/30', days != null && days < 0 && 'bg-destructive/5')}>
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{b.product.name}</p>
+                        <p className="text-xs text-muted-foreground">{b.product.category.name}</p>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{b.batchNumber ?? '—'}</td>
+                      <td className="px-4 py-3 text-center">{b.quantity}</td>
+                      <td className="px-4 py-3 text-center">{b.product.currentStock}</td>
+                      <td className="px-4 py-3 text-center">
+                        {b.expiryDate && (
+                          <Badge variant={days != null && days < 0 ? 'destructive' : days != null && days <= 3 ? 'destructive' : days != null && days <= 7 ? 'default' : 'secondary'}>
+                            {days != null && days < 0 ? `Venció hace ${Math.abs(days)}d` : days === 0 ? 'Vence hoy' : `En ${days}d`}
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button variant="outline" size="sm" onClick={() => setResolvingBatch(b)}>Resolver</Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
       {isLoading ? <div className="py-12 text-center text-muted-foreground">Cargando...</div> : (
         <>
           {outOfStock.length > 0 && (
@@ -937,6 +1080,8 @@ function AlertsTab() {
           </Card>
         </>
       )}
+
+      {resolvingBatch && <ResolveBatchModal batch={resolvingBatch} onClose={() => setResolvingBatch(null)} />}
     </div>
   );
 }
@@ -945,11 +1090,17 @@ function AlertsTab() {
 export function InventoryPage() {
   const [tab, setTab] = useState<'dashboard' | 'stock' | 'movements' | 'adjustments' | 'alerts'>('dashboard');
 
-  const { data: alertCount } = useQuery({
+  const { data: lowStockCount } = useQuery({
     queryKey: ['inv-low-stock-count'],
     queryFn: async () => (await api.get<{ data: unknown[] }>('/inventory/low-stock')).data.data.length,
     refetchInterval: 60000,
   });
+  const { data: expiringCount } = useQuery({
+    queryKey: ['inv-expiring-batches-count'],
+    queryFn: async () => (await api.get<{ data: unknown[] }>('/products/expiring-batches')).data.data.length,
+    refetchInterval: 60000,
+  });
+  const alertCount = (lowStockCount ?? 0) + (expiringCount ?? 0);
 
   const tabs = [
     { key: 'dashboard', icon: BarChart3, label: 'Resumen' },

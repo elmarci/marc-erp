@@ -62,7 +62,7 @@ interface OrderDetail extends PurchaseOrder {
   items: Array<{
     id: string; orderedQty: number; receivedQty: number;
     unitCost: number; subtotal: number; isBonus: boolean;
-    product: { id: string; name: string; barcode: string | null; currentStock: number };
+    product: { id: string; name: string; barcode: string | null; currentStock: number; trackExpiry: boolean };
   }>;
   receipts: Array<{ id: string; receivedAt: string; notes: string | null }>;
   payments: Array<{
@@ -86,7 +86,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 interface Product {
   id: string; name: string; barcode: string | null; costPrice: number;
   currentStock: number; category: { name: string };
-  isBulk?: boolean; bulkUnit?: string | null;
+  isBulk?: boolean; bulkUnit?: string | null; trackExpiry?: boolean;
 }
 
 interface LowStockProduct {
@@ -504,6 +504,7 @@ interface DirectLine {
   productId: string; name: string; isBulk: boolean; bulkUnit: string | null;
   isBonus: boolean; quantity: string; unitCost: string;
   useBulkEntry: boolean; sacks: string; weightPerSack: string; totalCost: string;
+  trackExpiry: boolean; batchNumber: string; expiryDate: string;
 }
 
 function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; onCreated: (order: OrderDetail) => void }) {
@@ -563,12 +564,13 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
     enabled: debouncedSearch.length >= 2,
   });
 
-  const addLine = (p: { id: string; name: string; isBulk?: boolean; bulkUnit?: string | null }, defaultCost: number) => {
+  const addLine = (p: { id: string; name: string; isBulk?: boolean; bulkUnit?: string | null; trackExpiry?: boolean }, defaultCost: number) => {
     if (lines.find(l => l.productId === p.id)) return;
     setLines(v => [...v, {
       productId: p.id, name: p.name, isBulk: !!p.isBulk, bulkUnit: p.bulkUnit ?? null,
       isBonus: false, quantity: '1', unitCost: String(defaultCost),
       useBulkEntry: false, sacks: '', weightPerSack: '', totalCost: '',
+      trackExpiry: !!p.trackExpiry, batchNumber: '', expiryDate: '',
     }]);
     setSearch('');
   };
@@ -638,6 +640,8 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
         quantity: effQty(l),
         unitCost: effUnitCost(l),
         isBonus: l.isBonus,
+        batchNumber: l.trackExpiry && l.batchNumber ? l.batchNumber : undefined,
+        expiryDate: l.trackExpiry && l.expiryDate ? new Date(`${l.expiryDate}T12:00:00`).toISOString() : undefined,
       })),
       payment: (payerMode && payTarget === 0) ? undefined : payment,
     }),
@@ -794,6 +798,17 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                       <div className="text-base text-right font-bold tabular-nums pb-1.5">
                         {l.isBonus ? <span className="text-success">GRATIS</span> : formatCurrency(effQty(l) * effUnitCost(l))}
                       </div>
+                    </div>
+                  )}
+
+                  {l.trackExpiry && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <label className="text-xs text-muted-foreground whitespace-nowrap">Vence</label>
+                      <Input type="date" value={l.expiryDate}
+                        onChange={e => updateLine(idx, { expiryDate: e.target.value })} className="h-8 w-40" />
+                      <label className="text-xs text-muted-foreground whitespace-nowrap">N° lote</label>
+                      <Input value={l.batchNumber} placeholder="Opcional"
+                        onChange={e => updateLine(idx, { batchNumber: e.target.value })} className="h-8" />
                     </div>
                   )}
                 </div>
@@ -1292,6 +1307,7 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
       productId: i.product.id, name: i.product.name, barcode: i.product.barcode,
       orderedQty: i.orderedQty, receivedQty: i.orderedQty - i.receivedQty,
       unitCost: Number(i.unitCost), isBonus: false,
+      trackExpiry: i.product.trackExpiry, batchNumber: '', expiryDate: '',
     }))
   );
   const [notes, setNotes] = useState('');
@@ -1349,7 +1365,10 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
 
   const addBonusProduct = (p: { id: string; name: string; barcode: string | null }) => {
     if (items.find(i => i.productId === p.id)) return;
-    setItems(v => [...v, { productId: p.id, name: p.name, barcode: p.barcode, orderedQty: 0, receivedQty: 1, unitCost: 0, isBonus: true }]);
+    setItems(v => [...v, {
+      productId: p.id, name: p.name, barcode: p.barcode, orderedQty: 0, receivedQty: 1, unitCost: 0, isBonus: true,
+      trackExpiry: false, batchNumber: '', expiryDate: '',
+    }]);
     setBonusSearch('');
   };
 
@@ -1371,7 +1390,11 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
 
   const mutation = useMutation({
     mutationFn: () => api.post(`/purchases/${order.id}/receive`, {
-      items: items.map(i => ({ productId: i.productId, receivedQty: i.receivedQty, unitCost: i.unitCost, isBonus: i.isBonus })),
+      items: items.map(i => ({
+        productId: i.productId, receivedQty: i.receivedQty, unitCost: i.unitCost, isBonus: i.isBonus,
+        batchNumber: i.trackExpiry && i.batchNumber ? i.batchNumber : undefined,
+        expiryDate: i.trackExpiry && i.expiryDate ? new Date(`${i.expiryDate}T12:00:00`).toISOString() : undefined,
+      })),
       notes,
       payerId: payerMode ? (payerId || undefined) : undefined,
       payerAmount: payerMode ? payerAmountNum : undefined,
@@ -1423,23 +1446,41 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
             </thead>
             <tbody className="divide-y">
               {items.map((item, idx) => (
-                <tr key={item.productId} className={cn(item.isBonus && 'bg-success/5')}>
-                  <td className="py-2">{item.name}</td>
-                  <td className="py-2 text-center text-muted-foreground">{item.orderedQty || '—'}</td>
-                  <td className="py-2 px-2">
-                    <Input type="number" min={0} step={0.001} value={item.receivedQty}
-                      onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, receivedQty: Number(e.target.value) } : i))}
-                      className="h-9 text-center" />
-                  </td>
-                  <td className="py-2 px-2">
-                    <MoneyInput size="sm" min={0} value={item.isBonus ? 0 : item.unitCost} disabled={item.isBonus}
-                      onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, unitCost: Number(e.target.value) } : i))} />
-                  </td>
-                  <td className="py-2 text-center">
-                    <input type="checkbox" checked={item.isBonus} className="h-4 w-4"
-                      onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, isBonus: e.target.checked } : i))} />
-                  </td>
-                </tr>
+                <>
+                  <tr key={item.productId} className={cn(item.isBonus && 'bg-success/5')}>
+                    <td className="py-2">{item.name}</td>
+                    <td className="py-2 text-center text-muted-foreground">{item.orderedQty || '—'}</td>
+                    <td className="py-2 px-2">
+                      <Input type="number" min={0} step={0.001} value={item.receivedQty}
+                        onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, receivedQty: Number(e.target.value) } : i))}
+                        className="h-9 text-center" />
+                    </td>
+                    <td className="py-2 px-2">
+                      <MoneyInput size="sm" min={0} value={item.isBonus ? 0 : item.unitCost} disabled={item.isBonus}
+                        onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, unitCost: Number(e.target.value) } : i))} />
+                    </td>
+                    <td className="py-2 text-center">
+                      <input type="checkbox" checked={item.isBonus} className="h-4 w-4"
+                        onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, isBonus: e.target.checked } : i))} />
+                    </td>
+                  </tr>
+                  {item.trackExpiry && (
+                    <tr key={`${item.productId}-exp`} className="bg-amber-500/5">
+                      <td colSpan={5} className="px-2 pb-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground whitespace-nowrap">Vence</label>
+                          <Input type="date" value={item.expiryDate}
+                            onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, expiryDate: e.target.value } : i))}
+                            className="h-8 w-40" />
+                          <label className="text-xs text-muted-foreground whitespace-nowrap">N° lote</label>
+                          <Input value={item.batchNumber} placeholder="Opcional"
+                            onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, batchNumber: e.target.value } : i))}
+                            className="h-8" />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
           </table>

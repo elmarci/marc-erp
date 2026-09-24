@@ -195,6 +195,66 @@ export class TreasuryService {
     };
   }
 
+  /* ── Traspasos entre cuentas ──────────────────────────────────────────────
+   * "Saco S/200 de Yape y los meto a Efectivo" — NO es un gasto ni un
+   * ingreso, el dinero sigue siendo del negocio y solo cambia de formato.
+   * Antes esto se registraba a mano como un Expense (categoría OTHER), lo
+   * que inflaba "gastos" y descuadraba Caja General porque sólo se
+   * registraba la salida, nunca la entrada al otro lado. Un traspaso real
+   * mueve las dos patas dentro de la misma transacción. */
+
+  async createTransfer(input: {
+    fromAccount: TreasuryAccount;
+    toAccount: TreasuryAccount;
+    amount: number;
+    notes?: string;
+    userId: string;
+  }) {
+    if (input.amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
+    if (input.fromAccount === input.toAccount) {
+      throw new BusinessError('La cuenta de origen y destino no pueden ser la misma.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const transfer = await tx.treasuryTransfer.create({
+        data: {
+          fromAccount: input.fromAccount, toAccount: input.toAccount, amount: input.amount,
+          notes: input.notes, userId: input.userId,
+        },
+      });
+
+      const description = input.notes
+        ? `Traspaso ${input.fromAccount} → ${input.toAccount}: ${input.notes}`
+        : `Traspaso ${input.fromAccount} → ${input.toAccount}`;
+
+      await this.recordMovement(tx, 'WITHDRAWAL', input.amount, description, input.userId, 'TRANSFER', transfer.id, input.fromAccount);
+      await this.recordMovement(tx, 'DEPOSIT', input.amount, description, input.userId, 'TRANSFER', transfer.id, input.toAccount);
+
+      return transfer;
+    });
+  }
+
+  async listTransfers(filters: { page: number; limit: number; account?: TreasuryAccount }) {
+    const where: Record<string, unknown> = {};
+    if (filters.account) where['OR'] = [{ fromAccount: filters.account }, { toAccount: filters.account }];
+
+    const [data, total] = await Promise.all([
+      prisma.treasuryTransfer.findMany({
+        where,
+        include: { user: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (filters.page - 1) * filters.limit,
+        take: filters.limit,
+      }),
+      prisma.treasuryTransfer.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
+    };
+  }
+
   /* ── Gastos ───────────────────────────────────────────────────────────── */
 
   async createExpense(input: CreateExpenseInput) {

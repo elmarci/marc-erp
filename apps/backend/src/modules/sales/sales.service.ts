@@ -302,7 +302,12 @@ export class SalesService {
       const customer = await prisma.customer.findUnique({ where: { id: input.customerId } });
       if (!customer) throw new NotFoundError('Cliente');
       const available = Number(customer.creditLimit) - Number(customer.currentBalance);
-      if (totalAmount > available) {
+      // Margen de un centavo: totalAmount se acumula sumando floats (ver
+      // "subtotal += itemSubtotal" arriba), así que un monto que en soles es
+      // exactamente igual al disponible puede llegar aquí como
+      // 20.000000000000004 y rechazar una venta que en realidad sí calza
+      // (mismo criterio que la validación de pago suficiente, arriba).
+      if (totalAmount > available + 0.01) {
         throw new BusinessError(
           `Límite de crédito insuficiente. Disponible: S/ ${available.toFixed(2)}, requerido: S/ ${totalAmount.toFixed(2)}.`,
         );

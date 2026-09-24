@@ -215,7 +215,7 @@ export class PurchasesService {
         approvedBy: { select: { firstName: true, lastName: true } },
         voidedBy: { select: { firstName: true, lastName: true } },
         items: {
-          include: { product: { select: { id: true, name: true, barcode: true, currentStock: true } } },
+          include: { product: { select: { id: true, name: true, barcode: true, currentStock: true, trackExpiry: true } } },
         },
         receipts: {
           include: { items: true },
@@ -886,6 +886,19 @@ export class PurchasesService {
           unitCost: item.unitCost,
           isBonus: item.isBonus ?? false,
         });
+
+        // Fecha de vencimiento ingresada al recibir — se guarda como lote
+        // para poder alertar antes de que se venza (ver Inventario > Alertas).
+        if (item.expiryDate) {
+          await tx.batch.create({
+            data: {
+              productId: item.productId,
+              batchNumber: item.batchNumber || null,
+              quantity: Math.round(item.receivedQty),
+              expiryDate: item.expiryDate,
+            },
+          });
+        }
       }
 
       // El total de la orden se recalcula desde las líneas ya actualizadas —
@@ -1114,6 +1127,17 @@ export class PurchasesService {
           referenceId: order.id,
           notes: `Compra ${order.orderNumber}${item.isBonus ? ' (bonificación)' : ''}`,
         });
+
+        if (item.expiryDate) {
+          await tx.batch.create({
+            data: {
+              productId: item.productId,
+              batchNumber: item.batchNumber || null,
+              quantity: Math.round(item.quantity),
+              expiryDate: item.expiryDate,
+            },
+          });
+        }
       }
 
       if (payer && payerAmount > 0) {
