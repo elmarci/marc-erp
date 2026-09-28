@@ -24,7 +24,7 @@ export function VoiceCommandButton({ comandos }: VoiceCommandButtonProps) {
   return (
     <div className="fixed bottom-28 right-5 z-40 flex flex-col items-end gap-2">
       {status === 'no-entendi' && !listening && (
-        <div className="animate-enter-up rounded-2xl bg-paper-ink px-3.5 py-2 text-xs font-bold text-white shadow-lg">
+        <div className="animate-enter-up rounded-2xl bg-paper-raised px-3.5 py-2 text-xs font-bold text-paper-ink shadow-lg">
           No te entendí, intenta de nuevo
         </div>
       )}

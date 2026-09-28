@@ -4,6 +4,7 @@ import { emitEvent } from '../../config/socket';
 import { redis } from '../../config/redis';
 import { getSettingValues } from '../../utils/settings';
 import { nowInLima } from '../../utils/timezone';
+import { deliveryService } from '../delivery/delivery.service';
 
 export class StoreService {
 
@@ -413,7 +414,7 @@ export class StoreService {
     const [data, total] = await Promise.all([
       prisma.storeOrder.findMany({
         where,
-        include: { items: true },
+        include: { items: true, rider: { select: { id: true, nombre: true } } },
         orderBy: { createdAt: 'desc' },
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
@@ -617,6 +618,15 @@ export class StoreService {
   }
 
   async updateOrderStatus(id: string, status: string, paymentStatus?: string) {
+    const current = await prisma.storeOrder.findUnique({ where: { id } });
+    if (!current) throw new NotFoundError('Pedido');
+    // Una vez que el biker cerró el ciclo (o lo tiene en curso), el admin ya
+    // no puede pisarlo marcando DELIVERED a mano — eso lo cierra el biker
+    // desde apps/delivery, que es quien de verdad hizo la entrega.
+    if (status === 'DELIVERED' && current.riderId && current.deliveryStatus !== 'ENTREGADO') {
+      throw new BusinessError('Este pedido tiene un repartidor asignado — la entrega la confirma él desde su app.');
+    }
+
     const order = await prisma.storeOrder.update({
       where: { id },
       data: { status, ...(paymentStatus ? { paymentStatus } : {}) },
@@ -629,6 +639,20 @@ export class StoreService {
       paymentStatus: order.paymentStatus,
     });
 
+    // Si ya hay un biker tomando el pedido, avisarle por push que puede
+    // pasar a recogerlo apenas el staff lo marca listo.
+    if (status === 'READY' && order.riderId) {
+      await deliveryService.notifyReadyForPickup(order.id, order.riderId, order.orderNumber);
+    }
+
+    return order;
+  }
+
+  /* ── Datos del paquete físico (los llena el staff al preparar) ────────── */
+  async updateOrderPackage(id: string, data: {
+    packageTamano?: string; packageTipo?: string; packagePesoKg?: number; packageFragil?: boolean;
+  }) {
+    const order = await prisma.storeOrder.update({ where: { id }, data });
     return order;
   }
 }

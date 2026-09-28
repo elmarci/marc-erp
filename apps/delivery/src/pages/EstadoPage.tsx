@@ -1,30 +1,46 @@
 import { useNavigate } from 'react-router-dom'
-import { MapPin, ChevronRight } from 'lucide-react'
+import { MapPin, ChevronRight, Menu } from 'lucide-react'
 import { useAuthStore } from '../authStore'
+import { useUiStore } from '../uiStore'
+import { updateEstado } from '../api'
+import { subscribeRiderToPush } from '../lib/push'
 import { PrimaryButton } from '../components/PrimaryButton'
 import { cn } from '../lib/cn'
 
 export function EstadoPage() {
   const navigate = useNavigate()
   const { nombre, iniciales, enServicio, setEnServicio, locationPermission } = useAuthStore()
+  const openDrawer = useUiStore((s) => s.openDrawer)
 
   const toggle = () => {
     if (!enServicio && locationPermission !== 'granted') {
       navigate('/ubicacion')
       return
     }
-    setEnServicio(!enServicio)
+    const next = !enServicio
+    setEnServicio(next)
+    updateEstado({ enServicio: next }).catch(() => setEnServicio(!next))
+    if (next) subscribeRiderToPush()
   }
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex animate-enter-up items-center gap-3 px-6 pt-7">
-        <div className="font-display flex h-11 w-11 items-center justify-center rounded-full bg-paper-surface text-base font-bold">
-          {iniciales}
-        </div>
-        <div className="flex flex-col">
-          <div className="text-base font-bold">Hola, {nombre.split(' ')[0]}</div>
-          <div className="text-[13px] font-medium text-paper-ink-soft">Repartidor afiliado</div>
+      <div className="flex animate-enter-up items-center justify-between px-5 pt-6">
+        <button
+          onClick={openDrawer}
+          aria-label="Abrir menú"
+          className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-paper-surface transition-transform active:scale-95"
+        >
+          <Menu size={18} className="text-paper-ink" />
+        </button>
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col text-right">
+            <div className="text-base font-bold">Hola, {nombre.split(' ')[0]}</div>
+            <div className="text-[13px] font-medium text-paper-ink-soft">Repartidor afiliado</div>
+          </div>
+          <div className="font-display flex h-11 w-11 items-center justify-center rounded-full bg-brand-green-700 text-base font-bold text-white">
+            {iniciales}
+          </div>
         </div>
       </div>
 
@@ -37,7 +53,7 @@ export function EstadoPage() {
         </div>
 
         <div className="flex flex-col items-center gap-1.5 text-center">
-          <div className="font-display text-xl font-bold">
+          <div className="font-display text-2xl font-extrabold uppercase tracking-wide">
             {enServicio ? 'Estás en servicio' : 'No estás recibiendo pedidos'}
           </div>
           <div className="max-w-[280px] text-[15px] leading-snug text-paper-ink-soft">

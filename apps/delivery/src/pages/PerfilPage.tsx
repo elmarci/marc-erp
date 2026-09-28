@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Award, Bike, CheckCircle2, Clock, Fuel, LogOut, Mic, Package, Plus, ShieldCheck, Star, Sun, TrendingUp, Wrench } from 'lucide-react'
-import { fetchProfile, fetchFuelExpenses, addFuelExpense } from '../mockApi'
+import { fetchProfile, fetchFuelExpenses, addFuelExpense } from '../api'
 import { useAuthStore } from '../authStore'
 import { PrimaryButton } from '../components/PrimaryButton'
+import { TopBar } from '../components/TopBar'
 import { cn } from '../lib/cn'
 
 export function PerfilPage() {
@@ -44,17 +45,19 @@ export function PerfilPage() {
   if (!profile) return <div className="flex h-full items-center justify-center text-paper-ink-soft">Cargando…</div>
 
   return (
-    <div className="no-scrollbar flex h-full flex-col gap-[22px] overflow-y-auto px-6 pb-4 pt-7">
+    <div className="no-scrollbar flex h-full flex-col overflow-y-auto pb-4">
+      <TopBar title="PERFIL" />
+      <div className="flex flex-col gap-[22px] px-6 pt-1">
       <div className="flex flex-col items-center gap-2.5">
-        <div className="font-display flex h-[72px] w-[72px] items-center justify-center rounded-full bg-paper-surface text-2xl font-bold">
+        <div className="font-display flex h-[72px] w-[72px] items-center justify-center rounded-full bg-brand-green-700 text-2xl font-bold text-white">
           {profile.iniciales}
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <div className="text-lg font-extrabold">{profile.nombre}</div>
           <div className="text-[13px] font-semibold text-paper-ink-soft">Repartidor afiliado desde {profile.afiliadoDesde}</div>
         </div>
-        <div className="mt-1 flex items-center gap-1.5 rounded-full bg-[#fdf3e2] px-3.5 py-1.5">
-          <Star size={15} className="fill-brand-achiote-500 text-brand-achiote-500" />
+        <div className="mt-1 flex items-center gap-1.5 rounded-full bg-brand-achiote-900/40 px-3.5 py-1.5">
+          <Star size={15} className="fill-accent-achiote text-accent-achiote" />
           <span className="text-[13px] font-extrabold">{profile.calificacion} de calificación</span>
         </div>
       </div>
@@ -80,20 +83,20 @@ export function PerfilPage() {
         <div className="text-[13px] font-extrabold uppercase tracking-wide text-paper-ink-soft">Mi moto</div>
         <div className="flex flex-col gap-3.5 rounded-[20px] bg-paper-surface p-4">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white">
+            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-paper-raised">
               <Bike size={26} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[15px] font-extrabold">{profile.moto.modelo}</div>
-              <span className="mt-1.5 inline-block rounded-md bg-paper-ink px-2.5 py-1 text-xs font-extrabold tracking-wider text-white">
+              <span className="mt-1.5 inline-block rounded-md bg-paper-bg px-2.5 py-1 text-xs font-extrabold tracking-wider text-paper-ink">
                 {profile.moto.placa}
               </span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 rounded-full bg-brand-green-50 px-3.5 py-1.5">
-              <ShieldCheck size={14} className="text-brand-green-600" />
-              <span className="text-xs font-extrabold text-brand-green-600">SOAT vigente · vence {profile.moto.soatVigenteHasta}</span>
+            <div className="flex items-center gap-1.5 rounded-full bg-brand-green-900/40 px-3.5 py-1.5">
+              <ShieldCheck size={14} className="text-accent-green" />
+              <span className="text-xs font-extrabold text-accent-green">SOAT vigente · vence {profile.moto.soatVigenteHasta}</span>
             </div>
             <MantenimientoPill moto={profile.moto} />
           </div>
@@ -123,7 +126,7 @@ export function PerfilPage() {
                 value={montoGasto}
                 onChange={(e) => setMontoGasto(e.target.value)}
                 placeholder="Monto (S/)"
-                className="h-11 flex-1 rounded-xl border-[1.5px] border-paper-line bg-white px-3 text-sm font-bold outline-none"
+                className="h-11 flex-1 rounded-xl border-[1.5px] border-paper-line bg-paper-raised px-3 text-sm font-bold outline-none"
               />
               <input
                 type="number"
@@ -131,7 +134,7 @@ export function PerfilPage() {
                 value={galonesGasto}
                 onChange={(e) => setGalonesGasto(e.target.value)}
                 placeholder="Galones"
-                className="h-11 flex-1 rounded-xl border-[1.5px] border-paper-line bg-white px-3 text-sm font-bold outline-none"
+                className="h-11 flex-1 rounded-xl border-[1.5px] border-paper-line bg-paper-raised px-3 text-sm font-bold outline-none"
               />
             </div>
             <PrimaryButton
@@ -146,8 +149,8 @@ export function PerfilPage() {
 
         <div className="flex items-center justify-between rounded-[20px] bg-paper-surface p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white">
-              <Fuel size={18} className="text-brand-achiote-500" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-paper-raised">
+              <Fuel size={18} className="text-accent-achiote" />
             </div>
             <div className="text-sm font-bold text-paper-ink-soft">Gastado esta semana</div>
           </div>
@@ -157,7 +160,7 @@ export function PerfilPage() {
         {gastos && gastos.length > 0 && (
           <div className="flex flex-col">
             {gastos.slice(0, 3).map((g) => (
-              <div key={g.id} className="flex items-center justify-between border-b border-[#f0efe9] py-2.5 last:border-b-0">
+              <div key={g.id} className="flex items-center justify-between border-b border-paper-line py-2.5 last:border-b-0">
                 <span className="text-[13px] font-semibold text-paper-ink-soft">
                   {new Date(g.fecha).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })} · {g.galones} gal
                 </span>
@@ -248,6 +251,7 @@ export function PerfilPage() {
         <LogOut size={16} strokeWidth={2.2} />
         Cerrar sesión
       </button>
+      </div>
     </div>
   )
 }
@@ -257,9 +261,9 @@ function MantenimientoPill({ moto }: { moto: { kmTotal: number; kmUltimoMantenim
 
   if (kmRestantes <= 0) {
     return (
-      <div className="flex items-center gap-1.5 rounded-full bg-brand-magenta-50 px-3.5 py-1.5">
-        <AlertTriangle size={14} className="text-brand-magenta-500" />
-        <span className="text-xs font-extrabold text-brand-magenta-500">
+      <div className="flex items-center gap-1.5 rounded-full bg-brand-magenta-900/40 px-3.5 py-1.5">
+        <AlertTriangle size={14} className="text-brand-magenta-400" />
+        <span className="text-xs font-extrabold text-brand-magenta-400">
           Mantenimiento atrasado {Math.abs(kmRestantes)} km
         </span>
       </div>
@@ -267,9 +271,9 @@ function MantenimientoPill({ moto }: { moto: { kmTotal: number; kmUltimoMantenim
   }
   if (kmRestantes <= 500) {
     return (
-      <div className="flex items-center gap-1.5 rounded-full bg-brand-achiote-50 px-3.5 py-1.5">
-        <Wrench size={14} className="text-brand-achiote-500" />
-        <span className="text-xs font-extrabold text-brand-achiote-500">Cambio de aceite en {kmRestantes} km</span>
+      <div className="flex items-center gap-1.5 rounded-full bg-brand-achiote-900/40 px-3.5 py-1.5">
+        <Wrench size={14} className="text-accent-achiote" />
+        <span className="text-xs font-extrabold text-accent-achiote">Cambio de aceite en {kmRestantes} km</span>
       </div>
     )
   }

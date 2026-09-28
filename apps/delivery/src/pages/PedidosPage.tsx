@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Banknote, Bell, CheckCircle2, Clock, CloudRain, List, MapIcon, Navigation, Package, RefreshCw, Wallet } from 'lucide-react'
-import { fetchAvailableOrders, fetchMyOrders, claimOrder, claimOrders } from '../mockApi'
+import { Banknote, Bell, CheckCircle2, Clock, CloudRain, List, MapIcon, Package, RefreshCw, Wallet } from 'lucide-react'
+import { fetchAvailableOrders, fetchMyOrders, claimOrder, claimOrders, releaseOrder } from '../api'
 import { fetchViaAlert } from '../lib/weather'
-import { resolveRoute, estimarSeparados } from '../lib/routing'
+import { resolveRoute, estimarSeparados, VELOCIDAD_MOTO_KMH } from '../lib/routing'
 import { useRiderLocation } from '../hooks/useRiderLocation'
+import { useAuthStore } from '../authStore'
 import { RouteMap } from '../components/RouteMap'
-import { PrimaryButton } from '../components/PrimaryButton'
-import { ConfirmSheet } from '../components/ConfirmSheet'
+import { TopBar } from '../components/TopBar'
+import { HoldClaimButton } from '../components/HoldClaimButton'
+import { PaqueteBadge } from '../components/PaqueteBadge'
 import type { DeliveryOrder } from '../types'
 import { cn } from '../lib/cn'
 
@@ -38,6 +40,14 @@ const ORDEN_OPTIONS: { key: Orden; label: string }[] = [
   { key: 'urgencia', label: 'Más urgente' },
 ]
 
+// Color de la pestaña triangular de cada ticket — una pista visual rápida,
+// no solo decorativa: naranja = nuevo, azul = ya pagado, verde = el resto.
+function tabColor(o: DeliveryOrder): string {
+  if (o.isNew) return '#c9552a'
+  if (!o.contraEntrega) return '#2460b4'
+  return '#2f6c12'
+}
+
 export function PedidosPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -47,9 +57,10 @@ export function PedidosPage() {
   const [pago, setPago] = useState<Pago>('todos')
   const [vista, setVista] = useState<'lista' | 'mapa'>('lista')
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
-  const [claimingOrder, setClaimingOrder] = useState<DeliveryOrder | null>(null)
   const [claiming, setClaiming] = useState(false)
+  const [tomandoIds, setTomandoIds] = useState<Set<string>>(new Set())
   const riderPos = useRiderLocation()
+  const iniciales = useAuthStore((s) => s.iniciales)
 
   // Bolsa abierta: "Disponibles" es de cualquiera en servicio (primero que
   // toca, se lo lleva); "Mis pedidos" es lo que este repartidor ya captó y
@@ -102,19 +113,34 @@ export function PedidosPage() {
     queryClient.invalidateQueries({ queryKey: ['orders-mios'] })
   }
 
-  const confirmClaim = async () => {
-    if (!claimingOrder) return
-    setClaiming(true)
+  // El sello deja de ser decoración: mantener presionado (HoldClaimButton) es
+  // ahora la propia acción de captura — sin diálogo antes, con "Deshacer" 5s
+  // después. Reemplaza tanto el tap directo como el tap+ConfirmSheet previos.
+  const holdClaim = async (o: DeliveryOrder) => {
+    if (tomandoIds.has(o.id)) return
+    setTomandoIds((prev) => new Set(prev).add(o.id))
     try {
-      await claimOrder(claimingOrder.id)
+      await claimOrder(o.id)
       invalidateOrderLists()
-      toast.success('Pedido tomado — ya es tuyo.')
-      navigate(`/pedidos/${claimingOrder.id}`)
+      toast.success(`${o.numero} tomado — ya es tuyo.`, {
+        duration: 5000,
+        action: {
+          label: 'Deshacer',
+          onClick: async () => {
+            await releaseOrder(o.id)
+            invalidateOrderLists()
+          },
+        },
+      })
+      navigate(`/pedidos/${o.id}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'No se pudo tomar el pedido')
     } finally {
-      setClaiming(false)
-      setClaimingOrder(null)
+      setTomandoIds((prev) => {
+        const next = new Set(prev)
+        next.delete(o.id)
+        return next
+      })
     }
   }
 
@@ -128,7 +154,16 @@ export function PedidosPage() {
         toast.error(fallidos.length === 1 ? 'Ese pedido ya lo tomó otro repartidor' : `${fallidos.length} pedidos ya los tomó otro repartidor`)
       }
       if (tomados.length > 0) {
-        toast.success(tomados.length === 1 ? 'Pedido tomado.' : `Tomaste ${tomados.length} pedidos.`)
+        toast.success(tomados.length === 1 ? 'Pedido tomado.' : `Tomaste ${tomados.length} pedidos.`, {
+          duration: 5000,
+          action: {
+            label: 'Deshacer',
+            onClick: async () => {
+              await Promise.all(tomados.map((o) => releaseOrder(o.id)))
+              invalidateOrderLists()
+            },
+          },
+        })
         const primeroId = routeInfo?.ruta[0]?.id ?? tomados[0].id
         setSeleccionados(new Set())
         navigate(`/pedidos/${primeroId}`)
@@ -142,10 +177,7 @@ export function PedidosPage() {
   // trabajar" — el repartidor decide con qué pedido conviene salir, no solo
   // recibe uno a ciegas. `pago` ordena/filtra por la tarifa real que le paga
   // la empresa (`tarifaReparto`), nunca por `monto` (eso es plata del
-  // cliente que solo pasa por sus manos camino a la tienda). No se resta
-  // gasolina ni ningún otro costo — calcular la rentabilidad real depende
-  // de más variables de las que esta app puede saber con certeza, así que
-  // solo se muestra el monto real que se va a ganar, sin adornarlo.
+  // cliente que solo pasa por sus manos camino a la tienda).
   const visibles = useMemo(() => {
     let list = orders ?? []
     if (pago === 'efectivo') list = list.filter((o) => o.contraEntrega)
@@ -167,85 +199,77 @@ export function PedidosPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-6 pb-3 pt-6">
-        <div className="font-display text-2xl font-extrabold">Pedidos</div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-full bg-paper-surface px-3 py-1.5">
-            <div className="h-2 w-2 rounded-full bg-brand-green-500" />
-            <span className="text-[13px] font-bold">En servicio</span>
-          </div>
-          <button
-            onClick={() => setVista(vista === 'lista' ? 'mapa' : 'lista')}
-            aria-label={vista === 'lista' ? 'Ver mapa' : 'Ver lista de pedidos'}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-paper-surface"
-          >
-            {vista === 'lista' ? <MapIcon size={17} /> : <List size={17} />}
-          </button>
-        </div>
-      </div>
+      <TopBar title="PEDIDOS" subtitle={`${disponibles?.length ?? 0} disponibles · Manchay`} />
 
       <div className="flex gap-2 px-5 pb-2">
         <button
           onClick={() => cambiarTab('disponibles')}
           className={cn(
-            'flex-1 rounded-full py-2.5 text-[13px] font-extrabold transition-colors',
-            tab === 'disponibles' ? 'bg-brand-green-700 text-white' : 'bg-paper-surface text-paper-ink-soft',
+            'font-display flex-1 rounded-xl py-2.5 text-[13px] font-extrabold transition-colors',
+            tab === 'disponibles' ? 'bg-accent-green text-[#12250a]' : 'bg-paper-surface text-paper-ink-faint',
           )}
         >
-          Disponibles{disponibles && disponibles.length > 0 ? ` (${disponibles.length})` : ''}
+          DISPONIBLES{disponibles && disponibles.length > 0 ? ` (${disponibles.length})` : ''}
         </button>
         <button
           onClick={() => cambiarTab('mis')}
           className={cn(
-            'flex-1 rounded-full py-2.5 text-[13px] font-extrabold transition-colors',
-            tab === 'mis' ? 'bg-brand-green-700 text-white' : 'bg-paper-surface text-paper-ink-soft',
+            'font-display flex-1 rounded-xl py-2.5 text-[13px] font-extrabold transition-colors',
+            tab === 'mis' ? 'bg-accent-green text-[#12250a]' : 'bg-paper-surface text-paper-ink-faint',
           )}
         >
-          Mis pedidos{misPedidos && misPedidos.length > 0 ? ` (${misPedidos.length})` : ''}
+          MIS PEDIDOS{misPedidos && misPedidos.length > 0 ? ` (${misPedidos.length})` : ''}
+        </button>
+        <button
+          onClick={() => setVista(vista === 'lista' ? 'mapa' : 'lista')}
+          aria-label={vista === 'lista' ? 'Ver mapa' : 'Ver lista de pedidos'}
+          className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-xl bg-paper-surface"
+        >
+          {vista === 'lista' ? <MapIcon size={16} className="text-paper-ink-soft" /> : <List size={16} className="text-paper-ink-soft" />}
         </button>
       </div>
 
       {vista === 'lista' && (
-        <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-1">
+        <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
           {ORDEN_OPTIONS.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setOrden(key)}
               className={cn(
-                'flex-shrink-0 rounded-full border-[1.5px] px-3.5 py-2 text-[13px] font-bold transition-colors',
-                orden === key ? 'border-brand-green-500 bg-brand-green-500 text-white' : 'border-paper-line text-paper-ink-soft',
+                'font-display flex-shrink-0 rounded-full px-3.5 py-2 text-[12px] font-extrabold tracking-wide transition-colors',
+                orden === key ? 'bg-paper-ink text-paper-bg' : 'bg-paper-surface text-paper-ink-faint',
               )}
             >
-              {label}
+              {label.toUpperCase()}
             </button>
           ))}
           <div className="mx-1 w-px flex-shrink-0 bg-paper-line" />
           <button
             onClick={() => setPago(pago === 'efectivo' ? 'todos' : 'efectivo')}
             className={cn(
-              'flex flex-shrink-0 items-center gap-1.5 rounded-full border-[1.5px] px-3.5 py-2 text-[13px] font-bold transition-colors',
-              pago === 'efectivo' ? 'border-brand-green-500 bg-brand-green-500 text-white' : 'border-paper-line text-paper-ink-soft',
+              'font-display flex flex-shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-extrabold tracking-wide transition-colors',
+              pago === 'efectivo' ? 'bg-paper-ink text-paper-bg' : 'bg-paper-surface text-paper-ink-faint',
             )}
           >
-            <Banknote size={14} />
-            Efectivo
+            <Banknote size={13} />
+            EFECTIVO
           </button>
           <button
             onClick={() => setPago(pago === 'online' ? 'todos' : 'online')}
             className={cn(
-              'flex flex-shrink-0 items-center gap-1.5 rounded-full border-[1.5px] px-3.5 py-2 text-[13px] font-bold transition-colors',
-              pago === 'online' ? 'border-brand-green-500 bg-brand-green-500 text-white' : 'border-paper-line text-paper-ink-soft',
+              'font-display flex flex-shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-extrabold tracking-wide transition-colors',
+              pago === 'online' ? 'bg-paper-ink text-paper-bg' : 'bg-paper-surface text-paper-ink-faint',
             )}
           >
-            <CheckCircle2 size={14} />
-            Ya pagado
+            <CheckCircle2 size={13} />
+            YA PAGADO
           </button>
         </div>
       )}
 
       {!online && (
-        <div className="mx-5 mt-2 flex items-center gap-2.5 rounded-2xl border border-brand-achiote-100 bg-brand-achiote-50 px-3.5 py-3">
-          <RefreshCw size={18} className="flex-shrink-0 animate-spin text-brand-achiote-500" />
+        <div className="mx-5 mt-2 flex items-center gap-2.5 rounded-2xl border border-brand-achiote-700/40 bg-brand-achiote-900/30 px-3.5 py-3">
+          <RefreshCw size={18} className="flex-shrink-0 animate-spin text-accent-achiote" />
           <div className="flex flex-col">
             <span className="text-[13px] font-extrabold">Sin conexión. Reintentando…</span>
             <span className="text-xs font-medium text-paper-ink-soft">
@@ -259,10 +283,10 @@ export function PedidosPage() {
         <div
           className={cn(
             'mx-5 mt-2 flex items-center gap-2.5 rounded-2xl border px-3.5 py-3',
-            viaAlert.nivel === 'alerta' ? 'border-brand-magenta-100 bg-brand-magenta-50' : 'border-brand-achiote-100 bg-brand-achiote-50',
+            viaAlert.nivel === 'alerta' ? 'border-brand-magenta-700/40 bg-brand-magenta-900/30' : 'border-brand-achiote-700/40 bg-brand-achiote-900/30',
           )}
         >
-          <CloudRain size={18} className={cn('flex-shrink-0', viaAlert.nivel === 'alerta' ? 'text-brand-magenta-500' : 'text-brand-achiote-500')} />
+          <CloudRain size={18} className={cn('flex-shrink-0', viaAlert.nivel === 'alerta' ? 'text-brand-magenta-400' : 'text-accent-achiote')} />
           <span className="text-[13px] font-extrabold leading-snug">{viaAlert.mensaje}</span>
         </div>
       )}
@@ -271,6 +295,7 @@ export function PedidosPage() {
         <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto px-5 pb-5 pt-3.5">
           <RouteMap
             riderPos={riderPos}
+            riderIniciales={iniciales}
             orders={orders ?? []}
             selected={seleccionados}
             ordenVisita={routeInfo?.ruta.map((o) => o.id) ?? []}
@@ -298,20 +323,20 @@ export function PedidosPage() {
           )}
 
           {seleccionados.size > 0 && routeInfo && routeInfo.ruta.length > 0 && (
-            <div className="flex flex-col gap-3 rounded-[20px] border-[1.5px] border-brand-green-100 bg-brand-green-50 p-[18px]">
+            <div className="flex flex-col gap-3 rounded-[20px] border-[1.5px] border-brand-green-700/50 bg-brand-green-900/25 p-[18px]">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-extrabold uppercase tracking-wide text-brand-green-700">
+                <div className="font-display text-xs font-extrabold uppercase tracking-wide text-accent-green">
                   Ruta sugerida · {routeInfo.totalKm.toFixed(1)} km · ~{Math.round(routeInfo.totalMin)} min
                 </div>
                 {!routeInfo.esReal && (
-                  <span className="flex-shrink-0 rounded-full bg-brand-achiote-50 px-2 py-0.5 text-[10px] font-extrabold text-brand-achiote-600">
+                  <span className="flex-shrink-0 rounded-full bg-brand-achiote-900/40 px-2 py-0.5 text-[10px] font-extrabold text-accent-achiote">
                     Estimado
                   </span>
                 )}
               </div>
 
               {separados && (
-                <div className="text-[11px] font-semibold text-brand-green-700">
+                <div className="text-[11px] font-semibold text-accent-green">
                   Separados serían ~{separados.km.toFixed(1)} km / {Math.round(separados.min)} min — juntos ahorras ~
                   {Math.max(0, separados.km - routeInfo.totalKm).toFixed(1)} km.
                 </div>
@@ -325,32 +350,38 @@ export function PedidosPage() {
                   const eta = new Date(Date.now() + etaMin * 60000)
                   return (
                     <div key={o.id} className="flex items-center gap-2.5">
-                      <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-brand-green-700 text-xs font-extrabold text-white">
+                      <div className="font-display flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-accent-green text-xs font-extrabold text-[#12250a]">
                         {i + 1}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] font-bold">
-                          <span className="text-paper-ink-soft">{o.numero}</span> · {o.direccion}
+                          <span className="text-paper-ink-faint">{o.numero}</span> · {o.direccion}
                         </div>
-                        <div className="text-[11px] font-semibold text-paper-ink-soft">
+                        <div className="text-[11px] font-semibold text-paper-ink-faint">
                           {leg.distanciaKm.toFixed(1)} km · {Math.round(leg.duracionMin)} min · llegas ~
                           {eta.toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit' })}
                         </div>
                       </div>
-                      <div className="flex-shrink-0 text-xs font-extrabold text-brand-green-700">S/ {o.tarifaReparto.toFixed(2)}</div>
+                      <div className="font-display flex-shrink-0 text-xs font-extrabold text-accent-green">S/ {o.tarifaReparto.toFixed(2)}</div>
                     </div>
                   )
                 })}
               </div>
 
               {tab === 'disponibles' ? (
-                <PrimaryButton className="w-full" disabled={claiming} onClick={confirmClaimBatch}>
-                  {claiming ? 'Tomando…' : routeInfo.ruta.length === 1 ? 'Tomar este pedido' : `Tomar estos ${routeInfo.ruta.length} pedidos`}
-                </PrimaryButton>
+                <HoldClaimButton
+                  className="w-full text-center"
+                  disabled={claiming}
+                  onConfirm={confirmClaimBatch}
+                  label={routeInfo.ruta.length === 1 ? 'TOMAR ESTE PEDIDO' : `TOMAR ESTOS ${routeInfo.ruta.length} PEDIDOS`}
+                />
               ) : (
-                <PrimaryButton className="w-full" onClick={() => navigate(`/pedidos/${routeInfo.ruta[0].id}`)}>
-                  Empezar por aquí
-                </PrimaryButton>
+                <button
+                  onClick={() => navigate(`/pedidos/${routeInfo.ruta[0].id}`)}
+                  className="font-display w-full rounded-xl bg-brand-green-700 py-3.5 text-[15px] font-extrabold text-white"
+                >
+                  EMPEZAR POR AQUÍ
+                </button>
               )}
             </div>
           )}
@@ -358,17 +389,17 @@ export function PedidosPage() {
       )}
 
       {vista === 'lista' && (
-        <div className={cn('no-scrollbar flex flex-1 flex-col gap-3.5 overflow-y-auto px-5 pb-5 pt-3.5', !online && 'opacity-70')}>
+        <div className={cn('no-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5 pt-1', !online && 'opacity-70')}>
           {isLoading ? (
             Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex flex-col gap-3.5 rounded-[20px] border-[1.5px] border-paper-line p-[18px]">
+              <div key={i} className="flex flex-col gap-3.5 rounded-[18px] bg-paper-surface p-[18px]">
                 <div className="flex justify-between">
-                  <div className="h-[18px] w-[180px] animate-shimmer rounded-lg bg-paper-surface" />
-                  <div className="h-[14px] w-11 animate-shimmer rounded-lg bg-paper-surface" />
+                  <div className="h-[18px] w-[180px] animate-shimmer rounded-lg bg-paper-raised" />
+                  <div className="h-[14px] w-11 animate-shimmer rounded-lg bg-paper-raised" />
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="h-6 w-[100px] animate-shimmer rounded-full bg-paper-surface" />
-                  <div className="h-[22px] w-[70px] animate-shimmer rounded-lg bg-paper-surface" />
+                  <div className="h-6 w-[100px] animate-shimmer rounded-full bg-paper-raised" />
+                  <div className="h-[22px] w-[70px] animate-shimmer rounded-lg bg-paper-raised" />
                 </div>
               </div>
             ))
@@ -400,81 +431,73 @@ export function PedidosPage() {
                   </span>
                 </div>
               )}
-              {visibles.map((o) => (
-                <button
-                  key={o.id}
-                  onClick={() => (tab === 'disponibles' ? setClaimingOrder(o) : navigate(`/pedidos/${o.id}`))}
-                  className={cn(
-                    'relative block animate-enter-up rounded-[20px] border-[1.5px] bg-white p-[18px] text-left shadow-sm transition-transform active:scale-[0.98]',
-                    o.isNew ? 'border-brand-magenta-100' : 'border-paper-line',
-                  )}
-                >
-                  {o.isNew && (
-                    <div className="absolute -top-2.5 right-4 rounded-full bg-brand-magenta-500 px-2.5 py-1 text-[11px] font-extrabold tracking-wide text-white">
-                      NUEVO
+              {visibles.map((o) => {
+                const minEstimado = Math.round((o.distanciaKm / VELOCIDAD_MOTO_KMH) * 60)
+                const contenido = (
+                  <>
+                    <div className="text-[11px] font-extrabold uppercase tracking-wide text-paper-ink-faint">
+                      {o.numero}
+                      {o.isNew && ' · NUEVO'}
                     </div>
-                  )}
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div>
-                      <div className="text-[11px] font-extrabold uppercase tracking-wide text-paper-ink-soft">{o.numero}</div>
-                      <div className="text-[17px] font-extrabold leading-snug">{o.direccion}</div>
-                    </div>
-                    <div className="flex flex-shrink-0 items-center gap-1 pt-0.5">
-                      <Navigation size={14} className="text-paper-ink-soft" />
-                      <span className="text-[13px] font-bold text-paper-ink-soft">{o.distanciaKm} km</span>
-                    </div>
-                  </div>
-                  <div className="h-2.5" />
-                  <div className="flex items-center justify-between">
-                    <div
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-full px-3 py-1.5',
-                        o.esperaMin >= 14 ? 'bg-brand-achiote-50' : 'bg-brand-green-50',
+                    <div className="mt-0.5 text-[18px] font-extrabold leading-snug text-paper-ink">{o.direccion}</div>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                      <PaqueteBadge paquete={o.paquete} compact />
+                      <div
+                        className={cn(
+                          'flex items-center gap-1 rounded-lg px-2.5 py-1',
+                          o.esperaMin >= 14 ? 'bg-brand-achiote-900/40' : 'bg-paper-raised',
+                        )}
+                      >
+                        <Clock size={11} className={o.esperaMin >= 14 ? 'text-accent-achiote' : 'text-paper-ink-soft'} />
+                        <span className={cn('text-[11px] font-extrabold', o.esperaMin >= 14 ? 'text-accent-achiote' : 'text-paper-ink-soft')}>
+                          {o.esperaMin} min
+                        </span>
+                      </div>
+                      {o.contraEntrega ? (
+                        <div className="flex items-center gap-1 rounded-lg bg-paper-raised px-2.5 py-1">
+                          <Wallet size={11} className="text-paper-ink-soft" />
+                          <span className="text-[11px] font-extrabold text-paper-ink-soft">COBRAR S/{o.monto.toFixed(0)}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 rounded-lg bg-paper-raised px-2.5 py-1">
+                          <CheckCircle2 size={11} className="text-accent-green" />
+                          <span className="text-[11px] font-extrabold text-accent-green">PAGADO ONLINE</span>
+                        </div>
                       )}
-                    >
-                      <Clock size={13} className={o.esperaMin >= 14 ? 'text-brand-achiote-500' : 'text-brand-green-600'} />
-                      <span className={cn('text-xs font-extrabold', o.esperaMin >= 14 ? 'text-brand-achiote-500' : 'text-brand-green-600')}>
-                        Esperando {o.esperaMin} min
-                      </span>
                     </div>
-                    {o.contraEntrega ? (
-                      <div className="text-right">
-                        <div className="text-[10px] font-bold uppercase tracking-wide text-paper-ink-soft">Cobrar</div>
-                        <div className="font-display text-xl font-extrabold">S/ {o.monto.toFixed(2)}</div>
+                    <div className="my-3.5 h-px bg-paper-line" />
+                    <div className="flex items-end justify-between gap-2">
+                      <div>
+                        <div className="text-[11px] font-extrabold uppercase tracking-wide text-paper-ink-faint">
+                          {o.distanciaKm} KM · ~{minEstimado} MIN
+                        </div>
+                        <div className="font-display text-[30px] font-extrabold leading-none text-accent-green">S/{o.tarifaReparto.toFixed(2)}</div>
                       </div>
+                      {tab === 'disponibles' ? (
+                        <HoldClaimButton onConfirm={() => holdClaim(o)} disabled={tomandoIds.has(o.id)} label="TOMAR" />
+                      ) : (
+                        <div className="font-display rounded-xl bg-brand-blue-500 px-5 py-3.5 text-[14px] font-extrabold text-white">VER →</div>
+                      )}
+                    </div>
+                  </>
+                )
+
+                return (
+                  <div key={o.id} className="relative animate-enter-up">
+                    <div className="ticket-tab" style={{ borderColor: `transparent ${tabColor(o)} transparent transparent` }} />
+                    {tab === 'mis' ? (
+                      <button onClick={() => navigate(`/pedidos/${o.id}`)} className="ticket-cut w-full bg-paper-surface p-[18px] text-left">
+                        {contenido}
+                      </button>
                     ) : (
-                      <div className="flex items-center gap-1.5 rounded-full bg-brand-green-50 px-3 py-1.5">
-                        <CheckCircle2 size={13} className="text-brand-green-600" />
-                        <span className="text-xs font-extrabold text-brand-green-600">Pagado online</span>
-                      </div>
+                      <div className="ticket-cut bg-paper-surface p-[18px]">{contenido}</div>
                     )}
                   </div>
-                  <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-dashed border-paper-line pt-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <Wallet size={13} className="text-brand-green-600" />
-                      <span className="text-xs font-bold text-paper-ink-soft">
-                        Tarifa: <span className="font-extrabold text-brand-green-600">S/ {o.tarifaReparto.toFixed(2)}</span>
-                      </span>
-                    </div>
-                    {tab === 'disponibles' && (
-                      <span className="text-xs font-extrabold text-brand-green-700">Tomar pedido →</span>
-                    )}
-                  </div>
-                </button>
-              ))}
+                )
+              })}
             </>
           )}
         </div>
-      )}
-
-      {claimingOrder && (
-        <ConfirmSheet
-          title="¿Tomar este pedido?"
-          description={`${claimingOrder.direccion} · ${claimingOrder.distanciaKm} km · te pagan S/ ${claimingOrder.tarifaReparto.toFixed(2)} por el viaje.`}
-          confirmLabel={claiming ? 'Tomando…' : 'Tomar pedido'}
-          onConfirm={confirmClaim}
-          onCancel={() => setClaimingOrder(null)}
-        />
       )}
     </div>
   )

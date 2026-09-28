@@ -17,6 +17,7 @@ import {
   Store,
   FolderTree,
   Bell,
+  Bike,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -44,6 +45,7 @@ const navItems: NavItem[] = [
   { path: '/inventory', label: 'Inventario', icon: Boxes, minRole: 'WAREHOUSE' },
   { path: '/cash', label: 'Caja', icon: Wallet },
   { path: '/store-orders', label: 'Pedidos Online', icon: Store, minRole: 'CASHIER' },
+  { path: '/riders', label: 'Repartidores', icon: Bike, minRole: 'SUPERVISOR' },
   { path: '/offers', label: 'Ofertas', icon: Tag, minRole: 'SUPERVISOR' },
   { path: '/notifications', label: 'Notificaciones', icon: Bell, minRole: 'SUPERVISOR' },
   { path: '/reports', label: 'Reportes', icon: TrendingUp, minRole: 'SUPERVISOR' },

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShoppingBag, CheckCircle, XCircle, Clock, Truck, Package, Receipt, ExternalLink, Bell, BellOff } from 'lucide-react'
+import { ShoppingBag, CheckCircle, XCircle, Clock, Truck, Package, Receipt, ExternalLink, Bell, BellOff, Bike, MapPinned } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card'
 import { api, getErrorMessage } from '@/services/api'
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 import { io } from 'socket.io-client'
+import { RiderTrackingPanel } from './RiderTrackingPanel'
 
 interface StoreOrder {
   id: string; orderNumber: string; customerName: string; customerPhone: string
@@ -16,7 +17,54 @@ interface StoreOrder {
   subtotal: number; deliveryCost: number; total: number; createdAt: string; notes: string | null
   saleId: string | null
   latitude: number | null; longitude: number | null
+  riderId: string | null; deliveryStatus: string | null; rider: { id: string; nombre: string } | null
+  packageTamano: string; packageTipo: string; packagePesoKg: number; packageFragil: boolean
   items: Array<{ id: string; name: string; quantity: number; unitPrice: number; subtotal: number }>
+}
+
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  ASIGNADO: 'Asignado — camino a recoger', RECOGIDO: 'Recogido', EN_CAMINO: 'En camino', ENTREGADO: 'Entregado',
+}
+
+function PackageEditor({ order }: { order: StoreOrder }) {
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: (data: Partial<{ packageTamano: string; packageTipo: string; packagePesoKg: number; packageFragil: boolean }>) =>
+      api.patch(`/store/admin/orders/${order.id}/paquete`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['store-orders'] }),
+    onError: (err) => toast.error(getErrorMessage(err)),
+  })
+
+  return (
+    <div className="rounded-xl border bg-background p-4">
+      <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+        Paquete para el biker (para que organice su mochila)
+      </p>
+      <div className="flex flex-wrap gap-3 text-sm">
+        <select value={order.packageTamano} onChange={(e) => mutation.mutate({ packageTamano: e.target.value })}
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <option value="chico">Chico</option>
+          <option value="mediano">Mediano</option>
+          <option value="grande">Grande</option>
+        </select>
+        <select value={order.packageTipo} onChange={(e) => mutation.mutate({ packageTipo: e.target.value })}
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <option value="bolsa">Bolsa</option>
+          <option value="caja">Caja</option>
+          <option value="bulto">Bulto</option>
+        </select>
+        <input type="number" step="0.1" min="0" value={order.packagePesoKg}
+          onChange={(e) => mutation.mutate({ packagePesoKg: parseFloat(e.target.value) || 0 })}
+          className="h-9 w-24 rounded-md border border-input bg-background px-2 text-sm" />
+        <label className="flex items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={order.packageFragil}
+            onChange={(e) => mutation.mutate({ packageFragil: e.target.checked })}
+            className="h-4 w-4 rounded border-input" />
+          Frágil
+        </label>
+      </div>
+    </div>
+  )
 }
 
 interface CashSession { id: string; cashRegister: { name: string } }
@@ -184,6 +232,7 @@ export function StoreOrdersPage() {
   const [page, setPage] = useState(1)
   const [confirmingOrder, setConfirmingOrder] = useState<StoreOrder | null>(null)
   const [notifEnabled, setNotifEnabled] = useState(false)
+  const [trackingOpenId, setTrackingOpenId] = useState<string | null>(null)
 
   const handleActivateNotifications = () => {
     const ok = activateNotifications()
@@ -314,6 +363,11 @@ export function StoreOrdersPage() {
                         {order.paymentStatus === 'PENDING' && !PAYS_ON_DELIVERY.has(order.paymentMethod) && (
                           <Badge variant="destructive" className="text-xs">Pago pendiente</Badge>
                         )}
+                        {order.rider && (
+                          <span className="text-xs bg-blue-500/10 text-blue-600 border border-blue-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Bike className="h-3 w-3" />{order.rider.nombre} · {DELIVERY_STATUS_LABELS[order.deliveryStatus ?? ''] ?? order.deliveryStatus}
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground mt-0.5">
                         {order.customerName} · {order.customerPhone} · {formatDateTime(order.createdAt)}
@@ -364,6 +418,10 @@ export function StoreOrdersPage() {
                         <p className="text-sm text-muted-foreground italic">"{order.notes}"</p>
                       )}
 
+                      {order.deliveryType === 'DELIVERY' && !['DELIVERED', 'CANCELLED'].includes(order.status) && (
+                        <PackageEditor order={order} />
+                      )}
+
                       {/* Actions */}
                       <div className="flex gap-2 flex-wrap pt-1">
                         {/* CONFIRM = create sale */}
@@ -374,12 +432,22 @@ export function StoreOrdersPage() {
                           </Button>
                         )}
 
-                        {/* Progress order status (after confirmed) */}
-                        {nextCfg && nextStatus && !isPending && (
+                        {/* Progress order status (after confirmed) — el paso a DELIVERED
+                            lo cierra el biker desde su app una vez que hay un repartidor
+                            asignado, el admin ya no lo puede pisar a mano. */}
+                        {nextCfg && nextStatus && !isPending && !(nextStatus === 'DELIVERED' && order.riderId && order.deliveryStatus !== 'ENTREGADO') && (
                           <Button size="sm" variant="outline"
                             onClick={() => updateMutation.mutate({ id: order.id, status: nextStatus })}
                             loading={updateMutation.isPending}>
                             Avanzar a: {nextCfg.label}
+                          </Button>
+                        )}
+
+                        {order.riderId && (
+                          <Button size="sm" variant="outline"
+                            onClick={() => setTrackingOpenId(trackingOpenId === order.id ? null : order.id)}>
+                            <MapPinned className="mr-1.5 h-4 w-4" />
+                            {trackingOpenId === order.id ? 'Ocultar seguimiento' : 'Ver seguimiento'}
                           </Button>
                         )}
 
@@ -407,6 +475,8 @@ export function StoreOrdersPage() {
                           </Button>
                         )}
                       </div>
+
+                      {trackingOpenId === order.id && <RiderTrackingPanel orderId={order.id} />}
                     </div>
                   )}
                 </div>

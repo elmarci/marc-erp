@@ -13,8 +13,8 @@ export default defineConfig({
         name: 'Marc Reparto',
         short_name: 'Marc Reparto',
         description: 'App de reparto para afiliados de Minimarket Marc',
-        theme_color: '#4ca324',
-        background_color: '#ffffff',
+        theme_color: '#1c1b15',
+        background_color: '#1c1b15',
         display: 'standalone',
         start_url: '/',
         icons: [

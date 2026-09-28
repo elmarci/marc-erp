@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { ClipboardList, Clock, User } from 'lucide-react'
+import { ClipboardList, Clock, User, Wallet } from 'lucide-react'
 import { cn } from '../lib/cn'
 
 const TABS = [
   { to: '/pedidos', label: 'Pedidos', icon: ClipboardList },
   { to: '/historial', label: 'Historial', icon: Clock },
+  { to: '/billetera', label: 'Billetera', icon: Wallet },
   { to: '/perfil', label: 'Perfil', icon: User },
 ]
 
@@ -25,10 +26,10 @@ export function BottomNav() {
               <Icon
                 size={24}
                 strokeWidth={2.2}
-                className={cn(isActive ? 'text-brand-green-500' : 'text-paper-ink-soft')}
+                className={cn(isActive ? 'text-accent-green' : 'text-paper-ink-faint')}
               />
-              <span className={cn('text-[11px]', isActive ? 'font-extrabold text-brand-green-500' : 'font-bold text-paper-ink-soft')}>
-                {label}
+              <span className={cn('font-display text-[10px] tracking-wide', isActive ? 'font-extrabold text-accent-green' : 'font-bold text-paper-ink-faint')}>
+                {label.toUpperCase()}
               </span>
             </>
           )}

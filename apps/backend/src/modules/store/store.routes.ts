@@ -147,4 +147,19 @@ router.patch('/admin/orders/:id/status', authenticate, authorizeMinRole('CASHIER
   } catch (err) { next(err); }
 });
 
+// Datos del paquete físico para el biker (peso/tamaño/tipo/frágil) — los
+// llena el staff al preparar el pedido, el cliente nunca los indica.
+router.patch('/admin/orders/:id/paquete', authenticate, authorizeMinRole('CASHIER'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = z.object({
+      packageTamano: z.enum(['chico', 'mediano', 'grande']).optional(),
+      packageTipo: z.enum(['bolsa', 'caja', 'bulto']).optional(),
+      packagePesoKg: z.coerce.number().positive().optional(),
+      packageFragil: z.boolean().optional(),
+    }).parse(req.body);
+    const order = await storeService.updateOrderPackage(req.params.id, data);
+    res.json({ success: true, data: order });
+  } catch (err) { next(err); }
+});
+
 export default router;

@@ -1,14 +1,18 @@
 import type { Config } from 'tailwindcss'
 
-// Fuente de verdad: apps/store/tailwind.config.ts. Mismos tokens, sin
-// inventar paleta nueva — ver skill de proyecto `marc-brand`.
+// Mismos matices de marca que apps/store (brand.*) — ver skill `marc-brand` —
+// pero esta app (herramienta interna para bikers, no cara al cliente) corre
+// en oscuro con tipografía propia: decisión explícita del dueño tras ver que
+// la versión clara con Outfit seguía sintiéndose "igual a cualquier app de
+// delivery". `paper.*` pasa a ser la escala oscura de ESTA app — apps/store
+// no se toca.
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       fontFamily: {
         sans: ['"Public Sans"', 'system-ui', 'sans-serif'],
-        display: ['Outfit', '"Public Sans"', 'sans-serif'],
+        display: ['"Big Shoulders Display"', 'system-ui', 'sans-serif'],
       },
       colors: {
         brand: {
@@ -34,16 +38,25 @@ export default {
           },
         },
         paper: {
-          bg: '#ffffff',
-          surface: '#f4f4f2',
-          raised: '#ffffff',
-          line: '#e5e3dc',
-          ink: '#26241c',
-          'ink-soft': '#5b5744',
-          'ink-faint': '#8a8570',
-          'ink-ghost': '#b3ad94',
+          bg: '#1c1b15',
+          surface: '#26241c',
+          raised: '#2a2820',
+          line: '#3a3728',
+          ink: '#f5f1e6',
+          'ink-soft': '#b8b3a0',
+          'ink-faint': '#8f8a76',
+          'ink-ghost': '#6b6656',
         },
         process: { yellow: '#edbb00' },
+        // Versiones claras de los mismos matices de marca — para texto y
+        // números grandes SOBRE fondo oscuro, donde brand.green.700 (pensado
+        // para texto blanco encima) se vería apagado. Nunca usar estos como
+        // fondo de botón con texto blanco.
+        accent: {
+          green: '#7ED957',
+          achiote: '#E8895A',
+          blue: '#5B9BE0',
+        },
       },
       keyframes: {
         enterUp: { from: { opacity: '0', transform: 'translateY(8px)' }, to: { opacity: '1', transform: 'translateY(0)' } },

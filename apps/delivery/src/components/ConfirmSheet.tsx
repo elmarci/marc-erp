@@ -24,8 +24,8 @@ export function ConfirmSheet({ title, description, confirmLabel, onConfirm, onCa
       >
         <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-paper-line" />
         <div className="mb-5 flex flex-col items-center gap-2 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-achiote-50">
-            <AlertTriangle size={22} className="text-brand-achiote-500" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-achiote-900/40">
+            <AlertTriangle size={22} className="text-accent-achiote" />
           </div>
           <div className="font-display text-lg font-bold">{title}</div>
           <div className="text-sm leading-snug text-paper-ink-soft">{description}</div>

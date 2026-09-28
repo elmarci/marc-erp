@@ -8,6 +8,16 @@ export interface DeliveryOrderItem {
   cantidad: number
 }
 
+export type TamanoPaquete = 'chico' | 'mediano' | 'grande'
+export type TipoEmpaque = 'bolsa' | 'caja' | 'bulto'
+
+export interface PaqueteInfo {
+  tamano: TamanoPaquete
+  tipo: TipoEmpaque
+  pesoKg: number
+  fragil: boolean
+}
+
 export interface DeliveryOrder {
   id: string
   numero: string
@@ -21,6 +31,7 @@ export interface DeliveryOrder {
   clienteNombre: string
   clienteTelefono: string
   items: DeliveryOrderItem[]
+  paquete: PaqueteInfo
   contraEntrega: boolean
   monto: number
   metodoPago: string
@@ -63,4 +74,17 @@ export interface FuelExpense {
   fecha: string
   monto: number
   galones: number
+}
+
+export type MetodoLiquidacion = 'Efectivo' | 'Yape'
+
+// El pago de la tarifa de reparto no es al toque: la tienda le debe al
+// repartidor cada entrega hasta que se hace un corte (liquidación) y se le
+// paga junto. Esto es ese corte — cubre uno o varios pedidos entregados.
+export interface Liquidacion {
+  id: string
+  fecha: string
+  monto: number
+  metodo: MetodoLiquidacion
+  pedidoIds: string[]
 }

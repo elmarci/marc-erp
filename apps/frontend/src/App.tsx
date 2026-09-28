@@ -17,6 +17,7 @@ import { ReportsPage } from '@/modules/reports/ReportsPage';
 import { OffersPage } from '@/modules/offers/OffersPage';
 import { NotificationsPage } from '@/modules/notifications/NotificationsPage';
 import { StoreOrdersPage } from '@/modules/store-orders/StoreOrdersPage';
+import { RidersPage } from '@/modules/riders/RidersPage';
 import { CashPage } from '@/modules/cash/CashPage';
 import { UsersPage } from '@/modules/users/UsersPage';
 import { SettingsPage } from '@/modules/settings/SettingsPage';
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="offers" element={<OffersPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="store-orders" element={<StoreOrdersPage />} />
+          <Route path="riders" element={<RidersPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="settings" element={<SettingsPage />} />

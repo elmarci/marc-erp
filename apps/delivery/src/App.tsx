@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './authStore'
 import { BottomNav } from './components/BottomNav'
+import { NavDrawer } from './components/NavDrawer'
 import { LoginPage } from './pages/LoginPage'
 import { LocationPermissionPage } from './pages/LocationPermissionPage'
 import { EstadoPage } from './pages/EstadoPage'
@@ -8,6 +9,7 @@ import { PedidosPage } from './pages/PedidosPage'
 import { PedidoDetallePage } from './pages/PedidoDetallePage'
 import { ConfirmacionEntregaPage } from './pages/ConfirmacionEntregaPage'
 import { HistorialPage } from './pages/HistorialPage'
+import { BilleteraPage } from './pages/BilleteraPage'
 import { PerfilPage } from './pages/PerfilPage'
 
 function WithTabs({ children }: { children: React.ReactNode }) {
@@ -37,11 +39,13 @@ export default function App() {
             <Route path="/pedidos/:id" element={<PedidoDetallePage />} />
             <Route path="/pedidos/:id/entregado" element={<ConfirmacionEntregaPage />} />
             <Route path="/historial" element={<WithTabs><HistorialPage /></WithTabs>} />
+            <Route path="/billetera" element={<WithTabs><BilleteraPage /></WithTabs>} />
             <Route path="/perfil" element={<WithTabs><PerfilPage /></WithTabs>} />
             <Route path="/login" element={<Navigate to="/estado" replace />} />
             <Route path="*" element={<Navigate to="/estado" replace />} />
           </Routes>
         )}
+        {isLoggedIn && <NavDrawer />}
       </div>
     </div>
   )

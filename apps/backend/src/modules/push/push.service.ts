@@ -45,11 +45,18 @@ export class PushService {
   // suscripción (410 Gone / 404 Not Found), se limpia sola de la tabla en
   // vez de seguir intentando enviarle para siempre.
   async broadcast(payload: PushPayload) {
+    const subs = await prisma.pushSubscription.findMany();
+    await this.sendToSubscriptions(subs, payload);
+  }
+
+  // Igual que broadcast, pero a un subconjunto ya resuelto (ej. las
+  // suscripciones de un biker puntual) — usado por delivery.service.ts para
+  // avisarle "tu pedido ya está listo para recoger".
+  async sendToSubscriptions(subs: Array<{ id: string; endpoint: string; p256dh: string; auth: string }>, payload: PushPayload) {
     if (!vapidConfigured) {
       logger.warn('VAPID no configurado — se omite el envío de notificaciones push');
       return;
     }
-    const subs = await prisma.pushSubscription.findMany();
     if (subs.length === 0) return;
 
     const payloadStr = JSON.stringify(payload);

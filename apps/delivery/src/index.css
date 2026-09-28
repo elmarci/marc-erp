@@ -22,7 +22,22 @@
   .roadline {
     height: 3px;
     border-radius: 2px;
-    background-image: repeating-linear-gradient(to right, #dedcd2 0 10px, transparent 10px 18px);
+    background-image: repeating-linear-gradient(to right, #4a4636 0 10px, transparent 10px 18px);
+  }
+  /* Tarjeta con la esquina superior derecha cortada en ángulo — silueta
+     propia en vez de rounded-corners genéricos (concepto "Pedidos v3"). */
+  .ticket-cut {
+    clip-path: polygon(0 0, calc(100% - 30px) 0, 100% 30px, 100% 100%, 0 100%);
+  }
+  /* Pestaña triangular de color que asoma en la esquina cortada. */
+  .ticket-tab {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 0 30px 30px 0;
   }
 }
 
@@ -30,11 +45,15 @@
    para que no compitan con la paleta MARC — los marcadores y la línea de
    ruta (fuera del tile-pane) se pintan a todo color encima. */
 .marc-map .leaflet-tile-pane {
-  filter: grayscale(0.5) saturate(0.6) brightness(1.08) contrast(0.95);
+  filter: grayscale(0.4) saturate(0.7) brightness(0.85) contrast(1.05);
 }
 .marc-map .leaflet-control-attribution {
   font-size: 9px;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(28, 27, 21, 0.75);
+  color: #b8b3a0;
+}
+.marc-map .leaflet-control-attribution a {
+  color: #b8b3a0;
 }
 /* Etiqueta de número de pedido sobre cada pin — reemplaza el globo blanco
    con flecha que trae Leaflet por defecto por una píldora oscura simple. */

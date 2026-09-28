@@ -1564,11 +1564,16 @@ model PushSubscription {
   p256dh     String
   auth       String
   customerId String?  @map("customer_id")
+  // Suscripción de un biker (apps/delivery) en vez de un cliente de la
+  // tienda — mismo mecanismo Web Push, nunca los dos a la vez.
+  riderId    String?  @map("rider_id")
   createdAt  DateTime @default(now()) @map("created_at")
 
   customer StoreCustomer? @relation(fields: [customerId], references: [id])
+  rider    Rider?         @relation(fields: [riderId], references: [id])
 
   @@index([customerId])
+  @@index([riderId])
   @@map("push_subscriptions")
 }
 
@@ -1642,15 +1647,139 @@ model StoreOrder {
   // ganados), con el mismo resguardo atómico contra doble-canje.
   pointsRedeemed        Int     @default(0) @map("points_redeemed")
   pointsDiscountAmount  Decimal @default(0) @map("points_discount_amount") @db.Decimal(12, 2)
+  // ── Reparto (biker) ──────────────────────────────────────────────────
+  // riderId nulo = todavía no lo tomó nadie; si además status está en
+  // CONFIRMED/PREPARING/READY, el pedido aparece en la bolsa de disponibles
+  // de apps/delivery. deliveryStatus es el sub-ciclo que controla el biker
+  // una vez asignado (ASIGNADO → RECOGIDO → EN_CAMINO → ENTREGADO); al
+  // llegar a ENTREGADO también se refleja en `status: DELIVERED` para que
+  // siga habiendo una sola fuente de verdad de "pedido terminado".
+  riderId         String?      @map("rider_id")
+  rider           Rider?       @relation(fields: [riderId], references: [id])
+  deliveryStatus  String?      @map("delivery_status")
+  claimedAt       DateTime?    @map("claimed_at")
+  pickedUpAt      DateTime?    @map("picked_up_at")
+  deliveredAt     DateTime?    @map("delivered_at")
+  // Tarifa que se le paga al biker por este viaje — se calcula y se
+  // congela en el momento del claim (no es lo mismo que `total`, que es lo
+  // que paga el cliente). Queda fija aunque después cambie la fórmula.
+  tarifaReparto   Decimal?     @map("tarifa_reparto") @db.Decimal(10, 2)
+  liquidacionId   String?      @map("liquidacion_id")
+  liquidacion     Liquidacion? @relation(fields: [liquidacionId], references: [id])
+  // Datos del paquete físico — los llena el staff al preparar el pedido
+  // (el cliente nunca los indica), para que el biker pueda organizar su
+  // mochila antes de aceptar. Quedan con un default razonable para que la
+  // bolsa nunca muestre un pedido sin esta info aunque el staff no la haya
+  // tocado todavía.
+  packageTamano   String       @default("mediano") @map("package_tamano") // chico | mediano | grande
+  packageTipo     String       @default("bolsa") @map("package_tipo")     // bolsa | caja | bulto
+  packagePesoKg   Float        @default(1) @map("package_peso_kg")
+  packageFragil   Boolean      @default(false) @map("package_fragil")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  items StoreOrderItem[]
+  items          StoreOrderItem[]
+  deliveryEvents DeliveryEvent[]
 
   @@index([customerPhone])
   @@index([status])
   @@index([createdAt])
+  @@index([riderId])
   @@map("store_orders")
+}
+
+// Repartidor (biker) — cuenta liviana propia, separada de User/UserRole
+// (esa tabla es para staff de back-office con lockout/auditoría de
+// contraseña). Login por teléfono + PIN de 4 dígitos, igual mecanismo que
+// User.pin, porque LoginPage de apps/delivery ya está construida así.
+model Rider {
+  id             String    @id @default(uuid())
+  nombre         String
+  telefono       String    @unique
+  pinHash        String    @map("pin_hash")
+  status         String    @default("ACTIVE") // ACTIVE | INACTIVE
+  enServicio     Boolean   @default(false) @map("en_servicio")
+  // Última posición conocida (no se guarda historial de cada ping GPS, solo
+  // la última — se transmite en vivo por socket para el tracking del ERP).
+  lastLat        Float?    @map("last_lat")
+  lastLng        Float?    @map("last_lng")
+  lastLocationAt DateTime? @map("last_location_at")
+  calificacion   Float?    // editable por admin — todavía no hay fuente automática
+  motoModelo     String?   @map("moto_modelo")
+  motoPlaca      String?   @map("moto_placa")
+  motoSoatHasta  DateTime? @map("moto_soat_hasta")
+  motoRendimientoKmGalon Float? @map("moto_rendimiento_km_galon")
+  motoKmTotal    Float?    @map("moto_km_total")
+  motoKmUltimoMantenimiento     Float? @map("moto_km_ultimo_mantenimiento")
+  motoIntervaloMantenimientoKm  Float? @map("moto_intervalo_mantenimiento_km")
+  zonas          String[]  @default([])
+  zonasActivas   String[]  @default([]) @map("zonas_activas")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  orders            StoreOrder[]
+  events            DeliveryEvent[]
+  pushSubscriptions PushSubscription[]
+  liquidaciones     Liquidacion[]
+  fuelExpenses      FuelExpense[]
+
+  @@index([telefono])
+  @@map("riders")
+}
+
+// Línea de tiempo auditable de todo lo que hace un biker sobre un pedido —
+// lo que le responde al ERP "qué pasó y cuándo" en el panel de seguimiento.
+model DeliveryEvent {
+  id        String   @id @default(uuid())
+  orderId   String   @map("order_id")
+  riderId   String?  @map("rider_id")
+  type      String   // CLAIMED | RELEASED | READY_NOTIFIED | PICKED_UP | EN_ROUTE | DELIVERED
+  lat       Float?
+  lng       Float?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  order StoreOrder @relation(fields: [orderId], references: [id])
+  rider Rider?     @relation(fields: [riderId], references: [id])
+
+  @@index([orderId])
+  @@index([riderId])
+  @@map("delivery_events")
+}
+
+// Corte de cuentas de tarifas de reparto — el biker la solicita desde la
+// app (junta todo lo pendiente), pero queda en SOLICITADA hasta que un
+// supervisor del ERP confirma el pago. Es lo que responde "cuánto le debo
+// pagar" desde el ERP en vez de que el biker se autodeclare pagado.
+model Liquidacion {
+  id          String    @id @default(uuid())
+  riderId     String    @map("rider_id")
+  monto       Decimal   @db.Decimal(10, 2)
+  metodo      String    // Efectivo | Yape
+  estado      String    @default("SOLICITADA") // SOLICITADA | PAGADA
+  pagadoPorId String?   @map("pagado_por_id")
+  pagadoAt    DateTime? @map("pagado_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  rider  Rider        @relation(fields: [riderId], references: [id])
+  orders StoreOrder[]
+
+  @@index([riderId])
+  @@map("liquidaciones")
+}
+
+// Gasto de combustible que el biker registra desde Perfil — informativo,
+// no se liquida junto con las tarifas de reparto.
+model FuelExpense {
+  id        String   @id @default(uuid())
+  riderId   String   @map("rider_id")
+  monto     Decimal  @db.Decimal(10, 2)
+  galones   Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rider Rider @relation(fields: [riderId], references: [id])
+
+  @@index([riderId])
+  @@map("fuel_expenses")
 }
 
 model StoreOrderItem {

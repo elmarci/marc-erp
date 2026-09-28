@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, CheckCircle2, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
-import { fetchOrder } from '../mockApi'
+import { fetchOrder } from '../api'
 import { PrimaryButton } from '../components/PrimaryButton'
 import { cn } from '../lib/cn'
 
@@ -28,8 +28,8 @@ export function ConfirmacionEntregaPage() {
             <ArrowLeft size={20} strokeWidth={2.3} />
           </button>
         </div>
-        <div className="mx-5 mt-3 flex items-center gap-2.5 rounded-2xl bg-brand-green-50 px-3.5 py-3">
-          <CheckCircle2 size={18} className="text-brand-green-600" />
+        <div className="mx-5 mt-3 flex items-center gap-2.5 rounded-2xl bg-brand-green-900/30 px-3.5 py-3">
+          <CheckCircle2 size={18} className="text-accent-green" />
           <span className="text-[13px] font-bold">Entregado a {order.clienteNombre} · {order.direccion}</span>
         </div>
         <div className="flex flex-1 flex-col gap-4 px-5 py-4">
@@ -74,9 +74,9 @@ export function ConfirmacionEntregaPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-1 flex-col items-center justify-center gap-7 px-6">
-        <div className="flex h-44 w-44 -rotate-[7deg] animate-stamp-in flex-col items-center justify-center gap-1.5 rounded-full border-[5px] border-brand-green-500">
-          <CheckCircle2 size={52} strokeWidth={2.6} className="text-brand-green-500" />
-          <div className="font-display text-xl font-extrabold tracking-wide text-brand-green-500">ENTREGADO</div>
+        <div className="flex h-44 w-44 -rotate-[7deg] animate-stamp-in flex-col items-center justify-center gap-1.5 rounded-full border-[5px] border-accent-green">
+          <CheckCircle2 size={52} strokeWidth={2.6} className="text-accent-green" />
+          <div className="font-display text-xl font-extrabold tracking-wide text-accent-green">ENTREGADO</div>
         </div>
 
         <div className="flex flex-col items-center gap-1 text-center">

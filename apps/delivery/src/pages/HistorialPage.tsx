@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { CheckCircle2, Clock, Navigation, Wallet } from 'lucide-react'
-import { fetchHistory } from '../mockApi'
+import { fetchHistory } from '../api'
+import { TopBar } from '../components/TopBar'
 import { cn } from '../lib/cn'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'todo'
@@ -54,18 +55,16 @@ export function HistorialPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="px-6 pb-2 pt-6">
-        <div className="font-display text-2xl font-extrabold">Historial</div>
-      </div>
+      <TopBar title="HISTORIAL" />
 
-      <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-2">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
         {PERIODO_OPTIONS.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setPeriodo(key)}
             className={cn(
-              'flex-shrink-0 rounded-full border-[1.5px] px-3.5 py-2 text-[13px] font-bold transition-colors',
-              periodo === key ? 'border-brand-green-500 bg-brand-green-500 text-white' : 'border-paper-line text-paper-ink-soft',
+              'font-display flex-shrink-0 rounded-full px-3.5 py-2 text-[12px] font-extrabold uppercase tracking-wide transition-colors',
+              periodo === key ? 'bg-accent-green text-[#12250a]' : 'bg-paper-surface text-paper-ink-faint',
             )}
           >
             {label}
@@ -76,19 +75,19 @@ export function HistorialPage() {
       {!isLoading && filas.length > 0 && (
         <div className="mx-5 mb-1 grid grid-cols-3 gap-2.5">
           <div className="flex flex-col gap-1 rounded-2xl bg-paper-surface p-3">
-            <CheckCircle2 size={16} className="text-brand-green-600" />
+            <CheckCircle2 size={16} className="text-accent-green" />
             <div className="font-display text-lg font-extrabold leading-none">{resumen.entregas}</div>
-            <div className="text-[11px] font-bold text-paper-ink-soft">Entregas</div>
+            <div className="text-[11px] font-bold text-paper-ink-faint">ENTREGAS</div>
           </div>
           <div className="flex flex-col gap-1 rounded-2xl bg-paper-surface p-3">
-            <Wallet size={16} className="text-brand-green-600" />
+            <Wallet size={16} className="text-accent-green" />
             <div className="font-display text-lg font-extrabold leading-none">S/ {resumen.ganado.toFixed(0)}</div>
-            <div className="text-[11px] font-bold text-paper-ink-soft">Ganado</div>
+            <div className="text-[11px] font-bold text-paper-ink-faint">GANADO</div>
           </div>
           <div className="flex flex-col gap-1 rounded-2xl bg-paper-surface p-3">
-            <Navigation size={16} className="text-brand-blue-500" />
+            <Navigation size={16} className="text-accent-blue" />
             <div className="font-display text-lg font-extrabold leading-none">{resumen.km.toFixed(1)}</div>
-            <div className="text-[11px] font-bold text-paper-ink-soft">Km</div>
+            <div className="text-[11px] font-bold text-paper-ink-faint">KM</div>
           </div>
         </div>
       )}
@@ -117,10 +116,10 @@ export function HistorialPage() {
                 )}
                 <button
                   onClick={() => navigate(`/pedidos/${f.id}`)}
-                  className="flex w-full items-center gap-3 border-b border-[#f0efe9] py-3.5 text-left last:border-b-0"
+                  className="flex w-full items-center gap-3 border-b border-paper-line py-3.5 text-left last:border-b-0"
                 >
-                  <div className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-full bg-brand-green-50">
-                    <CheckCircle2 size={18} className="text-brand-green-600" />
+                  <div className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-full bg-brand-green-900/40">
+                    <CheckCircle2 size={18} className="text-accent-green" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-extrabold">{f.direccion}</div>

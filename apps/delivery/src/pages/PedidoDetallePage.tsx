@@ -3,10 +3,12 @@ import { useNavigate, useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, MessageCircle, Navigation, Package, Phone, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
-import { fetchOrder, setOrderStatus, claimOrder } from '../mockApi'
+import { fetchOrder, setOrderStatus, claimOrder, releaseOrder } from '../api'
 import type { OrderStatus } from '../types'
 import { PrimaryButton } from '../components/PrimaryButton'
 import { ConfirmSheet } from '../components/ConfirmSheet'
+import { HoldClaimButton } from '../components/HoldClaimButton'
+import { PaqueteBadge } from '../components/PaqueteBadge'
 import { VoiceCommandButton } from '../components/VoiceCommandButton'
 import { useAuthStore } from '../authStore'
 import { cn } from '../lib/cn'
@@ -92,7 +94,18 @@ export function PedidoDetallePage() {
       await queryClient.invalidateQueries({ queryKey: ['orders-mios'] })
 
       if (previousStatus === 'DISPONIBLE') {
-        toast.success('Pedido tomado — ya es tuyo.')
+        toast.success('Pedido tomado — ya es tuyo.', {
+          duration: 5000,
+          action: {
+            label: 'Deshacer',
+            onClick: async () => {
+              await releaseOrder(id)
+              queryClient.invalidateQueries({ queryKey: ['order', id] })
+              queryClient.invalidateQueries({ queryKey: ['orders-disponibles'] })
+              queryClient.invalidateQueries({ queryKey: ['orders-mios'] })
+            },
+          },
+        })
         return
       }
 
@@ -130,13 +143,13 @@ export function PedidoDetallePage() {
             <ArrowLeft size={20} strokeWidth={2.3} />
           </Link>
           <span className="text-[13px] font-bold text-paper-ink-soft">Pedido {order.numero}</span>
-          <div className="rounded-full bg-brand-blue-50 px-3.5 py-1.5 text-xs font-extrabold text-brand-blue-500">
-            {PILL_LABEL[order.status]}
+          <div className="font-display rounded-full bg-brand-blue-900/40 px-3.5 py-1.5 text-xs font-extrabold text-accent-blue">
+            {PILL_LABEL[order.status].toUpperCase()}
           </div>
         </div>
         <div className="mt-4 flex gap-1.5">
           {[0, 1, 2].map((i) => (
-            <div key={i} className={cn('h-1 flex-1 rounded-full', i < stepIndex ? 'bg-brand-green-500' : 'bg-paper-line')} />
+            <div key={i} className={cn('h-1 flex-1 rounded-full', i < stepIndex ? 'bg-accent-green' : 'bg-paper-line')} />
           ))}
         </div>
       </div>
@@ -159,7 +172,7 @@ export function PedidoDetallePage() {
 
         <div className="flex items-center justify-between rounded-[20px] bg-paper-surface p-4">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="font-display flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-[15px] font-bold">
+            <div className="font-display flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-paper-raised text-[15px] font-bold">
               {order.clienteNombre.split(' ').map((p) => p[0]).slice(0, 2).join('')}
             </div>
             <div className="min-w-0">
@@ -178,13 +191,16 @@ export function PedidoDetallePage() {
         </div>
 
         <div className="flex flex-col gap-2.5">
-          <div className="text-[13px] font-extrabold uppercase tracking-wide text-paper-ink-soft">
-            Productos ({order.items.length})
+          <div className="flex items-center justify-between">
+            <div className="text-[13px] font-extrabold uppercase tracking-wide text-paper-ink-soft">
+              Productos ({order.items.length})
+            </div>
+            <PaqueteBadge paquete={order.paquete} compact />
           </div>
           <div className="flex flex-col overflow-hidden rounded-[20px] border-[1.5px] border-paper-line">
             {order.items.map((it, idx) => (
-              <div key={idx} className="flex items-center gap-3 border-b border-[#f0efe9] px-4 py-3.5 last:border-b-0">
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[10px] bg-paper-surface">
+              <div key={idx} className="flex items-center gap-3 border-b border-paper-line px-4 py-3.5 last:border-b-0">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[10px] bg-paper-raised">
                   <Package size={16} className="text-paper-ink-soft" />
                 </div>
                 <div className="flex-1 text-sm font-bold">{it.nombre}</div>
@@ -201,7 +217,7 @@ export function PedidoDetallePage() {
             </div>
             <div className="font-display text-[28px] font-extrabold">S/ {order.monto.toFixed(2)}</div>
           </div>
-          <div className="rounded-full border-[1.5px] border-paper-line bg-white px-3.5 py-2 text-xs font-extrabold">
+          <div className="rounded-full bg-paper-raised px-3.5 py-2 text-xs font-extrabold">
             {order.metodoPago}
           </div>
         </div>
@@ -213,20 +229,24 @@ export function PedidoDetallePage() {
             rentabilidad real depende de más variables de las que se pueden
             saber con certeza, así que no se aparenta una precisión que no
             existe. */}
-        <div className="flex items-center justify-between rounded-[20px] border-[1.5px] border-brand-green-100 bg-brand-green-50 p-[18px]">
-          <div className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-brand-green-700">
+        <div className="flex items-center justify-between rounded-[20px] border-[1.5px] border-brand-green-700/50 bg-brand-green-900/25 p-[18px]">
+          <div className="font-display flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-accent-green">
             <Wallet size={14} />
             Tarifa de reparto
           </div>
-          <span className="font-display text-2xl font-extrabold text-brand-green-700">S/ {order.tarifaReparto.toFixed(2)}</span>
+          <span className="font-display text-2xl font-extrabold text-accent-green">S/ {order.tarifaReparto.toFixed(2)}</span>
         </div>
       </div>
 
       {transition && (
-        <div className="border-t border-[#f0efe9] px-5 pt-3.5" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 28px)' }}>
-          <PrimaryButton className="w-full" disabled={sending} onClick={() => setConfirming(true)}>
-            {sending ? 'Guardando…' : transition.cta}
-          </PrimaryButton>
+        <div className="border-t border-paper-line px-5 pt-3.5" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 28px)' }}>
+          {order.status === 'DISPONIBLE' ? (
+            <HoldClaimButton className="w-full py-4 text-center text-base" disabled={sending} onConfirm={confirmAdvance} label="TOMAR PEDIDO" />
+          ) : (
+            <PrimaryButton className="w-full" disabled={sending} onClick={() => setConfirming(true)}>
+              {sending ? 'Guardando…' : transition.cta}
+            </PrimaryButton>
+          )}
         </div>
       )}
 
