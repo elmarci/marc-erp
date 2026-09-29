@@ -4,10 +4,11 @@
 export const TARIFA_MINIMA_SOLES = 5.0;
 export const TARIFA_POR_KM_SOLES = 2.0;
 
-// Origen de referencia (tienda/zona Manchay) — mismo punto que RIDER_BASE
-// en apps/delivery/src/mockApi.ts, usado cuando el pedido no tiene GPS del
-// cliente para poder estimar una distancia igual.
-export const STORE_ORIGIN = { lat: -12.038, lng: -76.845 };
+// Ubicación real de la tienda (Mz F10 Lt2 A - C.27 Av Manchay) — antes acá
+// había una coordenada de placeholder usada en los mockups de diseño, nunca
+// se había configurado con la dirección real. Es el punto desde el que se
+// mide la distancia para calcular la tarifa de reparto.
+export const STORE_ORIGIN = { lat: -12.102235, lng: -76.874449 };
 
 export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371;

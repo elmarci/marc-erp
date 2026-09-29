@@ -16,10 +16,10 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
-// Origen de referencia (tienda/zona Manchay) — punto de partida del mapa
-// cuando el navegador todavía no dio el GPS real del repartidor. Mismo
-// punto que STORE_ORIGIN en el backend (apps/backend/src/modules/delivery/economics.ts).
-export const RIDER_BASE = { lat: -12.038, lng: -76.845 }
+// Ubicación real de la tienda — punto de partida del mapa cuando el
+// navegador todavía no dio el GPS real del repartidor. Mismo punto que
+// STORE_ORIGIN en el backend (apps/backend/src/modules/delivery/economics.ts).
+export const RIDER_BASE = { lat: -12.102235, lng: -76.874449 }
 
 export async function verifyLogin(telefono: string, pin: string): Promise<{ nombre: string; iniciales: string; token: string; riderId: string } | null> {
   try {

@@ -1,9 +1,9 @@
 // Aviso específico de moto: nadie más necesita saber si hay garúa o pista
 // mojada tanto como alguien que va sobre dos ruedas. Open-Meteo no pide
 // API key y tiene CORS abierto — sirve para un aviso liviano sin backend.
-// Coordenadas de Manchay, Pachacámac (zona real de reparto).
-const LAT = -12.038
-const LON = -76.845
+// Ubicación real de la tienda (Mz F10 Lt2 A - C.27 Av Manchay).
+const LAT = -12.102235
+const LON = -76.874449
 
 export interface ViaAlert {
   nivel: 'aviso' | 'alerta'
