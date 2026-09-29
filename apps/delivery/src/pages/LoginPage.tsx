@@ -107,7 +107,11 @@ function SolicitarAccesoSheet({ onClose }: { onClose: () => void }) {
 }
 
 export function LoginPage() {
-  const [telefono, setTelefono] = useState('987 654 321')
+  // Vacío por defecto — con auth real cada afiliado tiene su propio
+  // teléfono, dejar un número real precargado hacía que alguien tipeara
+  // solo el PIN y el login fallara contra la cuenta de otra persona sin
+  // ningún aviso de por qué.
+  const [telefono, setTelefono] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState(false)
   const [checking, setChecking] = useState(false)
@@ -150,29 +154,36 @@ export function LoginPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex animate-enter-up flex-col gap-0.5 px-7 pt-10 pb-2">
-        <div className="font-display text-[42px] font-extrabold leading-none text-accent-green">MARC</div>
-        <div className="text-[15px] font-semibold text-paper-ink-soft">Reparto · para afiliados</div>
+      <div className="flex animate-enter-up flex-col gap-0.5 px-7 pt-4 pb-1">
+        <div className="font-display text-[34px] font-extrabold leading-none text-accent-green">MARC</div>
+        <div className="text-[13px] font-semibold text-paper-ink-soft">Reparto · para afiliados</div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-6 overflow-hidden px-7 pt-7">
-        <div className="flex animate-enter-up flex-col gap-2">
+      {/* Fix: en pantallas de celular reales y más bajas que el simulador de
+          escritorio, el teclado numérico completo (fila del 0/borrar) no
+          entraba en el alto disponible — con overflow-hidden quedaba
+          recortado y sin forma de llegar a él. overflow-y-auto garantiza que
+          siempre se pueda hacer scroll hasta verlo, y se recortó el espaciado
+          vertical para que en la gran mayoría de celulares ni haga falta. */}
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-7 pt-3 pb-2">
+        <div className="flex animate-enter-up flex-col gap-1.5">
           <label htmlFor="tel" className="text-sm font-bold">Tu celular</label>
-          <div className="flex items-center gap-2.5 rounded-2xl border-[1.5px] border-paper-line bg-paper-surface px-4 py-3.5">
+          <div className="flex items-center gap-2.5 rounded-2xl border-[1.5px] border-paper-line bg-paper-surface px-4 py-3">
             <span className="text-lg font-bold text-paper-ink-soft">+51</span>
             <div className="h-[22px] w-px bg-paper-line" />
             <input
               id="tel"
               type="tel"
               inputMode="numeric"
+              placeholder="987 654 321"
               value={telefono}
               onChange={(e) => setTelefono(e.target.value)}
-              className="min-w-0 flex-1 bg-transparent text-lg font-bold outline-none"
+              className="min-w-0 flex-1 bg-transparent text-lg font-bold outline-none placeholder:text-paper-ink-ghost placeholder:font-semibold"
             />
           </div>
         </div>
 
-        <div className="flex animate-enter-up flex-col gap-3">
+        <div className="flex animate-enter-up flex-col gap-2">
           <div className="text-sm font-bold">Tu PIN</div>
           <div className="flex gap-3.5" role="status" aria-live="polite">
             {[0, 1, 2, 3].map((i) => (
@@ -192,7 +203,7 @@ export function LoginPage() {
           {error && <p className="text-sm font-bold text-brand-magenta-500">PIN incorrecto, intenta de nuevo</p>}
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid shrink-0 grid-cols-3 gap-2.5">
           {KEYS.map((k, idx) =>
             k === '' ? (
               <div key={idx} />
@@ -201,16 +212,16 @@ export function LoginPage() {
                 key={idx}
                 onClick={() => press('del')}
                 aria-label="Borrar"
-                className="flex h-[60px] items-center justify-center rounded-2xl bg-paper-surface transition-transform active:scale-95"
+                className="flex h-[52px] items-center justify-center rounded-2xl bg-paper-surface transition-transform active:scale-95"
               >
-                <Delete size={24} />
+                <Delete size={22} />
               </button>
             ) : (
               <button
                 key={idx}
                 onClick={() => press(k)}
                 aria-label={`Dígito ${k}`}
-                className="font-display flex h-[60px] items-center justify-center rounded-2xl bg-paper-surface text-2xl font-bold transition-transform active:scale-95"
+                className="font-display flex h-[52px] items-center justify-center rounded-2xl bg-paper-surface text-2xl font-bold transition-transform active:scale-95"
               >
                 {k}
               </button>
