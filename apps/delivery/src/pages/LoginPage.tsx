@@ -8,6 +8,15 @@ import { cn } from '../lib/cn'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del']
 
+// Formatea a "999 999 999" mientras se escribe — antes había que tipear el
+// espacio a mano para que calzara con cómo se ve un celular peruano; el
+// número real que se manda al backend sigue siendo solo dígitos (ver
+// api.ts, que le saca los espacios antes de enviar).
+function formatTelefono(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 9)
+  return digits.match(/.{1,3}/g)?.join(' ') ?? ''
+}
+
 // No hay proveedor de SMS/correo detrás de esta app (es un solo local, no
 // una plataforma) — en vez de fingir un "código por SMS" que no se puede
 // enviar de verdad, la recuperación y el alta de nuevos afiliados pasan por
@@ -177,7 +186,7 @@ export function LoginPage() {
               inputMode="numeric"
               placeholder="987 654 321"
               value={telefono}
-              onChange={(e) => setTelefono(e.target.value)}
+              onChange={(e) => setTelefono(formatTelefono(e.target.value))}
               className="min-w-0 flex-1 bg-transparent text-lg font-bold outline-none placeholder:text-paper-ink-ghost placeholder:font-semibold"
             />
           </div>
