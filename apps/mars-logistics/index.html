@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>MARS Logistics | Gestión de despachos y aduanas</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --ink:#16202b;
+  --muted:#5b6673;
+  --line:#d9dee3;
+  --paper:#f5f6f4;
+  --white:#ffffff;
+  --steel:#1d4b6e;
+  --steel-dark:#133651;
+  --ok:#2f6b46;
+  --warn:#9a6a12;
+  --late:#a33a2c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Carlito","Calibri","DejaVu Sans",sans-serif;color:var(--ink);background:var(--white);font-size:17px;line-height:1.5}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1160px;margin:0 auto;padding:0 32px}
+
+/* barra superior */
+header{border-bottom:1px solid var(--line);background:var(--white)}
+.nav{display:flex;align-items:center;justify-content:space-between;height:68px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:23px;letter-spacing:.5px}
+.brand-mark{width:30px;height:30px;background:var(--steel);border-radius:4px;position:relative}
+.brand-mark:after{content:"";position:absolute;left:7px;top:7px;width:16px;height:16px;border:3px solid #fff;border-radius:50%;border-right-color:transparent}
+.brand small{font-weight:400;color:var(--muted);font-size:17px;margin-left:2px}
+nav ul{display:flex;gap:30px;list-style:none;font-size:16px;color:var(--muted)}
+.btn{display:inline-block;padding:11px 20px;border-radius:4px;font-weight:700;font-size:16px}
+.btn-primary{background:var(--steel);color:#fff}
+.btn-ghost{border:1px solid var(--steel);color:var(--steel)}
+
+/* hero */
+.hero{background:var(--paper);padding:64px 0 72px}
+.hero-grid{display:grid;grid-template-columns:1fr 1.15fr;gap:52px;align-items:center}
+h1{font-size:46px;line-height:1.1;letter-spacing:-.6px;font-weight:700;margin-bottom:20px}
+.lead{font-size:19px;color:var(--muted);max-width:460px;margin-bottom:28px}
+.hero-actions{display:flex;gap:14px}
+.hero-note{margin-top:20px;font-size:15px;color:var(--muted)}
+
+.board{background:var(--white);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.board-head{display:flex;justify-content:space-between;align-items:center;padding:13px 18px;border-bottom:1px solid var(--line);font-size:15px}
+.board-head b{font-size:16px}
+.board-head span{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th{text-align:left;font-weight:700;color:var(--muted);padding:9px 14px;background:#fafbfa;border-bottom:1px solid var(--line);font-size:13.5px}
+td{padding:9px 14px;border-bottom:1px solid #edf0f2;white-space:nowrap;font-size:14px}
+.sub{display:block;color:var(--muted);font-size:13px}
+tr:last-child td{border-bottom:0}
+.tag{display:inline-block;padding:2px 9px;border-radius:3px;font-size:13px;font-weight:700}
+.t-ok{background:#e4f0e8;color:var(--ok)}
+.t-warn{background:#f6ecd5;color:var(--warn)}
+.t-late{background:#f5e0dc;color:var(--late)}
+.t-neutral{background:#e6ebef;color:var(--steel-dark)}
+.board-foot{padding:11px 18px;background:#fafbfa;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}
+
+/* módulos */
+section{padding:72px 0}
+h2{font-size:32px;line-height:1.2;letter-spacing:-.3px;margin-bottom:12px}
+.sec-intro{color:var(--muted);max-width:620px;margin-bottom:42px;font-size:18px}
+.modules{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:2px solid var(--ink)}
+.module{padding:24px 28px 8px 0}
+.module + .module{padding-left:28px;border-left:1px solid var(--line)}
+.module h3{font-size:21px;margin-bottom:8px}
+.module p{color:var(--muted);font-size:16.5px;margin-bottom:12px}
+.module ul{list-style:none;font-size:15.5px}
+.module li{padding:6px 0;border-top:1px solid #edf0f2}
+
+/* para quién */
+.who{background:var(--steel-dark);color:#fff}
+.who h2{color:#fff}
+.who-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start}
+.who p{color:#c9d6e0;font-size:18px;margin-bottom:14px}
+.stat-list{list-style:none}
+.stat-list li{padding:15px 0;border-bottom:1px solid rgba(255,255,255,.2);font-size:18px}
+.stat-list li:first-child{border-top:1px solid rgba(255,255,255,.2)}
+.stat-list span{display:block;color:#c9d6e0;font-size:15px}
+
+/* planes */
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
+.plan{border:1px solid var(--line);border-radius:6px;padding:28px}
+.plan.featured{border:2px solid var(--steel)}
+.plan h3{font-size:22px}
+.plan .price{font-size:34px;font-weight:700;margin:10px 0 2px}
+.plan .price small{font-size:16px;font-weight:400;color:var(--muted)}
+.plan .for{color:var(--muted);font-size:15.5px;margin-bottom:16px;min-height:46px}
+.plan ul{list-style:none;font-size:16px;margin-bottom:22px}
+.plan li{padding:7px 0;border-top:1px solid #edf0f2}
+.plan .btn{width:100%;text-align:center}
+.foot-note{margin-top:18px;font-size:14.5px;color:var(--muted)}
+
+/* cierre */
+.cta{background:var(--paper);text-align:left}
+.cta-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:56px;align-items:center}
+.form{background:#fff;border:1px solid var(--line);border-radius:6px;padding:24px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:14.5px;font-weight:700;margin-bottom:5px}
+.field div{border:1px solid #c5ccd3;border-radius:4px;padding:9px 12px;color:#8a949e;font-size:15.5px;background:#fff}
+footer{background:var(--ink);color:#aeb8c2;padding:30px 0;font-size:15px}
+.foot{display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#"><span class="brand-mark"></span>MARS<small>Logistics</small></a>
+    <nav><ul>
+      <li>Módulos</li><li>Para quién es</li><li>Planes</li><li>Contacto</li>
+    </ul></nav>
+    <a class="btn btn-primary" href="#demo">Solicitar demo</a>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <h1>Cada despacho, documento y costo en un solo lugar.</h1>
+      <p class="lead">MARS Logistics reemplaza el Excel y los chats de WhatsApp de tu operación de carga peligrosa y aduanas por una plataforma en la nube, con trazabilidad de cada envío.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#demo">Solicitar demo</a>
+        <a class="btn btn-ghost" href="#planes">Ver planes</a>
+      </div>
+      <p class="hero-note">Pensado para agencias de aduana y operadores de carga peligrosa que atienden a la minería en el Perú.</p>
+    </div>
+
+    <div class="board">
+      <div class="board-head"><b>Despachos de hoy</b><span>Carga peligrosa · 6 en curso</span></div>
+      <table>
+        <thead><tr><th>Despacho</th><th>Carga y ruta</th><th>Documentos</th><th>Estado</th></tr></thead>
+        <tbody>
+          <tr><td>D-2481</td><td>Reactivo tóxico (Clase 6.1)<span class="sub">Callao → Arequipa</span></td><td>Completos</td><td><span class="tag t-ok">En ruta</span></td></tr>
+          <tr><td>D-2482</td><td>Líquido corrosivo (Clase 8)<span class="sub">Callao → Cajamarca</span></td><td>Falta hoja de seguridad</td><td><span class="tag t-warn">Pendiente</span></td></tr>
+          <tr><td>D-2483</td><td>Inflamable (Clase 3)<span class="sub">Lima → Pasco</span></td><td>Completos</td><td><span class="tag t-neutral">Cargando</span></td></tr>
+          <tr><td>D-2484</td><td>Oxidante (Clase 5.1)<span class="sub">Callao → Ayacucho</span></td><td>Permiso por vencer</td><td><span class="tag t-late">Alerta</span></td></tr>
+          <tr><td>D-2485</td><td>Reactivo tóxico (Clase 6.1)<span class="sub">Callao → Ica</span></td><td>Completos</td><td><span class="tag t-ok">Entregado</span></td></tr>
+        </tbody>
+      </table>
+      <div class="board-foot">2 alertas de documentos requieren atención antes de las 4:00 p. m.</div>
+    </div>
+  </div>
+</div>
+
+<section id="modulos">
+  <div class="wrap">
+    <h2>Lo que MARS ordena en tu operación</h2>
+    <p class="sec-intro">Tres módulos que trabajan sobre la misma información, para que nadie tenga que volver a digitar un dato.</p>
+    <div class="modules">
+      <div class="module">
+        <h3>Despachos</h3>
+        <p>Programa cargas, asigna unidades y conductores, y consulta el estado de cada envío.</p>
+        <ul><li>Estados en tiempo real</li><li>Historial por cliente</li><li>Asignación de flota</li></ul>
+      </div>
+      <div class="module">
+        <h3>Documentos y permisos</h3>
+        <p>Guarda guías, hojas de seguridad, permisos y documentos aduaneros vinculados a cada despacho.</p>
+        <ul><li>Alertas de vencimiento</li><li>Lista de documentos por tipo de carga</li><li>Información lista para auditorías</li></ul>
+      </div>
+      <div class="module">
+        <h3>Costos y facturación</h3>
+        <p>Registra gastos por despacho y conoce el margen real antes de facturar.</p>
+        <ul><li>Costos por ruta y cliente</li><li>Reportes para gerencia</li><li>Exportación a Excel</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="who" id="quien">
+  <div class="wrap who-grid">
+    <div>
+      <h2>Hecho por quienes trabajan en logística</h2>
+      <p>MARS nació en la operación diaria de una agencia de carga y aduanas, con carga de alto riesgo y clientes mineros que exigen documentos al día.</p>
+      <p>Por eso prioriza lo que más duele en el día a día: documentos faltantes, despachos sin seguimiento y costos que se conocen tarde.</p>
+    </div>
+    <ul class="stat-list">
+      <li>Un solo registro por despacho<span>Documentos, ruta, unidad y costos vinculados</span></li>
+      <li>Alertas antes del vencimiento<span>SOAT, permisos de transporte y hojas de seguridad</span></li>
+      <li>Acceso desde cualquier dispositivo<span>Sin instalar programas ni comprar servidores</span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="planes">
+  <div class="wrap">
+    <h2>Planes según el tamaño de tu operación</h2>
+    <p class="sec-intro">Pagas una suscripción mensual. La implementación y la migración de tus datos se cotizan aparte.</p>
+    <div class="plans">
+      <div class="plan">
+        <h3>Inicial</h3>
+        <div class="price">S/ 199<small> al mes</small></div>
+        <p class="for">Para transportistas con una flota pequeña.</p>
+        <ul><li>Hasta 3 usuarios</li><li>Módulo de despachos</li><li>Soporte por correo</li></ul>
+        <a class="btn btn-ghost" href="#demo">Elegir Inicial</a>
+      </div>
+      <div class="plan featured">
+        <h3>Profesional</h3>
+        <div class="price">S/ 449<small> al mes</small></div>
+        <p class="for">Para agencias de aduana y operadores en crecimiento.</p>
+        <ul><li>Hasta 10 usuarios</li><li>Despachos, documentos y costos</li><li>Soporte por WhatsApp</li></ul>
+        <a class="btn btn-primary" href="#demo">Elegir Profesional</a>
+      </div>
+      <div class="plan">
+        <h3>Empresarial</h3>
+        <div class="price">A cotizar</div>
+        <p class="for">Para operadores con carga peligrosa o minera.</p>
+        <ul><li>Usuarios ilimitados</li><li>Módulo de trazabilidad</li><li>Capacitación y soporte prioritario</li></ul>
+        <a class="btn btn-ghost" href="#demo">Hablar con ventas</a>
+      </div>
+    </div>
+    <p class="foot-note">Precios referenciales en soles, sin IGV.</p>
+  </div>
+</section>
+
+<section class="cta" id="demo">
+  <div class="wrap cta-grid">
+    <div>
+      <h2>Mira MARS con tus propios despachos</h2>
+      <p class="sec-intro" style="margin-bottom:0">Agenda una demostración de 30 minutos. Cargamos un ejemplo con tus rutas y documentos para que veas cómo quedaría tu operación.</p>
+    </div>
+    <div class="form">
+      <div class="field"><label>Nombre de la empresa</label><div>Ej. Transportes Andes S.A.C.</div></div>
+      <div class="field"><label>Correo de contacto</label><div>nombre@empresa.com</div></div>
+      <div class="field"><label>Tamaño de flota o despachos al mes</label><div>Ej. 12 unidades</div></div>
+      <a class="btn btn-primary" style="width:100%;text-align:center" href="#">Solicitar demo</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <span>MARS Logistics · Lima, Perú</span>
+    <span>contacto@marslogistics.pe</span>
+  </div>
+</footer>
+
+</body>
+</html>
