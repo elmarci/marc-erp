@@ -1797,3 +1797,31 @@ model StoreOrderItem {
   @@index([orderId])
   @@map("store_order_items")
 }
+
+// Una "diapositiva" de la pantalla de la TV de la tienda (/tv en apps/store).
+// La lista completa y su orden se administran desde el ERP (módulo Pantalla
+// TV). OFFER apunta a una promoción de la tienda; PRODUCTS muestra una
+// grilla (productIds vacío = automática con los más vendidos, autoPage elige
+// qué bloque de 8); CUSTOM es un aviso propio (imagen y/o texto); APP es el
+// llamado a instalar la app con QR. startsAt/endsAt permiten avisos "de hoy"
+// que se ocultan solos.
+model TvSlide {
+  id         String    @id @default(uuid())
+  type       String    // OFFER | PRODUCTS | APP | CUSTOM
+  offerId    String?   @map("offer_id")
+  title      String?
+  subtitle   String?
+  imageUrl   String?   @map("image_url")
+  productIds String[]  @default([]) @map("product_ids")
+  autoPage   Int       @default(0) @map("auto_page")
+  seconds    Int       @default(10)
+  sortOrder  Int       @default(0) @map("sort_order")
+  isActive   Boolean   @default(true) @map("is_active")
+  startsAt   DateTime? @map("starts_at")
+  endsAt     DateTime? @map("ends_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([sortOrder])
+  @@map("tv_slides")
+}

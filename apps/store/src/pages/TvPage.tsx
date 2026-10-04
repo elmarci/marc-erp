@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import QRCode from 'qrcode'
-import { storeApi, type Offer, type Product } from '../api'
+import { storeApi, type Offer, type TvSlideData } from '../api'
+
+type TvProduct = NonNullable<TvSlideData['products']>[number]
 
 // Pantalla de cartelería para la TV de la tienda (abrir tiendasmarc.pe/tv en
 // el navegador de la Samsung). Escenario fijo de 1920x1080 que se escala para
@@ -29,6 +31,7 @@ const C = {
   green: '#4ca324',
   greenDark: '#3d8a18',
   magenta: '#d6006c',
+  achiote: '#c9552a',
 }
 
 const FONT_DISPLAY = '"Outfit", system-ui, sans-serif'
@@ -41,9 +44,14 @@ const FULL_RELOAD_MS = 6 * 60 * 60 * 1000
 
 const money = (n: number) => `S/ ${n.toFixed(2)}`
 
+// La hora feliz puede ser en % o en soles fijos (valueType) — igual que en
+// AddOfferModal, donde el % es el valor por defecto.
+const isFixedCut = (offer: Offer) =>
+  offer.type === 'FIXED_DISCOUNT' || (offer.type === 'HAPPY_HOUR' && offer.valueType === 'FIXED')
+
 function discounted(price: number, offer: Offer): number {
   const v = Number(offer.value)
-  if (offer.type === 'FIXED_DISCOUNT') return Math.max(0, Math.round((price - v) * 100) / 100)
+  if (isFixedCut(offer)) return Math.max(0, Math.round((price - v) * 100) / 100)
   if (offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'HAPPY_HOUR') {
     return Math.round(price * (1 - v / 100) * 100) / 100
   }
@@ -52,9 +60,10 @@ function discounted(price: number, offer: Offer): number {
 
 function offerHeadline(offer: Offer): { big: string; small: string } {
   const v = Number(offer.value)
-  if (offer.type === 'PERCENTAGE_DISCOUNT') return { big: `${v}% OFF`, small: 'de descuento' }
-  if (offer.type === 'HAPPY_HOUR') return { big: `${v}% OFF`, small: 'hora feliz' }
-  if (offer.type === 'FIXED_DISCOUNT') return { big: `S/ ${v} OFF`, small: 'de descuento' }
+  const cut = isFixedCut(offer) ? `S/ ${v} OFF` : `${v}% OFF`
+  if (offer.type === 'PERCENTAGE_DISCOUNT') return { big: cut, small: 'de descuento' }
+  if (offer.type === 'HAPPY_HOUR') return { big: cut, small: 'hora feliz' }
+  if (offer.type === 'FIXED_DISCOUNT') return { big: cut, small: 'de descuento' }
   if (offer.type === 'BUY_X_GET_Y') {
     const b = offer.buyQuantity ?? 2
     const g = offer.getQuantity ?? 3
@@ -89,7 +98,8 @@ const clamp = (lines: number): CSSProperties => ({
 
 /* ── Slide: oferta ─────────────────────────────────────────────────────── */
 function OfferSlide({ offer }: { offer: Offer }) {
-  const image = offer.storeImage ?? offer.products[0]?.product.imageUrl ?? null
+  // `||` y no `??`: el ERP guarda "" (no null) cuando no se subió banner.
+  const image = offer.storeImage || offer.products[0]?.product.imageUrl || null
   const isPriceCut = offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'FIXED_DISCOUNT' || offer.type === 'HAPPY_HOUR'
 
   // Cuando el dueño subió el diseño completo de la promo, se muestra tal cual
@@ -223,7 +233,7 @@ const GRID_GAP = 32
 const GRID_LEFT = 80
 const GRID_TOP = 150
 
-function ProductsSlide({ title, products }: { title: string; products: Product[] }) {
+function ProductsSlide({ title, products }: { title: string; products: TvProduct[] }) {
   return (
     <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff' })}>
       <div style={abs({ left: GRID_LEFT, top: 44, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 70, color: C.ink })}>
@@ -247,12 +257,21 @@ function ProductsSlide({ title, products }: { title: string; products: Product[]
             })}
           >
             <div style={abs({ left: 0, top: 0, width: CARD_W, height: 190, background: '#fff' })}>
-              {p.imageUrl && (
+              {p.imageUrl ? (
                 <img
                   src={p.imageUrl}
                   alt=""
                   style={abs({ left: 16, top: 12, width: CARD_W - 32, height: 166, objectFit: 'contain' })}
                 />
+              ) : (
+                // Productos elegidos a mano por el admin pueden no tener foto.
+                <div style={abs({
+                  left: CARD_W / 2 - 60, top: 35, width: 120, height: 120, borderRadius: 999,
+                  background: C.surface, color: C.inkSoft, textAlign: 'center', lineHeight: '120px',
+                  fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 60,
+                })}>
+                  {p.name.charAt(0).toUpperCase()}
+                </div>
               )}
             </div>
             <div style={abs({
@@ -274,7 +293,7 @@ function ProductsSlide({ title, products }: { title: string; products: Product[]
 }
 
 /* ── Slide: llamado a descargar la app ─────────────────────────────────── */
-function AppSlide() {
+function AppSlide({ title, subtitle }: { title?: string | null; subtitle?: string | null }) {
   const qr = useQrDataUrl(QR_URL, 560)
   return (
     <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: C.green })}>
@@ -283,12 +302,16 @@ function AppSlide() {
           TIENDA MARC
         </div>
         <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 132, lineHeight: 1.02, marginTop: 20 }}>
-          Pide desde tu celular
+          {title || 'Pide desde tu celular'}
         </div>
         <div style={{ fontFamily: FONT_SANS, fontWeight: 600, fontSize: 44, lineHeight: 1.3, marginTop: 36 }}>
-          Delivery en Manchay o recoge en tienda.
-          <br />
-          Ofertas y puntos que solo encuentras en la app.
+          {subtitle || (
+            <>
+              Delivery en Manchay o recoge en tienda.
+              <br />
+              Ofertas y puntos que solo encuentras en la app.
+            </>
+          )}
         </div>
         <div style={{
           display: 'inline-block', marginTop: 48, background: '#fff', color: C.greenDark,
@@ -305,6 +328,75 @@ function AppSlide() {
         })}>
           Escanea con la cámara
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Slide: aviso propio (lo arma el dueño desde el ERP) ───────────────── */
+function CustomSlide({ title, subtitle, imageUrl }: { title: string | null; subtitle: string | null; imageUrl: string | null }) {
+  const hasText = !!(title || subtitle)
+
+  // Solo imagen: se muestra tal cual, igual que el arte completo de una oferta.
+  if (imageUrl && !hasText) {
+    return (
+      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff', overflow: 'hidden' })}>
+        <img
+          src={imageUrl}
+          alt=""
+          style={{
+            width: '100%', height: '100%', objectFit: 'cover',
+            WebkitFilter: 'blur(40px) brightness(1.05)', filter: 'blur(40px) brightness(1.05)',
+            transform: 'scale(1.15)',
+          }}
+        />
+        <img src={imageUrl} alt="" style={abs({ left: 0, top: 0, width: '100%', height: '100%', objectFit: 'contain' })} />
+      </div>
+    )
+  }
+
+  const textSize = (title ?? '').length > 36 ? 96 : 128
+
+  // Imagen + texto: foto a la izquierda, mensaje grande a la derecha.
+  if (imageUrl) {
+    return (
+      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff' })}>
+        <div style={abs({ left: 0, top: 0, width: 880, height: CONTENT_H, background: C.surface })}>
+          <img src={imageUrl} alt="" style={abs({ left: 60, top: 60, width: 760, height: CONTENT_H - 120, objectFit: 'contain' })} />
+        </div>
+        <div style={abs({ left: 960, top: 0, width: 880, height: CONTENT_H, display: 'table' })}>
+          <div style={{ display: 'table-cell', verticalAlign: 'middle' }}>
+            {title && (
+              <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: textSize - 24, lineHeight: 1.05, color: C.ink }}>
+                {title}
+              </div>
+            )}
+            {subtitle && (
+              <div style={{ fontFamily: FONT_SANS, fontWeight: 500, fontSize: 44, lineHeight: 1.3, color: C.inkSoft, marginTop: 28 }}>
+                {subtitle}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Solo texto: mensaje grande centrado sobre achiote (el azul se confundía
+  // con la franja inferior, que ya es azul).
+  return (
+    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: C.achiote, display: 'table' })}>
+      <div style={{ display: 'table-cell', verticalAlign: 'middle', textAlign: 'center', padding: '0 140px' }}>
+        {title && (
+          <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: textSize, lineHeight: 1.05, color: '#fff' }}>
+            {title}
+          </div>
+        )}
+        {subtitle && (
+          <div style={{ fontFamily: FONT_SANS, fontWeight: 500, fontSize: 52, lineHeight: 1.3, color: '#fff', opacity: 0.92, marginTop: 36 }}>
+            {subtitle}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -378,36 +470,34 @@ export function TvPage() {
     }
   }, [])
 
-  const { data: offersData } = useQuery({
-    queryKey: ['tv-offers'],
-    queryFn: () => storeApi.getOffers(),
-    refetchInterval: REFETCH_MS,
-  })
-  const { data: featuredData } = useQuery({
-    queryKey: ['tv-featured'],
-    queryFn: () => storeApi.getFeaturedProducts(20),
+  // Qué slides salen, en qué orden y cuánto dura cada una lo decide el dueño
+  // desde el ERP (módulo Pantalla TV); el backend ya filtra lo apagado, lo
+  // vencido y las promos que dejaron de estar vigentes.
+  const { data: configData } = useQuery({
+    queryKey: ['tv-config'],
+    queryFn: () => storeApi.getTvConfig(),
     refetchInterval: REFETCH_MS,
   })
 
   const slides = useMemo<Slide[]>(() => {
-    const offers = (offersData?.data.data ?? []).slice(0, 6)
-    // Solo productos con foto: en una TV, una tarjeta con el recuadro de la
-    // imagen vacío se ve como un error, no como un producto.
-    const featured = (featuredData?.data.data ?? []).filter((p) => Number(p.salePrice) > 0 && !!p.imageUrl)
     const list: Slide[] = []
-    offers.forEach((o) => list.push({ key: `offer-${o.id}`, seconds: 11, node: <OfferSlide offer={o} /> }))
-    for (let i = 0; i < featured.length && i < 16; i += 8) {
-      const chunk = featured.slice(i, i + 8)
-      if (chunk.length >= 4) {
-        list.push({
-          key: `products-${i}`, seconds: 13,
-          node: <ProductsSlide title={i === 0 ? 'Los más vendidos' : 'Más para tu despensa'} products={chunk} />,
-        })
+    ;(configData?.data.data.slides ?? []).forEach((s, i) => {
+      const key = `${s.id ?? s.type}-${i}`
+      if (s.type === 'OFFER' && s.offer) {
+        list.push({ key, seconds: s.seconds, node: <OfferSlide offer={s.offer} /> })
+      } else if (s.type === 'PRODUCTS' && s.products && s.products.length > 0) {
+        list.push({ key, seconds: s.seconds, node: <ProductsSlide title={s.title || 'Los más vendidos'} products={s.products} /> })
+      } else if (s.type === 'CUSTOM') {
+        list.push({ key, seconds: s.seconds, node: <CustomSlide title={s.title} subtitle={s.subtitle} imageUrl={s.imageUrl} /> })
+      } else if (s.type === 'APP') {
+        list.push({ key, seconds: s.seconds, node: <AppSlide title={s.title} subtitle={s.subtitle} /> })
       }
-    }
-    list.push({ key: 'app', seconds: 12, node: <AppSlide /> })
+    })
+    // Mientras carga (o si no hay nada configurado) la TV nunca queda en
+    // blanco: se muestra el llamado a la app.
+    if (list.length === 0) list.push({ key: 'app-fallback', seconds: 12, node: <AppSlide /> })
     return list
-  }, [offersData, featuredData])
+  }, [configData])
 
   const current = idx % slides.length
 

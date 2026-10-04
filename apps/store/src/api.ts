@@ -45,6 +45,8 @@ export interface Offer {
   name: string
   description: string | null
   type: string
+  // Solo HAPPY_HOUR: indica si value es PERCENTAGE o FIXED (soles).
+  valueType?: string | null
   value: number
   buyQuantity: number | null   // para BUY_X_GET_Y
   getQuantity: number | null   // para BUY_X_GET_Y
@@ -111,8 +113,22 @@ export interface StoreOrder {
   }>
 }
 
+export interface TvSlideData {
+  id: string | null
+  type: 'OFFER' | 'PRODUCTS' | 'APP' | 'CUSTOM'
+  seconds: number
+  title: string | null
+  subtitle: string | null
+  imageUrl: string | null
+  offer?: Offer
+  products?: Array<{ id: string; name: string; salePrice: number; imageUrl: string | null }>
+}
+
 // API calls
 export const storeApi = {
+  getTvConfig: () =>
+    api.get<{ data: { slides: TvSlideData[]; generatedAt: string } }>('/tv/config'),
+
   getProducts: (params?: Record<string, string | number>) =>
     api.get<{ data: Product[]; pagination: { total: number; totalPages: number; page: number } }>('/store/products', { params }),
 

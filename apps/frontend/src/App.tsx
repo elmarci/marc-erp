@@ -18,6 +18,7 @@ import { OffersPage } from '@/modules/offers/OffersPage';
 import { NotificationsPage } from '@/modules/notifications/NotificationsPage';
 import { StoreOrdersPage } from '@/modules/store-orders/StoreOrdersPage';
 import { RidersPage } from '@/modules/riders/RidersPage';
+import { TvScreenPage } from '@/modules/tv/TvScreenPage';
 import { CashPage } from '@/modules/cash/CashPage';
 import { UsersPage } from '@/modules/users/UsersPage';
 import { SettingsPage } from '@/modules/settings/SettingsPage';
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="store-orders" element={<StoreOrdersPage />} />
           <Route path="riders" element={<RidersPage />} />
+          <Route path="tv" element={<TvScreenPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="settings" element={<SettingsPage />} />
