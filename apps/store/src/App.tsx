@@ -18,6 +18,7 @@ import { CheckoutPage } from './pages/CheckoutPage'
 import { OrderConfirmPage } from './pages/OrderConfirmPage'
 import { TrackOrderPage } from './pages/TrackOrderPage'
 import { OffersPage } from './pages/OffersPage'
+import { TvPage } from './pages/TvPage'
 
 export default function App() {
   const location = useLocation()
@@ -34,6 +35,10 @@ export default function App() {
     if (location.hash) return
     window.scrollTo(0, 0)
   }, [location.pathname, location.search, location.hash])
+
+  // Pantalla de la TV de la tienda: pública, sin login ni cabecera/banners de
+  // la app — nadie la maneja, solo muestra ofertas y precios en loop.
+  if (location.pathname === '/tv') return <TvPage />
 
   // El registro es la vía principal (perfil real, historial, puntos) pero
   // quien no quiera crear cuenta puede seguir como invitado y pedir por

@@ -48,4 +48,8 @@ export default defineConfig({
   resolve: {
     alias: { '@': '/app/src' },
   },
+  // Las TV Samsung de 2018-2021 traen un Chromium 56-76: sin esto el bundle
+  // sale con `?.` / `??` (Chrome 80+) y la pantalla /tv queda en blanco sin
+  // ningún error visible. es2018 hace que esbuild baje esa sintaxis.
+  build: { target: 'es2018' },
 })
