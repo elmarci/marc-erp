@@ -96,11 +96,22 @@ function OfferSlide({ offer }: { offer: Offer }) {
   // a pantalla entera — no se le pone texto encima.
   if (offer.storeFullDesign && offer.storeImage) {
     return (
-      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff' })}>
+      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff', overflow: 'hidden' })}>
+        {/* Copia desenfocada de la misma imagen de fondo: el arte del dueño
+            casi nunca es 16:9 y sus bordes son de otro color que el blanco. */}
+        <img
+          src={offer.storeImage}
+          alt=""
+          style={{
+            width: '100%', height: '100%', objectFit: 'cover',
+            WebkitFilter: 'blur(40px) brightness(1.05)', filter: 'blur(40px) brightness(1.05)',
+            transform: 'scale(1.15)',
+          }}
+        />
         <img
           src={offer.storeImage}
           alt={offer.name}
-          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          style={abs({ left: 0, top: 0, width: '100%', height: '100%', objectFit: 'contain' })}
         />
       </div>
     )
@@ -108,42 +119,58 @@ function OfferSlide({ offer }: { offer: Offer }) {
 
   const { big, small } = offerHeadline(offer)
   const shownProducts = offer.products.slice(0, isPriceCut ? 3 : 4)
+  const hasImage = !!image
+
+  const badge = (
+    <div style={{
+      display: 'inline-block', fontFamily: FONT_SANS, fontWeight: 800, fontSize: 30, letterSpacing: 4,
+      padding: '10px 26px', borderRadius: 999,
+      background: hasImage ? C.magenta : '#fff', color: hasImage ? '#fff' : C.magenta,
+    }}>
+      {offer.storeBadge ? offer.storeBadge.toUpperCase() : 'OFERTA'}
+    </div>
+  )
+  const headline = (
+    <>
+      <div style={{
+        fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: big.length > 12 ? 104 : 170,
+        lineHeight: 1.02, color: hasImage ? C.magenta : '#fff', marginTop: 28,
+      }}>
+        {big}
+      </div>
+      {small && (
+        <div style={{ fontFamily: FONT_SANS, fontWeight: 600, fontSize: 40, color: hasImage ? C.inkSoft : '#fff', opacity: hasImage ? 1 : 0.9, marginTop: 6 }}>
+          {small}
+        </div>
+      )}
+    </>
+  )
 
   return (
     <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff' })}>
-      <div style={abs({ left: 0, top: 0, width: 880, height: CONTENT_H, background: C.surface })}>
-        {image && (
+      <div style={abs({ left: 0, top: 0, width: 880, height: CONTENT_H, background: hasImage ? C.surface : C.magenta })}>
+        {hasImage ? (
           <img
-            src={image}
+            src={image ?? ''}
             alt=""
             style={abs({ left: 60, top: 60, width: 760, height: CONTENT_H - 120, objectFit: 'contain' })}
           />
+        ) : (
+          // Sin foto: el precio / descuento pasa a ser lo que llena el panel.
+          <div style={abs({ left: 80, top: 250, width: 740 })}>
+            {badge}
+            {headline}
+          </div>
         )}
       </div>
 
-      <div style={abs({ left: 960, top: 70, width: 880 })}>
-        <div style={{
-          display: 'inline-block', background: C.magenta, color: '#fff', fontFamily: FONT_SANS,
-          fontWeight: 800, fontSize: 30, letterSpacing: 4, padding: '10px 26px', borderRadius: 999,
-        }}>
-          {offer.storeBadge ? offer.storeBadge.toUpperCase() : 'OFERTA'}
-        </div>
-
-        <div style={{
-          fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: big.length > 12 ? 104 : 150,
-          lineHeight: 1.02, color: C.magenta, marginTop: 28,
-        }}>
-          {big}
-        </div>
-        {small && (
-          <div style={{ fontFamily: FONT_SANS, fontWeight: 600, fontSize: 38, color: C.inkSoft, marginTop: 6 }}>
-            {small}
-          </div>
-        )}
+      <div style={abs({ left: 960, top: hasImage ? 70 : 150, width: 880 })}>
+        {hasImage && badge}
+        {hasImage && headline}
 
         <div style={{
           fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 60, lineHeight: 1.1, color: C.ink,
-          marginTop: 34, ...clamp(2),
+          marginTop: hasImage ? 34 : 0, ...clamp(2),
         }}>
           {offer.name}
         </div>
@@ -358,13 +385,15 @@ export function TvPage() {
   })
   const { data: featuredData } = useQuery({
     queryKey: ['tv-featured'],
-    queryFn: () => storeApi.getFeaturedProducts(16),
+    queryFn: () => storeApi.getFeaturedProducts(20),
     refetchInterval: REFETCH_MS,
   })
 
   const slides = useMemo<Slide[]>(() => {
     const offers = (offersData?.data.data ?? []).slice(0, 6)
-    const featured = (featuredData?.data.data ?? []).filter((p) => Number(p.salePrice) > 0)
+    // Solo productos con foto: en una TV, una tarjeta con el recuadro de la
+    // imagen vacío se ve como un error, no como un producto.
+    const featured = (featuredData?.data.data ?? []).filter((p) => Number(p.salePrice) > 0 && !!p.imageUrl)
     const list: Slide[] = []
     offers.forEach((o) => list.push({ key: `offer-${o.id}`, seconds: 11, node: <OfferSlide offer={o} /> }))
     for (let i = 0; i < featured.length && i < 16; i += 8) {
