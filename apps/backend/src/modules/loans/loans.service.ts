@@ -19,6 +19,15 @@ function customerDisplayName(c: { firstName: string; lastName: string | null; bu
   return c.businessName?.trim() || [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
 }
 
+export interface BorrowerGroup {
+  key: string; customerId: string | null; name: string; phone: string | null;
+  totalLent: number; totalPaid: number; outstanding: number; openCount: number; lastLoanDate: Date;
+  loans: Array<{
+    id: string; amount: number; paidAmount: number; outstanding: number; account: string;
+    status: string; notes: string | null; loanDate: Date;
+  }>;
+}
+
 const OUTSTANDING_TOLERANCE = 0.01;
 
 export class LoansService {
@@ -225,15 +234,7 @@ export class LoansService {
       orderBy: { loanDate: 'desc' },
     });
 
-    interface Group {
-      key: string; customerId: string | null; name: string; phone: string | null;
-      totalLent: number; totalPaid: number; outstanding: number; openCount: number; lastLoanDate: Date;
-      loans: Array<{
-        id: string; amount: number; paidAmount: number; outstanding: number; account: string;
-        status: string; notes: string | null; loanDate: Date;
-      }>;
-    }
-    const groups = new Map<string, Group>();
+    const groups = new Map<string, BorrowerGroup>();
     for (const l of loans) {
       const key = l.customerId ?? `name:${l.borrowerName.trim().toLowerCase()}`;
       let g = groups.get(key);
