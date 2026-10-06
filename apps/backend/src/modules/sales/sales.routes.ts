@@ -27,6 +27,9 @@ const saleItemSchema = z.object({
   // cualquier otro producto el backend ignora este campo y usa el nombre
   // real del catálogo, para que el ticket no pueda falsificarse.
   productName: z.string().trim().min(1).max(120).optional(),
+  // Presentación paquete/caja del producto (ver Product.packSize): quantity
+  // cuenta paquetes y el stock baja quantity × packSize unidades.
+  sellAsPack: z.boolean().optional(),
 });
 
 const bottleDepositItemSchema = z.object({

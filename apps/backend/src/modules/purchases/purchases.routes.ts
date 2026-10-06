@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { purchasesService } from './purchases.service';
+import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { sendExcel } from '../../utils/excel';
 import { limaDateFromParam, limaDateToParam } from '../../utils/timezone';
@@ -318,7 +319,10 @@ router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, 
       req.params.id, req.user!.sub, items as Parameters<typeof purchasesService.receiveOrder>[2], notes, payment,
       payerId, payerAmount,
     );
-    res.status(201).json({ success: true, data: receipt });
+    // Avisa en el momento si algún producto de precio volátil quedó con
+    // margen bajo con el costo recién pagado — sin tocar el precio de venta.
+    const marginAlerts = await inventoryAlertsService.computeMarginAlerts({ productIds: items.map((i) => i.productId) });
+    res.status(201).json({ success: true, data: receipt, marginAlerts });
   } catch (err) { next(err); }
 });
 
@@ -364,7 +368,8 @@ router.post('/direct', authorizeMinRole('WAREHOUSE'), async (req: Request, res: 
     }).parse(req.body);
 
     const order = await purchasesService.createDirectPurchase(req.user!.sub, data);
-    res.status(201).json({ success: true, data: order });
+    const marginAlerts = await inventoryAlertsService.computeMarginAlerts({ productIds: data.items.map((i) => i.productId) });
+    res.status(201).json({ success: true, data: order, marginAlerts });
   } catch (err) { next(err); }
 });
 

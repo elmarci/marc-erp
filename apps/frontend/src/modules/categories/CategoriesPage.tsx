@@ -16,6 +16,8 @@ interface CategoryNode {
   parentId: string | null
   sortOrder: number
   isActive: boolean
+  requiresExpiry: boolean
+  volatilePricing: boolean
   _count: { products: number; children: number }
   children: CategoryNode[]
 }
@@ -38,6 +40,8 @@ function CategoryModal({ category, parentOptions, defaultParentId, onClose }: {
     sortOrder: String(category?.sortOrder ?? 0),
     isActive: category?.isActive ?? true,
     imageUrl: category?.imageUrl ?? '',
+    requiresExpiry: category?.requiresExpiry ?? false,
+    volatilePricing: category?.volatilePricing ?? false,
   })
 
   const imageUploadMutation = useMutation({
@@ -61,6 +65,8 @@ function CategoryModal({ category, parentOptions, defaultParentId, onClose }: {
         sortOrder: Number(form.sortOrder) || 0,
         isActive: form.isActive,
         imageUrl: form.imageUrl || null,
+        requiresExpiry: form.requiresExpiry,
+        volatilePricing: form.volatilePricing,
       }
       return isEdit ? api.put(`/categories/${category!.id}`, payload) : api.post('/categories', payload)
     },
@@ -112,6 +118,32 @@ function CategoryModal({ category, parentOptions, defaultParentId, onClose }: {
                 onChange={e => setForm(v => ({ ...v, isActive: e.target.checked }))} className="h-4 w-4 rounded border-input" />
               <label htmlFor="cat-active" className="text-sm font-medium">Activa</label>
             </div>
+          </div>
+
+          <div className="rounded-lg border p-3 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Controles del inventario</p>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-input" checked={form.requiresExpiry}
+                onChange={e => setForm(v => ({ ...v, requiresExpiry: e.target.checked }))} />
+              <span>
+                <span className="block text-sm font-medium">Vencimiento obligatorio</span>
+                <span className="block text-xs text-muted-foreground">
+                  Lácteos, panadería, carnes y embutidos. No se puede recibir una compra sin fecha de
+                  vencimiento y los productos (y subcategorías) quedan con el control activado.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-input" checked={form.volatilePricing}
+                onChange={e => setForm(v => ({ ...v, volatilePricing: e.target.checked }))} />
+              <span>
+                <span className="block text-sm font-medium">Precio volátil (alerta de margen)</span>
+                <span className="block text-xs text-muted-foreground">
+                  Frutas y verduras. Si el último costo de compra deja poco margen contra el precio de venta,
+                  se avisa para que actualices el precio. Los productos a granel siempre tienen esta alerta.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div>
@@ -171,6 +203,8 @@ function CategoryRow({ node, depth, onEdit, onAddChild, onDelete }: {
           <p className="font-medium text-sm truncate">{node.name}</p>
           {node.description && <p className="text-xs text-muted-foreground truncate">{node.description}</p>}
         </div>
+        {node.requiresExpiry && <Badge variant="warning" className="shrink-0">Vencimiento</Badge>}
+        {node.volatilePricing && <Badge variant="secondary" className="shrink-0">Precio volátil</Badge>}
         <Badge variant="secondary" className="shrink-0">{node._count.products} productos</Badge>
         {!node.isActive && <Badge variant="secondary" className="shrink-0">Inactiva</Badge>}
         <div className="flex gap-1 shrink-0">

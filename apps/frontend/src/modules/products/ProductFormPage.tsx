@@ -25,11 +25,22 @@ const schema = z.object({
   isBulk: z.boolean().default(false),
   bulkUnit: z.string().optional(),
   trackExpiry: z.boolean().default(false),
+  sellsByPack: z.boolean().default(false),
+  marginAlertMuted: z.boolean().default(false),
+  packSize: z.coerce.number().int().optional(),
+  packPrice: z.coerce.number().optional(),
+  packLabel: z.string().optional(),
+  packBarcode: z.string().optional(),
   bottleDeposit: z.coerce.number().min(0).default(0),
   imageUrl: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
+
+interface CategoryOption {
+  id: string; name: string; requiresExpiry?: boolean;
+  children?: Array<{ id: string; name: string; requiresExpiry?: boolean }>;
+}
 
 export function ProductFormPage() {
   const { id } = useParams<{ id: string }>();
@@ -40,7 +51,7 @@ export function ProductFormPage() {
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: async () => {
-      const res = await api.get<{ data: Array<{ id: string; name: string; children?: Array<{ id: string; name: string }> }> }>('/products/categories');
+      const res = await api.get<{ data: CategoryOption[] }>('/products/categories');
       return res.data.data;
     },
   });
@@ -95,15 +106,48 @@ export function ProductFormPage() {
         isBulk: Boolean(p['isBulk']),
         bulkUnit: (p['bulkUnit'] as string) ?? '',
         trackExpiry: Boolean(p['trackExpiry']),
+        marginAlertMuted: Boolean(p['marginAlertMuted']),
+        sellsByPack: p['packSize'] != null && p['packPrice'] != null,
+        packSize: p['packSize'] != null ? Number(p['packSize']) : undefined,
+        packPrice: p['packPrice'] != null ? Number(p['packPrice']) : undefined,
+        packLabel: (p['packLabel'] as string) ?? '',
+        packBarcode: (p['packBarcode'] as string) ?? '',
         bottleDeposit: Number(p['bottleDeposit'] ?? 0),
         imageUrl: (p['imageUrl'] as string) ?? '',
       });
     }
   }, [product, reset]);
 
+  // Lácteos, panadería, carnes y embutidos: el vencimiento no es opcional.
+  const selectedCategoryId = watch('categoryId');
+  const expiryForced = !!categories?.some((c) =>
+    (c.id === selectedCategoryId && c.requiresExpiry)
+    || c.children?.some((ch) => ch.id === selectedCategoryId && (ch.requiresExpiry || c.requiresExpiry)));
+  useEffect(() => {
+    if (expiryForced) setValue('trackExpiry', true);
+  }, [expiryForced, setValue]);
+
+  const sellsByPack = watch('sellsByPack');
+  const packSizeNum = Number(watch('packSize') ?? 0);
+  const packPriceNum = Number(watch('packPrice') ?? 0);
+  const unitPriceNum = Number(watch('salePrice') ?? 0);
+  const packSavings = sellsByPack && packSizeNum >= 2 && packPriceNum > 0
+    ? Math.round((unitPriceNum * packSizeNum - packPriceNum) * 100) / 100
+    : null;
+
   const mutation = useMutation({
-    mutationFn: (data: FormData) =>
-      isEdit ? api.patch(`/products/${id}`, data) : api.post('/products', data),
+    mutationFn: ({ sellsByPack: byPack, ...data }: FormData) => {
+      // Sin paquete se mandan null: así editar un producto puede quitarle el
+      // paquete que tenía, en vez de dejarlo como estaba.
+      const payload = {
+        ...data,
+        packSize: byPack ? data.packSize : null,
+        packPrice: byPack ? data.packPrice : null,
+        packLabel: byPack ? (data.packLabel?.trim() || null) : null,
+        packBarcode: byPack ? (data.packBarcode?.trim() || null) : null,
+      };
+      return isEdit ? api.patch(`/products/${id}`, payload) : api.post('/products', payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product', id] });
@@ -126,7 +170,13 @@ export function ProductFormPage() {
       </div>
 
       <form
-        onSubmit={handleSubmit((d) => mutation.mutate(d))}
+        onSubmit={handleSubmit((d) => {
+          if (d.sellsByPack && (!d.packSize || d.packSize < 2 || !d.packPrice || d.packPrice <= 0)) {
+            toast.error('Para vender por paquete indica cuántas unidades trae (mínimo 2) y su precio.');
+            return;
+          }
+          mutation.mutate(d);
+        })}
         onKeyDown={(e) => {
           // Un lector de código de barras "escribe" el código y envía Enter.
           // Sin esto, Enter en cualquier campo (ej. código de barras) enviaría
@@ -261,12 +311,73 @@ export function ProductFormPage() {
             <div className="rounded-lg border p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <input type="checkbox" id="trackExpiry" {...register('trackExpiry')}
-                  className="h-4 w-4 rounded border-input" />
+                  disabled={expiryForced} className="h-4 w-4 rounded border-input disabled:opacity-60" />
                 <div>
                   <label htmlFor="trackExpiry" className="text-sm font-medium cursor-pointer">Controla fecha de vencimiento</label>
-                  <p className="text-xs text-muted-foreground">Lácteos, embutidos y similares. Al recibir compras de este producto se pedirá la fecha de vencimiento, y aparecerá en Inventario → Alertas antes de que se venza.</p>
+                  <p className="text-xs text-muted-foreground">
+                    {expiryForced
+                      ? 'Obligatorio en esta categoría: no se puede recibir una compra de este producto sin fecha de vencimiento.'
+                      : 'Lácteos, embutidos y similares. Al recibir compras de este producto se pedirá la fecha de vencimiento (obligatoria), y aparecerá en Inventario → Vencimientos antes de que se venza.'}
+                  </p>
                 </div>
               </div>
+            </div>
+
+            {isEdit && (
+              <label className="flex items-start gap-3 rounded-lg border p-4 cursor-pointer">
+                <input type="checkbox" {...register('marginAlertMuted')} className="mt-0.5 h-4 w-4 rounded border-input" />
+                <span>
+                  <span className="block text-sm font-medium">No avisar margen bajo de este producto</span>
+                  <span className="block text-xs text-muted-foreground">
+                    En frutas, verduras y productos por kg el sistema avisa si el último costo de compra deja poco margen.
+                    Actívalo solo si vendes barato a propósito o el costo de compra está en otra unidad que la de venta.
+                  </span>
+                </span>
+              </label>
+            )}
+
+            {/* Venta por paquete / caja */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="sellsByPack" {...register('sellsByPack')}
+                  disabled={watch('isBulk')} className="h-4 w-4 rounded border-input disabled:opacity-60" />
+                <div>
+                  <label htmlFor="sellsByPack" className="text-sm font-medium cursor-pointer">También se vende por paquete / caja</label>
+                  <p className="text-xs text-muted-foreground">
+                    Cigarros, chicles, galletas por caja... El precio de arriba es el de la unidad; aquí defines el paquete.
+                    En el punto de venta el cajero elige unidad o paquete con un toque, y el stock baja las unidades que trae el paquete.
+                  </p>
+                </div>
+              </div>
+              {sellsByPack && !watch('isBulk') && (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Unidades por paquete *</label>
+                    <Input {...register('packSize')} type="number" step="1" min="2" placeholder="Ej: 20" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Precio del paquete *</label>
+                    <Input {...register('packPrice')} type="number" step="0.01" min="0" placeholder="Ej: 20.00" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Se llama</label>
+                    <Input {...register('packLabel')} placeholder="Paquete, Caja, Cartón..." />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Código de barras del paquete</label>
+                    <Input {...register('packBarcode')} placeholder="Opcional" />
+                  </div>
+                  {packSavings !== null && (
+                    <p className="col-span-2 text-xs text-muted-foreground sm:col-span-4">
+                      {packSavings > 0
+                        ? `Comprar el paquete sale S/ ${packSavings.toFixed(2)} más barato que ${packSizeNum} unidades sueltas (S/ ${(unitPriceNum * packSizeNum).toFixed(2)}).`
+                        : packSavings < 0
+                          ? `Ojo: el paquete sale S/ ${Math.abs(packSavings).toFixed(2)} más caro que ${packSizeNum} unidades sueltas.`
+                          : 'El paquete cuesta lo mismo que las unidades sueltas.'}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Garantía de envase retornable */}

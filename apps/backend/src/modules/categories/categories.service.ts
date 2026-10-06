@@ -38,7 +38,7 @@ export class CategoriesService {
     return build('');
   }
 
-  async create(data: { name: string; description?: string; parentId?: string | null; sortOrder?: number; isActive?: boolean; imageUrl?: string | null }) {
+  async create(data: { name: string; description?: string; parentId?: string | null; sortOrder?: number; isActive?: boolean; imageUrl?: string | null; requiresExpiry?: boolean; volatilePricing?: boolean }) {
     if (data.parentId) {
       const parent = await prisma.category.findUnique({ where: { id: data.parentId } });
       if (!parent) throw new NotFoundError('Categoría padre');
@@ -53,13 +53,15 @@ export class CategoriesService {
         sortOrder: data.sortOrder ?? 0,
         isActive: data.isActive ?? true,
         imageUrl: data.imageUrl || null,
+        requiresExpiry: data.requiresExpiry ?? false,
+        volatilePricing: data.volatilePricing ?? false,
       },
     });
     await redis.del('categories:all');
     return category;
   }
 
-  async update(id: string, data: { name?: string; description?: string; parentId?: string | null; sortOrder?: number; isActive?: boolean; imageUrl?: string | null }) {
+  async update(id: string, data: { name?: string; description?: string; parentId?: string | null; sortOrder?: number; isActive?: boolean; imageUrl?: string | null; requiresExpiry?: boolean; volatilePricing?: boolean }) {
     const existing = await prisma.category.findUnique({ where: { id } });
     if (!existing) throw new NotFoundError('Categoría');
 
@@ -82,8 +84,21 @@ export class CategoriesService {
         ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
         ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
         ...(data.imageUrl !== undefined ? { imageUrl: data.imageUrl || null } : {}),
+        ...(data.requiresExpiry !== undefined ? { requiresExpiry: data.requiresExpiry } : {}),
+        ...(data.volatilePricing !== undefined ? { volatilePricing: data.volatilePricing } : {}),
       },
     });
+
+    // Marcar una categoría como "vencimiento obligatorio" enciende el control
+    // en todos sus productos (y los de sus subcategorías) de una vez, para que
+    // no haya que ir producto por producto.
+    if (data.requiresExpiry === true) {
+      const childIds = (await prisma.category.findMany({ where: { parentId: id }, select: { id: true } })).map((c) => c.id);
+      await prisma.product.updateMany({
+        where: { categoryId: { in: [id, ...childIds] }, deletedAt: null, trackExpiry: false },
+        data: { trackExpiry: true },
+      });
+    }
     await redis.del('categories:all');
     return category;
   }

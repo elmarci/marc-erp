@@ -30,6 +30,9 @@ export interface CartItem {
   // A quién identificar para saber a quién devolverle — nombre/apodo libre,
   // no requiere un cliente registrado (ver DebtorLabelModal en PosCart).
   bottleDepositDebtorLabel?: string;
+  // Línea de paquete/caja (Product.packSize): quantity cuenta paquetes y
+  // productId lleva el sufijo "#pack" (ver pos/packSale.ts).
+  sellAsPack?: boolean;
 }
 
 export interface CartPayment {

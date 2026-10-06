@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { inventoryService } from './inventory.service';
+import { inventoryAlertsService } from './inventory-alerts.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { sendExcel } from '../../utils/excel';
 import { limaDateFromParam, limaDateToParam } from '../../utils/timezone';
@@ -127,6 +128,37 @@ router.post('/quick-adjust', authorizeMinRole('WAREHOUSE'), async (req: Request,
 router.get('/low-stock', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await inventoryService.getLowStockProducts();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// Resumen de alertas para los contadores (menú lateral y pestaña Alertas).
+router.get('/alerts/summary', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await inventoryAlertsService.getSummary();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// Productos de precio volátil cuyo último costo de compra deja poco margen.
+router.get('/alerts/margin', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await inventoryAlertsService.computeMarginAlerts();
+    res.json({ success: true, data, minMargin: await inventoryAlertsService.getMinVolatileMargin() });
+  } catch (err) { next(err); }
+});
+
+// Seguimiento de vencimientos: lotes con fecha + stock sin fecha registrada.
+router.get('/expiry', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await inventoryAlertsService.getExpiryControl();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+router.post('/expiry/reconcile', authorizeMinRole('ADMIN'), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await inventoryAlertsService.reconcileBatches();
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });

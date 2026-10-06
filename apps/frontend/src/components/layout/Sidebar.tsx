@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -23,6 +24,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/button';
+import { api } from '@/services/api';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -62,6 +64,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const visibleItems = navItems.filter((item) =>
     item.minRole ? hasMinRole(item.minRole) : true,
   );
+
+  // Contador de alertas de inventario (stock bajo, margen bajo, por vencer y
+  // stock sin fecha) para que se vea desde cualquier pantalla, sin tener que
+  // abrir Inventario a revisar.
+  const canSeeInventory = hasMinRole('WAREHOUSE');
+  const { data: alertsSummary } = useQuery({
+    queryKey: ['inv-alerts-summary'],
+    queryFn: async () => (await api.get<{ data: { total: number; expired: number } }>('/inventory/alerts/summary')).data.data,
+    enabled: canSeeInventory,
+    refetchInterval: 60000,
+  });
+  const badgeFor = (path: string) => (path === '/inventory' && canSeeInventory ? alertsSummary : undefined);
 
   return (
     <aside
@@ -126,8 +140,24 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 }
                 title={collapsed ? item.label : undefined}
               >
-                <item.icon className="h-5 w-5 shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
+                <span className="relative shrink-0">
+                  <item.icon className="h-5 w-5" />
+                  {collapsed && !!badgeFor(item.path)?.total && (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-card" />
+                  )}
+                </span>
+                {!collapsed && <span className="flex-1">{item.label}</span>}
+                {!collapsed && !!badgeFor(item.path)?.total && (
+                  <span
+                    title="Alertas de inventario: stock bajo, margen bajo, por vencer y stock sin fecha"
+                    className={cn(
+                      'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold text-white',
+                      (badgeFor(item.path)?.expired ?? 0) > 0 ? 'bg-destructive' : 'bg-amber-500',
+                    )}
+                  >
+                    {badgeFor(item.path)?.total}
+                  </span>
+                )}
               </NavLink>
             </li>
           ))}

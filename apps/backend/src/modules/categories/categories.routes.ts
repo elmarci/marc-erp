@@ -79,6 +79,8 @@ const categorySchema = z.object({
   sortOrder: z.coerce.number().optional(),
   isActive: z.boolean().optional(),
   imageUrl: z.string().nullable().optional(),
+  requiresExpiry: z.boolean().optional(),
+  volatilePricing: z.boolean().optional(),
 });
 
 router.post('/', authorizeMinRole('ADMIN'), async (req: Request, res: Response, next: NextFunction) => {

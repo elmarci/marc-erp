@@ -85,6 +85,7 @@ export function SettingsPage() {
   const couponSettings = settings?.filter((s) => s.group === 'coupons') ?? [];
   const loyaltySettings = settings?.filter((s) => s.group === 'loyalty') ?? [];
   const receiptSettings = settings?.filter((s) => s.group === 'receipts') ?? [];
+  const marginSetting = settings?.find((s) => s.key === 'min_margin_volatile');
   const logoUrl = settings?.find((s) => s.key === 'business_logo_url')?.value;
   const logoSrc = logoUrl ? (logoUrl.startsWith('http') ? logoUrl : `${API_ORIGIN}${logoUrl}`) : null;
   const heroVideoUrl = settings?.find((s) => s.key === 'store_hero_video_url')?.value;
@@ -292,6 +293,35 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {marginSetting && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Alerta de Margen Bajo</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              En frutas, verduras y productos a granel el costo cambia seguido. Si el último costo de compra
+              deja menos que este margen contra el precio de venta, aparece una alerta en Inventario para que
+              actualices el precio (el sistema nunca lo cambia solo).
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">{marginSetting.label}</label>
+              <Input
+                type="number" step="0.10" min="0" className="max-w-[160px]"
+                defaultValue={marginSetting.value}
+                onChange={(e) => setValues((prev) => ({ ...prev, [marginSetting.key]: e.target.value }))}
+              />
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
+                disabled={Object.keys(values).length === 0}>
+                <Save className="mr-2 h-4 w-4" />Guardar Cambios
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

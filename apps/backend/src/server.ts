@@ -198,6 +198,7 @@ async function ensureDefaultSettings() {
     { key: 'receipt_show_points', value: 'true', type: 'boolean', label: 'Mostrar puntos ganados en el ticket', group: 'receipts' },
     { key: 'receipt_show_coupon', value: 'true', type: 'boolean', label: 'Mostrar cupón generado en el ticket', group: 'receipts' },
     { key: 'receipt_show_qr', value: 'true', type: 'boolean', label: 'Mostrar código QR de la tienda en el ticket', group: 'receipts' },
+    { key: 'min_margin_volatile', value: '1', type: 'number', label: 'Margen mínimo por kg o unidad en frutas, verduras y granel (S/)', group: 'inventory' },
   ];
   for (const s of defaults) {
     await prisma.setting.upsert({ where: { key: s.key }, update: {}, create: s });

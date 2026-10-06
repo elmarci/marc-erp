@@ -51,6 +51,12 @@ const createSchema = z.object({
   imageUrl: z.union([z.string().url(), z.literal('')]).optional().nullable(),
   isFavorite: z.boolean().optional(),
   storeFeatured: z.boolean().optional(),
+  // Venta por paquete/caja (opcional): ver Product.packSize.
+  packSize: z.number().int().min(2).optional().nullable(),
+  packPrice: z.number().positive().optional().nullable(),
+  packLabel: z.string().max(30).optional().nullable(),
+  packBarcode: z.string().max(50).optional().nullable(),
+  marginAlertMuted: z.boolean().optional(),
 });
 
 const searchSchema = z.object({
@@ -122,6 +128,19 @@ router.post('/batches/:batchId/resolve', authorizeMinRole('WAREHOUSE'), async (r
     }).parse(req.body);
     const batch = await productsService.resolveBatch(req.params.batchId, req.user!.sub, { notes, lossQuantity });
     res.json({ success: true, data: batch });
+  } catch (err) { next(err); }
+});
+
+// Fecha de vencimiento para stock que ya estaba en el estante sin fecha.
+router.post('/:id/batches', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { quantity, expiryDate, batchNumber } = z.object({
+      quantity: z.number().positive(),
+      expiryDate: z.coerce.date(),
+      batchNumber: z.string().max(50).optional().nullable(),
+    }).parse(req.body);
+    const batch = await productsService.createBatch(req.params.id, { quantity, expiryDate, batchNumber });
+    res.status(201).json({ success: true, data: batch });
   } catch (err) { next(err); }
 });
 

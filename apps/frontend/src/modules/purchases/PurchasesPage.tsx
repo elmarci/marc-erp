@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatCost, formatDateTime, cn, looksLikeScannedCode, todayLimaDateString } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
+import { notifyMarginAlerts, type MarginAlert } from '@/lib/marginAlerts';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { printThermalHtml } from '@/lib/printThermal';
 
@@ -621,13 +622,16 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
       : p);
   }, [payTarget]);
 
-  const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0)
+  // Lácteos, panadería, carnes y embutidos: sin fecha de vencimiento no se registra.
+  const missingExpiry = lines.some(l => l.trackExpiry && effQty(l) > 0 && !l.expiryDate);
+
+  const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0) && !missingExpiry
     && (payerMode
       ? !!payerId && payerAmountNum > 0.009 && (payTarget === 0 || !payment.paid || legsMatch(payment.legs, payTarget))
       : (!payment.paid || total === 0 || legsMatch(payment.legs, total)));
 
   const mutation = useMutation({
-    mutationFn: () => api.post<{ data: OrderDetail }>('/purchases/direct', {
+    mutationFn: () => api.post<{ data: OrderDetail; marginAlerts?: MarginAlert[] }>('/purchases/direct', {
       supplierId,
       documentNumber: documentNumber || undefined,
       date: date ? new Date(`${date}T12:00:00`).toISOString() : undefined,
@@ -662,6 +666,10 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
         : payment.paid
           ? 'Compra registrada y pagada — stock, costo y caja actualizados.'
           : 'Compra registrada como crédito — queda en Cuentas por Pagar.');
+      queryClient.invalidateQueries({ queryKey: ['inv-alerts-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-margin-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-expiry'] });
+      notifyMarginAlerts(res.data.marginAlerts);
       onCreated(res.data.data);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -803,9 +811,11 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
 
                   {l.trackExpiry && (
                     <div className="flex items-center gap-2 pt-1">
-                      <label className="text-xs text-muted-foreground whitespace-nowrap">Vence</label>
+                      <label className="text-xs font-medium whitespace-nowrap">Vence <span className="text-destructive">*</span></label>
                       <Input type="date" value={l.expiryDate}
-                        onChange={e => updateLine(idx, { expiryDate: e.target.value })} className="h-8 w-40" />
+                        onChange={e => updateLine(idx, { expiryDate: e.target.value })}
+                        className={cn('h-8 w-40', !l.expiryDate && 'border-destructive')} />
+                      {!l.expiryDate && <span className="text-xs text-destructive whitespace-nowrap">Obligatorio</span>}
                       <label className="text-xs text-muted-foreground whitespace-nowrap">N° lote</label>
                       <Input value={l.batchNumber} placeholder="Opcional"
                         onChange={e => updateLine(idx, { batchNumber: e.target.value })} className="h-8" />
@@ -1353,21 +1363,24 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
       : p);
   }, [payTarget]);
 
-  const canSubmitPayment = payerMode
+  // Fecha de vencimiento obligatoria en lo que se recibe de productos que la controlan.
+  const missingExpiry = items.some(i => i.trackExpiry && i.receivedQty > 0 && !i.expiryDate);
+
+  const canSubmitPayment = !missingExpiry && (payerMode
     ? !!payerId && payerAmountNum > 0.009 && (payTarget === 0 || !payment.paid || legsMatch(payment.legs, payTarget))
-    : (!payment.paid || receiptTotal === 0 || legsMatch(payment.legs, receiptTotal));
+    : (!payment.paid || receiptTotal === 0 || legsMatch(payment.legs, receiptTotal)));
 
   const { data: bonusResults } = useQuery({
     queryKey: ['products-search', debouncedBonusSearch],
-    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; barcode: string | null; costPrice: number }> }>(`/products?q=${debouncedBonusSearch}&limit=10`)).data.data,
+    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; barcode: string | null; costPrice: number; trackExpiry?: boolean }> }>(`/products?q=${debouncedBonusSearch}&limit=10`)).data.data,
     enabled: debouncedBonusSearch.length >= 2,
   });
 
-  const addBonusProduct = (p: { id: string; name: string; barcode: string | null }) => {
+  const addBonusProduct = (p: { id: string; name: string; barcode: string | null; trackExpiry?: boolean }) => {
     if (items.find(i => i.productId === p.id)) return;
     setItems(v => [...v, {
       productId: p.id, name: p.name, barcode: p.barcode, orderedQty: 0, receivedQty: 1, unitCost: 0, isBonus: true,
-      trackExpiry: false, batchNumber: '', expiryDate: '',
+      trackExpiry: !!p.trackExpiry, batchNumber: '', expiryDate: '',
     }]);
     setBonusSearch('');
   };
@@ -1389,7 +1402,7 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
   };
 
   const mutation = useMutation({
-    mutationFn: () => api.post(`/purchases/${order.id}/receive`, {
+    mutationFn: () => api.post<{ marginAlerts?: MarginAlert[] }>(`/purchases/${order.id}/receive`, {
       items: items.map(i => ({
         productId: i.productId, receivedQty: i.receivedQty, unitCost: i.unitCost, isBonus: i.isBonus,
         batchNumber: i.trackExpiry && i.batchNumber ? i.batchNumber : undefined,
@@ -1400,7 +1413,11 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
       payerAmount: payerMode ? payerAmountNum : undefined,
       payment: (payerMode && payTarget === 0) ? undefined : payment,
     }),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['inv-alerts-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-margin-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-expiry'] });
+      notifyMarginAlerts(res.data.marginAlerts);
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchase', order.id] });
       queryClient.invalidateQueries({ queryKey: ['purchases-payable'] });
@@ -1468,10 +1485,11 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
                     <tr key={`${item.productId}-exp`} className="bg-amber-500/5">
                       <td colSpan={5} className="px-2 pb-2">
                         <div className="flex items-center gap-2">
-                          <label className="text-xs text-muted-foreground whitespace-nowrap">Vence</label>
+                          <label className="text-xs font-medium whitespace-nowrap">Vence <span className="text-destructive">*</span></label>
                           <Input type="date" value={item.expiryDate}
                             onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, expiryDate: e.target.value } : i))}
-                            className="h-8 w-40" />
+                            className={cn('h-8 w-40', !item.expiryDate && item.receivedQty > 0 && 'border-destructive')} />
+                          {!item.expiryDate && item.receivedQty > 0 && <span className="text-xs text-destructive whitespace-nowrap">Obligatorio</span>}
                           <label className="text-xs text-muted-foreground whitespace-nowrap">N° lote</label>
                           <Input value={item.batchNumber} placeholder="Opcional"
                             onChange={e => setItems(v => v.map((i, n) => n === idx ? { ...i, batchNumber: e.target.value } : i))}

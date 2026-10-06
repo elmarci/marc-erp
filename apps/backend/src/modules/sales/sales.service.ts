@@ -7,6 +7,7 @@ import { emitEvent } from '../../config/socket';
 import { getSettingValues } from '../../utils/settings';
 import { couponsService } from '../coupons/coupons.service';
 import { nowInLima } from '../../utils/timezone';
+import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
 
 interface SaleItemInput {
   productId: string;
@@ -15,6 +16,9 @@ interface SaleItemInput {
   discountAmount?: number;
   discountPercent?: number;
   productName?: string;
+  // true = se vende la presentación paquete/caja del producto (Product.packSize):
+  // quantity cuenta paquetes y el stock baja quantity × packSize unidades.
+  sellAsPack?: boolean;
 }
 
 interface BottleDepositItemInput {
@@ -162,12 +166,27 @@ export class SalesService {
     // pasar igual aunque quede negativo (se pudo vender lo mismo en otra caja
     // mientras no había internet); se marca con una alerta de stock para que
     // alguien lo revise, en vez de perder la venta ya cobrada al cliente.
-    for (const item of input.items) {
+    // Unidades de stock por línea: un paquete descuenta packSize unidades.
+    // Se suma por producto porque la misma venta puede llevar unidades
+    // sueltas y un paquete del mismo producto.
+    const unitsPerSaleOf = (item: SaleItemInput) => {
+      if (!item.sellAsPack) return 1;
       const product = products.find((p) => p.id === item.productId)!;
+      if (!product.packSize || product.packPrice == null) {
+        throw new BusinessError(`"${product.name}" no se vende por paquete.`);
+      }
+      return product.packSize;
+    };
+    const unitsNeeded = new Map<string, number>();
+    for (const item of input.items) {
+      unitsNeeded.set(item.productId, (unitsNeeded.get(item.productId) ?? 0) + item.quantity * unitsPerSaleOf(item));
+    }
+    for (const [productId, needed] of unitsNeeded) {
+      const product = products.find((p) => p.id === productId)!;
       if (product.isMiscItem) continue; // no maneja stock — venta excepcional de algo fuera de catálogo
-      if (Number(product.currentStock) < item.quantity && !input.isOfflineSync) {
+      if (Number(product.currentStock) < needed && !input.isOfflineSync) {
         throw new BusinessError(
-          `Stock insuficiente para "${product.name}". Disponible: ${product.currentStock}, solicitado: ${item.quantity}.`,
+          `Stock insuficiente para "${product.name}". Disponible: ${product.currentStock} unidad(es), solicitado: ${needed}.`,
         );
       }
     }
@@ -188,7 +207,9 @@ export class SalesService {
     let subtotal = 0;
     const saleItems = input.items.map((item) => {
       const product = products.find((p) => p.id === item.productId)!;
-      const unitPrice = item.unitPrice ?? Number(product.salePrice);
+      const unitsPerSale = unitsPerSaleOf(item);
+      const isPack = unitsPerSale > 1;
+      const unitPrice = item.unitPrice ?? (isPack ? Number(product.packPrice) : Number(product.salePrice));
       const discountAmt = item.discountAmount ?? (unitPrice * (item.discountPercent ?? 0)) / 100;
       const effectivePrice = unitPrice - discountAmt;
       const itemSubtotal = effectivePrice * item.quantity;
@@ -213,13 +234,17 @@ export class SalesService {
         // infla el profit de forma irreal. Se asume un margen fijo de 15%
         // (costo = 85% del precio cobrado) en vez de 0 de costo o "sin datos"
         // — una aproximación razonable, no exacta, pero más realista que 100%.
-        costPrice: product.isMiscItem ? effectivePrice * 0.85 : Number(product.costPrice),
-        productName: product.isMiscItem && item.productName ? item.productName : product.name,
+        // Un paquete cuesta packSize veces el costo de una unidad.
+        costPrice: product.isMiscItem ? effectivePrice * 0.85 : Number(product.costPrice) * unitsPerSale,
+        productName: product.isMiscItem && item.productName
+          ? item.productName
+          : isPack ? `${product.name} (${product.packLabel || 'Paquete'} x${unitsPerSale})` : product.name,
         // Para el ticket: columna "Unidad" clara (kg/g/l/ml o "und") sin
         // depender de que el nombre del producto la mencione. isMiscItem
         // queda sin unidad — cada venta "Otros/Varios" es algo distinto.
-        unit: product.isMiscItem ? null : (product.isBulk ? (product.bulkUnit ?? 'kg') : 'und'),
-        productBarcode: product.barcode,
+        unit: product.isMiscItem ? null : (isPack ? 'paq' : (product.isBulk ? (product.bulkUnit ?? 'kg') : 'und')),
+        productBarcode: isPack ? (product.packBarcode ?? product.barcode) : product.barcode,
+        unitsPerSale,
       };
     });
 
@@ -362,24 +387,35 @@ export class SalesService {
         },
       });
 
-      // Reducir stock y registrar movimientos
+      // Reducir stock y registrar movimientos. El stock corre producto a
+      // producto (no se relee de `products`) porque una venta puede traer dos
+      // líneas del mismo producto: unidades sueltas y un paquete.
+      const runningStock = new Map<string, number>();
       for (const item of saleItems) {
         const product = products.find((p) => p.id === item.productId)!;
         if (product.isMiscItem) continue; // no maneja stock
 
-        const newStock = Number(product.currentStock) - item.quantity;
+        const stockBefore = runningStock.get(item.productId) ?? Number(product.currentStock);
+        const unitsOut = Number(item.quantity) * item.unitsPerSale;
+        const newStock = stockBefore - unitsOut;
+        runningStock.set(item.productId, newStock);
 
         await tx.product.update({
           where: { id: item.productId },
           data: { currentStock: newStock },
         });
 
+        // Lo vendido sale primero del lote que vence antes (FEFO).
+        if (product.trackExpiry) {
+          await inventoryAlertsService.consumeBatchesFefo(tx, item.productId, unitsOut);
+        }
+
         await tx.inventoryMovement.create({
           data: {
             productId: item.productId,
             type: 'SALE_OUT',
-            quantity: -Number(item.quantity),
-            quantityBefore: product.currentStock,
+            quantity: -unitsOut,
+            quantityBefore: stockBefore,
             quantityAfter: newStock,
             unitCost: product.costPrice,
             referenceType: 'SALE',
@@ -646,17 +682,21 @@ export class SalesService {
         if (!product) continue;
 
         const stockBefore = Number(product.currentStock);
-        const newStock = stockBefore + Number(item.quantity);
+        const unitsBack = Number(item.quantity) * item.unitsPerSale;
+        const newStock = stockBefore + unitsBack;
         await tx.product.update({
           where: { id: item.productId },
           data: { currentStock: newStock },
         });
+        if (product.trackExpiry) {
+          await inventoryAlertsService.restoreBatchesOnVoid(tx, item.productId, unitsBack);
+        }
 
         await tx.inventoryMovement.create({
           data: {
             productId: item.productId,
             type: 'RETURN_IN',
-            quantity: Number(item.quantity),
+            quantity: unitsBack,
             quantityBefore: stockBefore,
             quantityAfter: newStock,
             unitCost: product.costPrice,
@@ -699,7 +739,7 @@ export class SalesService {
     }
 
     let totalRefund = 0;
-    const returnItems: { saleItemId: string; quantity: number; refundAmount: number; productId: string }[] = [];
+    const returnItems: { saleItemId: string; quantity: number; refundAmount: number; productId: string; unitsPerSale: number }[] = [];
 
     for (const retInput of input.items) {
       const saleItem = sale.items.find((i) => i.id === retInput.saleItemId);
@@ -722,6 +762,7 @@ export class SalesService {
         quantity: retInput.quantity,
         refundAmount,
         productId: saleItem.productId,
+        unitsPerSale: saleItem.unitsPerSale,
       });
     }
 
@@ -734,7 +775,7 @@ export class SalesService {
           refundMethod: input.refundMethod,
           notes: input.notes,
           items: {
-            create: returnItems.map(({ productId: _, ...item }) => item),
+            create: returnItems.map(({ productId: _p, unitsPerSale: _u, ...item }) => item),
           },
         },
         include: { items: true },
@@ -746,18 +787,20 @@ export class SalesService {
         if (!product) continue;
 
         const stockBefore = Number(product.currentStock);
+        // Devolver 1 paquete devuelve packSize unidades al stock.
+        const unitsBack = retItem.quantity * retItem.unitsPerSale;
         await tx.product.update({
           where: { id: retItem.productId },
-          data: { currentStock: { increment: retItem.quantity } },
+          data: { currentStock: { increment: unitsBack } },
         });
 
         await tx.inventoryMovement.create({
           data: {
             productId: retItem.productId,
             type: 'RETURN_IN',
-            quantity: retItem.quantity,
+            quantity: unitsBack,
             quantityBefore: stockBefore,
-            quantityAfter: stockBefore + Number(retItem.quantity),
+            quantityAfter: stockBefore + unitsBack,
             unitCost: product.costPrice,
             referenceType: 'RETURN',
             referenceId: ret.id,

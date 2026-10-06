@@ -3,6 +3,7 @@ import { prisma } from '../../database/client';
 import { redis, CACHE_TTL } from '../../config/redis';
 import { NotFoundError, ConflictError, BusinessError } from '../../utils/errors';
 import { parseProductSize } from './product-size.util';
+import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
 
 export interface CreateProductInput {
   name: string;
@@ -29,6 +30,12 @@ export interface CreateProductInput {
   imageUrl?: string | null;
   isFavorite?: boolean;
   storeFeatured?: boolean;
+  // Venta por paquete/caja además de por unidad — ver Product.packSize.
+  packSize?: number | null;
+  packPrice?: number | null;
+  packLabel?: string | null;
+  packBarcode?: string | null;
+  marginAlertMuted?: boolean;
 }
 
 interface UpdateProductInput extends Partial<CreateProductInput> {
@@ -49,6 +56,22 @@ export interface SearchProductsQuery {
   sortOrder?: 'asc' | 'desc';
 }
 
+// Un paquete/caja solo tiene sentido con las dos piezas completas: cuántas
+// unidades trae (para descontar bien el stock) y a qué precio se vende.
+function assertPackConfig(p: { packSize?: number | null; packPrice?: number | null; isBulk?: boolean }) {
+  const hasSize = p.packSize != null;
+  const hasPrice = p.packPrice != null;
+  if (!hasSize && !hasPrice) return;
+  if (!hasSize || !hasPrice) {
+    throw new BusinessError('Para vender por paquete indica cuántas unidades trae y su precio.');
+  }
+  if (p.isBulk) throw new BusinessError('Un producto a granel no se vende por paquete.');
+  if (!Number.isInteger(p.packSize) || (p.packSize as number) < 2) {
+    throw new BusinessError('El paquete debe traer al menos 2 unidades (número entero).');
+  }
+  if ((p.packPrice as number) <= 0) throw new BusinessError('El precio del paquete debe ser mayor a 0.');
+}
+
 export class ProductsService {
   async create(input: CreateProductInput) {
     // Cadena vacía no es lo mismo que null para la restricción unique de
@@ -58,10 +81,20 @@ export class ProductsService {
     input.barcode = input.barcode || null;
     input.internalCode = input.internalCode || null;
     input.sku = input.sku || null;
+    input.packBarcode = input.packBarcode || null;
+    input.packLabel = input.packLabel?.trim() || null;
+    if (input.packSize == null || input.packPrice == null) {
+      input.packSize = null; input.packPrice = null; input.packBarcode = null; input.packLabel = null;
+    }
+    assertPackConfig(input);
 
     if (input.barcode) {
-      const existing = await prisma.product.findFirst({ where: { barcode: input.barcode, deletedAt: null } });
+      const existing = await prisma.product.findFirst({ where: { OR: [{ barcode: input.barcode }, { packBarcode: input.barcode }], deletedAt: null } });
       if (existing) throw new ConflictError(`El código de barras ${input.barcode} ya está registrado.`);
+    }
+    if (input.packBarcode) {
+      const existing = await prisma.product.findFirst({ where: { OR: [{ barcode: input.packBarcode }, { packBarcode: input.packBarcode }], deletedAt: null } });
+      if (existing) throw new ConflictError(`El código de barras ${input.packBarcode} ya está registrado.`);
     }
 
     if (input.internalCode) {
@@ -75,6 +108,11 @@ export class ProductsService {
 
     const category = await prisma.category.findUnique({ where: { id: input.categoryId } });
     if (!category) throw new NotFoundError('Categoría');
+
+    // Lácteos, panadería, carnes y embutidos llevan vencimiento sí o sí: el
+    // control no depende de que alguien se acuerde de marcar la casilla.
+    const rules = await inventoryAlertsService.getCategoryRules(input.categoryId);
+    if (rules.requiresExpiry) input.trackExpiry = true;
 
     const { sizeGroup, sizeValue } = parseProductSize(input.name);
 
@@ -104,6 +142,10 @@ export class ProductsService {
         imageUrl: input.imageUrl,
         isFavorite: input.isFavorite ?? false,
         storeFeatured: input.storeFeatured ?? false,
+        packSize: input.packSize,
+        packPrice: input.packPrice,
+        packLabel: input.packLabel,
+        packBarcode: input.packBarcode,
         sizeGroup,
         sizeValue,
       },
@@ -243,7 +285,7 @@ export class ProductsService {
 
   async getByBarcode(barcode: string) {
     const product = await prisma.product.findFirst({
-      where: { barcode, deletedAt: null, status: 'ACTIVE' },
+      where: { OR: [{ barcode }, { packBarcode: barcode }], deletedAt: null, status: 'ACTIVE' },
       include: {
         category: { select: { id: true, name: true } },
         taxRate: true,
@@ -251,7 +293,9 @@ export class ProductsService {
     });
 
     if (!product) throw new NotFoundError('Producto con código de barras ' + barcode);
-    return product;
+    // El código del paquete/caja es distinto al de la unidad: el POS necesita
+    // saber cuál de los dos escaneó el cajero para agregar la presentación correcta.
+    return { ...product, matchedPack: product.packBarcode === barcode && product.barcode !== barcode };
   }
 
   /**
@@ -348,6 +392,36 @@ export class ProductsService {
     if ('barcode' in input) input.barcode = input.barcode || null;
     if ('internalCode' in input) input.internalCode = input.internalCode || null;
     if ('sku' in input) input.sku = input.sku || null;
+    if ('packBarcode' in input) input.packBarcode = input.packBarcode || null;
+    if ('packLabel' in input) input.packLabel = input.packLabel?.trim() || null;
+
+    // Configuración final del paquete = lo que llega mezclado con lo que ya
+    // tenía el producto; quitar el tamaño o el precio apaga todo el paquete.
+    const packTouched = ['packSize', 'packPrice', 'packBarcode', 'packLabel', 'isBulk'].some((k) => k in input);
+    if (packTouched) {
+      const nextSize = 'packSize' in input ? input.packSize : product.packSize;
+      const nextPrice = 'packPrice' in input ? input.packPrice : (product.packPrice != null ? Number(product.packPrice) : null);
+      if (nextSize == null || nextPrice == null) {
+        input.packSize = null; input.packPrice = null; input.packBarcode = null; input.packLabel = null;
+      }
+      assertPackConfig({
+        packSize: input.packSize !== undefined ? input.packSize : nextSize,
+        packPrice: input.packPrice !== undefined ? input.packPrice : nextPrice,
+        isBulk: input.isBulk ?? product.isBulk,
+      });
+    }
+
+    if (input.categoryId !== undefined || input.trackExpiry !== undefined) {
+      const rules = await inventoryAlertsService.getCategoryRules(input.categoryId ?? product.categoryId);
+      if (rules.requiresExpiry) input.trackExpiry = true;
+    }
+
+    if (input.packBarcode && input.packBarcode !== product.packBarcode) {
+      const existing = await prisma.product.findFirst({
+        where: { OR: [{ barcode: input.packBarcode }, { packBarcode: input.packBarcode }], id: { not: id }, deletedAt: null },
+      });
+      if (existing) throw new ConflictError(`El código de barras ${input.packBarcode} ya está registrado.`);
+    }
 
     if (input.barcode && input.barcode !== product.barcode) {
       const existing = await prisma.product.findFirst({
@@ -397,6 +471,11 @@ export class ProductsService {
         status: input.status,
         isFavorite: input.isFavorite,
         storeFeatured: input.storeFeatured,
+        packSize: input.packSize,
+        packPrice: input.packPrice,
+        packLabel: input.packLabel,
+        packBarcode: input.packBarcode,
+        marginAlertMuted: input.marginAlertMuted,
         ...sizeFields,
       },
       include: { category: true, brand: true },
@@ -415,11 +494,16 @@ export class ProductsService {
       if (!category) throw new NotFoundError('Categoría');
     }
 
+    const forceExpiry = data.categoryId
+      ? (await inventoryAlertsService.getCategoryRules(data.categoryId)).requiresExpiry
+      : false;
+
     const result = await prisma.product.updateMany({
       where: { id: { in: productIds }, deletedAt: null },
       data: {
         ...(data.categoryId ? { categoryId: data.categoryId } : {}),
         ...(data.status ? { status: data.status } : {}),
+        ...(forceExpiry ? { trackExpiry: true } : {}),
       },
     });
 
@@ -531,15 +615,49 @@ export class ProductsService {
   // resolvieron — no descuenta stock por lote (eso requeriría FEFO en la
   // venta), solo avisa a tiempo para rotar o dar de baja antes de la merma.
   async listExpiringBatches(daysAhead = 30) {
-    return prisma.batch.findMany({
+    const batches = await prisma.batch.findMany({
       where: {
         resolvedAt: null,
+        quantity: { gt: 0 },
         expiryDate: { lte: new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000) },
       },
       include: {
         product: { select: { id: true, name: true, currentStock: true, unitOfMeasure: true, category: { select: { name: true } } } },
       },
       orderBy: { expiryDate: 'asc' },
+    });
+    return batches.map((b) => ({
+      ...b,
+      quantity: Number(b.quantity),
+      product: { ...b.product, currentStock: Number(b.product.currentStock) },
+    }));
+  }
+
+  // Registra la fecha de vencimiento de stock que ya estaba en el estante
+  // pero entró sin fecha (stock inicial, ajustes, compras anteriores al
+  // control). Solo se puede asignar fecha a lo que hoy no tiene una.
+  async createBatch(productId: string, input: { quantity: number; expiryDate: Date; batchNumber?: string | null }) {
+    const product = await prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      include: { batches: { where: { resolvedAt: null }, select: { quantity: true } } },
+    });
+    if (!product) throw new NotFoundError('Producto');
+    if (!product.trackExpiry) throw new BusinessError('Este producto no controla fecha de vencimiento.');
+
+    const covered = product.batches.reduce((s, b) => s + Number(b.quantity), 0);
+    const uncovered = Math.max(0, Number(product.currentStock) - covered);
+    if (input.quantity > uncovered + 0.0005) {
+      throw new BusinessError(
+        `Solo hay ${uncovered} unidad(es) sin fecha de vencimiento (stock ${Number(product.currentStock)}, con fecha ${covered}).`,
+      );
+    }
+    return prisma.batch.create({
+      data: {
+        productId,
+        quantity: input.quantity,
+        expiryDate: input.expiryDate,
+        batchNumber: input.batchNumber || null,
+      },
     });
   }
 

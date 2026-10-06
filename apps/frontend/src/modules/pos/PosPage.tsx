@@ -9,6 +9,7 @@ import { useOfflineSalesStore } from '@/stores/offlineSalesStore';
 import { PosCart } from './PosCart';
 import { PosProductPanel } from './PosProductPanel';
 import { PosHeader } from './PosHeader';
+import { addPackToCart, hasPack, unitStockLeft, type PackInfo } from './packSale';
 import { PosPaymentModal } from './PosPaymentModal';
 import { OpenSessionModal } from './OpenSessionModal';
 import { ReceiptModal, type ReceiptData } from './ReceiptModal';
@@ -162,9 +163,14 @@ export function PosPage() {
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, []);
 
-  const addProductToCart = (product: { id: string; name: string; barcode: string | null; salePrice: number; currentStock: number; bottleDeposit?: number }, offline: boolean) => {
+  const addProductToCart = (product: { id: string; name: string; barcode: string | null; salePrice: number; currentStock: number; bottleDeposit?: number; matchedPack?: boolean } & PackInfo, offline: boolean) => {
     if (product.currentStock <= 0) {
       toast.error(`"${product.name}" sin stock disponible.`);
+      return;
+    }
+    // Escaneó el código del paquete/caja, no el de la unidad.
+    if (product.matchedPack && hasPack(product)) {
+      addPackToCart(product, { offline });
       return;
     }
     const result = usePosStore.getState().addItem({
@@ -176,7 +182,7 @@ export function PosPage() {
       originalPrice: Number(product.salePrice),
       discountAmount: 0,
       discountPercent: 0,
-      stock: product.currentStock,
+      stock: unitStockLeft(product.id, product.currentStock, product.packSize),
       bottleDepositUnit: Number(product.bottleDeposit ?? 0) || undefined,
     });
     if (result.addedQuantity <= 0) {
@@ -188,7 +194,7 @@ export function PosPage() {
 
   const handleBarcodeScanned = useCallback(async (barcode: string) => {
     try {
-      const res = await api.get<{ data: { id: string; name: string; salePrice: number; currentStock: number; barcode: string | null; bottleDeposit?: number } }>
+      const res = await api.get<{ data: { id: string; name: string; salePrice: number; currentStock: number; barcode: string | null; bottleDeposit?: number; matchedPack?: boolean } & PackInfo }>
         (`/products/barcode/${barcode}`);
       addProductToCart(res.data.data, false);
     } catch (err) {
@@ -249,6 +255,9 @@ export function PosPage() {
         // (ver PosCart/MiscItemModal) para no mezclarse entre sí en el
         // carrito — el backend necesita el id real del producto comodín.
         productId: i.productId.split('#')[0],
+        // Paquete/caja: el backend usa el precio y las unidades del paquete
+        // del propio producto para descontar bien el stock.
+        sellAsPack: i.sellAsPack || undefined,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         discountAmount: i.discountAmount,

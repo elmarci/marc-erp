@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUp, ArrowDown, Search, Plus, X, AlertTriangle, Package,
   BarChart3, ClipboardList, History, TrendingDown, DollarSign,
-  ChevronDown, ChevronUp, Printer, ScanBarcode, Scale, Star, FileSpreadsheet,
+  ChevronDown, ChevronUp, Printer, ScanBarcode, Scale, Star, FileSpreadsheet, CalendarClock,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
@@ -15,6 +16,7 @@ import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatCost, formatDateTime, cn, looksLikeScannedCode } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import type { MarginAlert } from '@/lib/marginAlerts';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface DashboardData {
@@ -43,6 +45,18 @@ interface Category { id: string; name: string }
 interface ExpiringBatch {
   id: string; batchNumber: string | null; quantity: number; expiryDate: string | null;
   product: { id: string; name: string; currentStock: number; unitOfMeasure: string; category: { name: string } };
+}
+interface UncoveredRow {
+  productId: string; name: string; category: string; unit: string;
+  stock: number; covered: number; uncovered: number;
+}
+interface ExpiryControl {
+  batches: Array<ExpiringBatch & { expiryDate: string; daysLeft: number }>;
+  uncovered: UncoveredRow[];
+  summary: { expired: number; within7: number; within30: number; uncovered: number };
+}
+interface AlertsSummary {
+  marginLow: number; expiring: number; expired: number; uncovered: number; lowStock: number; total: number;
 }
 interface SupplierPrice {
   supplierId: string; supplierName: string; supplierPhone: string | null;
@@ -881,6 +895,8 @@ function ResolveBatchModal({ batch, onClose }: { batch: ExpiringBatch; onClose: 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inv-expiring-batches'] });
       queryClient.invalidateQueries({ queryKey: ['inv-expiring-batches-count'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-expiry'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-alerts-summary'] });
       queryClient.invalidateQueries({ queryKey: ['inv-stock'] });
       queryClient.invalidateQueries({ queryKey: ['inv-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['inv-movements'] });
@@ -964,6 +980,8 @@ function AlertsTab() {
 
   return (
     <div className="space-y-4">
+      <MarginAlertsCard />
+
       {!batchesLoading && (expired.length > 0 || expiringSoon.length > 0) && (
         <Card>
           <CardHeader><CardTitle className="text-base flex items-center gap-2 text-amber-600">
@@ -1086,27 +1104,321 @@ function AlertsTab() {
   );
 }
 
+/* ─── Alerta de margen bajo (frutas, verduras y granel) ─────────────────── */
+function MarginAlertsCard() {
+  const queryClient = useQueryClient();
+  const muteMutation = useMutation({
+    mutationFn: (productId: string) => api.patch(`/products/${productId}`, { marginAlertMuted: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inv-margin-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-alerts-summary'] });
+      toast.success('Listo: ya no se avisará el margen de este producto (puedes reactivarlo al editarlo).');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+  const { data, isLoading } = useQuery({
+    queryKey: ['inv-margin-alerts'],
+    queryFn: async () => (await api.get<{ data: MarginAlert[]; minMargin: number }>('/inventory/alerts/margin')).data,
+    refetchInterval: 60000,
+  });
+  const alerts = data?.data ?? [];
+  if (isLoading || alerts.length === 0) return null;
+  const minMargin = data?.minMargin ?? 1;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2 text-destructive">
+          <TrendingDown className="h-4 w-4" />Margen bajo — {alerts.length} producto(s)
+        </CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          En frutas, verduras y productos por kg el último costo de compra deja menos de {formatCurrency(minMargin)} por kg o
+          unidad contra tu precio de venta (en productos baratos el mínimo baja a la mitad del costo). Actualiza el precio
+          cuando puedas — el sistema nunca lo cambia solo.
+        </p>
+      </CardHeader>
+      <CardContent className="p-0 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="border-b bg-destructive/5">
+            <th className="px-4 py-2 text-left font-medium">Producto</th>
+            <th className="px-4 py-2 text-right font-medium">Último costo</th>
+            <th className="px-4 py-2 text-right font-medium">Precio venta</th>
+            <th className="px-4 py-2 text-right font-medium">Margen</th>
+            <th className="px-4 py-2 text-right font-medium">Sugerido</th>
+            <th className="px-4 py-2" />
+          </tr></thead>
+          <tbody className="divide-y">
+            {alerts.map(a => (
+              <tr key={a.productId} className={cn('hover:bg-muted/30', a.severity === 'LOSS' && 'bg-destructive/5')}>
+                <td className="px-4 py-3">
+                  <p className="font-medium">{a.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {a.category} · por {a.unit}
+                    {a.lastPurchaseAt && <> · comprado {new Date(a.lastPurchaseAt).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short' })}</>}
+                  </p>
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(a.lastPurchaseCost)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(a.salePrice)}</td>
+                <td className="px-4 py-3 text-right">
+                  <Badge variant={a.severity === 'LOSS' ? 'destructive' : 'warning'} className="whitespace-nowrap">
+                    {a.margin <= 0 ? 'Pérdida ' : ''}{formatCurrency(a.margin)}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums text-primary">{formatCurrency(a.suggestedPrice)}</td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Link to={`/products/${a.productId}/edit`}
+                      className="inline-flex h-8 items-center rounded-md border px-3 text-xs font-medium hover:bg-muted">
+                      Editar precio
+                    </Link>
+                    <Button variant="ghost" size="sm" className="text-muted-foreground"
+                      title="No volver a avisar el margen de este producto"
+                      loading={muteMutation.isPending && muteMutation.variables === a.productId}
+                      onClick={() => { if (confirm(`¿No avisar más el margen de "${a.name}"? Úsalo si se vende barato a propósito o el costo está en otra unidad.`)) muteMutation.mutate(a.productId); }}>
+                      No avisar
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─── Registrar fecha de vencimiento de stock que entró sin fecha ─────────── */
+function RegisterBatchModal({ row, onClose }: { row: UncoveredRow; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [quantity, setQuantity] = useState(String(row.uncovered));
+  const [expiryDate, setExpiryDate] = useState('');
+  const [batchNumber, setBatchNumber] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/products/${row.productId}/batches`, {
+      quantity: Number(quantity),
+      expiryDate: new Date(`${expiryDate}T12:00:00`).toISOString(),
+      batchNumber: batchNumber || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inv-expiry'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-alerts-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['inv-expiring-batches'] });
+      toast.success('Fecha de vencimiento registrada.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const qty = Number(quantity);
+  const valid = qty > 0 && qty <= row.uncovered + 0.0005 && !!expiryDate;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b p-4">
+          <div>
+            <h3 className="font-semibold">Registrar vencimiento</h3>
+            <p className="text-sm text-muted-foreground truncate max-w-[260px]">{row.name}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Hay {row.stock} en stock y {row.covered} ya tienen fecha: quedan <strong>{row.uncovered} {row.unit}</strong> sin fecha.
+            Si tienen fechas distintas, registra una por una (por cada fecha, la cantidad que corresponde).
+          </p>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">¿Cuántas vencen en esa fecha?</label>
+            <Input type="number" min={0} max={row.uncovered} step="any" value={quantity}
+              onChange={e => setQuantity(e.target.value)} className="text-lg font-bold text-center" autoFocus />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Fecha de vencimiento <span className="text-destructive">*</span></label>
+            <Input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">N° de lote (opcional)</label>
+            <Input value={batchNumber} onChange={e => setBatchNumber(e.target.value)} />
+          </div>
+        </div>
+        <div className="border-t p-4 flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
+          <Button className="flex-1" loading={mutation.isPending} disabled={!valid} onClick={() => mutation.mutate()}>Guardar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Tab: Vencimientos ─────────────────────────────────────────────────── */
+type ExpiryFilter = 'all' | 'expired' | 'week' | 'month' | 'later';
+
+function ExpiryTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['inv-expiry'],
+    queryFn: async () => (await api.get<{ data: ExpiryControl }>('/inventory/expiry')).data.data,
+    refetchInterval: 60000,
+  });
+  const [filter, setFilter] = useState<ExpiryFilter>('all');
+  const [resolving, setResolving] = useState<ExpiringBatch | null>(null);
+  const [registering, setRegistering] = useState<UncoveredRow | null>(null);
+
+  if (isLoading || !data) return <div className="py-12 text-center text-muted-foreground">Cargando...</div>;
+
+  const batches = data.batches;
+  const visible = batches.filter(b => {
+    if (filter === 'expired') return b.daysLeft < 0;
+    if (filter === 'week') return b.daysLeft >= 0 && b.daysLeft <= 7;
+    if (filter === 'month') return b.daysLeft > 7 && b.daysLeft <= 30;
+    if (filter === 'later') return b.daysLeft > 30;
+    return true;
+  });
+  const later = batches.filter(b => b.daysLeft > 30).length;
+
+  const chips: Array<{ key: ExpiryFilter; label: string; count: number; tone: string }> = [
+    { key: 'all', label: 'Todos', count: batches.length, tone: '' },
+    { key: 'expired', label: 'Vencidos', count: data.summary.expired, tone: 'text-destructive' },
+    { key: 'week', label: 'Vencen en 7 días', count: data.summary.within7, tone: 'text-amber-600' },
+    { key: 'month', label: 'Vencen en 30 días', count: data.summary.within30, tone: '' },
+    { key: 'later', label: 'Más adelante', count: later, tone: 'text-muted-foreground' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground mb-1">Cómo funciona el control de vencimientos</p>
+        <ul className="list-disc pl-5 space-y-0.5">
+          <li>Lácteos, panadería, carnes y embutidos <strong>exigen fecha de vencimiento</strong> al registrar o recibir una compra.</li>
+          <li>Cada venta descuenta del lote que vence primero, así esta lista muestra solo lo que sigue en el estante.</li>
+          <li>Lo que ya estaba en stock sin fecha aparece abajo en <strong>«Sin fecha registrada»</strong>: asígnale su fecha para controlarlo.</li>
+        </ul>
+      </div>
+
+      {data.uncovered.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="h-4 w-4" />Sin fecha registrada — {data.uncovered.length} producto(s)
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Productos que controlan vencimiento pero tienen stock del que nadie sabe cuándo vence.
+            </p>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b bg-amber-500/5">
+                <th className="px-4 py-2 text-left font-medium">Producto</th>
+                <th className="px-4 py-2 text-center font-medium">Stock</th>
+                <th className="px-4 py-2 text-center font-medium">Con fecha</th>
+                <th className="px-4 py-2 text-center font-medium">Sin fecha</th>
+                <th className="px-4 py-2" />
+              </tr></thead>
+              <tbody className="divide-y">
+                {data.uncovered.map(u => (
+                  <tr key={u.productId} className="hover:bg-muted/30">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{u.name}</p>
+                      <p className="text-xs text-muted-foreground">{u.category}</p>
+                    </td>
+                    <td className="px-4 py-3 text-center">{u.stock}</td>
+                    <td className="px-4 py-3 text-center text-muted-foreground">{u.covered}</td>
+                    <td className="px-4 py-3 text-center font-bold text-amber-600">{u.uncovered}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Button variant="outline" size="sm" onClick={() => setRegistering(u)}>Registrar fecha</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Lotes con fecha de vencimiento</CardTitle>
+          <div className="flex flex-wrap gap-2 pt-2">
+            {chips.map(c => (
+              <button key={c.key} type="button" onClick={() => setFilter(c.key)}
+                className={cn('rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  filter === c.key ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+                <span className={filter === c.key ? '' : c.tone}>{c.label}</span> · {c.count}
+              </button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0 overflow-x-auto">
+          {visible.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
+              <Package className="h-10 w-10 opacity-20" />
+              <p>{batches.length === 0 ? 'Aún no hay lotes con fecha registrada.' : 'Nada en esta categoría.'}</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead><tr className="border-b bg-muted/40">
+                <th className="px-4 py-2 text-left font-medium">Producto</th>
+                <th className="px-4 py-2 text-left font-medium">Lote</th>
+                <th className="px-4 py-2 text-center font-medium">Cantidad</th>
+                <th className="px-4 py-2 text-center font-medium">Vence</th>
+                <th className="px-4 py-2 text-center font-medium">Faltan</th>
+                <th className="px-4 py-2" />
+              </tr></thead>
+              <tbody className="divide-y">
+                {visible.map(b => (
+                  <tr key={b.id} className={cn('hover:bg-muted/30', b.daysLeft < 0 && 'bg-destructive/5')}>
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{b.product.name}</p>
+                      <p className="text-xs text-muted-foreground">{b.product.category.name}</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{b.batchNumber ?? '—'}</td>
+                    <td className="px-4 py-3 text-center">{b.quantity}</td>
+                    <td className="px-4 py-3 text-center tabular-nums">
+                      {new Date(b.expiryDate).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge variant={b.daysLeft < 0 || b.daysLeft <= 3 ? 'destructive' : b.daysLeft <= 7 ? 'default' : 'secondary'}>
+                        {b.daysLeft < 0 ? `Venció hace ${Math.abs(b.daysLeft)}d` : b.daysLeft === 0 ? 'Vence hoy' : `${b.daysLeft} días`}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button variant="outline" size="sm" onClick={() => setResolving({ ...b, expiryDate: b.expiryDate })}>Resolver</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      {resolving && <ResolveBatchModal batch={resolving} onClose={() => setResolving(null)} />}
+      {registering && <RegisterBatchModal row={registering} onClose={() => setRegistering(null)} />}
+    </div>
+  );
+}
+
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function InventoryPage() {
-  const [tab, setTab] = useState<'dashboard' | 'stock' | 'movements' | 'adjustments' | 'alerts'>('dashboard');
+  const [tab, setTab] = useState<'dashboard' | 'stock' | 'movements' | 'adjustments' | 'alerts' | 'expiry'>('dashboard');
 
-  const { data: lowStockCount } = useQuery({
-    queryKey: ['inv-low-stock-count'],
-    queryFn: async () => (await api.get<{ data: unknown[] }>('/inventory/low-stock')).data.data.length,
+  const { data: summary } = useQuery({
+    queryKey: ['inv-alerts-summary'],
+    queryFn: async () => (await api.get<{ data: AlertsSummary }>('/inventory/alerts/summary')).data.data,
     refetchInterval: 60000,
   });
-  const { data: expiringCount } = useQuery({
-    queryKey: ['inv-expiring-batches-count'],
-    queryFn: async () => (await api.get<{ data: unknown[] }>('/products/expiring-batches')).data.data.length,
-    refetchInterval: 60000,
-  });
-  const alertCount = (lowStockCount ?? 0) + (expiringCount ?? 0);
+  // Alertas: stock bajo + margen bajo + por vencer. Vencimientos: lo por vencer
+  // y el stock sin fecha registrada (lo que hay que completar).
+  const alertCount = (summary?.lowStock ?? 0) + (summary?.marginLow ?? 0) + (summary?.expiring ?? 0);
+  const expiryCount = (summary?.expiring ?? 0) + (summary?.uncovered ?? 0);
 
   const tabs = [
     { key: 'dashboard', icon: BarChart3, label: 'Resumen' },
     { key: 'stock', icon: Package, label: 'Stock actual' },
     { key: 'movements', icon: History, label: 'Movimientos' },
     { key: 'adjustments', icon: ClipboardList, label: 'Ajustes' },
+    { key: 'expiry', icon: CalendarClock, label: 'Vencimientos' },
     { key: 'alerts', icon: AlertTriangle, label: 'Alertas' },
   ] as const;
 
@@ -1123,8 +1435,11 @@ export function InventoryPage() {
             className={cn('flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
               tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
             <Icon className="h-4 w-4" />{label}
-            {key === 'alerts' && alertCount != null && alertCount > 0 && (
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-white text-xs">{alertCount}</span>
+            {key === 'alerts' && alertCount > 0 && (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-white text-xs">{alertCount}</span>
+            )}
+            {key === 'expiry' && expiryCount > 0 && (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-white text-xs">{expiryCount}</span>
             )}
           </button>
         ))}
@@ -1134,6 +1449,7 @@ export function InventoryPage() {
       {tab === 'stock' && <StockTab />}
       {tab === 'movements' && <MovementsTab />}
       {tab === 'adjustments' && <AdjustmentsTab />}
+      {tab === 'expiry' && <ExpiryTab />}
       {tab === 'alerts' && <AlertsTab />}
     </div>
   );

@@ -10,8 +10,9 @@ import { formatCurrency, cn, debounce, looksLikeScannedCode } from '@/lib/utils'
 import { toast } from 'sonner';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
+import { addPackToCart, hasPack, unitStockLeft, type PackInfo } from './packSale';
 
-interface Product {
+interface Product extends PackInfo {
   id: string;
   name: string;
   barcode: string | null;
@@ -546,7 +547,8 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       originalPrice,
       discountAmount,
       discountPercent: 0,
-      stock: product.currentStock,
+      // Si ya hay paquetes de este producto en el carrito, esas unidades no están disponibles.
+      stock: unitStockLeft(product.id, product.currentStock, product.packSize),
       bottleDepositUnit: Number(product.bottleDeposit ?? 0) || undefined,
       unit: product.isBulk ? (product.bulkUnit ?? 'kg') : undefined,
     });
@@ -773,13 +775,15 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {products.map((product) => {
               const hh = happyHourByProductId.get(product.id);
+              const packOn = hasPack(product) && !product.isBulk;
+              const packOk = packOn && product.currentStock >= (product.packSize ?? 0);
               return (
+              <div key={product.id} className="flex flex-col gap-1">
               <button
-                key={product.id}
                 onClick={(e) => { handleAddProduct(product); e.currentTarget.blur(); }}
                 disabled={product.currentStock <= 0}
                 className={cn(
-                  'relative flex flex-col rounded-xl border p-2.5 text-left transition-all',
+                  'relative flex flex-1 flex-col rounded-xl border p-2.5 text-left transition-all',
                   'hover:border-primary hover:shadow-md active:scale-95',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   'min-h-[88px]', // área táctil suficiente
@@ -842,6 +846,22 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                   </div>
                 )}
               </button>
+              {packOn && (
+                <button
+                  onClick={(e) => { addPackToCart(product); e.currentTarget.blur(); }}
+                  disabled={!packOk}
+                  title={`Agregar ${(product.packLabel || 'paquete').toLowerCase()} de ${product.packSize} unidades`}
+                  className={cn(
+                    'flex min-h-[36px] items-center justify-between gap-1 rounded-lg border border-primary/40 bg-primary/5 px-2 py-1 text-xs font-semibold text-primary transition-all',
+                    'hover:bg-primary/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    !packOk && 'cursor-not-allowed opacity-40',
+                  )}
+                >
+                  <span className="flex min-w-0 items-center gap-1 truncate"><Package className="h-3 w-3 shrink-0" />{product.packLabel || 'Paq'} x{product.packSize}</span>
+                  <span className="shrink-0 whitespace-nowrap">{formatCurrency(Number(product.packPrice))}</span>
+                </button>
+              )}
+              </div>
               );
             })}
           </div>

@@ -4,6 +4,7 @@ import { treasuryService, methodToAccount } from '../treasury/treasury.service';
 import { payerLedgerService } from './payer-ledger.service';
 import { emitEvent } from '../../config/socket';
 import { getAccountingState, getAgingBucket, emptyAgingSummary, type AgingBucket } from './purchase-state.util';
+import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
 import type { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
 interface DirectPurchaseItemInput {
@@ -693,7 +694,14 @@ export class PurchasesService {
 
     await tx.product.update({
       where: { id: input.productId },
-      data: { currentStock: stockAfter, costPrice: avgCostAfter },
+      data: {
+        currentStock: stockAfter,
+        costPrice: avgCostAfter,
+        // El costo real de ESTA compra (no el promedio) — es el que alimenta
+        // la alerta de margen bajo en productos de precio volátil. Las
+        // bonificaciones (costo 0) no cuentan como "último precio pagado".
+        ...(!input.isBonus && input.unitCost > 0 ? { lastPurchaseCost: input.unitCost, lastPurchaseAt: new Date() } : {}),
+      },
     });
 
     await tx.inventoryMovement.create({
@@ -813,6 +821,12 @@ export class PurchasesService {
       throw new BusinessError('Solo se puede recibir mercadería en órdenes aprobadas o enviadas.');
     }
 
+    // Lácteos, panadería, carnes y embutidos: sin fecha de vencimiento no se
+    // recibe (las pérdidas por vencimiento nacen de no saber cuándo vence).
+    await inventoryAlertsService.assertExpiryDates(
+      items.map((i) => ({ productId: i.productId, qty: i.receivedQty, expiryDate: i.expiryDate })),
+    );
+
     const payer = payerId ? await prisma.payer.findFirst({ where: { id: payerId, deletedAt: null } }) : null;
     if (payerId && !payer) throw new NotFoundError('Pagador');
     if (payer && order.payerId && order.payerId !== payer.id) {
@@ -894,7 +908,7 @@ export class PurchasesService {
             data: {
               productId: item.productId,
               batchNumber: item.batchNumber || null,
-              quantity: Math.round(item.receivedQty),
+              quantity: item.receivedQty,
               expiryDate: item.expiryDate,
             },
           });
@@ -1022,6 +1036,9 @@ export class PurchasesService {
     if (!supplier) throw new NotFoundError('Proveedor');
     if (data.items.length === 0) throw new BusinessError('La compra debe tener al menos un producto.');
     await this.assertNoMiscItem(data.items.map(i => i.productId));
+    await inventoryAlertsService.assertExpiryDates(
+      data.items.map((i) => ({ productId: i.productId, qty: i.quantity, expiryDate: i.expiryDate })),
+    );
 
     const payer = data.payerId
       ? await prisma.payer.findFirst({ where: { id: data.payerId, deletedAt: null } })
@@ -1133,7 +1150,7 @@ export class PurchasesService {
             data: {
               productId: item.productId,
               batchNumber: item.batchNumber || null,
-              quantity: Math.round(item.quantity),
+              quantity: item.quantity,
               expiryDate: item.expiryDate,
             },
           });
@@ -1303,6 +1320,14 @@ export class PurchasesService {
         where: { id: orderId },
         data: { status: 'CANCELLED', voidedAt: new Date(), voidedById: userId, voidReason: reason },
       });
+
+      // Esa compra ya no existe: el último costo pagado vuelve a ser el de la
+      // compra anterior, y los lotes que ella creó no pueden seguir sumando
+      // stock que ya no está (quedarían como vencimientos fantasma).
+      for (const productId of new Set(movements.map((m) => m.productId))) {
+        await inventoryAlertsService.refreshLastPurchaseCost(tx, productId);
+        await inventoryAlertsService.capBatchesToStock(tx, productId);
+      }
     });
 
     if (paidTreasuryMovements.length > 0 || paidCashMovements.length > 0) emitEvent('erp:cash-updated');
@@ -1562,6 +1587,12 @@ export class PurchasesService {
       // — si esta corrección cambió el costo o la bonificación, el total
       // adeudado también debe cambiar.
       await this.recalcOrderTotals(tx, orderId);
+
+      // Si la corrección cambió de producto, el original queda sin esta
+      // compra: su último costo debe volver al de la compra anterior.
+      if (toProductId !== productId) {
+        await inventoryAlertsService.refreshLastPurchaseCost(tx, productId);
+      }
     });
 
     emitEvent('erp:cash-updated');
