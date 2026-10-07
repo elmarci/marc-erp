@@ -226,6 +226,9 @@ export class StoreService {
     return prisma.promotion.findMany({
       where: {
         isActive: true, showInStore: true,
+        // La tienda online vende unidades sueltas: una promo armada sobre
+        // paquetes/cajas se aplica solo en el punto de venta.
+        products: { none: { asPack: true } },
         startDate: { lte: now },
         OR: [{ endDate: null }, { endDate: { gte: now } }],
       },

@@ -11,6 +11,11 @@ export interface CachedProduct {
   isBulk: boolean;
   bulkUnit: string | null;
   bottleDeposit?: number;
+  // Venta por paquete/caja: sin esto, offline el código del paquete agregaría la unidad.
+  packSize?: number | null;
+  packPrice?: number | string | null;
+  packLabel?: string | null;
+  packBarcode?: string | null;
   category: { name: string };
 }
 
@@ -18,7 +23,7 @@ interface ProductCacheState {
   products: Record<string, CachedProduct>;
   lastSyncedAt: string | null;
   setProducts: (list: CachedProduct[]) => void;
-  findByBarcode: (barcode: string) => CachedProduct | undefined;
+  findByBarcode: (barcode: string) => (CachedProduct & { matchedPack?: boolean }) | undefined;
 }
 
 // Copia local del catálogo activo, persistida en localStorage — el escaneo
@@ -38,7 +43,8 @@ export const useProductCacheStore = create<ProductCacheState>()(
       },
 
       findByBarcode: (barcode) => {
-        return Object.values(get().products).find((p) => p.barcode === barcode);
+        const found = Object.values(get().products).find((p) => p.barcode === barcode || p.packBarcode === barcode);
+        return found ? { ...found, matchedPack: !!found.packSize && found.packBarcode === barcode } : undefined;
       },
     }),
     {

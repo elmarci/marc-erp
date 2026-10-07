@@ -15,6 +15,34 @@ export interface PackInfo {
   packBarcode?: string | null;
 }
 
+// Producto tal como lo ve una oferta: si la promo es sobre el paquete/caja
+// (asPack), el producto "efectivo" ya viene con el precio del paquete, el stock
+// contado en paquetes y el nombre con su presentación — así todo el cálculo de
+// la oferta (precios, 2x1, combos, tope de stock) sirve igual con paquetes que
+// con unidades. isPack marca que al agregar al carrito hay que usar la línea
+// del paquete.
+export function presentForOffer<P extends { id: string; name: string; salePrice: number; barcode: string | null; currentStock: number } & PackInfo>(
+  product: P, asPack?: boolean,
+): P & { isPack?: boolean } {
+  if (!asPack || !product.packSize || product.packPrice == null) return product;
+  const label = product.packLabel?.trim() || 'Paquete';
+  return {
+    ...product,
+    name: `${product.name} (${label} x${product.packSize})`,
+    salePrice: Number(product.packPrice),
+    barcode: product.packBarcode ?? product.barcode,
+    currentStock: Math.floor(product.currentStock / product.packSize),
+    isPack: true,
+  };
+}
+
+// Campos extra de addItem para una línea de oferta cuando es de paquete.
+export function packLineFields(product: { id: string; isPack?: boolean }) {
+  return product.isPack
+    ? { productId: product.id + PACK_SUFFIX, sellAsPack: true as const, unit: 'paq' }
+    : { productId: product.id };
+}
+
 export function hasPack(p: PackInfo): boolean {
   return !!p.packSize && p.packSize >= 2 && p.packPrice != null && Number(p.packPrice) > 0;
 }

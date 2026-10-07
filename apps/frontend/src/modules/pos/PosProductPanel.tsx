@@ -10,7 +10,7 @@ import { formatCurrency, cn, debounce, looksLikeScannedCode } from '@/lib/utils'
 import { toast } from 'sonner';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
-import { addPackToCart, hasPack, unitStockLeft, type PackInfo } from './packSale';
+import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, type PackInfo } from './packSale';
 
 interface Product extends PackInfo {
   id: string;
@@ -180,7 +180,7 @@ interface Offer {
   valueType: 'PERCENTAGE' | 'FIXED' | null;
   buyQuantity: number | null; getQuantity: number | null;
   isActive: boolean; storeBadge: string | null;
-  products: Array<{ quantity?: number; product: { id: string; name: string; salePrice: number; barcode: string | null; currentStock: number; imageUrl: string | null; isBulk: boolean; bulkUnit: string | null; category: { name: string } } }>;
+  products: Array<{ quantity?: number; asPack?: boolean; product: { id: string; name: string; salePrice: number; barcode: string | null; currentStock: number; imageUrl: string | null; isBulk: boolean; bulkUnit: string | null; isPack?: boolean; category: { name: string } } & PackInfo }>;
 }
 
 interface HappyHourPromo {
@@ -195,7 +195,12 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
   const { data } = useQuery({
     queryKey: ['pos-offers'],
     queryFn: async () => (await api.get<{ data: Offer[] }>('/promotions?limit=50')).data.data,
-    select: d => d.filter(o => o.isActive),
+    // Las promos sobre paquete/caja se presentan ya con el precio y el stock del
+    // paquete (ver presentForOffer), así el resto del panel no distingue.
+    select: d => d.filter(o => o.isActive).map(o => ({
+      ...o,
+      products: o.products.map(e => ({ ...e, product: presentForOffer(e.product, e.asPack) })),
+    })),
   });
 
   const applyOffer = (offer: Offer, product: Offer['products'][0]['product']) => {
@@ -227,7 +232,7 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
       const unitEffectivePrice = Math.round((packPrice / totalUnits) * 100) / 100;
       const perUnitDiscount = Math.round((originalPrice - unitEffectivePrice) * 100) / 100;
       const packResult = addItem({
-        productId: product.id,
+        ...packLineFields(product),
         name: `${product.name} (${packLabel})`,
         barcode: product.barcode,
         quantity: totalUnits,
@@ -253,7 +258,7 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
     // Descuento simple (% o monto fijo): unitPrice = original, discountAmount = descuento
     const discountPerUnit = Math.round((originalPrice - finalPrice) * 100) / 100;
     const discountResult = addItem({
-      productId: product.id,
+      ...packLineFields(product),
       name: `${product.name} (${label})`,
       barcode: product.barcode,
       quantity: 1,
@@ -302,7 +307,7 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
       const perUnitDiscount = Math.round((lineDiscount / qty) * 100) / 100;
 
       const result = addItem({
-        productId: product.id,
+        ...packLineFields(product),
         name: `${product.name} (${offer.storeBadge ?? offer.name})`,
         barcode: product.barcode,
         quantity: qty,

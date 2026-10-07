@@ -31,11 +31,14 @@ const promoSchema = z.object({
   storeFullDesign: z.boolean().default(false),
   priority: z.coerce.number().default(0),
   productIds: z.array(z.string().uuid()).optional(),
+  // Subconjunto de productIds que entra por su paquete/caja y no por unidad.
+  packProductIds: z.array(z.string().uuid()).optional(),
   // Solo type=COMBO — productos distintos que componen el combo, cada uno
   // con su cantidad (ej. 2 panes + 1 leche).
   comboItems: z.array(z.object({
     productId: z.string().uuid(),
     quantity: z.coerce.number().int().min(1),
+    asPack: z.boolean().optional(),
   })).min(2).optional(),
 });
 

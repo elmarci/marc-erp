@@ -17,10 +17,64 @@ interface Offer {
   startTime: string | null; endTime: string | null; daysOfWeek: number[]
   startDate: string; endDate: string | null; isActive: boolean; showInStore: boolean
   storeBadge: string | null; storeImage: string | null; storeVideo: string | null; storeFullDesign: boolean; priority: number
-  products: Array<{ quantity?: number; product: { id: string; name: string; imageUrl: string | null; salePrice?: number } }>
+  products: Array<{
+    quantity?: number; asPack?: boolean
+    product: {
+      id: string; name: string; imageUrl: string | null; salePrice?: number
+      packSize?: number | null; packPrice?: number | string | null; packLabel?: string | null
+    }
+  }>
 }
 
-interface Product { id: string; name: string; salePrice: number }
+interface Product {
+  id: string; name: string; salePrice: number
+  packSize?: number | null; packPrice?: number | string | null; packLabel?: string | null
+}
+
+// Un producto entra a la oferta por unidad o, si tiene paquete/caja configurado
+// (cajetilla, caja...), por ese paquete: el precio, la cantidad y el stock de la
+// promo se calculan con el paquete como unidad de venta.
+interface SelItem {
+  productId: string; name: string; asPack: boolean; salePrice: number
+  packSize: number | null; packPrice: number | null; packLabel: string | null
+}
+
+const hasPackCfg = (p: { packSize?: number | null; packPrice?: number | string | null }) =>
+  !!p.packSize && p.packSize >= 2 && p.packPrice != null && Number(p.packPrice) > 0
+
+const toSel = (p: Product, asPack: boolean): SelItem => ({
+  productId: p.id, name: p.name, asPack, salePrice: Number(p.salePrice ?? 0),
+  packSize: p.packSize ?? null, packPrice: p.packPrice != null ? Number(p.packPrice) : null, packLabel: p.packLabel ?? null,
+})
+
+const presentationLabel = (i: SelItem) => (i.asPack ? `${i.packLabel || 'Paquete'} x${i.packSize}` : 'Unidad')
+const priceOf = (i: SelItem) => (i.asPack ? (i.packPrice ?? 0) : i.salePrice)
+
+// Resultados de búsqueda: cada producto con paquete ofrece dos filas, unidad y paquete.
+function ProductResults({ products, allowPack, onPick }: {
+  products: Product[]; allowPack: boolean; onPick: (p: Product, asPack: boolean) => void
+}) {
+  return (
+    <div className="absolute z-10 w-full mt-1 border rounded-lg bg-popover shadow divide-y max-h-48 overflow-y-auto">
+      {products.map(p => (
+        <div key={p.id}>
+          <button type="button" onClick={() => onPick(p, false)}
+            className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
+            <span>{p.name}</span>
+            <span className="text-muted-foreground">{formatCurrency(p.salePrice)}</span>
+          </button>
+          {allowPack && hasPackCfg(p) && (
+            <button type="button" onClick={() => onPick(p, true)}
+              className="w-full text-left pl-7 pr-3 py-1.5 text-xs hover:bg-muted flex justify-between text-primary bg-primary/5">
+              <span>{p.packLabel || 'Paquete'} x{p.packSize} de {p.name}</span>
+              <span className="font-semibold">{formatCurrency(Number(p.packPrice))}</span>
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const TYPE_LABELS: Record<string, string> = {
   PERCENTAGE_DISCOUNT: 'Descuento %', FIXED_DISCOUNT: 'Descuento S/',
@@ -52,10 +106,15 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     storeVideo: offer?.storeVideo ?? '',
     storeFullDesign: offer?.storeFullDesign ?? false,
     priority: String(offer?.priority ?? 0),
-    productIds: offer?.type !== 'COMBO' ? (offer?.products.map(p => p.product.id) ?? []) : [],
+    items: offer && offer.type !== 'COMBO'
+      ? offer.products.map(p => toSel({ id: p.product.id, name: p.product.name, salePrice: Number(p.product.salePrice ?? 0), packSize: p.product.packSize, packPrice: p.product.packPrice, packLabel: p.product.packLabel }, !!p.asPack))
+      : ([] as SelItem[]),
     comboItems: offer?.type === 'COMBO'
-      ? offer.products.map(p => ({ productId: p.product.id, name: p.product.name, quantity: p.quantity ?? 1, salePrice: Number(p.product.salePrice ?? 0) }))
-      : ([] as Array<{ productId: string; name: string; quantity: number; salePrice: number }>),
+      ? offer.products.map(p => ({
+        ...toSel({ id: p.product.id, name: p.product.name, salePrice: Number(p.product.salePrice ?? 0), packSize: p.product.packSize, packPrice: p.product.packPrice, packLabel: p.product.packLabel }, !!p.asPack),
+        quantity: p.quantity ?? 1,
+      }))
+      : ([] as Array<SelItem & { quantity: number }>),
   })
   const [productSearch, setProductSearch] = useState('')
   const debouncedProductSearch = useDebouncedValue(productSearch, 300)
@@ -96,7 +155,7 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
   const isCombo = form.type === 'COMBO'
   const isHappyHour = form.type === 'HAPPY_HOUR'
 
-  const comboSum = form.comboItems.reduce((s, i) => s + i.salePrice * i.quantity, 0)
+  const comboSum = form.comboItems.reduce((s, i) => s + priceOf(i) * i.quantity, 0)
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -121,11 +180,14 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
         delete payload.valueType; delete payload.startTime; delete payload.endTime; delete payload.daysOfWeek
       }
       if (isCombo) {
-        payload.comboItems = form.comboItems.map(i => ({ productId: i.productId, quantity: i.quantity }))
-        delete payload.productIds
+        payload.comboItems = form.comboItems.map(i => ({ productId: i.productId, quantity: i.quantity, asPack: i.asPack }))
+        delete payload.productIds; delete payload.packProductIds
       } else {
+        payload.productIds = form.items.map(i => i.productId)
+        payload.packProductIds = form.items.filter(i => i.asPack).map(i => i.productId)
         delete payload.comboItems
       }
+      delete payload.items
       return offer ? api.put(`/promotions/${offer.id}`, payload) : api.post('/promotions', payload)
     },
     onSuccess: () => {
@@ -136,20 +198,35 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
     onError: (err) => toast.error(getErrorMessage(err)),
   })
 
-  const addProduct = (p: Product) => {
-    if (!form.productIds.includes(p.id)) setForm(v => ({ ...v, productIds: [...v.productIds, p.id] }))
+  // Elegir un producto ya agregado cambia su presentación (unidad ↔ paquete):
+  // en una misma oferta un producto entra de una sola forma.
+  const addProduct = (p: Product, asPack = false) => {
+    setForm(v => ({
+      ...v,
+      items: v.items.some(i => i.productId === p.id)
+        ? v.items.map(i => i.productId === p.id ? toSel(p, asPack) : i)
+        : [...v.items, toSel(p, asPack)],
+    }))
     setProductSearch('')
   }
-  const addComboProduct = (p: Product) => {
-    if (form.comboItems.some(i => i.productId === p.id)) return
-    setForm(v => ({ ...v, comboItems: [...v.comboItems, { productId: p.id, name: p.name, quantity: 1, salePrice: Number(p.salePrice) }] }))
+  const addComboProduct = (p: Product, asPack = false) => {
+    setForm(v => ({
+      ...v,
+      comboItems: v.comboItems.some(i => i.productId === p.id)
+        ? v.comboItems.map(i => i.productId === p.id ? { ...toSel(p, asPack), quantity: i.quantity } : i)
+        : [...v.comboItems, { ...toSel(p, asPack), quantity: 1 }],
+    }))
     setProductSearch('')
   }
+  const setItemPack = (productId: string, asPack: boolean) =>
+    setForm(v => ({ ...v, items: v.items.map(i => i.productId === productId ? { ...i, asPack } : i) }))
+  const setComboPack = (productId: string, asPack: boolean) =>
+    setForm(v => ({ ...v, comboItems: v.comboItems.map(i => i.productId === productId ? { ...i, asPack } : i) }))
   const updateComboQty = (productId: string, quantity: number) =>
     setForm(v => ({ ...v, comboItems: v.comboItems.map(i => i.productId === productId ? { ...i, quantity } : i) }))
   const removeComboProduct = (productId: string) =>
     setForm(v => ({ ...v, comboItems: v.comboItems.filter(i => i.productId !== productId) }))
-  const removeProduct = (id: string) => setForm(v => ({ ...v, productIds: v.productIds.filter(x => x !== id) }))
+  const removeProduct = (id: string) => setForm(v => ({ ...v, items: v.items.filter(x => x.productId !== id) }))
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(v => ({ ...v, [k]: e.target.value }))
 
@@ -371,22 +448,26 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
               <div className="relative mb-2">
                 <Input placeholder="Buscar producto..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
                 {products && products.length > 0 && productSearch.length >= 2 && (
-                  <div className="absolute z-10 w-full mt-1 border rounded-lg bg-popover shadow divide-y max-h-40 overflow-y-auto">
-                    {products.map(p => (
-                      <button key={p.id} onClick={() => addComboProduct(p)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
-                        <span>{p.name}</span>
-                        <span className="text-muted-foreground">{formatCurrency(p.salePrice)}</span>
-                      </button>
-                    ))}
-                  </div>
+                  <ProductResults products={products} allowPack onPick={addComboProduct} />
                 )}
               </div>
               <div className="space-y-1.5">
                 {form.comboItems.map(i => (
                   <div key={i.productId} className="flex items-center justify-between gap-2 rounded-lg border p-2">
-                    <span className="text-sm flex-1">{i.name}</span>
-                    <span className="text-xs text-muted-foreground">{formatCurrency(i.salePrice)} c/u</span>
+                    <span className="text-sm flex-1">
+                      {i.name}
+                      {hasPackCfg(i) && (
+                        <span className="ml-2 inline-flex overflow-hidden rounded-md border text-[11px] align-middle">
+                          <button type="button" onClick={() => setComboPack(i.productId, false)}
+                            className={cn('px-1.5 py-0.5', !i.asPack ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Unidad</button>
+                          <button type="button" onClick={() => setComboPack(i.productId, true)}
+                            className={cn('px-1.5 py-0.5 border-l', i.asPack ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+                            {i.packLabel || 'Paquete'} x{i.packSize}
+                          </button>
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{formatCurrency(priceOf(i))} c/u</span>
                     <Input type="number" min={1} value={i.quantity}
                       onChange={e => updateComboQty(i.productId, Math.max(1, Number(e.target.value)))}
                       className="h-8 w-16 text-center" />
@@ -416,28 +497,37 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
               <div className="relative mb-2">
                 <Input placeholder="Buscar producto..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
                 {products && products.length > 0 && productSearch.length >= 2 && (
-                  <div className="absolute z-10 w-full mt-1 border rounded-lg bg-popover shadow divide-y max-h-40 overflow-y-auto">
-                    {products.map(p => (
-                      <button key={p.id} onClick={() => addProduct(p)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
-                        <span>{p.name}</span>
-                        <span className="text-muted-foreground">{formatCurrency(p.salePrice)}</span>
-                      </button>
-                    ))}
-                  </div>
+                  <ProductResults products={products} allowPack={!isHappyHour} onPick={addProduct} />
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {form.productIds.map(id => {
-                  const p = offer?.products.find(op => op.product.id === id)
-                  return (
-                    <Badge key={id} variant="secondary" className="gap-1">
-                      {p?.product.name ?? id.slice(0, 8)}
-                      <button onClick={() => removeProduct(id)}><X className="h-3 w-3" /></button>
-                    </Badge>
-                  )
-                })}
+              <div className="space-y-1.5">
+                {form.items.map(i => (
+                  <div key={i.productId} className="flex items-center justify-between gap-2 rounded-lg border p-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm">{i.name}</p>
+                      <p className="text-xs text-muted-foreground">{presentationLabel(i)} · {formatCurrency(priceOf(i))}</p>
+                    </div>
+                    {hasPackCfg(i) && !isHappyHour && (
+                      <span className="inline-flex overflow-hidden rounded-md border text-[11px]">
+                        <button type="button" onClick={() => setItemPack(i.productId, false)}
+                          className={cn('px-2 py-1', !i.asPack ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Unidad</button>
+                        <button type="button" onClick={() => setItemPack(i.productId, true)}
+                          className={cn('px-2 py-1 border-l', i.asPack ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+                          {i.packLabel || 'Paquete'} x{i.packSize}
+                        </button>
+                      </span>
+                    )}
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeProduct(i.productId)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
               </div>
+              {form.items.some(i => i.asPack) && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Las ofertas sobre paquetes/cajas se aplican solo en el punto de venta (no se muestran en la tienda online).
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -445,7 +535,7 @@ function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) 
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={
             !form.name ||
-            (!isCombo && form.productIds.length === 0) ||
+            (!isCombo && form.items.length === 0) ||
             (isCombo && (form.comboItems.length < 2 || !form.value)) ||
             (form.type === 'PERCENTAGE_DISCOUNT' && !form.value) ||
             (form.type === 'FIXED_DISCOUNT' && !form.value) ||

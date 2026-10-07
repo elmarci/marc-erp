@@ -366,6 +366,9 @@ export function ProductFormPage() {
                   <div>
                     <label className="mb-1 block text-sm font-medium">Código de barras del paquete</label>
                     <Input {...register('packBarcode')} placeholder="Opcional" />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Al escanearlo en el POS se agrega el paquete. Si el código del producto es el que viene impreso en el paquete, escríbelo aquí también.
+                    </p>
                   </div>
                   {packSavings !== null && (
                     <p className="col-span-2 text-xs text-muted-foreground sm:col-span-4">

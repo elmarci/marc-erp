@@ -1490,6 +1490,10 @@ model PromotionProduct {
   // entran en el combo (ej. 2 panes + 1 leche). Para los demás tipos de
   // oferta se ignora (siempre 1).
   quantity    Int    @default(1)
+  // true = la promo es sobre el paquete/caja del producto (Product.packSize),
+  // no sobre la unidad suelta: precios, cantidades y stock se calculan con el
+  // paquete como unidad de venta. Solo se aplica en el POS.
+  asPack      Boolean @default(false) @map("as_pack")
 
   promotion Promotion @relation(fields: [promotionId], references: [id])
   product   Product   @relation(fields: [productId], references: [id])

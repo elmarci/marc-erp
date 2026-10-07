@@ -227,6 +227,7 @@ export class ProductsService {
             OR: [
               ...(accentInsensitiveIds && accentInsensitiveIds.length > 0 ? [{ id: { in: accentInsensitiveIds } }] : []),
               { barcode: { equals: q } },
+              { packBarcode: { equals: q } },
               { internalCode: { contains: q, mode: 'insensitive' } },
               { sku: { contains: q, mode: 'insensitive' } },
             ],
@@ -293,9 +294,11 @@ export class ProductsService {
     });
 
     if (!product) throw new NotFoundError('Producto con código de barras ' + barcode);
-    // El código del paquete/caja es distinto al de la unidad: el POS necesita
-    // saber cuál de los dos escaneó el cajero para agregar la presentación correcta.
-    return { ...product, matchedPack: product.packBarcode === barcode && product.barcode !== barcode };
+    // El POS necesita saber si el código escaneado es el del paquete/caja para
+    // agregar esa presentación. Si el producto tiene el MISMO código en ambos
+    // campos, gana el paquete: es el caso de la cajetilla/caja, cuyo código
+    // impreso es el que se escanea (la unidad suelta se vende tocando el producto).
+    return { ...product, matchedPack: !!product.packSize && product.packBarcode === barcode };
   }
 
   /**

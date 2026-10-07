@@ -1,9 +1,16 @@
 import { prisma } from '../../database/client';
-import { NotFoundError } from '../../utils/errors';
+import { NotFoundError, BusinessError } from '../../utils/errors';
 import { pushService } from '../push/push.service';
 import { logger } from '../../config/logger';
 
-interface ComboItemInput { productId: string; quantity: number }
+interface ComboItemInput { productId: string; quantity: number; asPack?: boolean }
+
+// Lo que las ofertas necesitan saber de cada producto — incluye la presentación
+// por paquete/caja para poder armar promos sobre cajetillas, cajas, etc.
+const PRODUCT_SELECT = {
+  id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true,
+  packSize: true, packPrice: true, packLabel: true, packBarcode: true,
+} as const;
 
 export class PromotionsService {
   // Hora feliz ya notificada en el minuto exacto en que arrancó — evita
@@ -20,7 +27,7 @@ export class PromotionsService {
       prisma.promotion.findMany({
         where,
         include: {
-          products: { include: { product: { select: { id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true } } } },
+          products: { include: { product: { select: PRODUCT_SELECT } } },
         },
         orderBy: [{ isActive: 'desc' }, { priority: 'desc' }, { createdAt: 'desc' }],
         skip: (filters.page - 1) * filters.limit,
@@ -36,11 +43,41 @@ export class PromotionsService {
     const promo = await prisma.promotion.findUnique({
       where: { id },
       include: {
-        products: { include: { product: { select: { id: true, name: true, salePrice: true, imageUrl: true } } } },
+        products: { include: { product: { select: PRODUCT_SELECT } } },
       },
     });
     if (!promo) throw new NotFoundError('Oferta');
     return promo;
+  }
+
+  // Arma las filas de PromotionProduct: cada producto puede entrar por unidad o
+  // por paquete/caja (asPack). Un paquete solo se puede usar si el producto
+  // realmente tiene paquete configurado.
+  private async buildProducts(
+    type: string | undefined,
+    productIds: string[] | undefined,
+    packProductIds: string[] | undefined,
+    comboItems: ComboItemInput[] | undefined,
+  ) {
+    const rows = comboItems && comboItems.length > 0
+      ? comboItems.map(i => ({ productId: i.productId, quantity: i.quantity, asPack: !!i.asPack }))
+      : productIds?.map(productId => ({ productId, quantity: 1, asPack: !!packProductIds?.includes(productId) }));
+    if (!rows) return undefined;
+
+    if (type === 'HAPPY_HOUR' && rows.some(r => r.asPack)) {
+      throw new BusinessError('La hora feliz se aplica a unidades sueltas, no a paquetes.');
+    }
+    const packIds = rows.filter(r => r.asPack).map(r => r.productId);
+    if (packIds.length > 0) {
+      const products = await prisma.product.findMany({
+        where: { id: { in: packIds } }, select: { id: true, name: true, packSize: true, packPrice: true },
+      });
+      const invalid = products.filter(p => !p.packSize || p.packPrice == null).map(p => p.name);
+      if (invalid.length > 0) {
+        throw new BusinessError(`Estos productos no tienen paquete/caja configurado: ${invalid.join(', ')}.`);
+      }
+    }
+    return rows;
   }
 
   async create(data: {
@@ -51,14 +88,13 @@ export class PromotionsService {
     isActive?: boolean; showInStore?: boolean;
     storeBadge?: string; storeImage?: string; storeVideo?: string; storeFullDesign?: boolean; priority?: number;
     productIds?: string[];
+    packProductIds?: string[];
     comboItems?: ComboItemInput[];
   }) {
-    const { productIds, comboItems, ...promoData } = data;
+    const { productIds, packProductIds, comboItems, ...promoData } = data;
     // COMBO usa comboItems (con cantidad por producto); los demás tipos
     // siguen usando productIds simple (cantidad implícita = 1 cada uno).
-    const products = comboItems && comboItems.length > 0
-      ? comboItems.map(i => ({ productId: i.productId, quantity: i.quantity }))
-      : productIds?.map(productId => ({ productId }));
+    const products = await this.buildProducts(promoData.type, productIds, packProductIds, comboItems);
 
     const promo = await prisma.promotion.create({
       data: {
@@ -68,7 +104,7 @@ export class PromotionsService {
         products: products ? { create: products } : undefined,
       },
       include: {
-        products: { include: { product: { select: { id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true } } } },
+        products: { include: { product: { select: PRODUCT_SELECT } } },
       },
     });
 
@@ -94,13 +130,12 @@ export class PromotionsService {
     isActive?: boolean; showInStore?: boolean;
     storeBadge?: string; storeImage?: string; storeVideo?: string; storeFullDesign?: boolean; priority?: number;
     productIds?: string[];
+    packProductIds?: string[];
     comboItems?: ComboItemInput[];
   }) {
-    await this.get(id);
-    const { productIds, comboItems, ...promoData } = data;
-    const products = comboItems && comboItems.length > 0
-      ? comboItems.map(i => ({ productId: i.productId, quantity: i.quantity }))
-      : productIds?.map(productId => ({ productId }));
+    const existing = await this.get(id);
+    const { productIds, packProductIds, comboItems, ...promoData } = data;
+    const products = await this.buildProducts(promoData.type ?? existing.type, productIds, packProductIds, comboItems);
 
     // Update products if provided
     if (products !== undefined) {
@@ -116,7 +151,7 @@ export class PromotionsService {
       where: { id },
       data: promoData as never,
       include: {
-        products: { include: { product: { select: { id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true } } } },
+        products: { include: { product: { select: PRODUCT_SELECT } } },
       },
     });
   }
