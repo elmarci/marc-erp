@@ -29,7 +29,7 @@ interface CashSession {
 
 export function PosPage() {
   const navigate = useNavigate();
-  const { cashSessionId, setCashSession } = usePosStore();
+  const { cashSessionId, setCashSession, clearCashSession } = usePosStore();
   const { user } = useAuthStore();
   const [showPayment, setShowPayment] = useState(false);
   const [showOpenSession, setShowOpenSession] = useState(false);
@@ -42,25 +42,57 @@ export function PosPage() {
   const scanSnapshot = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; value: string } | null>(null);
 
   // Verificar sesión de caja activa
-  const { data: registers } = useQuery({
+  // refetchOnMount 'always' + esperar a que termine de cargar: antes se usaba la
+  // copia en caché de otra pantalla (ej. de Caja, de antes de abrir la caja), se
+  // veía "sin sesiones" y salía el aviso de abrir caja aunque ya hubiera una.
+  const { data: registers, isFetching: loadingRegisters } = useQuery({
     queryKey: ['cash-registers'],
     queryFn: async () => {
       const res = await api.get<{ data: Array<{ id: string; name: string; sessions: CashSession[] }> }>('/cash/registers');
       return res.data.data;
     },
     enabled: !cashSessionId,
+    refetchOnMount: 'always',
   });
 
   useEffect(() => {
-    if (!cashSessionId && registers) {
+    if (!cashSessionId && registers && !loadingRegisters) {
       const openSession = registers.flatMap((r) => r.sessions).find((s) => s);
       if (openSession) {
         setCashSession(openSession.id, openSession.cashRegisterId);
+        setShowOpenSession(false);
       } else {
         setShowOpenSession(true);
       }
     }
-  }, [registers, cashSessionId, setCashSession]);
+  }, [registers, loadingRegisters, cashSessionId, setCashSession]);
+
+  // El POS se deja abierto todo el día: si la sesión que tiene guardada se cerró
+  // (se cerró la caja desde otra pantalla o equipo, o cambió el turno), se
+  // descarta y se busca la abierta — así no se intenta vender contra una caja cerrada.
+  useEffect(() => {
+    if (!cashSessionId) return;
+    let cancelled = false;
+    const validate = async () => {
+      try {
+        const res = await api.get<{ data: { status: string } }>(`/cash/sessions/${cashSessionId}`);
+        if (!cancelled && res.data.data.status !== 'OPEN') clearCashSession();
+      } catch {
+        // sin conexión o falla puntual: se conserva la sesión, el backend igual valida al cobrar
+      }
+    };
+    validate();
+    const interval = setInterval(validate, 60000);
+    const onVisible = () => { if (document.visibilityState === 'visible') validate(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', validate);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', validate);
+    };
+  }, [cashSessionId, clearCashSession]);
 
   // Copia local del catálogo activo (para escaneo de código de barras y
   // grilla) — se refresca mientras hay conexión, para tener con qué seguir
@@ -211,8 +243,9 @@ export function PosPage() {
   }, []);
 
   const handleSaleComplete = useCallback(async () => {
-    const { items, payments, cashSessionId: sessionId, customerId, documentType,
+    const { items, payments, cashSessionId: storedSessionId, customerId, documentType,
       globalDiscountAmount, globalDiscountPercent, couponCode, pointsToRedeem, isCredit, notes, total, subtotal } = usePosStore.getState();
+    let sessionId = storedSessionId;
     // Ojo: el "discountAmount" combinado del store ya incluye el descuento del
     // cupón (para mostrarlo en pantalla). Al backend le mandamos solo el
     // descuento manual — el del cupón lo vuelve a calcular él mismo a partir
@@ -221,8 +254,20 @@ export function PosPage() {
       ? globalDiscountAmount
       : (subtotal * globalDiscountPercent) / 100;
 
+    // Sin sesión guardada (ej. recién recargada la pantalla o descartada por
+    // cerrada): se busca la caja abierta en ese momento antes de rechazar la venta.
     if (!sessionId) {
-      toast.error('No hay sesión de caja activa.');
+      try {
+        const res = await api.get<{ data: Array<{ sessions: Array<{ id: string; cashRegisterId: string }> }> }>('/cash/registers');
+        const open = res.data.data.flatMap((r) => r.sessions)[0];
+        if (open) {
+          usePosStore.getState().setCashSession(open.id, open.cashRegisterId);
+          sessionId = open.id;
+        }
+      } catch { /* se informa abajo */ }
+    }
+    if (!sessionId) {
+      toast.error('No hay una caja abierta. Abre la caja para poder vender.');
       return;
     }
 
@@ -267,6 +312,9 @@ export function PosPage() {
         productName: i.name,
       })),
       payments: cappedPayments,
+      // Lo realmente entregado (ej. 100 para una venta de 50): los pagos van
+      // netos, esto permite reimprimir el ticket con recibido y vuelto.
+      amountTendered: totalPaid,
       discountAmount: manualDiscountAmount,
       couponCode: couponCode ?? undefined,
       pointsToRedeem: pointsToRedeem || undefined,

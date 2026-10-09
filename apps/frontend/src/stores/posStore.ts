@@ -68,6 +68,7 @@ interface PosState {
   change: number;
 
   setCashSession: (sessionId: string, registerId: string) => void;
+  clearCashSession: () => void;
   addItem: (item: Omit<CartItem, 'subtotal'>) => { addedQuantity: number; finalQuantity: number; capped: boolean };
   updateQuantity: (productId: string, quantity: number) => { finalQuantity: number; capped: boolean };
   renameItem: (productId: string, name: string) => void;
@@ -136,6 +137,8 @@ export const usePosStore = create<PosState>()((set, get) => ({
   total: 0,
   totalPaid: 0,
   change: 0,
+
+  clearCashSession: () => set({ cashSessionId: null, cashRegisterId: null }),
 
   setCashSession: (sessionId, registerId) => {
     set({ cashSessionId: sessionId, cashRegisterId: registerId });

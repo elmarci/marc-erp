@@ -46,6 +46,10 @@ export interface CreateSaleInput {
   discountPercent?: number;
   isCredit?: boolean;
   notes?: string;
+  // Lo que el cliente entregó en total (ej. S/ 100 para una venta de S/ 50).
+  // Los pagos se guardan netos (hasta el total) para que el arqueo cuadre;
+  // este monto es solo para poder reimprimir el ticket con "Recibido" y "Vuelto".
+  amountTendered?: number;
   couponCode?: string;
   pointsToRedeem?: number;
   isOfflineSync?: boolean;
@@ -137,12 +141,32 @@ export class SalesService {
     // saber que esa venta seguía pendiente de subir, y bloquearla la dejaría
     // atascada en la cola para siempre. Ese caso queda fuera del arqueo de
     // esa sesión (limitación conocida y aceptada del modo offline).
-    const cashSession = input.isOfflineSync
+    let cashSession = input.isOfflineSync
       ? await prisma.cashSession.findUnique({ where: { id: input.cashSessionId } })
       : await prisma.cashSession.findFirst({ where: { id: input.cashSessionId, status: 'OPEN' } });
+
+    // El POS puede quedarse con el id de una sesión que ya se cerró (se cerró y
+    // reabrió la caja desde otra pantalla o equipo con el POS abierto, o pasó el
+    // turno). Si esa MISMA caja tiene hoy una sesión abierta, la venta va a esa
+    // — no hay motivo para frenar al cajero con "no hay caja abierta" cuando sí hay.
+    if (!cashSession) {
+      const stale = await prisma.cashSession.findUnique({ where: { id: input.cashSessionId } });
+      if (stale) {
+        const current = await prisma.cashSession.findFirst({
+          where: { cashRegisterId: stale.cashRegisterId, status: 'OPEN' }, orderBy: { openedAt: 'desc' },
+        });
+        if (current) {
+          logger.info({ from: stale.id, to: current.id }, 'Venta redirigida a la sesión de caja abierta actual');
+          cashSession = current;
+          input.cashSessionId = current.id;
+        }
+      }
+    }
     if (!cashSession) {
       throw new BusinessError('No hay una sesión de caja abierta. Abra la caja para procesar ventas.');
     }
+    const paymentsSum = input.payments.reduce((sum, p) => sum + p.amount, 0);
+    const amountTendered = Math.max(input.amountTendered ?? 0, paymentsSum);
 
     // Obtener productos con lock para concurrencia. OJO: varias líneas de
     // "venta excepcional" (comodín) comparten a propósito el mismo productId
@@ -357,11 +381,8 @@ export class SalesService {
           discountPercent: input.discountPercent ?? 0,
           taxAmount,
           totalAmount,
-          amountTendered: input.payments.reduce((sum, p) => sum + p.amount, 0),
-          changeAmount: Math.max(
-            0,
-            input.payments.reduce((sum, p) => sum + p.amount, 0) - totalAmount,
-          ),
+          amountTendered,
+          changeAmount: Math.max(0, amountTendered - totalAmount),
           isCredit: input.isCredit ?? false,
           paidAmount: nonCreditPaid,
           pointsEarned,

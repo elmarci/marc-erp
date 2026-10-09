@@ -62,6 +62,7 @@ const createSaleSchema = z.object({
   discountPercent: z.number().min(0).max(100).optional(),
   isCredit: z.boolean().optional(),
   notes: z.string().optional(),
+  amountTendered: z.number().min(0).optional(),
   couponCode: z.string().optional(),
   pointsToRedeem: z.coerce.number().int().min(0).optional(),
   // Venta hecha en el POS mientras no había internet, sincronizada después —

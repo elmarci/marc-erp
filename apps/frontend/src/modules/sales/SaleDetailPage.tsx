@@ -28,11 +28,22 @@ export function SaleDetailPage() {
         customer: { firstName: string; lastName: string } | null;
         items: Array<{ id: string; productName: string; quantity: number; unitPrice: number; subtotal: number; unit: string | null }>;
         payments: Array<{ method: string; amount: number }>;
+        amountTendered?: number; changeAmount?: number; pointsEarned?: number; pointsRedeemed?: number;
       };
     },
   });
 
   const [showReceipt, setShowReceipt] = useState(false);
+
+  // Los pagos se guardan netos (hasta el total de la venta); lo que el cliente
+  // realmente entregó y el vuelto están aparte. Para el ticket reimpreso se
+  // vuelve a sumar el vuelto al pago en efectivo, como salió al cobrar.
+  const change = Number(sale?.changeAmount ?? 0);
+  const receiptPayments = (sale?.payments ?? []).map((p) => ({ method: p.method, amount: Number(p.amount) }));
+  if (change > 0.004 && receiptPayments.length > 0) {
+    const idx = receiptPayments.findIndex((p) => p.method === 'CASH');
+    receiptPayments[idx >= 0 ? idx : receiptPayments.length - 1].amount += change;
+  }
 
   const voidMutation = useMutation({
     mutationFn: (reason: string) => api.post(`/sales/${id}/void`, { reason }),
@@ -95,12 +106,18 @@ export function SaleDetailPage() {
         <Card>
           <CardHeader><CardTitle className="text-base">Pagos</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {sale.payments.map((p, i) => (
+            {receiptPayments.map((p, i) => (
               <div key={i} className="flex justify-between">
                 <span className="text-muted-foreground">{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</span>
                 <span className="font-medium">{formatCurrency(p.amount)}</span>
               </div>
             ))}
+            {change > 0.004 && (
+              <div className="flex justify-between border-t pt-2">
+                <span className="text-muted-foreground">Vuelto</span>
+                <span className="font-medium">{formatCurrency(change)}</span>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -154,7 +171,10 @@ export function SaleDetailPage() {
             discountAmount: sale.discountAmount,
             taxAmount: sale.taxAmount,
             totalAmount: sale.totalAmount,
-            payments: sale.payments,
+            payments: receiptPayments,
+            change: change > 0.004 ? change : undefined,
+            pointsEarned: Number(sale.pointsEarned ?? 0),
+            pointsRedeemed: Number(sale.pointsRedeemed ?? 0),
           } as ReceiptData}
           onClose={() => setShowReceipt(false)}
         />
