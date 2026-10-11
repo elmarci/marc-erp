@@ -32,7 +32,7 @@ interface TopProduct {
 }
 
 interface MarginReport {
-  summary: { revenue: number; cost: number; margin: number; marginPercent: number; itemsWithoutCost: number };
+  summary: { revenue: number; cost: number; margin: number; marginPercent: number; itemsWithoutCost: number; lineRevenue?: number; saleDiscounts?: number };
   chart: Array<{ period: string; revenue: number; cost: number; margin: number }>;
   byProduct: Array<{ productId: string; name: string; quantity: number; revenue: number; cost: number; margin: number; marginPercent: number }>;
 }
@@ -552,7 +552,7 @@ function MarginTab() {
                     {data.byProduct.map(p => (
                       <tr key={p.productId} className="hover:bg-muted/30">
                         <td className="px-4 py-2 font-medium">{p.name}</td>
-                        <td className="px-4 py-2 text-right">{p.quantity.toFixed(0)}</td>
+                        <td className="px-4 py-2 text-right">{Number.isInteger(p.quantity) ? p.quantity : p.quantity.toFixed(3).replace(/0+$/, '')}</td>
                         <td className="px-4 py-2 text-right">{formatCurrency(p.revenue)}</td>
                         <td className="px-4 py-2 text-right text-muted-foreground">{formatCurrency(p.cost)}</td>
                         <td className={cn('px-4 py-2 text-right font-semibold', p.margin >= 0 ? 'text-success' : 'text-destructive')}>{formatCurrency(p.margin)}</td>
@@ -563,6 +563,29 @@ function MarginTab() {
                       <tr><td colSpan={6} className="py-12 text-center text-muted-foreground">Sin datos en este período</td></tr>
                     )}
                   </tbody>
+                  {data.byProduct.length > 0 && (
+                    <tfoot className="border-t-2 bg-muted/40">
+                      {(data.summary.saleDiscounts ?? 0) > 0.004 && (
+                        <tr>
+                          <td className="px-4 py-2 text-muted-foreground" colSpan={2}>
+                            Descuentos aplicados a la venta completa (cupón, puntos, rebaja manual)
+                          </td>
+                          <td className="px-4 py-2 text-right text-muted-foreground">-{formatCurrency(data.summary.saleDiscounts ?? 0)}</td>
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2 text-right text-destructive">-{formatCurrency(data.summary.saleDiscounts ?? 0)}</td>
+                          <td className="px-4 py-2" />
+                        </tr>
+                      )}
+                      <tr className="font-semibold">
+                        <td className="px-4 py-2">TOTAL ({data.byProduct.length} productos)</td>
+                        <td className="px-4 py-2" />
+                        <td className="px-4 py-2 text-right">{formatCurrency(data.summary.revenue)}</td>
+                        <td className="px-4 py-2 text-right text-muted-foreground">{formatCurrency(data.summary.cost)}</td>
+                        <td className={cn('px-4 py-2 text-right', data.summary.margin >= 0 ? 'text-success' : 'text-destructive')}>{formatCurrency(data.summary.margin)}</td>
+                        <td className="px-4 py-2 text-right text-muted-foreground">{data.summary.marginPercent.toFixed(1)}%</td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </CardContent>

@@ -392,13 +392,20 @@ export class ReportsService {
           AND s.created_at BETWEEN ${range.from} AND ${range.to}
         GROUP BY p.id, p.name
         ORDER BY (SUM(si.subtotal) - SUM(si.quantity * COALESCE(si.cost_price, 0))) DESC
-        LIMIT 20
+        LIMIT 5000
       `,
     ]);
 
     const revenue = Number(revenueAgg._sum.totalAmount ?? 0);
     const cost = Number(costRows[0]?.cost ?? 0);
     const margin = revenue - cost;
+
+    // El desglose por producto suma los subtotales de línea; el ingreso del
+    // resumen es lo que realmente entró (total_amount, ya con el descuento de
+    // venta completa). La diferencia se muestra como una fila aparte para que
+    // la tabla por producto cuadre exactamente con el resumen.
+    const lineRevenue = byProduct.reduce((s, p) => s + Number(p.revenue ?? 0), 0);
+    const saleDiscounts = Math.max(0, Math.round((lineRevenue - revenue) * 100) / 100);
 
     // El gráfico junta ingreso (de sales) y costo (de sale_items) por
     // separado — un período puede tener uno sin el otro (ej. una venta con
@@ -424,6 +431,8 @@ export class ReportsService {
         margin,
         marginPercent: revenue > 0 ? (margin / revenue) * 100 : 0,
         itemsWithoutCost: Number(costRows[0]?.items_without_cost ?? 0),
+        lineRevenue,
+        saleDiscounts,
       },
       chart,
       byProduct: byProduct.map((p) => {
