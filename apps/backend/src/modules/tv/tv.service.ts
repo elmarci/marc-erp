@@ -12,6 +12,7 @@ export interface TvSlideInput {
   offerId?: string | null;
   title?: string | null;
   subtitle?: string | null;
+  label?: string | null;
   imageUrl?: string | null;
   productIds: string[];
   autoPage: number;
@@ -103,7 +104,7 @@ export class TvService {
     } else {
       base = stored.map((s) => ({
         id: s.id, virtual: false, type: s.type as TvSlideType, offerId: s.offerId, title: s.title,
-        subtitle: s.subtitle, imageUrl: s.imageUrl, productIds: s.productIds, autoPage: s.autoPage,
+        subtitle: s.subtitle, label: s.label, imageUrl: s.imageUrl, productIds: s.productIds, autoPage: s.autoPage,
         seconds: s.seconds, isActive: s.isActive, startsAt: s.startsAt, endsAt: s.endsAt,
       }));
       const referenced = new Set(base.filter((s) => s.type === 'OFFER').map((s) => s.offerId));
@@ -229,6 +230,7 @@ export class TvService {
           offerId: s.type === 'OFFER' ? s.offerId ?? null : null,
           title: s.title || null,
           subtitle: s.subtitle || null,
+          label: s.label || null,
           imageUrl: s.imageUrl || null,
           productIds: s.type === 'PRODUCTS' ? s.productIds : [],
           autoPage: s.autoPage,
@@ -381,7 +383,7 @@ export class TvService {
       label: s.type === 'OFFER' ? (s.offerName ?? 'Promoción')
         : s.type === 'PRODUCTS' ? (s.title || 'Productos')
         : s.type === 'APP' ? (s.title || 'Pide desde tu celular (QR)')
-        : (s.title || (s.imageUrl ? 'Imagen' : 'Aviso')),
+        : (s.label || s.title || (s.imageUrl ? 'Imagen' : 'Aviso')),
       thumb: s.type === 'OFFER' ? s.offerImage : s.type === 'CUSTOM' ? s.imageUrl : s.type === 'PRODUCTS' ? (s.products[0]?.imageUrl ?? null) : null,
       isActive: s.isActive,
     }));

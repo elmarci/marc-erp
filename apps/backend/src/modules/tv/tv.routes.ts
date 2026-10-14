@@ -127,6 +127,7 @@ const slideSchema = z.object({
   offerId: z.string().uuid().nullable().optional(),
   title: z.string().max(120).nullable().optional(),
   subtitle: z.string().max(240).nullable().optional(),
+  label: z.string().max(80).nullable().optional(),
   imageUrl: z.string().url().nullable().optional().or(z.literal('')),
   productIds: z.array(z.string().uuid()).max(8).default([]),
   autoPage: z.number().int().min(0).max(5).default(0),

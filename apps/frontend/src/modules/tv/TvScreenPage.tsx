@@ -40,7 +40,11 @@ function summary(s: TvSlideDraft): string {
       ? `${name} · ${s.productIds.length} productos elegidos`
       : `${name} · automático (más vendidos ${s.autoPage * 8 + 1}–${s.autoPage * 8 + 8})`;
   }
-  if (s.type === 'CUSTOM') return s.title || (s.imageUrl ? 'Imagen a pantalla completa' : 'Aviso');
+  if (s.type === 'CUSTOM') {
+    if (s.label) return s.label;
+    if (s.layout === 'IMAGE') return s.imageUrl ? 'Imagen a pantalla completa' : 'Imagen (falta subirla)';
+    return s.title || 'Aviso';
+  }
   return s.title || 'Pide desde tu celular (QR)';
 }
 
@@ -56,7 +60,8 @@ function scheduleNote(s: TvSlideDraft): string | null {
 }
 
 function typeLabel(s: TvSlideDraft): string {
-  return s.type === 'CUSTOM' && s.imageUrl && !s.title && !s.subtitle ? 'Imagen' : TYPE_META[s.type].label;
+  if (s.type === 'CUSTOM') return s.layout === 'IMAGE' ? 'Imagen' : s.layout === 'IMAGE_TEXT' ? 'Imagen y texto' : 'Texto';
+  return TYPE_META[s.type].label;
 }
 
 function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
@@ -278,7 +283,7 @@ export function TvScreenPage() {
     const created: TvSlideDraft[] = [];
     for (const file of images) {
       try {
-        created.push({ ...blankSlide('CUSTOM'), imageUrl: await uploadImage(file) });
+        created.push({ ...blankSlide('CUSTOM'), layout: 'IMAGE', imageUrl: await uploadImage(file) });
       } catch (err) {
         toast.error(`${file.name}: ${getErrorMessage(err)}`);
       }

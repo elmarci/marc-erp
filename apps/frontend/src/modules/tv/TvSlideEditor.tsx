@@ -166,16 +166,48 @@ export function TvSlideEditor({ slide, onChange }: Props) {
 
       {slide.type === 'CUSTOM' && (
         <>
-          <Field label="Título" hint="Ej. «Hoy pollo a S/ 6.50». Si lo dejas vacío y subes una imagen, se muestra solo la imagen a pantalla completa.">
-            <Input value={slide.title} onChange={(e) => onChange({ title: e.target.value })} maxLength={120} />
+          <Field label="Nombre (solo para ti)" hint="Para reconocerla en la lista. No sale en la TV.">
+            <Input value={slide.label} onChange={(e) => onChange({ label: e.target.value })} maxLength={80} placeholder="Ej. Catálogo de frutas" />
           </Field>
-          <Field label="Texto de apoyo (opcional)">
-            <textarea value={slide.subtitle} onChange={(e) => onChange({ subtitle: e.target.value })} maxLength={240} rows={2}
-              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+
+          <Field label="Cómo se ve en la TV">
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                ['IMAGE', 'Solo imagen', 'A pantalla completa'],
+                ['IMAGE_TEXT', 'Imagen y texto', 'Foto + mensaje grande'],
+                ['TEXT', 'Solo texto', 'Mensaje grande'],
+              ] as const).map(([value, title, sub]) => (
+                <button key={value} type="button"
+                  onClick={() => {
+                    // Al pasar a "solo imagen", el título escrito antes no se pierde: queda como nombre.
+                    if (value === 'IMAGE' && slide.title && !slide.label) onChange({ layout: value, label: slide.title });
+                    else onChange({ layout: value });
+                  }}
+                  className={`min-h-0 rounded-lg border px-3 py-2 text-left transition-colors ${slide.layout === value ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'hover:bg-muted'}`}>
+                  <span className="block text-sm font-semibold">{title}</span>
+                  <span className="block text-xs text-muted-foreground">{sub}</span>
+                </button>
+              ))}
+            </div>
           </Field>
-          <Field label="Imagen (opcional)">
-            <ImagePicker value={slide.imageUrl} onChange={(imageUrl) => onChange({ imageUrl })} />
-          </Field>
+
+          {slide.layout !== 'TEXT' && (
+            <Field label="Imagen">
+              <ImagePicker value={slide.imageUrl} onChange={(imageUrl) => onChange({ imageUrl })} />
+            </Field>
+          )}
+
+          {slide.layout !== 'IMAGE' && (
+            <>
+              <Field label="Mensaje principal" hint="Ej. «Hoy pollo a S/ 6.50». Es el texto grande que ve el cliente en la TV.">
+                <Input value={slide.title} onChange={(e) => onChange({ title: e.target.value })} maxLength={120} />
+              </Field>
+              <Field label="Texto de apoyo (opcional)">
+                <textarea value={slide.subtitle} onChange={(e) => onChange({ subtitle: e.target.value })} maxLength={240} rows={2}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+              </Field>
+            </>
+          )}
         </>
       )}
 
