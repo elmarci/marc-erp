@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowDown, ArrowUp, ExternalLink, Megaphone, Pencil, Plus, QrCode, RotateCcw, Save, ShoppingBasket, Tag, Trash2, Tv,
+  ArrowDown, ArrowUp, ExternalLink, ImagePlus, Megaphone, Pencil, Plus, QrCode, RotateCcw, Save, ShoppingBasket, Tag, Trash2, Tv,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,7 @@ function summary(s: TvSlideDraft): string {
       ? `${name} · ${s.productIds.length} productos elegidos`
       : `${name} · automático (más vendidos ${s.autoPage * 8 + 1}–${s.autoPage * 8 + 8})`;
   }
-  if (s.type === 'CUSTOM') return s.title || 'Aviso con imagen';
+  if (s.type === 'CUSTOM') return s.title || (s.imageUrl ? 'Imagen a pantalla completa' : 'Aviso');
   return s.title || 'Pide desde tu celular (QR)';
 }
 
@@ -54,6 +54,59 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
       className={cn('relative h-6 min-h-0 w-11 shrink-0 rounded-full transition-colors', on ? 'bg-emerald-500' : 'bg-muted-foreground/30')}>
       <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all', on ? 'left-[22px]' : 'left-0.5')} />
     </button>
+  );
+}
+
+// Subir una imagen (flyer, afiche, foto de un producto o promo) y que salga tal
+// cual en la TV: cada archivo se vuelve una slide de "solo imagen" a pantalla
+// completa. Acepta varios a la vez y arrastrar y soltar.
+function ImageDropZone({ onUploaded }: { onUploaded: (urls: string[]) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+
+  const upload = async (files: File[]) => {
+    const images = files.filter((f) => /^image\/(png|jpe?g|webp)$/.test(f.type));
+    if (images.length === 0) { toast.error('Sube imágenes PNG, JPG o WEBP.'); return; }
+    setUploading(true);
+    const urls: string[] = [];
+    for (const file of images) {
+      try {
+        const form = new FormData();
+        form.append('image', file);
+        const res = await api.post<{ data: { imageUrl: string } }>('/tv/admin/upload-image', form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        urls.push(res.data.data.imageUrl);
+      } catch (err) {
+        toast.error(`${file.name}: ${getErrorMessage(err)}`);
+      }
+    }
+    setUploading(false);
+    if (urls.length > 0) onUploaded(urls);
+  };
+
+  return (
+    <label
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); void upload(Array.from(e.dataTransfer.files)); }}
+      className={cn(
+        'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors',
+        dragging ? 'border-primary bg-primary/10' : 'border-primary/40 bg-primary/5 hover:bg-primary/10',
+        uploading && 'pointer-events-none opacity-70',
+      )}
+    >
+      <ImagePlus className="h-7 w-7 text-primary" />
+      <span className="text-sm font-semibold text-primary">
+        {uploading ? 'Subiendo imágenes...' : 'Subir imagen para la TV'}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        Haz clic o arrastra uno o varios archivos (JPG, PNG o WEBP). Cada imagen sale a pantalla completa.
+        Lo ideal es horizontal 1920×1080; otras proporciones se ven completas con fondo difuminado.
+      </span>
+      <input type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploading}
+        onChange={(e) => { void upload(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+    </label>
   );
 }
 
@@ -112,6 +165,19 @@ export function TvScreenPage() {
     setSlides((prev) => [...prev, slide]);
     setOpenKey(slide.key);
     setDirty(true);
+  };
+
+  // Cada imagen subida entra como slide de solo imagen, al final de la lista.
+  const addImages = (urls: string[]) => {
+    const created = urls.map((url) => ({ ...blankSlide('CUSTOM'), imageUrl: url }));
+    setSlides((prev) => [...prev, ...created]);
+    setOpenKey(created[created.length - 1].key);
+    setDirty(true);
+    toast.success(
+      created.length === 1
+        ? 'Imagen agregada al final de la lista. Presiona «Guardar cambios» para que salga en la TV.'
+        : `${created.length} imágenes agregadas al final. Presiona «Guardar cambios» para que salgan en la TV.`,
+    );
   };
 
   const applyServer = (serverSlides: TvSlideFromApi[]) => {
@@ -182,6 +248,8 @@ export function TvScreenPage() {
             </p>
           </div>
 
+          <ImageDropZone onUploaded={addImages} />
+
           {isLoading ? (
             <Card><CardContent className="p-8 text-center text-muted-foreground">Cargando...</CardContent></Card>
           ) : (
@@ -200,7 +268,9 @@ export function TvScreenPage() {
 
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">{meta.label}</Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          {s.type === 'CUSTOM' && s.imageUrl && !s.title && !s.subtitle ? 'Imagen' : meta.label}
+                        </Badge>
                         {s.virtual && <Badge variant="outline" className="text-xs">Nueva</Badge>}
                         {note && <span className="text-xs text-amber-600">{note}</span>}
                       </div>
@@ -236,7 +306,7 @@ export function TvScreenPage() {
           )}
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button variant="outline" size="sm" onClick={() => add('CUSTOM')}><Plus className="mr-1.5 h-4 w-4" />Aviso (imagen o texto)</Button>
+            <Button variant="outline" size="sm" onClick={() => add('CUSTOM')}><Plus className="mr-1.5 h-4 w-4" />Aviso con texto</Button>
             <Button variant="outline" size="sm" onClick={() => add('PRODUCTS')}><Plus className="mr-1.5 h-4 w-4" />Selección de productos</Button>
             <Button variant="outline" size="sm" onClick={() => add('APP')}><Plus className="mr-1.5 h-4 w-4" />Llamado a la app</Button>
           </div>
