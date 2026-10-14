@@ -116,6 +116,7 @@ export interface StoreOrder {
 export interface TvSlideData {
   id: string | null
   key?: string
+  showFooter?: boolean
   type: 'OFFER' | 'PRODUCTS' | 'APP' | 'CUSTOM'
   seconds: number
   title: string | null

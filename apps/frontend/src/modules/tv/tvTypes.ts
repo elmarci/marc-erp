@@ -30,6 +30,8 @@ export interface TvSlideDraft {
   // Nombre para identificarla en el ERP; no sale en la TV.
   label: string;
   layout: CustomLayout;
+  // false = sin la franja inferior (dirección y QR): la slide usa toda la pantalla.
+  showFooter: boolean;
   imageUrl: string;
   productIds: string[];
   products: TvProductRef[];
@@ -54,6 +56,7 @@ export interface TvSlideFromApi {
   title: string | null;
   subtitle: string | null;
   label?: string | null;
+  showFooter?: boolean;
   imageUrl: string | null;
   productIds: string[];
   products: TvProductRef[];
@@ -111,6 +114,7 @@ export function fromApi(s: TvSlideFromApi): TvSlideDraft {
     subtitle: s.subtitle ?? '',
     label: s.label ?? '',
     layout,
+    showFooter: s.showFooter !== false,
     imageUrl: s.imageUrl ?? '',
     productIds: s.productIds,
     products: s.products,
@@ -126,7 +130,7 @@ export function fromApi(s: TvSlideFromApi): TvSlideDraft {
 export function blankSlide(type: TvSlideType): TvSlideDraft {
   return {
     key: newKey(), liveKey: null, type, offerId: null, offerName: null, offerActive: null, offerImage: null, autoCount: null,
-    title: type === 'PRODUCTS' ? 'Los más vendidos' : '', subtitle: '', label: '', layout: 'TEXT', imageUrl: '',
+    title: type === 'PRODUCTS' ? 'Los más vendidos' : '', subtitle: '', label: '', layout: 'TEXT', showFooter: true, imageUrl: '',
     productIds: [], products: [], autoPage: 0,
     seconds: type === 'PRODUCTS' ? 13 : type === 'APP' ? 12 : 10,
     isActive: true, startsAt: '', endsAt: '', virtual: false,
@@ -149,6 +153,7 @@ export function toPayload(s: TvSlideDraft) {
     title: title.trim() || null,
     subtitle: subtitle.trim() || null,
     label: s.label.trim() || null,
+    showFooter: s.showFooter,
     imageUrl: imageUrl || null,
     productIds: s.type === 'PRODUCTS' ? s.productIds : [],
     autoPage: s.autoPage,

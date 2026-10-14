@@ -63,14 +63,15 @@ router.get('/live/options', ...cashier, async (_req: Request, res: Response, nex
 
 router.put('/live/only', ...cashier, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { keys, imageUrl, seconds, minutes } = z.object({
+    const { keys, imageUrl, seconds, footer, minutes } = z.object({
       keys: z.array(z.string().max(80)).max(20).optional(),
       imageUrl: z.string().url().optional(),
       seconds: z.number().int().min(4).max(300).optional(),
+      footer: z.boolean().optional(),
       // null = hasta que se vuelva al automático
       minutes: z.number().int().min(1).max(720).nullable(),
     }).refine((v) => (v.keys && v.keys.length > 0) || v.imageUrl, { message: 'Elige qué mostrar.' }).parse(req.body);
-    const state = await tvService.setLiveOnly({ keys, imageUrl, seconds, minutes }, req.user!.sub);
+    const state = await tvService.setLiveOnly({ keys, imageUrl, seconds, footer, minutes }, req.user!.sub);
     res.json({ success: true, data: { version: state.version } });
   } catch (err) { next(err); }
 });
@@ -128,6 +129,7 @@ const slideSchema = z.object({
   title: z.string().max(120).nullable().optional(),
   subtitle: z.string().max(240).nullable().optional(),
   label: z.string().max(80).nullable().optional(),
+  showFooter: z.boolean().optional(),
   imageUrl: z.string().url().nullable().optional().or(z.literal('')),
   productIds: z.array(z.string().uuid()).max(8).default([]),
   autoPage: z.number().int().min(0).max(5).default(0),

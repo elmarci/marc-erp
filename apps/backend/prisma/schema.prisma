@@ -1848,6 +1848,8 @@ model TvSlide {
   subtitle   String?
   // Nombre para identificar la slide en el ERP: nunca sale en la TV (el titulo si).
   label      String?
+  // false = la slide ocupa toda la pantalla, sin la franja inferior (dirección y QR).
+  showFooter Boolean   @default(true) @map("show_footer")
   imageUrl   String?   @map("image_url")
   productIds String[]  @default([]) @map("product_ids")
   autoPage   Int       @default(0) @map("auto_page")

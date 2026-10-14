@@ -13,6 +13,7 @@ export interface TvSlideInput {
   title?: string | null;
   subtitle?: string | null;
   label?: string | null;
+  showFooter?: boolean;
   imageUrl?: string | null;
   productIds: string[];
   autoPage: number;
@@ -68,7 +69,7 @@ interface LiveState {
   version: number;
   mode: 'ONLY' | 'CART';
   keys: string[];
-  image: { url: string; seconds: number } | null;
+  image: { url: string; seconds: number; footer: boolean } | null;
   cart: { items: TvLiveCartItem[]; total: number; customerName: string | null } | null;
   thanksUntil: number | null;
   expiresAt: number | null;
@@ -104,7 +105,7 @@ export class TvService {
     } else {
       base = stored.map((s) => ({
         id: s.id, virtual: false, type: s.type as TvSlideType, offerId: s.offerId, title: s.title,
-        subtitle: s.subtitle, label: s.label, imageUrl: s.imageUrl, productIds: s.productIds, autoPage: s.autoPage,
+        subtitle: s.subtitle, label: s.label, showFooter: s.showFooter, imageUrl: s.imageUrl, productIds: s.productIds, autoPage: s.autoPage,
         seconds: s.seconds, isActive: s.isActive, startsAt: s.startsAt, endsAt: s.endsAt,
       }));
       const referenced = new Set(base.filter((s) => s.type === 'OFFER').map((s) => s.offerId));
@@ -143,6 +144,7 @@ export class TvService {
       const common = {
         id: s.id, key: slideKey(s), type: s.type, seconds: s.seconds,
         title: s.title, subtitle: s.subtitle, imageUrl: s.imageUrl,
+        showFooter: s.showFooter !== false,
       };
 
       if (s.type === 'OFFER') {
@@ -231,6 +233,7 @@ export class TvService {
           title: s.title || null,
           subtitle: s.subtitle || null,
           label: s.label || null,
+          showFooter: s.showFooter !== false,
           imageUrl: s.imageUrl || null,
           productIds: s.type === 'PRODUCTS' ? s.productIds : [],
           autoPage: s.autoPage,
@@ -286,11 +289,11 @@ export class TvService {
 
   // Mostrar solo estas slides (una = fija en pantalla) o una imagen subida al
   // vuelo. `minutes` = cuánto dura; null = hasta que se vuelva al automático.
-  async setLiveOnly(input: { keys?: string[]; imageUrl?: string; seconds?: number; minutes: number | null }, userId: string) {
+  async setLiveOnly(input: { keys?: string[]; imageUrl?: string; seconds?: number; footer?: boolean; minutes: number | null }, userId: string) {
     return this.writeLive({
       mode: 'ONLY',
       keys: input.keys ?? [],
-      image: input.imageUrl ? { url: input.imageUrl, seconds: input.seconds ?? 15 } : null,
+      image: input.imageUrl ? { url: input.imageUrl, seconds: input.seconds ?? 15, footer: input.footer !== false } : null,
       cart: null, thanksUntil: null,
       expiresAt: input.minutes ? Date.now() + input.minutes * 60 * 1000 : null,
       updatedBy: userId,
@@ -362,7 +365,7 @@ export class TvService {
       if (s.image) {
         slides = [...slides, {
           id: null, key: 'live-image', type: 'CUSTOM', seconds: s.image.seconds,
-          title: null, subtitle: null, imageUrl: s.image.url,
+          title: null, subtitle: null, imageUrl: s.image.url, showFooter: s.image.footer !== false,
         }];
       }
       this.liveCache = { version: s.version, slides };

@@ -122,6 +122,7 @@ function LivePanel({ live, options, minutes, setMinutes, onClear, clearing }: {
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [withFooter, setWithFooter] = useState(false);
   const onAir = !!live && live.mode !== 'AUTO';
 
   const sendImage = async (files: File[]) => {
@@ -130,7 +131,7 @@ function LivePanel({ live, options, minutes, setMinutes, onClear, clearing }: {
     setUploading(true);
     try {
       const imageUrl = await uploadImage(file);
-      await api.put('/tv/live/only', { imageUrl, seconds: 30, minutes });
+      await api.put('/tv/live/only', { imageUrl, seconds: 30, minutes, footer: withFooter });
       queryClient.invalidateQueries({ queryKey: ['tv-live-state'] });
       toast.success('Imagen en la TV ahora.');
     } catch (err) {
@@ -196,6 +197,11 @@ function LivePanel({ live, options, minutes, setMinutes, onClear, clearing }: {
           </select>
         </div>
       </div>
+      <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <input type="checkbox" checked={withFooter} onChange={(e) => setWithFooter(e.target.checked)}
+          className="h-3.5 w-3.5 min-h-0 min-w-0 rounded border-input" />
+        Mostrar la barra inferior (dirección y QR) en la imagen que transmito
+      </label>
       <p className="mt-2 text-xs text-muted-foreground">
         También puedes pulsar <Play className="inline h-3 w-3" /> en cualquier slide de la lista para fijarla en la TV, o marcar varias y mostrar solo esas.
         Desde el POS el cajero puede mostrar la venta y promos al cliente.
@@ -455,6 +461,7 @@ export function TvScreenPage() {
                           <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium">{typeLabel(s)}</span>
                           {isLive && <span className="rounded bg-red-500 px-1.5 py-0.5 text-[11px] font-bold text-white">EN VIVO</span>}
                           {s.virtual && <span className="rounded border px-1.5 py-0.5 text-[11px]">Nueva</span>}
+                          {!s.showFooter && <span className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Esta slide ocupa toda la pantalla">Sin barra</span>}
                         </span>
                         <span className="mt-0.5 block truncate text-sm font-medium">{summary(s)}</span>
                         {note && <span className="block truncate text-xs text-amber-600">{note}</span>}

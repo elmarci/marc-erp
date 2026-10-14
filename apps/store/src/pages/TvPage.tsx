@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import QRCode from 'qrcode'
@@ -19,6 +19,9 @@ const STAGE_H = 1080
 // casi toda la pantalla; la franja solo deja la dirección web y el QR.
 const FOOTER_H = 64
 const CONTENT_H = STAGE_H - FOOTER_H
+// Alto disponible para la slide: normalmente descuenta la franja inferior; las
+// slides sin franja usan toda la pantalla (se lo pasa la página por contexto).
+const HeightCtx = createContext(CONTENT_H)
 
 const STORE_URL = 'https://www.tiendasmarc.pe'
 // utm_source para poder medir cuánta gente llega escaneando el QR de la TV.
@@ -103,6 +106,7 @@ const clamp = (lines: number): CSSProperties => ({
 
 /* ── Slide: oferta ─────────────────────────────────────────────────────── */
 function OfferSlide({ offer }: { offer: Offer }) {
+  const H = useContext(HeightCtx)
   // `||` y no `??`: el ERP guarda "" (no null) cuando no se subió banner.
   const image = offer.storeImage || offer.products[0]?.product.imageUrl || null
   const isPriceCut = offer.type === 'PERCENTAGE_DISCOUNT' || offer.type === 'FIXED_DISCOUNT' || offer.type === 'HAPPY_HOUR'
@@ -111,7 +115,7 @@ function OfferSlide({ offer }: { offer: Offer }) {
   // a pantalla entera — no se le pone texto encima.
   if (offer.storeFullDesign && offer.storeImage) {
     return (
-      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff', overflow: 'hidden' })}>
+      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: H, background: '#fff', overflow: 'hidden' })}>
         {/* Copia desenfocada de la misma imagen de fondo: el arte del dueño
             casi nunca es 16:9 y sus bordes son de otro color que el blanco. */}
         <img
@@ -162,13 +166,13 @@ function OfferSlide({ offer }: { offer: Offer }) {
   )
 
   return (
-    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff' })}>
-      <div style={abs({ left: 0, top: 0, width: 880, height: CONTENT_H, background: hasImage ? C.surface : C.magenta })}>
+    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: H, background: '#fff' })}>
+      <div style={abs({ left: 0, top: 0, width: 880, height: H, background: hasImage ? C.surface : C.magenta })}>
         {hasImage ? (
           <img
             src={image ?? ''}
             alt=""
-            style={abs({ left: 60, top: 60, width: 760, height: CONTENT_H - 120, objectFit: 'contain' })}
+            style={abs({ left: 60, top: 60, width: 760, height: H - 120, objectFit: 'contain' })}
           />
         ) : (
           // Sin foto: el precio / descuento pasa a ser lo que llena el panel.
@@ -239,8 +243,9 @@ const GRID_LEFT = 80
 const GRID_TOP = 150
 
 function ProductsSlide({ title, products }: { title: string; products: TvProduct[] }) {
+  const H = useContext(HeightCtx)
   return (
-    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff' })}>
+    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: H, background: '#fff' })}>
       <div style={abs({ left: GRID_LEFT, top: 44, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 70, color: C.ink })}>
         <span style={{
           display: 'inline-block', width: 22, height: 22, borderRadius: 999, background: C.green,
@@ -299,9 +304,10 @@ function ProductsSlide({ title, products }: { title: string; products: TvProduct
 
 /* ── Slide: llamado a descargar la app ─────────────────────────────────── */
 function AppSlide({ title, subtitle }: { title?: string | null; subtitle?: string | null }) {
+  const H = useContext(HeightCtx)
   const qr = useQrDataUrl(QR_URL, 560)
   return (
-    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: C.green })}>
+    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: H, background: C.green })}>
       <div style={abs({ left: 110, top: 150, width: 1000, color: '#fff' })}>
         <div style={{ fontFamily: FONT_SANS, fontWeight: 800, fontSize: 34, letterSpacing: 5, opacity: 0.85 }}>
           TIENDA MARC
@@ -340,12 +346,13 @@ function AppSlide({ title, subtitle }: { title?: string | null; subtitle?: strin
 
 /* ── Slide: aviso propio (lo arma el dueño desde el ERP) ───────────────── */
 function CustomSlide({ title, subtitle, imageUrl }: { title: string | null; subtitle: string | null; imageUrl: string | null }) {
+  const H = useContext(HeightCtx)
   const hasText = !!(title || subtitle)
 
   // Solo imagen: se muestra tal cual, igual que el arte completo de una oferta.
   if (imageUrl && !hasText) {
     return (
-      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff', overflow: 'hidden' })}>
+      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: H, background: '#fff', overflow: 'hidden' })}>
         <img
           src={imageUrl}
           alt=""
@@ -365,11 +372,11 @@ function CustomSlide({ title, subtitle, imageUrl }: { title: string | null; subt
   // Imagen + texto: foto a la izquierda, mensaje grande a la derecha.
   if (imageUrl) {
     return (
-      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff' })}>
-        <div style={abs({ left: 0, top: 0, width: 880, height: CONTENT_H, background: C.surface })}>
-          <img src={imageUrl} alt="" style={abs({ left: 60, top: 60, width: 760, height: CONTENT_H - 120, objectFit: 'contain' })} />
+      <div style={abs({ left: 0, top: 0, width: STAGE_W, height: H, background: '#fff' })}>
+        <div style={abs({ left: 0, top: 0, width: 880, height: H, background: C.surface })}>
+          <img src={imageUrl} alt="" style={abs({ left: 60, top: 60, width: 760, height: H - 120, objectFit: 'contain' })} />
         </div>
-        <div style={abs({ left: 960, top: 0, width: 880, height: CONTENT_H, display: 'table' })}>
+        <div style={abs({ left: 960, top: 0, width: 880, height: H, display: 'table' })}>
           <div style={{ display: 'table-cell', verticalAlign: 'middle' }}>
             {title && (
               <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: textSize - 24, lineHeight: 1.05, color: C.ink }}>
@@ -390,7 +397,7 @@ function CustomSlide({ title, subtitle, imageUrl }: { title: string | null; subt
   // Solo texto: mensaje grande centrado sobre achiote (el azul se confundía
   // con la franja inferior, que ya es azul).
   return (
-    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: C.achiote, display: 'table' })}>
+    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: H, background: C.achiote, display: 'table' })}>
       <div style={{ display: 'table-cell', verticalAlign: 'middle', textAlign: 'center', padding: '0 140px' }}>
         {title && (
           <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: textSize, lineHeight: 1.05, color: '#fff' }}>
@@ -408,10 +415,13 @@ function CustomSlide({ title, subtitle, imageUrl }: { title: string | null; subt
 }
 
 /* ── Franja fija inferior (delgada) ────────────────────────────────────── */
-function Footer({ progressKey, durationSec, rotating }: { progressKey: number; durationSec: number; rotating: boolean }) {
+function Footer({ progressKey, durationSec, rotating, visible }: { progressKey: number; durationSec: number; rotating: boolean; visible: boolean }) {
   const qr = useQrDataUrl(QR_URL, 200)
   return (
-    <div style={abs({ left: 0, top: CONTENT_H, width: STAGE_W, height: FOOTER_H, background: C.blue })}>
+    <div style={abs({
+      left: 0, top: CONTENT_H, width: STAGE_W, height: FOOTER_H, background: C.blue,
+      opacity: visible ? 1 : 0, transition: 'opacity 0.8s ease',
+    })}>
       {rotating && (
         <div
           key={progressKey}
@@ -546,10 +556,67 @@ function ThanksView() {
   )
 }
 
+/* ── Pantalla completa (equivale a F11) ────────────────────────────────── */
+// Los navegadores no dejan entrar a pantalla completa solos al abrir una página:
+// exigen un gesto del usuario. Por eso la primera tecla o toque (en la TV, cualquier
+// botón del control remoto) la activa, y mientras no esté activa se muestra un aviso.
+type FsDoc = Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void }
+type FsEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void }
+
+const isFullscreen = () => !!(document.fullscreenElement || (document as FsDoc).webkitFullscreenElement)
+
+function enterFullscreen() {
+  if (isFullscreen()) return
+  const el = document.documentElement as FsEl
+  try {
+    const p = el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen?.()
+    if (p && typeof (p as Promise<void>).catch === 'function') (p as Promise<void>).catch(() => { /* el navegador no lo permitió */ })
+  } catch { /* sin soporte: no pasa nada, la página igual se ve */ }
+}
+
+function FullscreenHint() {
+  const [full, setFull] = useState(isFullscreen())
+  const [hidden, setHidden] = useState(false)
+  // Dentro de la vista previa del ERP (iframe) no aplica.
+  const embedded = window.self !== window.top
+
+  useEffect(() => {
+    if (embedded) return
+    const sync = () => setFull(isFullscreen())
+    const onGesture = () => { enterFullscreen(); window.setTimeout(sync, 300) }
+    document.addEventListener('fullscreenchange', sync)
+    document.addEventListener('webkitfullscreenchange', sync)
+    window.addEventListener('keydown', onGesture)
+    window.addEventListener('click', onGesture)
+    window.addEventListener('touchstart', onGesture)
+    const hide = window.setTimeout(() => setHidden(true), 25000)
+    return () => {
+      document.removeEventListener('fullscreenchange', sync)
+      document.removeEventListener('webkitfullscreenchange', sync)
+      window.removeEventListener('keydown', onGesture)
+      window.removeEventListener('click', onGesture)
+      window.removeEventListener('touchstart', onGesture)
+      window.clearTimeout(hide)
+    }
+  }, [embedded])
+
+  if (embedded || full || hidden) return null
+  return (
+    <div style={abs({
+      left: 560, top: 900, width: 800, height: 56, background: 'rgba(0,0,0,0.78)', color: '#fff', borderRadius: 999,
+      fontFamily: FONT_SANS, fontWeight: 600, fontSize: 26, lineHeight: '56px', textAlign: 'center',
+    })}>
+      Pulsa cualquier tecla o toca la pantalla para verla completa
+    </div>
+  )
+}
+
 /* ── Página ────────────────────────────────────────────────────────────── */
 interface Slide {
   key: string
   seconds: number
+  // false = sin franja inferior: la slide usa toda la pantalla.
+  footer: boolean
   node: ReactNode
 }
 
@@ -557,14 +624,15 @@ function toSlideNodes(list: TvSlideData[], prefix: string): Slide[] {
   const out: Slide[] = []
   list.forEach((s, i) => {
     const key = `${prefix}-${s.key ?? s.id ?? s.type}-${i}`
+    const footer = s.showFooter !== false
     if (s.type === 'OFFER' && s.offer) {
-      out.push({ key, seconds: s.seconds, node: <OfferSlide offer={s.offer} /> })
+      out.push({ key, seconds: s.seconds, footer, node: <OfferSlide offer={s.offer} /> })
     } else if (s.type === 'PRODUCTS' && s.products && s.products.length > 0) {
-      out.push({ key, seconds: s.seconds, node: <ProductsSlide title={s.title || 'Los más vendidos'} products={s.products} /> })
+      out.push({ key, seconds: s.seconds, footer, node: <ProductsSlide title={s.title || 'Los más vendidos'} products={s.products} /> })
     } else if (s.type === 'CUSTOM') {
-      out.push({ key, seconds: s.seconds, node: <CustomSlide title={s.title} subtitle={s.subtitle} imageUrl={s.imageUrl} /> })
+      out.push({ key, seconds: s.seconds, footer, node: <CustomSlide title={s.title} subtitle={s.subtitle} imageUrl={s.imageUrl} /> })
     } else if (s.type === 'APP') {
-      out.push({ key, seconds: s.seconds, node: <AppSlide title={s.title} subtitle={s.subtitle} /> })
+      out.push({ key, seconds: s.seconds, footer, node: <AppSlide title={s.title} subtitle={s.subtitle} /> })
     }
   })
   return out
@@ -621,14 +689,19 @@ export function TvPage() {
   })
   const live = liveData?.mode && liveData.mode !== 'AUTO' ? liveData : null
 
+  const autoSig = JSON.stringify(configData?.data.data.slides ?? [])
   const autoSlides = useMemo<Slide[]>(
     () => toSlideNodes(configData?.data.data.slides ?? [], 'auto'),
-    [configData],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [autoSig],
   )
+  const liveSig = JSON.stringify(live?.slides ?? [])
   const liveSlides = useMemo<Slide[]>(
     () => toSlideNodes(live?.slides ?? [], 'live'),
-    [live],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [liveSig],
   )
+  const liveMode = live?.mode ?? 'AUTO'
 
   // "Gracias por tu compra" dura unos segundos y se apaga solo.
   const thanksLeft = live?.thanksUntil ? live.thanksUntil - (Date.now() + clockOffset) : 0
@@ -644,12 +717,12 @@ export function TvPage() {
   // Lo que rota: en vivo (ONLY), o las promos elegidas cuando no hay venta, o lo normal.
   const rotation = useMemo<Slide[]>(() => {
     let list = autoSlides
-    if (live?.mode === 'ONLY' && liveSlides.length > 0) list = liveSlides
-    else if (live?.mode === 'CART' && liveSlides.length > 0) list = liveSlides
+    if (liveMode === 'ONLY' && liveSlides.length > 0) list = liveSlides
+    else if (liveMode === 'CART' && liveSlides.length > 0) list = liveSlides
     // Mientras carga (o si no hay nada configurado) la TV nunca queda en
     // blanco: se muestra el llamado a la app.
-    return list.length > 0 ? list : [{ key: 'app-fallback', seconds: 12, node: <AppSlide /> }]
-  }, [autoSlides, liveSlides, live])
+    return list.length > 0 ? list : [{ key: 'app-fallback', seconds: 12, footer: true, node: <AppSlide /> }]
+  }, [autoSlides, liveSlides, liveMode])
 
   // Al cambiar lo que se transmite se empieza desde la primera.
   const signature = `${live?.mode ?? 'AUTO'}-${liveData?.version ?? 0}`
@@ -657,6 +730,8 @@ export function TvPage() {
 
   const current = idx % rotation.length
   const rotating = !cartActive && !thanksActive && rotation.length > 1
+  // La venta en curso y el "gracias" siempre llevan la franja; las slides según su ajuste.
+  const footerVisible = cartActive || thanksActive || rotation[current].footer
 
   useEffect(() => {
     if (!rotating) return
@@ -676,24 +751,28 @@ export function TvPage() {
         top: (window.innerHeight - STAGE_H * scale) / 2,
         transform: `scale(${scale})`, transformOrigin: '0 0',
       }}>
-        {rotation.map((s, i) => (
-          <div
-            key={s.key}
-            style={{
-              position: 'absolute', left: 0, top: 0, width: STAGE_W, height: CONTENT_H,
-              opacity: i === current && !cartActive && !thanksActive ? 1 : 0, transition: 'opacity 0.8s ease',
-            }}
-          >
-            {s.node}
-          </div>
-        ))}
+        {rotation.map((s, i) => {
+          const h = s.footer ? CONTENT_H : STAGE_H
+          return (
+            <div
+              key={s.key}
+              style={{
+                position: 'absolute', left: 0, top: 0, width: STAGE_W, height: h,
+                opacity: i === current && !cartActive && !thanksActive ? 1 : 0, transition: 'opacity 0.8s ease',
+              }}
+            >
+              <HeightCtx.Provider value={h}>{s.node}</HeightCtx.Provider>
+            </div>
+          )
+        })}
 
         {cartActive && live?.cart && (
           <CartView cart={live.cart} promoNodes={liveSlides.map((s) => s.node)} />
         )}
         {thanksActive && <ThanksView />}
 
-        <Footer progressKey={idx} durationSec={rotation[current].seconds} rotating={rotating} />
+        <Footer progressKey={idx} durationSec={rotation[current].seconds} rotating={rotating && footerVisible} visible={footerVisible} />
+        <FullscreenHint />
       </div>
     </div>
   )

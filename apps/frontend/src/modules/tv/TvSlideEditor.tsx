@@ -241,6 +241,17 @@ export function TvSlideEditor({ slide, onChange }: Props) {
         </>
       )}
 
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background px-3 py-2.5">
+        <input type="checkbox" checked={slide.showFooter} onChange={(e) => onChange({ showFooter: e.target.checked })}
+          className="mt-0.5 h-4 w-4 min-h-0 min-w-0 rounded border-input" />
+        <span>
+          <span className="block text-sm font-medium">Mostrar la barra inferior (dirección y QR)</span>
+          <span className="block text-xs text-muted-foreground">
+            Desmárcala para que esta slide ocupe toda la pantalla, sin la franja azul.
+          </span>
+        </span>
+      </label>
+
       {showSchedule && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Mostrar desde (opcional)">
