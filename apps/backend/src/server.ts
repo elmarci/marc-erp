@@ -87,6 +87,9 @@ const globalLimiter = rateLimit({
   max: env.RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+  // La TV de la tienda consulta /tv/live cada pocos segundos desde la misma IP
+  // que el POS y el ERP: no puede gastar el cupo del limitador (que es por IP).
+  skip: (req) => /\/tv\/(live|config)\/?(\?|$)/.test(req.originalUrl),
   message: {
     success: false,
     error: { code: 'RATE_LIMIT', message: 'Demasiadas solicitudes. Intente más tarde.' },

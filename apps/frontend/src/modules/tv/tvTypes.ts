@@ -11,6 +11,9 @@ export interface TvProductRef {
 // inputs datetime-local). `key` solo existe en el cliente, para las listas.
 export interface TvSlideDraft {
   key: string;
+  // Identificador que entiende la TV para "mostrar esta ahora"; null en las
+  // slides nuevas que todavía no se guardaron.
+  liveKey: string | null;
   type: TvSlideType;
   offerId: string | null;
   offerName: string | null;
@@ -32,6 +35,7 @@ export interface TvSlideDraft {
 
 export interface TvSlideFromApi {
   id: string | null;
+  key: string;
   virtual: boolean;
   type: TvSlideType;
   offerId: string | null;
@@ -51,6 +55,24 @@ export interface TvSlideFromApi {
   endsAt: string | null;
 }
 
+// Estado de la transmisión en vivo (lo que la TV muestra "ahora mismo").
+export interface TvLiveState {
+  mode: 'AUTO' | 'ONLY' | 'CART';
+  keys: string[];
+  hasImage: boolean;
+  expiresAt: number | null;
+  cartItems: number;
+  version: number;
+}
+
+export interface TvLiveOption {
+  key: string;
+  type: TvSlideType;
+  label: string;
+  thumb: string | null;
+  isActive: boolean;
+}
+
 // <input type="datetime-local"> espera "YYYY-MM-DDTHH:mm" en hora local.
 export function toLocalInput(iso: string | null): string {
   if (!iso) return '';
@@ -62,9 +84,12 @@ export function toLocalInput(iso: string | null): string {
 let counter = 0;
 export const newKey = () => `s${Date.now()}-${counter++}`;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function fromApi(s: TvSlideFromApi): TvSlideDraft {
   return {
     key: s.id ?? newKey(),
+    liveKey: s.key ?? null,
     type: s.type,
     offerId: s.offerId,
     offerName: s.offerName,
@@ -87,7 +112,7 @@ export function fromApi(s: TvSlideFromApi): TvSlideDraft {
 
 export function blankSlide(type: TvSlideType): TvSlideDraft {
   return {
-    key: newKey(), type, offerId: null, offerName: null, offerActive: null, offerImage: null, autoCount: null,
+    key: newKey(), liveKey: null, type, offerId: null, offerName: null, offerActive: null, offerImage: null, autoCount: null,
     title: type === 'PRODUCTS' ? 'Los más vendidos' : '', subtitle: '', imageUrl: '',
     productIds: [], products: [], autoPage: 0,
     seconds: type === 'PRODUCTS' ? 13 : type === 'APP' ? 12 : 10,
@@ -97,6 +122,9 @@ export function blankSlide(type: TvSlideType): TvSlideDraft {
 
 export function toPayload(s: TvSlideDraft) {
   return {
+    // Se conserva el id de las slides ya guardadas para que lo "en vivo" que
+    // apunta a ellas siga valiendo después de guardar el orden.
+    id: !s.virtual && UUID.test(s.key) ? s.key : null,
     type: s.type,
     offerId: s.type === 'OFFER' ? s.offerId : null,
     title: s.title.trim() || null,
@@ -109,4 +137,17 @@ export function toPayload(s: TvSlideDraft) {
     startsAt: s.startsAt ? new Date(s.startsAt).toISOString() : null,
     endsAt: s.endsAt ? new Date(s.endsAt).toISOString() : null,
   };
+}
+
+export function liveSummary(live: TvLiveState | undefined, options: TvLiveOption[]): string {
+  if (!live || live.mode === 'AUTO') return 'Automático — rotando todas tus slides';
+  if (live.mode === 'CART') {
+    return live.cartItems > 0
+      ? `Venta en curso del POS (${live.cartItems} producto${live.cartItems === 1 ? '' : 's'})`
+      : 'Pantalla del cliente activada (sin venta en este momento)';
+  }
+  const names = live.keys.map((k) => options.find((o) => o.key === k)?.label).filter(Boolean) as string[];
+  if (live.hasImage && names.length === 0) return 'Mostrando una imagen que subiste';
+  if (names.length === 1) return `Fija en pantalla: ${names[0]}`;
+  return `Mostrando solo ${names.length + (live.hasImage ? 1 : 0)} slides: ${names.join(', ')}`;
 }

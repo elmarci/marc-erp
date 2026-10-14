@@ -115,6 +115,7 @@ export interface StoreOrder {
 
 export interface TvSlideData {
   id: string | null
+  key?: string
   type: 'OFFER' | 'PRODUCTS' | 'APP' | 'CUSTOM'
   seconds: number
   title: string | null
@@ -124,10 +125,25 @@ export interface TvSlideData {
   products?: Array<{ id: string; name: string; salePrice: number; imageUrl: string | null }>
 }
 
+// Transmisión en vivo: lo que el ERP o el POS mandan a la TV "ahora mismo", por
+// encima de la rotación normal (slides elegidas, imagen al vuelo o venta en curso).
+export interface TvLiveCartItem { name: string; quantity: number; unit: string | null; unitPrice: number; subtotal: number }
+export interface TvLiveData {
+  mode: 'AUTO' | 'ONLY' | 'CART'
+  version: number
+  now: number
+  slides: TvSlideData[]
+  cart: { items: TvLiveCartItem[]; total: number; customerName: string | null } | null
+  thanksUntil: number | null
+}
+
 // API calls
 export const storeApi = {
   getTvConfig: () =>
     api.get<{ data: { slides: TvSlideData[]; generatedAt: string } }>('/tv/config'),
+
+  getTvLive: () =>
+    api.get<{ data: TvLiveData }>('/tv/live'),
 
   getProducts: (params?: Record<string, string | number>) =>
     api.get<{ data: Product[]; pagination: { total: number; totalPages: number; page: number } }>('/store/products', { params }),

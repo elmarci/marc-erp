@@ -10,6 +10,7 @@ import { PosCart } from './PosCart';
 import { PosProductPanel } from './PosProductPanel';
 import { PosHeader } from './PosHeader';
 import { addPackToCart, hasPack, unitStockLeft, type PackInfo } from './packSale';
+import { useTvCartSync, sendTvThanks } from './tvCartSync';
 import { PosPaymentModal } from './PosPaymentModal';
 import { OpenSessionModal } from './OpenSessionModal';
 import { ReceiptModal, type ReceiptData } from './ReceiptModal';
@@ -30,6 +31,8 @@ interface CashSession {
 export function PosPage() {
   const navigate = useNavigate();
   const { cashSessionId, setCashSession, clearCashSession } = usePosStore();
+  // Pantalla del cliente: si está activada, la TV muestra la venta en curso.
+  useTvCartSync();
   const { user } = useAuthStore();
   const [showPayment, setShowPayment] = useState(false);
   const [showOpenSession, setShowOpenSession] = useState(false);
@@ -353,6 +356,7 @@ export function PosPage() {
         pointsRedeemed: Number(sale.pointsRedeemed ?? 0),
       });
       toast.success(`Venta ${sale.saleNumber} registrada exitosamente!`, { duration: 3000 });
+      sendTvThanks();
       usePosStore.getState().clearCart();
       setShowPayment(false);
     } catch (err) {

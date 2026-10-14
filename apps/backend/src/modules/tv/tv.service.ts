@@ -1,9 +1,13 @@
 import { prisma } from '../../database/client';
+import { redis } from '../../config/redis';
 import { storeService } from '../store/store.service';
 
 export type TvSlideType = 'OFFER' | 'PRODUCTS' | 'APP' | 'CUSTOM';
 
 export interface TvSlideInput {
+  // Id de una slide ya guardada: se conserva al guardar la lista para que lo
+  // que se mandó "en vivo" a la TV (que apunta a ese id) no se rompa.
+  id?: string | null;
   type: TvSlideType;
   offerId?: string | null;
   title?: string | null;
@@ -29,6 +33,15 @@ type ActiveOffer = Awaited<ReturnType<typeof storeService.getActiveOffers>>[numb
 const GRID_SIZE = 8;
 const MIN_AUTO_PRODUCTS = 4;
 
+// Identificador estable de una slide, el mismo para la TV y para el ERP: es lo
+// que se usa para decir "muestra esta ahora" (transmisión en vivo).
+export function slideKey(s: { id: string | null; type: string; offerId?: string | null; autoPage: number }): string {
+  if (s.id) return s.id;
+  if (s.type === 'OFFER') return `offer:${s.offerId}`;
+  if (s.type === 'PRODUCTS') return `products:${s.autoPage}`;
+  return s.type.toLowerCase();
+}
+
 function virtualOffer(o: ActiveOffer): EffectiveSlide {
   return {
     id: null, virtual: true, type: 'OFFER', offerId: o.id, title: null, subtitle: null, imageUrl: null,
@@ -42,6 +55,28 @@ function virtualProducts(autoPage: number, title: string): EffectiveSlide {
     productIds: [], autoPage, seconds: 13, isActive: true, startsAt: null, endsAt: null,
   };
 }
+
+/* ── Transmisión en vivo ──────────────────────────────────────────────────── */
+// Estado "ahora mismo" de la TV, por encima de la rotación normal. Vive en
+// Redis (no en la base): es efímero, la TV lo consulta cada pocos segundos.
+//   ONLY → rota solo las slides elegidas (una sola = fija) o una imagen subida al vuelo
+//   CART → la venta en curso del POS (carrito en vivo) + promos al lado
+export interface TvLiveCartItem { name: string; quantity: number; unit: string | null; unitPrice: number; subtotal: number }
+
+interface LiveState {
+  version: number;
+  mode: 'ONLY' | 'CART';
+  keys: string[];
+  image: { url: string; seconds: number } | null;
+  cart: { items: TvLiveCartItem[]; total: number; customerName: string | null } | null;
+  thanksUntil: number | null;
+  expiresAt: number | null;
+  updatedBy: string | null;
+}
+
+const LIVE_KEY = 'tv:live';
+const THANKS_MS = 9000;
+const CART_TTL_MS = 4 * 60 * 60 * 1000;
 
 export class TvService {
   // Lista efectiva: lo guardado por el admin; si nunca guardó nada, el armado
@@ -87,9 +122,10 @@ export class TvService {
     return ids.map((id) => byId.get(id)).filter((p): p is NonNullable<typeof p> => !!p);
   }
 
-  /* ── Pública: lo que lee la TV ────────────────────────────────────────── */
-  async getPublicConfig() {
-    const { base, offers } = await this.loadEffective();
+  // Convierte las slides efectivas en lo que lee la TV. `ignoreFilters` (para
+  // lo que el admin manda "en vivo") muestra la slide aunque esté apagada o
+  // fuera de horario: si la eligió a mano para mostrarla ahora, se muestra.
+  private async buildPublicSlides(base: EffectiveSlide[], offers: ActiveOffer[], opts: { ignoreFilters?: boolean } = {}) {
     const now = new Date();
     const offerById = new Map(offers.map((o) => [o.id, o]));
 
@@ -97,11 +133,16 @@ export class TvService {
     const slides = [];
 
     for (const s of base) {
-      if (!s.isActive) continue;
-      if (s.startsAt && s.startsAt > now) continue;
-      if (s.endsAt && s.endsAt < now) continue;
+      if (!opts.ignoreFilters) {
+        if (!s.isActive) continue;
+        if (s.startsAt && s.startsAt > now) continue;
+        if (s.endsAt && s.endsAt < now) continue;
+      }
 
-      const common = { id: s.id, type: s.type, seconds: s.seconds, title: s.title, subtitle: s.subtitle, imageUrl: s.imageUrl };
+      const common = {
+        id: s.id, key: slideKey(s), type: s.type, seconds: s.seconds,
+        title: s.title, subtitle: s.subtitle, imageUrl: s.imageUrl,
+      };
 
       if (s.type === 'OFFER') {
         const offer = s.offerId ? offerById.get(s.offerId) : undefined;
@@ -117,7 +158,7 @@ export class TvService {
           products = featured
             .filter((p) => !!p.imageUrl)
             .slice(s.autoPage * GRID_SIZE, (s.autoPage + 1) * GRID_SIZE);
-          if (products.length < MIN_AUTO_PRODUCTS) continue;
+          if (!opts.ignoreFilters && products.length < MIN_AUTO_PRODUCTS) continue;
         }
         if (products.length === 0) continue;
         slides.push({ ...common, products });
@@ -125,7 +166,14 @@ export class TvService {
         slides.push(common);
       }
     }
-    return { slides, generatedAt: now.toISOString() };
+    return slides;
+  }
+
+  /* ── Pública: lo que lee la TV ────────────────────────────────────────── */
+  async getPublicConfig() {
+    const { base, offers } = await this.loadEffective();
+    const slides = await this.buildPublicSlides(base, offers);
+    return { slides, generatedAt: new Date().toISOString() };
   }
 
   /* ── Admin: lista editable ────────────────────────────────────────────── */
@@ -151,6 +199,7 @@ export class TvService {
 
     const slides = await Promise.all(base.map(async (s) => ({
       ...s,
+      key: slideKey(s),
       autoCount: s.type === 'PRODUCTS' && s.productIds.length === 0
         ? withPhoto.slice(s.autoPage * GRID_SIZE, (s.autoPage + 1) * GRID_SIZE).length
         : null,
@@ -163,10 +212,19 @@ export class TvService {
   }
 
   async saveSlides(slides: TvSlideInput[]) {
+    // Ids que llegan del cliente: solo se respetan si no se repiten (una
+    // slide duplicada en el borrador recibiría un id nuevo).
+    const seen = new Set<string>();
+    const idFor = (s: TvSlideInput) => {
+      if (!s.id || seen.has(s.id)) return undefined;
+      seen.add(s.id);
+      return s.id;
+    };
     await prisma.$transaction([
       prisma.tvSlide.deleteMany({}),
       prisma.tvSlide.createMany({
         data: slides.map((s, i) => ({
+          id: idFor(s),
           type: s.type,
           offerId: s.type === 'OFFER' ? s.offerId ?? null : null,
           title: s.title || null,
@@ -182,12 +240,151 @@ export class TvService {
         })),
       }),
     ]);
+    await this.dropStaleLive();
     return this.getAdminSlides();
   }
 
   async resetToAutomatic() {
     await prisma.tvSlide.deleteMany({});
+    await this.dropStaleLive();
     return this.getAdminSlides();
+  }
+
+  // Al guardar o restaurar la lista, las slides "fijas en vivo" pueden haber
+  // cambiado de identificador (una oferta automática pasa a guardada): se
+  // suelta esa transmisión para no dejar la TV apuntando a algo que ya no existe.
+  // La venta en curso del POS (modo CART) no se toca.
+  private async dropStaleLive() {
+    const s = await this.readLive();
+    if (s && s.mode === 'ONLY' && s.keys.length > 0) await this.clearLive();
+  }
+
+  /* ── Transmisión en vivo ──────────────────────────────────────────────── */
+  private async readLive(): Promise<LiveState | null> {
+    try {
+      const raw = await redis.get(LIVE_KEY);
+      if (!raw) return null;
+      const state = JSON.parse(raw) as LiveState;
+      if (state.expiresAt && Date.now() > state.expiresAt) {
+        await redis.del(LIVE_KEY).catch(() => {});
+        return null;
+      }
+      return state;
+    } catch {
+      return null; // sin Redis la TV simplemente sigue en automático
+    }
+  }
+
+  private async writeLive(state: Omit<LiveState, 'version'>) {
+    const full: LiveState = { ...state, version: Date.now() };
+    const ttl = state.expiresAt ? Math.max(5, Math.ceil((state.expiresAt - Date.now()) / 1000)) : 12 * 60 * 60;
+    await redis.set(LIVE_KEY, JSON.stringify(full), 'EX', ttl);
+    return full;
+  }
+
+  // Mostrar solo estas slides (una = fija en pantalla) o una imagen subida al
+  // vuelo. `minutes` = cuánto dura; null = hasta que se vuelva al automático.
+  async setLiveOnly(input: { keys?: string[]; imageUrl?: string; seconds?: number; minutes: number | null }, userId: string) {
+    return this.writeLive({
+      mode: 'ONLY',
+      keys: input.keys ?? [],
+      image: input.imageUrl ? { url: input.imageUrl, seconds: input.seconds ?? 15 } : null,
+      cart: null, thanksUntil: null,
+      expiresAt: input.minutes ? Date.now() + input.minutes * 60 * 1000 : null,
+      updatedBy: userId,
+    });
+  }
+
+  // Venta en curso del POS: el carrito en vivo (con promos elegidas al lado).
+  async setLiveCart(
+    input: { items: TvLiveCartItem[]; total: number; customerName?: string | null; promoKeys?: string[] },
+    userId: string,
+  ) {
+    return this.writeLive({
+      mode: 'CART',
+      keys: input.promoKeys ?? [],
+      image: null,
+      cart: input.items.length > 0
+        ? { items: input.items, total: input.total, customerName: input.customerName ?? null }
+        : null,
+      thanksUntil: null,
+      expiresAt: Date.now() + CART_TTL_MS,
+      updatedBy: userId,
+    });
+  }
+
+  // Venta cobrada: agradecimiento unos segundos y de vuelta a la rotación.
+  async setLiveThanks(promoKeys: string[], userId: string) {
+    return this.writeLive({
+      mode: 'CART', keys: promoKeys, image: null, cart: null,
+      thanksUntil: Date.now() + THANKS_MS,
+      expiresAt: Date.now() + CART_TTL_MS,
+      updatedBy: userId,
+    });
+  }
+
+  async clearLive() {
+    await redis.del(LIVE_KEY).catch(() => {});
+  }
+
+  async getLiveAdmin() {
+    const s = await this.readLive();
+    if (!s) return { mode: 'AUTO' as const, keys: [] as string[], hasImage: false, expiresAt: null as number | null, cartItems: 0, version: 0 };
+    return {
+      mode: s.mode, keys: s.keys, hasImage: !!s.image, expiresAt: s.expiresAt,
+      cartItems: s.cart?.items.length ?? 0, version: s.version,
+    };
+  }
+
+  // Lo que la TV consulta cada pocos segundos. Solo trabaja de más (leer la
+  // base) cuando hay una transmisión activa con slides por resolver, y aun así
+  // se cachea por versión para no repetirlo en cada consulta.
+  private liveCache: { version: number; slides: unknown[] } | null = null;
+
+  async getLivePublic() {
+    const now = Date.now();
+    const s = await this.readLive();
+    if (!s) return { mode: 'AUTO' as const, version: 0, now, slides: [] as unknown[], cart: null, thanksUntil: null };
+
+    let slides: unknown[];
+    if (this.liveCache && this.liveCache.version === s.version) {
+      slides = this.liveCache.slides;
+    } else {
+      slides = [];
+      if (s.keys.length > 0) {
+        const { base, offers } = await this.loadEffective();
+        const byKey = new Map(base.map((b) => [slideKey(b), b]));
+        const chosen = s.keys.map((k) => byKey.get(k)).filter((b): b is EffectiveSlide => !!b);
+        slides = await this.buildPublicSlides(chosen, offers, { ignoreFilters: true });
+      }
+      if (s.image) {
+        slides = [...slides, {
+          id: null, key: 'live-image', type: 'CUSTOM', seconds: s.image.seconds,
+          title: null, subtitle: null, imageUrl: s.image.url,
+        }];
+      }
+      this.liveCache = { version: s.version, slides };
+    }
+
+    return {
+      mode: s.mode, version: s.version, now, slides,
+      cart: s.cart, thanksUntil: s.thanksUntil,
+    };
+  }
+
+  // Opciones para elegir qué mostrar (ERP y POS): todas las slides, activas o no.
+  async getLiveOptions() {
+    const { slides } = await this.getAdminSlides();
+    return slides.map((s) => ({
+      key: s.key,
+      type: s.type,
+      label: s.type === 'OFFER' ? (s.offerName ?? 'Promoción')
+        : s.type === 'PRODUCTS' ? (s.title || 'Productos')
+        : s.type === 'APP' ? (s.title || 'Pide desde tu celular (QR)')
+        : (s.title || (s.imageUrl ? 'Imagen' : 'Aviso')),
+      thumb: s.type === 'OFFER' ? s.offerImage : s.type === 'CUSTOM' ? s.imageUrl : s.type === 'PRODUCTS' ? (s.products[0]?.imageUrl ?? null) : null,
+      isActive: s.isActive,
+    }));
   }
 }
 

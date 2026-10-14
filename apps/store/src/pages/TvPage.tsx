@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import QRCode from 'qrcode'
-import { storeApi, type Offer, type TvSlideData } from '../api'
+import { storeApi, type Offer, type TvSlideData, type TvLiveCartItem } from '../api'
 
 type TvProduct = NonNullable<TvSlideData['products']>[number]
 
@@ -15,7 +15,9 @@ type TvProduct = NonNullable<TvSlideData['products']>[number]
 
 const STAGE_W = 1920
 const STAGE_H = 1080
-const FOOTER_H = 150
+// Franja inferior delgada: el arte de las slides (y los flyers del dueño) usa
+// casi toda la pantalla; la franja solo deja la dirección web y el QR.
+const FOOTER_H = 64
 const CONTENT_H = STAGE_H - FOOTER_H
 
 const STORE_URL = 'https://www.tiendasmarc.pe'
@@ -38,6 +40,9 @@ const FONT_DISPLAY = '"Outfit", system-ui, sans-serif'
 const FONT_SANS = '"Public Sans", system-ui, sans-serif'
 
 const REFETCH_MS = 5 * 60 * 1000
+// Qué tan seguido pregunta la TV si hay algo en vivo (slide fija, imagen al
+// vuelo o venta en curso). 3 s se siente "en vivo" sin saturar nada.
+const LIVE_POLL_MS = 3000
 // Recarga completa cada tanto: libera memoria en el navegador de la TV (que
 // no se reinicia nunca) y de paso recoge cualquier versión nueva desplegada.
 const FULL_RELOAD_MS = 6 * 60 * 60 * 1000
@@ -402,36 +407,140 @@ function CustomSlide({ title, subtitle, imageUrl }: { title: string | null; subt
   )
 }
 
-/* ── Franja fija inferior ──────────────────────────────────────────────── */
-function Footer({ progressKey, durationSec }: { progressKey: number; durationSec: number }) {
-  const qr = useQrDataUrl(QR_URL, 240)
+/* ── Franja fija inferior (delgada) ────────────────────────────────────── */
+function Footer({ progressKey, durationSec, rotating }: { progressKey: number; durationSec: number; rotating: boolean }) {
+  const qr = useQrDataUrl(QR_URL, 200)
   return (
     <div style={abs({ left: 0, top: CONTENT_H, width: STAGE_W, height: FOOTER_H, background: C.blue })}>
-      <div
-        key={progressKey}
-        style={abs({
-          left: 0, top: 0, height: 6, background: '#fff', opacity: 0.55,
-          animation: `tvprogress ${durationSec}s linear forwards`,
-        })}
-      />
-      <div style={abs({ left: 80, top: 28, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 70, color: '#fff', lineHeight: 1 })}>
-        Marc
-        <span style={{ fontFamily: FONT_SANS, fontWeight: 800, fontSize: 24, letterSpacing: 6, marginLeft: 18 }}>
-          MINIMARKET
+      {rotating && (
+        <div
+          key={progressKey}
+          style={abs({
+            left: 0, top: 0, height: 4, background: '#fff', opacity: 0.55,
+            animation: `tvprogress ${durationSec}s linear forwards`,
+          })}
+        />
+      )}
+      <div style={abs({ left: 60, top: 12, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 36, color: '#fff', lineHeight: '46px', whiteSpace: 'nowrap' })}>
+        tiendasmarc.pe
+        <span style={{ fontFamily: FONT_SANS, fontWeight: 500, fontSize: 24, opacity: 0.85, marginLeft: 22 }}>
+          Delivery y recojo · {STORE_ADDRESS}
         </span>
       </div>
-      <div style={abs({ left: 80, top: 104, fontFamily: FONT_SANS, fontWeight: 500, fontSize: 26, color: '#ffffff', opacity: 0.85 })}>
-        {STORE_ADDRESS}
+      <div style={abs({ left: 1180, top: 12, width: 600, textAlign: 'right', fontFamily: FONT_SANS, fontWeight: 700, fontSize: 28, color: '#fff', lineHeight: '46px' })}>
+        Pide en la app
+      </div>
+      <div style={abs({ left: 1800, top: 6, width: 54, height: 54, background: '#fff', borderRadius: 8 })}>
+        {qr && <img src={qr} alt="QR" style={abs({ left: 3, top: 3, width: 48, height: 48 })} />}
+      </div>
+    </div>
+  )
+}
+
+/* ── Venta en curso (carrito en vivo del POS) ──────────────────────────── */
+const CART_VISIBLE_ROWS = 8
+const CART_ROW_H = 88
+const CART_LEFT_W = 1080
+const PROMO_BOX_W = 800
+const PROMO_SCALE = PROMO_BOX_W / STAGE_W
+const PROMO_BOX_H = Math.round(CONTENT_H * PROMO_SCALE)
+
+const qtyLabel = (i: TvLiveCartItem) => {
+  const q = Number.isInteger(i.quantity) ? String(i.quantity) : i.quantity.toFixed(3).replace(/0+$/, '')
+  return `${q}${i.unit && i.unit !== 'und' ? ' ' + i.unit : ''} × ${money(i.unitPrice)}`
+}
+
+function PromoRotator({ nodes }: { nodes: ReactNode[] }) {
+  const [i, setI] = useState(0)
+  useEffect(() => {
+    if (nodes.length < 2) return
+    const t = window.setInterval(() => setI((x) => x + 1), 7000)
+    return () => window.clearInterval(t)
+  }, [nodes.length])
+  const cur = nodes.length > 0 ? i % nodes.length : 0
+  return (
+    <div style={abs({ left: 1100, top: 40, width: PROMO_BOX_W, height: PROMO_BOX_H, borderRadius: 28, overflow: 'hidden', background: '#fff' })}>
+      {nodes.map((n, k) => (
+        <div key={k} style={{
+          position: 'absolute', left: 0, top: 0, width: STAGE_W, height: CONTENT_H,
+          transform: `scale(${PROMO_SCALE})`, transformOrigin: '0 0',
+          opacity: k === cur ? 1 : 0, transition: 'opacity 0.6s ease',
+        }}>
+          {n}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CartView({ cart, promoNodes }: {
+  cart: { items: TvLiveCartItem[]; total: number; customerName: string | null }
+  promoNodes: ReactNode[]
+}) {
+  const qr = useQrDataUrl(QR_URL, 420)
+  const hidden = Math.max(0, cart.items.length - CART_VISIBLE_ROWS)
+  const rows = cart.items.slice(hidden)
+  const hasPromos = promoNodes.length > 0
+  const qrTop = hasPromos ? PROMO_BOX_H + 80 : 120
+  const qrH = CONTENT_H - qrTop - 40
+  const qrSize = hasPromos ? 300 : 440
+
+  return (
+    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: '#fff' })}>
+      <div style={abs({ left: CART_LEFT_W, top: 0, width: STAGE_W - CART_LEFT_W, height: CONTENT_H, background: C.surface })} />
+
+      <div style={abs({ left: 80, top: 36, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 66, color: C.ink, lineHeight: 1 })}>
+        {cart.customerName ? `Hola, ${cart.customerName.split(' ')[0]}` : 'Tu compra'}
+      </div>
+      <div style={abs({ left: 80, top: 112, fontFamily: FONT_SANS, fontWeight: 600, fontSize: 28, color: C.inkSoft })}>
+        {hidden > 0 ? `+ ${hidden} producto${hidden === 1 ? '' : 's'} anteriores · ` : ''}
+        {cart.items.length} producto{cart.items.length === 1 ? '' : 's'}
       </div>
 
-      <div style={abs({ left: 960, top: 34, width: 700, textAlign: 'right', fontFamily: FONT_SANS, color: '#fff' })}>
-        <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 46 }}>Pide en la app</div>
-        <div style={{ fontWeight: 600, fontSize: 28, opacity: 0.9, marginTop: 6 }}>
-          Delivery y recojo · tiendasmarc.pe
+      {rows.map((it, k) => (
+        <div key={hidden + k} style={abs({
+          left: 80, top: 166 + k * CART_ROW_H, width: CART_LEFT_W - 160, height: CART_ROW_H,
+          borderTop: '2px solid #e5e3dc', fontFamily: FONT_SANS,
+        })}>
+          <div style={abs({ left: 0, top: 14, width: 560, fontSize: 36, fontWeight: 600, color: C.ink, ...clamp(1) })}>{it.name}</div>
+          <div style={abs({ left: 0, top: 54, fontSize: 24, color: C.inkSoft })}>{qtyLabel(it)}</div>
+          <div style={abs({ right: 0, top: 18, textAlign: 'right', fontFamily: FONT_DISPLAY, fontSize: 44, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap' })}>
+            {money(it.subtotal)}
+          </div>
+        </div>
+      ))}
+
+      <div style={abs({ left: 0, top: CONTENT_H - 150, width: CART_LEFT_W, height: 150, background: C.green })}>
+        <div style={abs({ left: 80, top: 38, fontFamily: FONT_SANS, fontWeight: 800, fontSize: 40, letterSpacing: 6, color: '#fff', opacity: 0.9 })}>TOTAL</div>
+        <div style={abs({ right: 80, top: 16, textAlign: 'right', fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 108, color: '#fff', whiteSpace: 'nowrap', lineHeight: '118px' })}>
+          {money(cart.total)}
         </div>
       </div>
-      <div style={abs({ left: 1700, top: 14, width: 122, height: 122, background: '#fff', borderRadius: 18 })}>
-        {qr && <img src={qr} alt="QR" style={abs({ left: 6, top: 6, width: 110, height: 110 })} />}
+
+      {hasPromos && <PromoRotator nodes={promoNodes} />}
+
+      <div style={abs({ left: 1100, top: qrTop, width: PROMO_BOX_W, height: qrH, background: '#fff', borderRadius: 28 })}>
+        {qr && <img src={qr} alt="QR" style={abs({ left: 36, top: (qrH - qrSize) / 2, width: qrSize, height: qrSize })} />}
+        <div style={abs({ left: qrSize + 76, top: 0, width: PROMO_BOX_W - qrSize - 100, height: qrH, display: 'table' })}>
+          <div style={{ display: 'table-cell', verticalAlign: 'middle', fontFamily: FONT_SANS }}>
+            <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: hasPromos ? 44 : 60, lineHeight: 1.05, color: C.ink }}>Pide en la app</div>
+            <div style={{ fontWeight: 600, fontSize: hasPromos ? 26 : 32, color: C.inkSoft, marginTop: 12 }}>Ofertas y puntos solo en la app</div>
+            <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: hasPromos ? 34 : 44, color: C.greenDark, marginTop: 14 }}>tiendasmarc.pe</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ThanksView() {
+  return (
+    <div style={abs({ left: 0, top: 0, width: STAGE_W, height: CONTENT_H, background: C.green, display: 'table' })}>
+      <div style={{ display: 'table-cell', verticalAlign: 'middle', textAlign: 'center', color: '#fff' }}>
+        <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 170, lineHeight: 1.02 }}>¡Gracias por<br />tu compra!</div>
+        <div style={{ fontFamily: FONT_SANS, fontWeight: 600, fontSize: 52, marginTop: 40, opacity: 0.95 }}>
+          Vuelve pronto · Marc Minimarket
+        </div>
       </div>
     </div>
   )
@@ -444,9 +553,29 @@ interface Slide {
   node: ReactNode
 }
 
+function toSlideNodes(list: TvSlideData[], prefix: string): Slide[] {
+  const out: Slide[] = []
+  list.forEach((s, i) => {
+    const key = `${prefix}-${s.key ?? s.id ?? s.type}-${i}`
+    if (s.type === 'OFFER' && s.offer) {
+      out.push({ key, seconds: s.seconds, node: <OfferSlide offer={s.offer} /> })
+    } else if (s.type === 'PRODUCTS' && s.products && s.products.length > 0) {
+      out.push({ key, seconds: s.seconds, node: <ProductsSlide title={s.title || 'Los más vendidos'} products={s.products} /> })
+    } else if (s.type === 'CUSTOM') {
+      out.push({ key, seconds: s.seconds, node: <CustomSlide title={s.title} subtitle={s.subtitle} imageUrl={s.imageUrl} /> })
+    } else if (s.type === 'APP') {
+      out.push({ key, seconds: s.seconds, node: <AppSlide title={s.title} subtitle={s.subtitle} /> })
+    }
+  })
+  return out
+}
+
 export function TvPage() {
   const [scale, setScale] = useState(1)
   const [idx, setIdx] = useState(0)
+  // Reloj del servidor − reloj de la TV, para medir el "gracias" sin depender de que la hora de la TV esté bien.
+  const [clockOffset, setClockOffset] = useState(0)
+  const [, forceTick] = useState(0)
 
   useEffect(() => {
     const fit = () => setScale(Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H))
@@ -479,32 +608,61 @@ export function TvPage() {
     refetchInterval: REFETCH_MS,
   })
 
-  const slides = useMemo<Slide[]>(() => {
-    const list: Slide[] = []
-    ;(configData?.data.data.slides ?? []).forEach((s, i) => {
-      const key = `${s.id ?? s.type}-${i}`
-      if (s.type === 'OFFER' && s.offer) {
-        list.push({ key, seconds: s.seconds, node: <OfferSlide offer={s.offer} /> })
-      } else if (s.type === 'PRODUCTS' && s.products && s.products.length > 0) {
-        list.push({ key, seconds: s.seconds, node: <ProductsSlide title={s.title || 'Los más vendidos'} products={s.products} /> })
-      } else if (s.type === 'CUSTOM') {
-        list.push({ key, seconds: s.seconds, node: <CustomSlide title={s.title} subtitle={s.subtitle} imageUrl={s.imageUrl} /> })
-      } else if (s.type === 'APP') {
-        list.push({ key, seconds: s.seconds, node: <AppSlide title={s.title} subtitle={s.subtitle} /> })
-      }
-    })
+  // Transmisión en vivo: slide(s) fijas, imagen al vuelo o venta en curso.
+  const { data: liveData } = useQuery({
+    queryKey: ['tv-live'],
+    queryFn: async () => {
+      const res = await storeApi.getTvLive()
+      setClockOffset(res.data.data.now - Date.now())
+      return res.data.data
+    },
+    refetchInterval: LIVE_POLL_MS,
+    refetchIntervalInBackground: true,
+  })
+  const live = liveData?.mode && liveData.mode !== 'AUTO' ? liveData : null
+
+  const autoSlides = useMemo<Slide[]>(
+    () => toSlideNodes(configData?.data.data.slides ?? [], 'auto'),
+    [configData],
+  )
+  const liveSlides = useMemo<Slide[]>(
+    () => toSlideNodes(live?.slides ?? [], 'live'),
+    [live],
+  )
+
+  // "Gracias por tu compra" dura unos segundos y se apaga solo.
+  const thanksLeft = live?.thanksUntil ? live.thanksUntil - (Date.now() + clockOffset) : 0
+  useEffect(() => {
+    if (thanksLeft <= 0) return
+    const t = window.setTimeout(() => forceTick((n) => n + 1), thanksLeft + 50)
+    return () => window.clearTimeout(t)
+  }, [thanksLeft])
+
+  const cartActive = live?.mode === 'CART' && !!live.cart && live.cart.items.length > 0
+  const thanksActive = live?.mode === 'CART' && !cartActive && thanksLeft > 0
+
+  // Lo que rota: en vivo (ONLY), o las promos elegidas cuando no hay venta, o lo normal.
+  const rotation = useMemo<Slide[]>(() => {
+    let list = autoSlides
+    if (live?.mode === 'ONLY' && liveSlides.length > 0) list = liveSlides
+    else if (live?.mode === 'CART' && liveSlides.length > 0) list = liveSlides
     // Mientras carga (o si no hay nada configurado) la TV nunca queda en
     // blanco: se muestra el llamado a la app.
-    if (list.length === 0) list.push({ key: 'app-fallback', seconds: 12, node: <AppSlide /> })
-    return list
-  }, [configData])
+    return list.length > 0 ? list : [{ key: 'app-fallback', seconds: 12, node: <AppSlide /> }]
+  }, [autoSlides, liveSlides, live])
 
-  const current = idx % slides.length
+  // Al cambiar lo que se transmite se empieza desde la primera.
+  const signature = `${live?.mode ?? 'AUTO'}-${liveData?.version ?? 0}`
+  useEffect(() => { setIdx(0) }, [signature])
+
+  const current = idx % rotation.length
+  const rotating = !cartActive && !thanksActive && rotation.length > 1
 
   useEffect(() => {
-    const t = window.setTimeout(() => setIdx((i) => i + 1), slides[current].seconds * 1000)
+    if (!rotating) return
+    const t = window.setTimeout(() => setIdx((i) => i + 1), rotation[current].seconds * 1000)
     return () => window.clearTimeout(t)
-  }, [idx, current, slides])
+  }, [idx, current, rotation, rotating])
 
   return (
     <div style={{
@@ -518,18 +676,24 @@ export function TvPage() {
         top: (window.innerHeight - STAGE_H * scale) / 2,
         transform: `scale(${scale})`, transformOrigin: '0 0',
       }}>
-        {slides.map((s, i) => (
+        {rotation.map((s, i) => (
           <div
             key={s.key}
             style={{
               position: 'absolute', left: 0, top: 0, width: STAGE_W, height: CONTENT_H,
-              opacity: i === current ? 1 : 0, transition: 'opacity 0.8s ease',
+              opacity: i === current && !cartActive && !thanksActive ? 1 : 0, transition: 'opacity 0.8s ease',
             }}
           >
             {s.node}
           </div>
         ))}
-        <Footer progressKey={idx} durationSec={slides[current].seconds} />
+
+        {cartActive && live?.cart && (
+          <CartView cart={live.cart} promoNodes={liveSlides.map((s) => s.node)} />
+        )}
+        {thanksActive && <ThanksView />}
+
+        <Footer progressKey={idx} durationSec={rotation[current].seconds} rotating={rotating} />
       </div>
     </div>
   )

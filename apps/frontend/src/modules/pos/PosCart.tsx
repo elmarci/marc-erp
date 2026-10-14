@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star, PackagePlus, GlassWater } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star, PackagePlus, GlassWater, Tv } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,8 @@ import { formatCurrency, cn } from '@/lib/utils';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useTvLiveStore } from '@/stores/tvLiveStore';
+import { TvLiveModal } from './TvLiveModal';
 
 interface Customer { id: string; firstName: string; lastName: string | null; phone: string | null; taxId: string | null }
 interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
@@ -279,6 +281,8 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
   const discountRef = useRef<HTMLInputElement>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showMiscItem, setShowMiscItem] = useState(false);
+  const [showTv, setShowTv] = useState(false);
+  const tvOn = useTvLiveStore((s) => s.enabled);
   // Tanto "Dejó garantía" como "Sin garantía" dejan algo pendiente por
   // rastrear (a quién devolverle la plata en un caso, quién debe traer el
   // envase en el otro) — ambos necesitan quedar identificados con alguien,
@@ -331,6 +335,17 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {/* Pantalla TV: mostrar la venta / una promo al cliente */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title="Pantalla TV: mostrar la venta o una promo al cliente"
+            className={cn('relative', tvOn ? 'text-primary' : 'text-muted-foreground')}
+            onClick={() => setShowTv(true)}
+          >
+            <Tv className="h-4 w-4" />
+            {tvOn && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-red-500" />}
+          </Button>
           {/* Venta excepcional (algo fuera de catálogo) */}
           <Button
             variant="ghost"
@@ -612,6 +627,7 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
       />
     )}
 
+    {showTv && <TvLiveModal onClose={() => setShowTv(false)} />}
     {showMiscItem && (
       <MiscItemModal
         onAdd={({ productId, description, amount, quantity }) => {

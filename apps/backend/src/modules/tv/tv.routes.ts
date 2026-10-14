@@ -33,6 +33,84 @@ router.get('/config', async (_req: Request, res: Response, next: NextFunction) =
   } catch (err) { next(err); }
 });
 
+// ── Transmisión en vivo ─────────────────────────────────────────────────────
+// La TV consulta esto cada pocos segundos (sin sesión, como /config): dice si
+// hay algo "ahora mismo" por encima de la rotación (slides elegidas, una
+// imagen subida al vuelo o la venta en curso del POS).
+router.get('/live', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await tvService.getLivePublic();
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// Quien controla la TV en vivo: supervisor desde el ERP y también el cajero
+// desde el POS (mostrar la venta o una promo al cliente que está en caja).
+const cashier = [authenticate, authorizeMinRole('CASHIER')];
+
+router.get('/live/state', ...cashier, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json({ success: true, data: await tvService.getLiveAdmin() });
+  } catch (err) { next(err); }
+});
+
+router.get('/live/options', ...cashier, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json({ success: true, data: await tvService.getLiveOptions() });
+  } catch (err) { next(err); }
+});
+
+router.put('/live/only', ...cashier, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { keys, imageUrl, seconds, minutes } = z.object({
+      keys: z.array(z.string().max(80)).max(20).optional(),
+      imageUrl: z.string().url().optional(),
+      seconds: z.number().int().min(4).max(300).optional(),
+      // null = hasta que se vuelva al automático
+      minutes: z.number().int().min(1).max(720).nullable(),
+    }).refine((v) => (v.keys && v.keys.length > 0) || v.imageUrl, { message: 'Elige qué mostrar.' }).parse(req.body);
+    const state = await tvService.setLiveOnly({ keys, imageUrl, seconds, minutes }, req.user!.sub);
+    res.json({ success: true, data: { version: state.version } });
+  } catch (err) { next(err); }
+});
+
+router.put('/live/cart', ...cashier, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { items, total, customerName, promoKeys } = z.object({
+      items: z.array(z.object({
+        name: z.string().max(160),
+        quantity: z.number(),
+        unit: z.string().max(10).nullable().optional(),
+        unitPrice: z.number(),
+        subtotal: z.number(),
+      })).max(200),
+      total: z.number(),
+      customerName: z.string().max(120).nullable().optional(),
+      promoKeys: z.array(z.string().max(80)).max(20).optional(),
+    }).parse(req.body);
+    const state = await tvService.setLiveCart({
+      items: items.map((i) => ({ ...i, unit: i.unit ?? null })), total, customerName, promoKeys,
+    }, req.user!.sub);
+    res.json({ success: true, data: { version: state.version } });
+  } catch (err) { next(err); }
+});
+
+router.post('/live/thanks', ...cashier, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { promoKeys } = z.object({ promoKeys: z.array(z.string().max(80)).max(20).optional() }).parse(req.body ?? {});
+    const state = await tvService.setLiveThanks(promoKeys ?? [], req.user!.sub);
+    res.json({ success: true, data: { version: state.version } });
+  } catch (err) { next(err); }
+});
+
+router.delete('/live', ...cashier, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    await tvService.clearLive();
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
 // ── Admin (ERP → Pantalla TV) ───────────────────────────────────────────────
 router.use('/admin', authenticate, authorizeMinRole('SUPERVISOR'));
 
@@ -44,6 +122,7 @@ router.get('/admin/slides', async (_req: Request, res: Response, next: NextFunct
 });
 
 const slideSchema = z.object({
+  id: z.string().uuid().nullable().optional(),
   type: z.enum(['OFFER', 'PRODUCTS', 'APP', 'CUSTOM']),
   offerId: z.string().uuid().nullable().optional(),
   title: z.string().max(120).nullable().optional(),
