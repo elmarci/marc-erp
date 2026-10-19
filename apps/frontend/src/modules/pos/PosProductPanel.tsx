@@ -10,7 +10,7 @@ import { formatCurrency, cn, debounce, looksLikeScannedCode } from '@/lib/utils'
 import { toast } from 'sonner';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
-import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, type PackInfo } from './packSale';
+import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, wouldExceedStock, packExceedsStock, AUTO_ADJUST_HINT, type PackInfo } from './packSale';
 
 interface Product extends PackInfo {
   id: string;
@@ -452,6 +452,11 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
   // por nombre uno por uno mientras el cliente espera.
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [bulkProduct, setBulkProduct] = useState<Product | null>(null);
+  // El producto a granel se abrió con "vender aunque el sistema diga sin stock".
+  const [bulkForce, setBulkForce] = useState(false);
+  // Último toque en un producto sin stock en el sistema: el segundo toque
+  // seguido lo vende igual (ver onTapNoStock).
+  const lastTap = useRef<{ key: string; at: number }>({ key: '', at: 0 });
   const [showOffers, setShowOffers] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const addItem = usePosStore((s) => s.addItem);
@@ -525,17 +530,21 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
     return map;
   }, [happyHours]);
 
-  const handleAddProduct = (product: Product, forceQty?: number) => {
-    if (product.currentStock <= 0) {
-      toast.error(`"${product.name}" no tiene stock disponible.`);
+  // force = vender aunque el sistema diga que no hay (doble toque): lo que
+  // falte se marca para ajuste automático de inventario al cobrar.
+  const handleAddProduct = (product: Product, forceQty?: number, force = false) => {
+    const qty = forceQty ?? 1;
+    const exceeds = wouldExceedStock(product.id, product.currentStock, product.packSize, qty);
+    if (exceeds && !force) {
+      toast.warning(`"${product.name}" figura sin stock en el sistema. ${AUTO_ADJUST_HINT}`, { duration: 3500 });
       return;
     }
     // Producto a granel — pedir peso/cantidad libre
     if (product.isBulk && forceQty === undefined) {
+      setBulkForce(force);
       setBulkProduct(product);
       return;
     }
-    const qty = forceQty ?? 1;
     const unit = product.isBulk ? (product.bulkUnit ?? 'u') : 'unidades';
     const originalPrice = Number(product.salePrice);
     const hh = happyHourByProductId.get(product.id);
@@ -556,7 +565,11 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       stock: unitStockLeft(product.id, product.currentStock, product.packSize),
       bottleDepositUnit: Number(product.bottleDeposit ?? 0) || undefined,
       unit: product.isBulk ? (product.bulkUnit ?? 'kg') : undefined,
+      autoAdjust: exceeds || undefined,
     });
+    if (exceeds) {
+      toast.warning(`${product.name}: sin stock en el sistema. Se vende igual y el inventario se ajusta al cobrar.`, { duration: 2500 });
+    }
     // El nombre mostrado en el carrito incluye el peso para productos a
     // granel — si la cantidad terminó topada por el stock (o ya había algo
     // de este producto en el carrito), hay que corregirlo para que no quede
@@ -785,15 +798,22 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
               return (
               <div key={product.id} className="flex flex-col gap-1">
               <button
-                onClick={(e) => { handleAddProduct(product); e.currentTarget.blur(); }}
-                disabled={product.currentStock <= 0}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  if (!wouldExceedStock(product.id, product.currentStock, product.packSize)) { handleAddProduct(product); return; }
+                  // El sistema no tiene stock: el primer toque avisa, el segundo seguido lo vende igual.
+                  const now = Date.now();
+                  const second = lastTap.current.key === product.id && now - lastTap.current.at < 900;
+                  lastTap.current = second ? { key: '', at: 0 } : { key: product.id, at: now };
+                  handleAddProduct(product, undefined, second);
+                }}
                 className={cn(
                   'relative flex flex-1 flex-col rounded-xl border p-2.5 text-left transition-all',
                   'hover:border-primary hover:shadow-md active:scale-95',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   'min-h-[88px]', // área táctil suficiente
                   product.currentStock <= 0
-                    ? 'opacity-50 cursor-not-allowed'
+                    ? 'cursor-pointer opacity-60'
                     : 'cursor-pointer bg-pos-product',
                 )}
               >
@@ -846,20 +866,28 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                   </Badge>
                 )}
                 {product.currentStock <= 0 && (
-                  <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/60">
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center rounded-lg bg-background/60">
                     <span className="text-xs font-bold text-destructive">Sin stock</span>
+                    <span className="text-[10px] font-medium text-muted-foreground">2 toques = vender igual</span>
                   </div>
                 )}
               </button>
               {packOn && (
                 <button
-                  onClick={(e) => { addPackToCart(product); e.currentTarget.blur(); }}
-                  disabled={!packOk}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    if (!packExceedsStock(product)) { addPackToCart(product); return; }
+                    const key = product.id + '#pack';
+                    const now = Date.now();
+                    const second = lastTap.current.key === key && now - lastTap.current.at < 900;
+                    lastTap.current = second ? { key: '', at: 0 } : { key, at: now };
+                    addPackToCart(product, { force: second });
+                  }}
                   title={`Agregar ${(product.packLabel || 'paquete').toLowerCase()} de ${product.packSize} unidades`}
                   className={cn(
                     'flex min-h-[36px] items-center justify-between gap-1 rounded-lg border border-primary/40 bg-primary/5 px-2 py-1 text-xs font-semibold text-primary transition-all',
                     'hover:bg-primary/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    !packOk && 'cursor-not-allowed opacity-40',
+                    !packOk && 'opacity-50',
                   )}
                 >
                   <span className="flex min-w-0 items-center gap-1 truncate"><Package className="h-3 w-3 shrink-0" />{product.packLabel || 'Paq'} x{product.packSize}</span>
@@ -888,7 +916,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
       {bulkProduct && (
         <BulkModal
           product={bulkProduct}
-          onConfirm={(qty) => handleAddProduct(bulkProduct, qty)}
+          onConfirm={(qty) => handleAddProduct(bulkProduct, qty, bulkForce)}
           onClose={() => setBulkProduct(null)}
         />
       )}

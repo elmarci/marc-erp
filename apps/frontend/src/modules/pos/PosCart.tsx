@@ -417,6 +417,9 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
                     {item.barcode && (
                       <p className="text-xs text-muted-foreground font-mono">{item.barcode}</p>
                     )}
+                    {item.autoAdjust && (
+                      <p className="mt-0.5 text-[11px] font-medium text-warning">Sin stock en el sistema · el inventario se ajusta al cobrar</p>
+                    )}
                     {item.discountAmount > 0 && (
                       <div className="flex items-center gap-1 mt-0.5">
                         <Tag className="h-3 w-3 text-success" />
@@ -453,14 +456,14 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
                       onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
                       className="h-7 w-14 text-center text-sm font-semibold p-1"
                       min={1}
-                      max={item.stock}
+                      max={item.autoAdjust ? undefined : item.stock}
                     />
                     <Button
                       variant="outline"
                       size="icon-sm"
                       className="h-7 w-7"
                       onClick={() => updateQuantity(item.productId, item.quantity + (item.packSize ?? 1))}
-                      disabled={item.quantity + (item.packSize ?? 1) > item.stock}
+                      disabled={!item.autoAdjust && item.quantity + (item.packSize ?? 1) > item.stock}
                     >
                       <Plus className="h-3 w-3" />
                     </Button>

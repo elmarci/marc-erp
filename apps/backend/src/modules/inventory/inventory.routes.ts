@@ -148,6 +148,15 @@ router.get('/alerts/margin', async (_req: Request, res: Response, next: NextFunc
   } catch (err) { next(err); }
 });
 
+// Ajustes automáticos por ventas de productos sin stock registrado.
+router.get('/auto-adjustments', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+    const data = await inventoryAlertsService.getAutoAdjustments(days);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 // Seguimiento de vencimientos: lotes con fecha + stock sin fecha registrada.
 router.get('/expiry', async (_req: Request, res: Response, next: NextFunction) => {
   try {

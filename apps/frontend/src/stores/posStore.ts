@@ -33,6 +33,10 @@ export interface CartItem {
   // Línea de paquete/caja (Product.packSize): quantity cuenta paquetes y
   // productId lleva el sufijo "#pack" (ver pos/packSale.ts).
   sellAsPack?: boolean;
+  // El cajero vendió algo que el sistema da por agotado pero que sí tiene en
+  // físico: sin tope de stock en el carrito, y al cobrar el backend repone lo
+  // que falta con un ajuste automático de inventario.
+  autoAdjust?: boolean;
 }
 
 export interface CartPayment {
@@ -151,7 +155,8 @@ export const usePosStore = create<PosState>()((set, get) => ({
     // El stock que llega en newItem siempre es el más fresco (recién leído del
     // catálogo), así que es la referencia — nunca dejar que la cantidad final
     // lo supere, sea un ítem nuevo o uno que ya estaba en el carrito.
-    const finalQty = Math.min(currentQty + newItem.quantity, newItem.stock);
+    const noCap = !!(newItem.autoAdjust || existing?.autoAdjust);
+    const finalQty = noCap ? currentQty + newItem.quantity : Math.min(currentQty + newItem.quantity, newItem.stock);
 
     if (finalQty <= currentQty) {
       return { addedQuantity: 0, finalQuantity: currentQty, capped: true };
@@ -161,7 +166,7 @@ export const usePosStore = create<PosState>()((set, get) => ({
     if (existing) {
       updatedItems = items.map((i) =>
         i.productId === newItem.productId
-          ? { ...i, quantity: finalQty, stock: newItem.stock, subtotal: calcItemSubtotal({ ...i, quantity: finalQty }) }
+          ? { ...i, quantity: finalQty, stock: newItem.stock, autoAdjust: noCap || undefined, subtotal: calcItemSubtotal({ ...i, quantity: finalQty }) }
           : i,
       );
     } else {
@@ -181,7 +186,7 @@ export const usePosStore = create<PosState>()((set, get) => ({
       return { finalQuantity: 0, capped: false };
     }
     const item = items.find((i) => i.productId === productId);
-    const finalQty = item ? Math.min(quantity, item.stock) : quantity;
+    const finalQty = item && !item.autoAdjust ? Math.min(quantity, item.stock) : quantity;
     const updatedItems = items.map((i) =>
       i.productId === productId
         ? { ...i, quantity: finalQty, subtotal: calcItemSubtotal({ ...i, quantity: finalQty }) }

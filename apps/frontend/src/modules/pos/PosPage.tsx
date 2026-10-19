@@ -9,7 +9,7 @@ import { useOfflineSalesStore } from '@/stores/offlineSalesStore';
 import { PosCart } from './PosCart';
 import { PosProductPanel } from './PosProductPanel';
 import { PosHeader } from './PosHeader';
-import { addPackToCart, hasPack, unitStockLeft, type PackInfo } from './packSale';
+import { addPackToCart, hasPack, unitStockLeft, wouldExceedStock, type PackInfo } from './packSale';
 import { useTvCartSync, sendTvThanks } from './tvCartSync';
 import { PosPaymentModal } from './PosPaymentModal';
 import { OpenSessionModal } from './OpenSessionModal';
@@ -199,15 +199,13 @@ export function PosPage() {
   }, []);
 
   const addProductToCart = (product: { id: string; name: string; barcode: string | null; salePrice: number; currentStock: number; bottleDeposit?: number; matchedPack?: boolean } & PackInfo, offline: boolean) => {
-    if (product.currentStock <= 0) {
-      toast.error(`"${product.name}" sin stock disponible.`);
-      return;
-    }
-    // Escaneó el código del paquete/caja, no el de la unidad.
+    // Escaneó el código del paquete/caja, no el de la unidad. Escanear siempre
+    // vende: si el sistema no tiene stock, el inventario se ajusta al cobrar.
     if (product.matchedPack && hasPack(product)) {
-      addPackToCart(product, { offline });
+      addPackToCart(product, { offline, force: true });
       return;
     }
+    const exceeds = wouldExceedStock(product.id, product.currentStock, product.packSize);
     const result = usePosStore.getState().addItem({
       productId: product.id,
       name: product.name,
@@ -219,9 +217,14 @@ export function PosPage() {
       discountPercent: 0,
       stock: unitStockLeft(product.id, product.currentStock, product.packSize),
       bottleDepositUnit: Number(product.bottleDeposit ?? 0) || undefined,
+      autoAdjust: exceeds || undefined,
     });
     if (result.addedQuantity <= 0) {
-      toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito (${product.currentStock}).`);
+      toast.error(`"${product.name}" no se pudo agregar al carrito.`);
+      return;
+    }
+    if (exceeds) {
+      toast.warning(`${product.name}: sin stock en el sistema. Se vende igual y el inventario se ajusta al cobrar.`, { duration: 2500 });
       return;
     }
     toast.success(`${product.name} agregado${offline ? ' (sin conexión)' : ''}`, { duration: 1500 });
@@ -306,6 +309,8 @@ export function PosPage() {
         // Paquete/caja: el backend usa el precio y las unidades del paquete
         // del propio producto para descontar bien el stock.
         sellAsPack: i.sellAsPack || undefined,
+        // Sin stock en el sistema pero sí en físico: el backend repone lo que falta.
+        autoAdjust: i.autoAdjust || undefined,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         discountAmount: i.discountAmount,

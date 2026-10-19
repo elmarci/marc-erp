@@ -55,9 +55,31 @@ export function unitStockLeft(productId: string, currentStock: number, packSize?
   return currentStock - (packLine?.quantity ?? 0) * packSize;
 }
 
+// ¿Agregar esta cantidad pasaría lo que el sistema dice que hay? Si la línea
+// ya está marcada para ajuste automático, no hace falta volver a confirmar.
+export function wouldExceedStock(productId: string, currentStock: number, packSize?: number | null, qty = 1): boolean {
+  const line = usePosStore.getState().items.find((i) => i.productId === productId);
+  if (line?.autoAdjust) return false;
+  return (line?.quantity ?? 0) + qty > unitStockLeft(productId, currentStock, packSize);
+}
+
+export function packExceedsStock(product: { id: string; currentStock: number } & PackInfo): boolean {
+  const size = product.packSize as number;
+  const items = usePosStore.getState().items;
+  const packLine = items.find((i) => i.productId === product.id + PACK_SUFFIX);
+  if (packLine?.autoAdjust) return false;
+  const unitLine = items.find((i) => i.productId === product.id);
+  const stockInPacks = Math.floor((product.currentStock - (unitLine?.quantity ?? 0)) / size);
+  return (packLine?.quantity ?? 0) + 1 > stockInPacks;
+}
+
+export const AUTO_ADJUST_HINT = 'Toca dos veces para venderlo igual: el inventario se ajusta solo al cobrar.';
+
+// force = vender aunque el sistema no alcance (escaneo o doble toque): el
+// paquete entra marcado para ajuste automático de inventario.
 export function addPackToCart(
   product: { id: string; name: string; barcode: string | null; currentStock: number } & PackInfo,
-  opts: { offline?: boolean } = {},
+  opts: { offline?: boolean; force?: boolean } = {},
 ) {
   const size = product.packSize as number;
   const price = Number(product.packPrice);
@@ -66,8 +88,10 @@ export function addPackToCart(
   // Paquetes posibles = (stock − unidades sueltas ya en el carrito) ÷ unidades por paquete.
   const unitLine = usePosStore.getState().items.find((i) => i.productId === product.id);
   const stockInPacks = Math.floor((product.currentStock - (unitLine?.quantity ?? 0)) / size);
-  if (stockInPacks <= 0) {
-    toast.error(`No alcanza el stock para un ${label.toLowerCase()} de "${product.name}" (trae ${size} unidades, quedan ${product.currentStock}).`);
+  const packLine = usePosStore.getState().items.find((i) => i.productId === product.id + PACK_SUFFIX);
+  const exceeds = !packLine?.autoAdjust && (packLine?.quantity ?? 0) + 1 > stockInPacks;
+  if (exceeds && !opts.force) {
+    toast.warning(`El sistema no tiene stock de un ${label.toLowerCase()} de "${product.name}" (trae ${size} unidades, quedan ${product.currentStock}). ${AUTO_ADJUST_HINT}`, { duration: 3500 });
     return;
   }
 
@@ -83,9 +107,14 @@ export function addPackToCart(
     stock: stockInPacks,
     unit: 'paq',
     sellAsPack: true,
+    autoAdjust: exceeds || undefined,
   });
   if (result.addedQuantity <= 0) {
     toast.error(`No hay stock para otro ${label.toLowerCase()} de "${product.name}".`);
+    return;
+  }
+  if (exceeds) {
+    toast.warning(`${label} x${size} de ${product.name}: sin stock en el sistema, el inventario se ajusta al cobrar.`, { duration: 2500 });
     return;
   }
   toast.success(`${label} x${size} de ${product.name} — ${formatCurrency(price)}${opts.offline ? ' (sin conexión)' : ''}`, { duration: 1500 });

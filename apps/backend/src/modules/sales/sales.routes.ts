@@ -30,6 +30,10 @@ const saleItemSchema = z.object({
   // Presentación paquete/caja del producto (ver Product.packSize): quantity
   // cuenta paquetes y el stock baja quantity × packSize unidades.
   sellAsPack: z.boolean().optional(),
+  // El cajero vendió algo que el sistema da por agotado pero que sí tiene en
+  // físico (compra sin registrar): el stock que falte se repone con un ajuste
+  // automático dentro de la misma venta y queda en 0. Ver sales.service.ts.
+  autoAdjust: z.boolean().optional(),
 });
 
 const bottleDepositItemSchema = z.object({

@@ -19,6 +19,9 @@ interface SaleItemInput {
   // true = se vende la presentación paquete/caja del producto (Product.packSize):
   // quantity cuenta paquetes y el stock baja quantity × packSize unidades.
   sellAsPack?: boolean;
+  // true = permitir vender más de lo que dice el sistema: la diferencia entra
+  // como ajuste automático de inventario (ver create).
+  autoAdjust?: boolean;
 }
 
 interface BottleDepositItemInput {
@@ -205,15 +208,31 @@ export class SalesService {
     for (const item of input.items) {
       unitsNeeded.set(item.productId, (unitsNeeded.get(item.productId) ?? 0) + item.quantity * unitsPerSaleOf(item));
     }
+    // Productos que el cajero marcó para vender aunque el sistema no tenga
+    // stock (mercadería que sí está en físico pero no se registró en compras):
+    // se repone lo que falta con un ajuste automático y el stock queda en 0.
+    const autoAdjustIds = new Set(input.items.filter((i) => i.autoAdjust).map((i) => i.productId));
+    const stockShortfall = new Map<string, number>();
     for (const [productId, needed] of unitsNeeded) {
       const product = products.find((p) => p.id === productId)!;
       if (product.isMiscItem) continue; // no maneja stock — venta excepcional de algo fuera de catálogo
-      if (Number(product.currentStock) < needed && !input.isOfflineSync) {
-        throw new BusinessError(
-          `Stock insuficiente para "${product.name}". Disponible: ${product.currentStock} unidad(es), solicitado: ${needed}.`,
-        );
+      const stockNow = Number(product.currentStock);
+      if (stockNow < needed) {
+        if (autoAdjustIds.has(productId)) {
+          stockShortfall.set(productId, needed - stockNow);
+        } else if (!input.isOfflineSync) {
+          throw new BusinessError(
+            `Stock insuficiente para "${product.name}". Disponible: ${product.currentStock} unidad(es), solicitado: ${needed}.`,
+          );
+        }
       }
     }
+    // Costo de lo vendido sin stock: el último costo realmente pagado, no el
+    // promedio (esa mercadería no entró por una compra registrada).
+    const unitCostOf = (product: (typeof products)[number]) =>
+      stockShortfall.has(product.id) && product.lastPurchaseCost != null
+        ? Number(product.lastPurchaseCost)
+        : Number(product.costPrice);
 
     // Envases: sólo se puede cobrar/prestar garantía de un producto que
     // realmente está en esta venta y que de verdad maneja envase retornable.
@@ -259,7 +278,7 @@ export class SalesService {
         // (costo = 85% del precio cobrado) en vez de 0 de costo o "sin datos"
         // — una aproximación razonable, no exacta, pero más realista que 100%.
         // Un paquete cuesta packSize veces el costo de una unidad.
-        costPrice: product.isMiscItem ? effectivePrice * 0.85 : Number(product.costPrice) * unitsPerSale,
+        costPrice: product.isMiscItem ? effectivePrice * 0.85 : unitCostOf(product) * unitsPerSale,
         productName: product.isMiscItem && item.productName
           ? item.productName
           : isPack ? `${product.name} (${product.packLabel || 'Paquete'} x${unitsPerSale})` : product.name,
@@ -412,6 +431,29 @@ export class SalesService {
       // producto (no se relee de `products`) porque una venta puede traer dos
       // líneas del mismo producto: unidades sueltas y un paquete.
       const runningStock = new Map<string, number>();
+
+      // Ajuste automático: lo que faltaba entra al inventario justo antes de la
+      // venta (mismo kardex, mismo usuario), así el stock termina en 0 y no negativo.
+      for (const [productId, shortage] of stockShortfall) {
+        const product = products.find((p) => p.id === productId)!;
+        const before = Number(product.currentStock);
+        await tx.inventoryMovement.create({
+          data: {
+            productId,
+            type: 'ADJUSTMENT_IN',
+            quantity: shortage,
+            quantityBefore: before,
+            quantityAfter: before + shortage,
+            unitCost: unitCostOf(product),
+            referenceType: 'SALE_AUTO_ADJUST',
+            referenceId: newSale.id,
+            notes: `Ajuste automático por venta sin stock registrado (${newSale.saleNumber})`,
+            userId: input.cashierId,
+          },
+        });
+        runningStock.set(productId, before + shortage);
+      }
+
       for (const item of saleItems) {
         const product = products.find((p) => p.id === item.productId)!;
         if (product.isMiscItem) continue; // no maneja stock
@@ -438,7 +480,7 @@ export class SalesService {
             quantity: -unitsOut,
             quantityBefore: stockBefore,
             quantityAfter: newStock,
-            unitCost: product.costPrice,
+            unitCost: unitCostOf(product),
             referenceType: 'SALE',
             referenceId: newSale.id,
             userId: input.cashierId,

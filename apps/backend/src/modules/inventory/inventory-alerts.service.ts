@@ -293,6 +293,54 @@ export class InventoryAlertsService {
 
   /* ── Resumen para badges ─────────────────────────────────────────────────── */
 
+  // Ventas hechas con "vender aunque el sistema diga sin stock": cada una dejó
+  // un ajuste automático en el kardex. Sirve para ver qué compras no se están
+  // registrando y quién las hace — es un tema de proceso, no del sistema.
+  async getAutoAdjustments(days = 30) {
+    const since = new Date(Date.now() - days * DAY_MS);
+    const rows = await prisma.inventoryMovement.findMany({
+      where: { referenceType: 'SALE_AUTO_ADJUST', createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+      include: { product: { select: { id: true, name: true, barcode: true, costPrice: true, lastPurchaseCost: true } } },
+    });
+    const userIds = [...new Set(rows.map((r) => r.userId).filter((u): u is string => !!u))];
+    const saleIds = [...new Set(rows.map((r) => r.referenceId).filter((s): s is string => !!s))];
+    const [users, sales] = await Promise.all([
+      prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, firstName: true, lastName: true } }),
+      prisma.sale.findMany({ where: { id: { in: saleIds } }, select: { id: true, saleNumber: true } }),
+    ]);
+    const userName = new Map(users.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
+    const saleNumber = new Map(sales.map((s) => [s.id, s.saleNumber]));
+
+    const entries = rows.map((r) => ({
+      id: r.id,
+      createdAt: r.createdAt,
+      productId: r.productId,
+      productName: r.product.name,
+      barcode: r.product.barcode,
+      quantity: Number(r.quantity),
+      stockBefore: Number(r.quantityBefore),
+      unitCost: r.unitCost != null ? Number(r.unitCost) : null,
+      userName: r.userId ? userName.get(r.userId) ?? null : null,
+      saleNumber: r.referenceId ? saleNumber.get(r.referenceId) ?? null : null,
+    }));
+
+    const byProduct = new Map<string, { productId: string; productName: string; times: number; units: number }>();
+    for (const e of entries) {
+      const cur = byProduct.get(e.productId) ?? { productId: e.productId, productName: e.productName, times: 0, units: 0 };
+      cur.times += 1;
+      cur.units += e.quantity;
+      byProduct.set(e.productId, cur);
+    }
+    return {
+      days,
+      totalTimes: entries.length,
+      totalUnits: entries.reduce((s, e) => s + e.quantity, 0),
+      byProduct: [...byProduct.values()].sort((a, b) => b.times - a.times),
+      entries,
+    };
+  }
+
   async getSummary() {
     const [margin, expiry, lowStockRows] = await Promise.all([
       this.computeMarginAlerts(),

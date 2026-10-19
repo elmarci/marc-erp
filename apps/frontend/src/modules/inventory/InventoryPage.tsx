@@ -787,6 +787,110 @@ function MovementsTab() {
 }
 
 /* ─── Tab: Ajustes ───────────────────────────────────────────────────────── */
+interface AutoAdjustData {
+  days: number; totalTimes: number; totalUnits: number;
+  byProduct: Array<{ productId: string; productName: string; times: number; units: number }>;
+  entries: Array<{
+    id: string; createdAt: string; productId: string; productName: string; barcode: string | null;
+    quantity: number; stockBefore: number; unitCost: number | null; userName: string | null; saleNumber: string | null;
+  }>;
+}
+
+// Ventas hechas con "vender aunque el sistema diga sin stock": cada una dejó un
+// ajuste automático. Ver qué productos se repiten y quién lo hace ayuda a
+// corregir el hábito de comprar sin registrar la compra.
+function AutoAdjustCard() {
+  const [days, setDays] = useState(30);
+  const [open, setOpen] = useState(false);
+  const { data } = useQuery({
+    queryKey: ['inv-auto-adjust', days],
+    queryFn: async () => (await api.get<{ data: AutoAdjustData }>(`/inventory/auto-adjustments?days=${days}`)).data.data,
+    refetchInterval: 60000,
+  });
+  if (!data) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />Ventas sin stock registrado
+          </CardTitle>
+          <div className="flex gap-1">
+            {[7, 30, 90].map(d => (
+              <button key={d} type="button" onClick={() => setDays(d)}
+                className={cn('min-h-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  days === d ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+                {d} días
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Se vendió mercadería que el sistema daba por agotada y el inventario se ajustó solo. Si un producto se repite,
+          casi seguro falta registrar sus compras.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {data.totalTimes === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">Ninguna en los últimos {days} días.</p>
+        ) : (
+          <>
+            <p className="text-sm"><strong>{data.totalTimes}</strong> ajuste(s) · <strong>{data.totalUnits}</strong> unidad(es) repuestas automáticamente</p>
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b bg-muted/40 text-left">
+                  <th className="px-3 py-2 font-medium">Producto</th>
+                  <th className="px-3 py-2 text-center font-medium">Veces</th>
+                  <th className="px-3 py-2 text-center font-medium">Unidades</th>
+                </tr></thead>
+                <tbody className="divide-y">
+                  {data.byProduct.slice(0, 10).map(r => (
+                    <tr key={r.productId}>
+                      <td className="px-3 py-2">{r.productName}</td>
+                      <td className="px-3 py-2 text-center font-semibold">{r.times}</td>
+                      <td className="px-3 py-2 text-center">{r.units}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" onClick={() => setOpen(o => !o)}
+              className="min-h-0 flex items-center gap-1 text-sm font-medium text-primary">
+              {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              {open ? 'Ocultar detalle' : 'Ver detalle por venta y cajero'}
+            </button>
+            {open && (
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b bg-muted/40 text-left">
+                    <th className="px-3 py-2 font-medium">Fecha</th>
+                    <th className="px-3 py-2 font-medium">Producto</th>
+                    <th className="px-3 py-2 text-center font-medium">Repuesto</th>
+                    <th className="px-3 py-2 font-medium">Cajero</th>
+                    <th className="px-3 py-2 font-medium">Venta</th>
+                  </tr></thead>
+                  <tbody className="divide-y">
+                    {data.entries.map(e => (
+                      <tr key={e.id}>
+                        <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{formatDateTime(e.createdAt)}</td>
+                        <td className="px-3 py-2">{e.productName}</td>
+                        <td className="px-3 py-2 text-center font-semibold text-success">+{e.quantity}</td>
+                        <td className="px-3 py-2">{e.userName ?? '—'}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{e.saleNumber ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function AdjustmentsTab() {
   const [page, setPage] = useState(1);
   const [showBulk, setShowBulk] = useState(false);
@@ -799,6 +903,7 @@ function AdjustmentsTab() {
 
   return (
     <div className="space-y-4">
+      <AutoAdjustCard />
       <div className="flex justify-end">
         <Button onClick={() => setShowBulk(true)}>
           <Plus className="mr-2 h-4 w-4" />Nuevo ajuste masivo
