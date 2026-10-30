@@ -352,7 +352,11 @@ export function PosPage() {
         discountAmount: Number(sale.discountAmount ?? 0),
         taxAmount: Number(sale.taxAmount ?? 0),
         totalAmount: Number(sale.totalAmount ?? total),
-        payments: payments.map(p => ({ method: p.method, amount: p.amount })),
+        commissionAmount: Number(sale.commissionAmount ?? 0),
+        commissionPercent: Number(sale.commissionPercent ?? 0) || undefined,
+        // La comisión de cada pago la fija el backend (tasa vigente); se toma
+        // de la respuesta para que el ticket calce con lo guardado.
+        payments: payments.map((p, i) => ({ method: p.method, amount: p.amount, commissionAmount: Number(sale.payments?.[i]?.commissionAmount ?? p.commissionAmount ?? 0) })),
         change: Math.max(0, totalPaid - Number(sale.totalAmount ?? total)),
         generatedCoupon: sale.generatedCoupon
           ? { code: sale.generatedCoupon.code, discountPercent: Number(sale.generatedCoupon.discountPercent), expiresAt: sale.generatedCoupon.expiresAt }
@@ -381,7 +385,8 @@ export function PosPage() {
           discountAmount: manualDiscountAmount,
           taxAmount: 0,
           totalAmount: total,
-          payments: payments.map(p => ({ method: p.method, amount: p.amount })),
+          commissionAmount: payments.reduce((s, p) => s + (p.commissionAmount ?? 0), 0),
+          payments: payments.map(p => ({ method: p.method, amount: p.amount, commissionAmount: p.commissionAmount })),
           change: Math.max(0, totalPaid - total),
           generatedCoupon: null,
           pointsEarned: 0,

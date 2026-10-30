@@ -223,6 +223,10 @@ export class CashService {
     const salesByMethod: Record<string, number> = {};
     let totalSales = 0;
     let totalTransactions = 0;
+    // Comisión de tarjeta cobrada al cliente — va aparte de las ventas para
+    // que "Total ventas" siga siendo solo productos.
+    const commissionsByMethod: Record<string, number> = {};
+    let cardCommissions = 0;
 
     for (const sale of session.sales) {
       if (sale.status === 'CANCELLED') continue;
@@ -231,6 +235,11 @@ export class CashService {
         const method = payment.method;
         salesByMethod[method] = (salesByMethod[method] ?? 0) + Number(payment.amount);
         totalSales += Number(payment.amount);
+        const commission = Number(payment.commissionAmount ?? 0);
+        if (commission > 0) {
+          commissionsByMethod[method] = (commissionsByMethod[method] ?? 0) + commission;
+          cardCommissions += commission;
+        }
       }
     }
 
@@ -276,6 +285,8 @@ export class CashService {
         totalTransactions,
         totalSales,
         salesByMethod,
+        commissionsByMethod,
+        cardCommissions,
         totalWithdrawals,
         totalDeposits,
         debtPayments,

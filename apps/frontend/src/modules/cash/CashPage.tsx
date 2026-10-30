@@ -43,6 +43,7 @@ interface SessionSummary {
   summary: {
     totalTransactions: number; totalSales: number;
     salesByMethod: Record<string, number>;
+    commissionsByMethod?: Record<string, number>; cardCommissions?: number;
     totalWithdrawals: number; totalDeposits: number; netCash: number;
     debtPayments: number; otherDeposits: number;
     purchasePayments: number; expensePayments: number; otherWithdrawals: number;
@@ -90,6 +91,7 @@ function printArqueo(summary: SessionSummary, reconciliations: DigitalReconcilia
   ${Object.entries(sm.salesByMethod).map(([m, v]) =>
     `<div class="row"><span>Ventas ${PAYMENT_METHOD_LABELS[m] ?? m}:</span><span>S/ ${Number(v).toFixed(2)}</span></div>`
   ).join('')}
+  ${(sm.cardCommissions ?? 0) > 0 ? `<div class="row"><span>Comisión tarjeta cobrada:</span><span>S/ ${Number(sm.cardCommissions).toFixed(2)}</span></div>` : ''}
   ${sm.debtPayments > 0 ? `<div class="row"><span>Cobro de cuentas:</span><span>+S/ ${sm.debtPayments.toFixed(2)}</span></div>` : ''}
   ${sm.otherDeposits > 0 ? `<div class="row"><span>Otros depósitos:</span><span>+S/ ${sm.otherDeposits.toFixed(2)}</span></div>` : ''}
   ${sm.purchasePayments > 0 ? `<div class="row"><span>Pago a proveedores:</span><span>-S/ ${sm.purchasePayments.toFixed(2)}</span></div>` : ''}
@@ -552,6 +554,12 @@ function ActiveSessionPanel({ session }: { session: CashSession }) {
                       <span className="font-medium">{formatCurrency(amount)}</span>
                     </div>
                   ))}
+                  {(summary.summary.cardCommissions ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm text-muted-foreground border-t pt-1.5">
+                      <span>Comisión tarjeta cobrada (aparte de ventas)</span>
+                      <span className="font-medium">{formatCurrency(summary.summary.cardCommissions ?? 0)}</span>
+                    </div>
+                  )}
                 </div>
               )}
 

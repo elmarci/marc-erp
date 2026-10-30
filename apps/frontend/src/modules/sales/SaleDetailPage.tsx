@@ -27,7 +27,8 @@ export function SaleDetailPage() {
         cashier: { firstName: string; lastName: string };
         customer: { firstName: string; lastName: string } | null;
         items: Array<{ id: string; productName: string; quantity: number; unitPrice: number; subtotal: number; unit: string | null }>;
-        payments: Array<{ method: string; amount: number }>;
+        payments: Array<{ method: string; amount: number; commissionAmount?: number }>;
+        commissionAmount?: number; commissionPercent?: number;
         amountTendered?: number; changeAmount?: number; pointsEarned?: number; pointsRedeemed?: number;
       };
     },
@@ -39,7 +40,7 @@ export function SaleDetailPage() {
   // realmente entregó y el vuelto están aparte. Para el ticket reimpreso se
   // vuelve a sumar el vuelto al pago en efectivo, como salió al cobrar.
   const change = Number(sale?.changeAmount ?? 0);
-  const receiptPayments = (sale?.payments ?? []).map((p) => ({ method: p.method, amount: Number(p.amount) }));
+  const receiptPayments = (sale?.payments ?? []).map((p) => ({ method: p.method, amount: Number(p.amount), commissionAmount: Number(p.commissionAmount ?? 0) }));
   if (change > 0.004 && receiptPayments.length > 0) {
     const idx = receiptPayments.findIndex((p) => p.method === 'CASH');
     receiptPayments[idx >= 0 ? idx : receiptPayments.length - 1].amount += change;
@@ -154,6 +155,12 @@ export function SaleDetailPage() {
               <span>IGV</span><span>{formatCurrency(sale.taxAmount)}</span></div>
             <div className="flex justify-between font-bold text-base border-t pt-1">
               <span>TOTAL</span><span>{formatCurrency(sale.totalAmount)}</span></div>
+            {Number(sale.commissionAmount ?? 0) > 0 && <>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Comisión tarjeta ({Number(sale.commissionPercent)}%)</span><span>{formatCurrency(Number(sale.commissionAmount))}</span></div>
+              <div className="flex justify-between font-semibold">
+                <span>Cobrado al cliente</span><span>{formatCurrency(Number(sale.totalAmount) + Number(sale.commissionAmount))}</span></div>
+            </>}
           </div>
         </CardContent>
       </Card>
@@ -170,7 +177,9 @@ export function SaleDetailPage() {
             subtotal: sale.subtotal,
             discountAmount: sale.discountAmount,
             taxAmount: sale.taxAmount,
-            totalAmount: sale.totalAmount,
+            totalAmount: Number(sale.totalAmount),
+            commissionAmount: Number(sale.commissionAmount ?? 0),
+            commissionPercent: Number(sale.commissionPercent ?? 0) || undefined,
             payments: receiptPayments,
             change: change > 0.004 ? change : undefined,
             pointsEarned: Number(sale.pointsEarned ?? 0),

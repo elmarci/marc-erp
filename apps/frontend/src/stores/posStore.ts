@@ -42,6 +42,9 @@ export interface CartItem {
 export interface CartPayment {
   method: string;
   amount: number;
+  // Comisión de tarjeta (POS Izipay) sobre este pago, encima de amount: en el
+  // POS se le cobra al cliente amount + commissionAmount. 0/ausente = no aplica.
+  commissionAmount?: number;
   reference?: string;
   cardLast4?: string;
 }
@@ -70,6 +73,10 @@ interface PosState {
   total: number;
   totalPaid: number;
   change: number;
+  // Suma de comisiones de tarjeta de los pagos agregados, y lo que el
+  // cliente paga en total (venta + comisión).
+  totalCommission: number;
+  amountToCharge: number;
 
   setCashSession: (sessionId: string, registerId: string) => void;
   clearCashSession: () => void;
@@ -116,7 +123,9 @@ function recalcTotals(
   const total = discountedSubtotal;
   const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
   const change = Math.max(0, totalPaid - total);
-  return { subtotal, discountAmount, taxAmount, total, totalPaid, change };
+  const totalCommission = payments.reduce((s, p) => s + (p.commissionAmount ?? 0), 0);
+  const amountToCharge = total + totalCommission;
+  return { subtotal, discountAmount, taxAmount, total, totalPaid, change, totalCommission, amountToCharge };
 }
 
 export const usePosStore = create<PosState>()((set, get) => ({
@@ -141,6 +150,8 @@ export const usePosStore = create<PosState>()((set, get) => ({
   total: 0,
   totalPaid: 0,
   change: 0,
+  totalCommission: 0,
+  amountToCharge: 0,
 
   clearCashSession: () => set({ cashSessionId: null, cashRegisterId: null }),
 
@@ -298,6 +309,8 @@ export const usePosStore = create<PosState>()((set, get) => ({
       total: 0,
       totalPaid: 0,
       change: 0,
+      totalCommission: 0,
+      amountToCharge: 0,
     });
   },
 }));

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { X, DollarSign, CreditCard, Smartphone, Check, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +8,8 @@ import { formatCurrency, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
+import { api } from '@/services/api';
+import { cardCommission, isCardMethod, DEFAULT_CARD_COMMISSION_PERCENT } from '@/lib/commission';
 
 interface PosPaymentModalProps {
   onClose: () => void;
@@ -25,7 +28,14 @@ const PAYMENT_METHODS = [
 ];
 
 export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPaymentModalProps) {
-  const { total, payments, addPayment, removePayment, totalPaid, change, items, setIsCredit, customerId } = usePosStore();
+  const { total, payments, addPayment, removePayment, totalPaid, change, items, setIsCredit, customerId, totalCommission } = usePosStore();
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => (await api.get<{ data: Array<{ key: string; value: string }> }>('/settings')).data.data,
+    staleTime: 5 * 60 * 1000,
+  });
+  const rawPercent = settings?.find((s) => s.key === 'card_commission_percent')?.value;
+  const commissionPercent = rawPercent != null && rawPercent !== '' ? Number(rawPercent) || 0 : DEFAULT_CARD_COMMISSION_PERCENT;
   const [selectedMethod, setSelectedMethod] = useState('CASH');
   const [amount, setAmount] = useState(total.toFixed(2));
   const remaining = Math.max(0, total - totalPaid);
@@ -37,6 +47,12 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
   // otro método — sin obligar a un paso extra en el caso más común.
   const willCompleteWithThisPayment = !isComplete && enteredAmount >= remaining - 0.001;
 
+  // Tarjeta: el monto ingresado es la parte de la venta que cubre la tarjeta
+  // (tope: lo pendiente — la tarjeta no da vuelto) y la comisión va encima.
+  const isCard = isCardMethod(selectedMethod);
+  const cardBase = isCard ? Math.min(enteredAmount, remaining) : 0;
+  const previewCommission = isCard && !isComplete ? cardCommission(cardBase, commissionPercent) : 0;
+  const amountToCharge = total + totalCommission + previewCommission;
   const registerPayment = (): boolean => {
     if (enteredAmount <= 0) {
       toast.error('Ingrese un monto válido.');
@@ -52,9 +68,14 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
       toast.error('El monto de fiado no puede exceder el saldo pendiente.');
       return false;
     }
-    addPayment({ method: selectedMethod, amount: enteredAmount });
+    const paymentAmount = isCard ? cardBase : enteredAmount;
+    addPayment({
+      method: selectedMethod,
+      amount: paymentAmount,
+      commissionAmount: isCard ? cardCommission(paymentAmount, commissionPercent) : undefined,
+    });
     if (selectedMethod === 'CREDIT') setIsCredit(true);
-    setAmount(Math.max(0, remaining - enteredAmount).toFixed(2));
+    setAmount(Math.max(0, remaining - paymentAmount).toFixed(2));
     return true;
   };
 
@@ -118,7 +139,12 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
           {/* Total */}
           <div className="rounded-xl bg-primary/10 p-4 text-center">
             <p className="text-sm text-muted-foreground">Total a cobrar</p>
-            <p className="text-4xl font-bold text-primary">{formatCurrency(total)}</p>
+            <p className="text-4xl font-bold text-primary">{formatCurrency(amountToCharge)}</p>
+            {amountToCharge > total + 0.001 && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Venta {formatCurrency(total)} + comisión tarjeta {formatCurrency(amountToCharge - total)}
+              </p>
+            )}
             {totalPaid > 0 && (
               <p className="mt-1 text-sm text-muted-foreground">
                 Pendiente: <span className="font-semibold text-foreground">{formatCurrency(remaining)}</span>
@@ -172,7 +198,7 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
 
           {/* Monto */}
           <div>
-            <p className="mb-1.5 text-sm font-medium">Monto</p>
+            <p className="mb-1.5 text-sm font-medium">{isCard ? 'Monto de la venta a pagar con tarjeta' : 'Monto'}</p>
             <Input
               type="number"
               value={amount}
@@ -182,6 +208,19 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
               step={0.10}
             />
           </div>
+
+          {/* Desglose de tarjeta: lo que hay que digitar en el POS Izipay */}
+          {isCard && !isComplete && cardBase > 0 && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1 text-sm">
+              <div className="flex justify-between"><span>Venta</span><span>{formatCurrency(cardBase)}</span></div>
+              <div className="flex justify-between">
+                <span>Comisión tarjeta ({commissionPercent}%)</span><span>+{formatCurrency(previewCommission)}</span>
+              </div>
+              <div className="flex justify-between border-t pt-1 font-bold text-primary">
+                <span>Cobrar en el POS</span><span>{formatCurrency(cardBase + previewCommission)}</span>
+              </div>
+            </div>
+          )}
 
           {/* Montos rápidos (solo efectivo) */}
           {selectedMethod === 'CASH' && (
@@ -208,9 +247,14 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             <div className="rounded-lg border divide-y">
               {payments.map((p, i) => (
                 <div key={i} className="flex items-center justify-between px-3 py-2">
-                  <span className="text-sm">{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</span>
+                  <span className="text-sm">
+                    {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                    {(p.commissionAmount ?? 0) > 0 && (
+                      <span className="ml-1 text-xs text-muted-foreground">(incl. comisión {formatCurrency(p.commissionAmount ?? 0)})</span>
+                    )}
+                  </span>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">{formatCurrency(p.amount)}</span>
+                    <span className="text-sm font-semibold">{formatCurrency(p.amount + (p.commissionAmount ?? 0))}</span>
                     <button
                       onClick={() => {
                         removePayment(i);
@@ -226,7 +270,7 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
               <div className="flex justify-between px-3 py-2 bg-muted/50">
                 <span className="text-sm font-medium">Total pagado</span>
                 <span className={cn('text-sm font-bold', isComplete ? 'text-success' : 'text-warning')}>
-                  {formatCurrency(totalPaid)}
+                  {formatCurrency(totalPaid + totalCommission)}
                 </span>
               </div>
               {change > 0 && (
@@ -259,10 +303,10 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             ) : willCompleteWithThisPayment ? (
               <>
                 <Check className="mr-2 h-5 w-5" />
-                Cobrar {formatCurrency(remaining)}
+                Cobrar {formatCurrency(remaining + previewCommission)}
               </>
             ) : enteredAmount > 0 ? (
-              `Agregar ${formatCurrency(enteredAmount)} · Faltan ${formatCurrency(remaining - enteredAmount)}`
+              `Agregar ${formatCurrency(enteredAmount + previewCommission)} · Faltan ${formatCurrency(remaining - enteredAmount)}`
             ) : (
               `Faltan ${formatCurrency(remaining)}`
             )}
