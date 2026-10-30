@@ -8,6 +8,7 @@ import { getSettingValues } from '../../utils/settings';
 import { couponsService } from '../coupons/coupons.service';
 import { nowInLima } from '../../utils/timezone';
 import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
+import { cardCommission, isCardMethod } from '../../utils/commission';
 
 interface SaleItemInput {
   productId: string;
@@ -336,11 +337,18 @@ export class SalesService {
 
     // Config para generar un cupón nuevo si esta venta supera el mínimo
     const couponConfig = await getSettingValues([
-      'coupon_min_sale_amount', 'coupon_discount_percent', 'coupon_validity_days',
+      'coupon_min_sale_amount', 'coupon_discount_percent', 'coupon_validity_days', 'card_commission_percent',
     ]);
     const couponMinSale = Number(couponConfig['coupon_min_sale_amount'] ?? 100);
     const couponRewardPercent = Number(couponConfig['coupon_discount_percent'] ?? 10);
     const couponValidityDays = Number(couponConfig['coupon_validity_days'] ?? 30);
+
+    // Comisión de tarjeta: se calcula aquí con la tasa vigente (no se confía
+    // en lo que mande el frontend) sobre la porción pagada con tarjeta, y va
+    // aparte de totalAmount — es un recargo al cliente, no venta de productos.
+    const commissionPercent = Number(couponConfig['card_commission_percent'] ?? 4.06) || 0;
+    const paymentCommissions = input.payments.map((p) => (isCardMethod(p.method) ? cardCommission(p.amount, commissionPercent) : 0));
+    const commissionAmount = paymentCommissions.reduce((sum, c) => sum + c, 0);
 
     // Verificar que los pagos cubren el total (excepto crédito)
     if (!input.isCredit) {
@@ -400,6 +408,8 @@ export class SalesService {
           discountPercent: input.discountPercent ?? 0,
           taxAmount,
           totalAmount,
+          commissionAmount,
+          commissionPercent: commissionAmount > 0 ? commissionPercent : 0,
           amountTendered,
           changeAmount: Math.max(0, amountTendered - totalAmount),
           isCredit: input.isCredit ?? false,
@@ -411,9 +421,10 @@ export class SalesService {
             create: saleItems,
           },
           payments: {
-            create: input.payments.map((p) => ({
+            create: input.payments.map((p, i) => ({
               method: p.method,
               amount: p.amount,
+              commissionAmount: paymentCommissions[i],
               reference: p.reference,
               cardLast4: p.cardLast4,
             })),

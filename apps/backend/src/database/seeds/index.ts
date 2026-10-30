@@ -54,6 +54,7 @@ async function main() {
     { key: 'coupon_validity_days', value: '30', type: 'number', group: 'coupons', label: 'Vigencia del cupón (días)' },
     { key: 'loyalty_points_per_sol', value: '1', type: 'number', group: 'loyalty', label: 'Puntos ganados por S/1 de compra' },
     { key: 'loyalty_point_value', value: '0.03', type: 'number', group: 'loyalty', label: 'Valor de canje por punto (S/)' },
+    { key: 'card_commission_percent', value: '4.06', type: 'number', group: 'payments', label: 'Comisión por pago con tarjeta (%)' },
   ];
 
   for (const s of settings) {

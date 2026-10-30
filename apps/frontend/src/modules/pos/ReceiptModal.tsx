@@ -22,6 +22,9 @@ interface ReceiptItem {
 interface ReceiptPayment {
   method: string;
   amount: number;
+  // Comisión de tarjeta sobre este pago — en el ticket el pago se muestra
+  // por lo realmente cobrado (amount + commissionAmount).
+  commissionAmount?: number;
 }
 
 interface GeneratedCoupon {
@@ -42,6 +45,10 @@ export interface ReceiptData {
   discountAmount: number;
   taxAmount: number;
   totalAmount: number;
+  // Comisión por pago con tarjeta, aparte de totalAmount. commissionPercent
+  // ausente = se usa la tasa vigente en Configuración.
+  commissionAmount?: number;
+  commissionPercent?: number;
   payments: ReceiptPayment[];
   change?: number;
   generatedCoupon?: GeneratedCoupon | null;
@@ -80,6 +87,7 @@ function useBusinessSettings() {
     showPoints: get('receipt_show_points', 'true') !== 'false',
     showCoupon: get('receipt_show_coupon', 'true') !== 'false',
     showQr: get('receipt_show_qr', 'true') !== 'false',
+    cardCommissionPercent: Number(get('card_commission_percent', '4.06')) || 0,
   };
 }
 
@@ -368,6 +376,23 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             <div className="total-row" style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px' }}>
               <span>TOTAL:</span><span>{formatCurrency(data.totalAmount)}</span>
             </div>
+            {/* Comisión: siempre visible — S/ 0.00 en efectivo, Yape, Plin,
+                etc.; con tarjeta, la tasa y el total que pagó el cliente. */}
+            {Number(data.commissionAmount ?? 0) > 0 ? (
+              <>
+                <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Comisión tarjeta ({Number(data.commissionPercent || s.cardCommissionPercent)}%):</span>
+                  <span>{formatCurrency(Number(data.commissionAmount))}</span>
+                </div>
+                <div className="total-row" style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px' }}>
+                  <span>TOTAL A PAGAR:</span><span>{formatCurrency(data.totalAmount + Number(data.commissionAmount))}</span>
+                </div>
+              </>
+            ) : (
+              <div className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Comisión:</span><span>{formatCurrency(0)}</span>
+              </div>
+            )}
             <div className="row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#666', marginTop: '2px' }}>
               <span>Precios incluyen impuestos</span><span>RTE</span>
             </div>
@@ -377,7 +402,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
             {data.payments.map((p, i) => (
               <div key={i} className="row" style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>{PAYMENT_METHOD_LABELS[p.method] ?? p.method}:</span>
-                <span>{formatCurrency(p.amount)}</span>
+                <span>{formatCurrency(p.amount + Number(p.commissionAmount ?? 0))}</span>
               </div>
             ))}
             {data.change != null && data.change > 0 && (
