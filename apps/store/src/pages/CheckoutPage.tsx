@@ -4,7 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store, Plus, LocateFixed, CheckCircle2, Gift } from 'lucide-react'
 import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
-import { storeApi } from '../api'
+import { storeApi, rememberOrderPhone } from '../api'
 import { toast } from 'sonner'
 
 type Step = 1 | 2 | 3
@@ -128,9 +128,12 @@ export function CheckoutPage() {
         }).catch(() => {})
       }
       clearCart()
+      rememberOrderPhone(res.data.data.orderNumber, form.customerPhone)
       navigate(`/pedido/${res.data.data.orderNumber}`)
     },
-    onError: () => toast.error('Error al procesar el pedido. Intenta de nuevo.'),
+    onError: (err) => toast.error(
+      (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+        ?? 'Error al procesar el pedido. Intenta de nuevo.'),
   })
 
   if (items.length === 0) {

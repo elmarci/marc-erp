@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle, Clock, Package, Truck, XCircle, ChevronRight, MessageCircle } from 'lucide-react'
-import { storeApi } from '../api'
+import { storeApi, getOrderPhone } from '../api'
 import { useEffect } from 'react'
 import { io } from 'socket.io-client'
 
@@ -29,7 +29,7 @@ export function OrderConfirmPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['order', orderNumber],
-    queryFn: () => storeApi.getOrder(orderNumber!),
+    queryFn: () => storeApi.getOrder(orderNumber!, getOrderPhone(orderNumber!)),
     enabled: !!orderNumber,
     refetchInterval: 5000, // Poll every 5 seconds
   })

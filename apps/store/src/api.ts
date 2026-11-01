@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuthStore } from './authStore'
 
 const BASE_URL = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3001/api/v1'
 
@@ -13,6 +14,45 @@ api.interceptors.request.use((config) => {
   } catch { /* ignore */ }
   return config
 })
+
+// Sesión vencida o cerrada desde otro equipo (cambio de contraseña): el
+// backend responde 401 y se vuelve a la pantalla de ingreso.
+api.interceptors.response.use(undefined, (error) => {
+  const status = error?.response?.status
+  const sentToken = !!error?.config?.headers?.['Authorization']
+  if (status === 401 && sentToken && useAuthStore.getState().isLoggedIn) {
+    useAuthStore.getState().logout()
+  }
+  return Promise.reject(error)
+})
+
+// Cliente tal como lo devuelve el backend al ingresar/registrarse.
+export interface AuthCustomer {
+  id: string
+  name: string
+  phone: string
+  email: string | null
+  emailVerified: boolean
+  erpLinked: boolean
+  hasPassword: boolean
+}
+export type AuthResult = { data: { customer: AuthCustomer; token: string } }
+
+// Teléfono con el que se hizo cada pedido en este equipo, para poder abrir
+// /pedido/:numero (el backend pide número + teléfono a quien no es dueño).
+const ORDER_PHONES_KEY = 'marc-order-phones'
+export function rememberOrderPhone(orderNumber: string, phone: string) {
+  try {
+    const map = JSON.parse(localStorage.getItem(ORDER_PHONES_KEY) ?? '{}') as Record<string, string>
+    map[orderNumber] = phone
+    localStorage.setItem(ORDER_PHONES_KEY, JSON.stringify(map))
+  } catch { /* ignore */ }
+}
+export function getOrderPhone(orderNumber: string): string | undefined {
+  try {
+    return (JSON.parse(localStorage.getItem(ORDER_PHONES_KEY) ?? '{}') as Record<string, string>)[orderNumber]
+  } catch { return undefined }
+}
 
 export interface Product {
   id: string
@@ -81,6 +121,9 @@ export interface StoreProfile {
   name: string
   phone: string
   email: string | null
+  emailVerified: boolean
+  erpLinked: boolean
+  hasPassword: boolean
   createdAt: string
   loyaltyPoints: number
   addresses: StoreAddress[]
@@ -173,16 +216,16 @@ export const storeApi = {
   }) =>
     api.post<{ data: StoreOrder }>('/store/orders', data),
 
-  getOrder: (orderNumber: string) =>
-    api.get<{ data: StoreOrder }>(`/store/orders/${orderNumber}`),
+  getOrder: (orderNumber: string, phone?: string) =>
+    api.get<{ data: StoreOrder }>(`/store/orders/${orderNumber}`, { params: { phone } }),
 
-  trackOrders: (phone: string) =>
-    api.get<{ data: StoreOrder[] }>(`/store/orders/track/${phone}`),
+  myOrders: () =>
+    api.get<{ data: StoreOrder[] }>('/store/orders/mine'),
 
   getProfile: () =>
     api.get<{ data: StoreProfile }>('/store/auth/profile'),
 
-  updateProfile: (data: { name?: string; email?: string }) =>
+  updateProfile: (data: { name?: string }) =>
     api.put<{ data: StoreProfile }>('/store/auth/profile', data),
 
   getConsumptionReport: (from?: string, to?: string) =>
@@ -198,9 +241,28 @@ export const storeApi = {
     api.patch<{ data: StoreAddress }>(`/store/auth/addresses/${id}/default`),
 
   loginWithGoogle: (idToken: string, phone?: string, name?: string) =>
-    api.post<{ data: { customer: { id: string; name: string; phone: string; email: string | null }; token: string } }>(
-      '/store/auth/google', { idToken, phone, name }
-    ),
+    api.post<AuthResult>('/store/auth/google', { idToken, phone, name }),
+
+  login: (identifier: string, password: string) =>
+    api.post<AuthResult>('/store/auth/login', { identifier, password }),
+
+  register: (data: { name: string; phone: string; email: string; password: string }) =>
+    api.post<AuthResult>('/store/auth/register', data),
+
+  sendEmailCode: (email?: string) =>
+    api.post<{ data: { sentTo: string } }>('/store/auth/email/send-code', email ? { email } : {}),
+
+  verifyEmail: (code: string) =>
+    api.post<{ data: { customer: AuthCustomer } }>('/store/auth/email/verify', { code }),
+
+  forgotPassword: (identifier: string) =>
+    api.post('/store/auth/password/forgot', { identifier }),
+
+  resetPassword: (identifier: string, code: string, password: string) =>
+    api.post<AuthResult>('/store/auth/password/reset', { identifier, code, password }),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<AuthResult>('/store/auth/password/change', { currentPassword, newPassword }),
 
   getVapidPublicKey: () =>
     api.get<{ data: { publicKey: string | null } }>('/store/push/vapid-public-key'),

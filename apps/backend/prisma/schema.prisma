@@ -1582,10 +1582,18 @@ model StoreCustomer {
   // puntos de fidelización, etc. igual que un cliente atendido en tienda.
   // Nullable porque las cuentas creadas antes de este campo no lo tienen.
   customerId   String?  @map("customer_id")
+  // Fecha en que la persona demostró ser dueña del correo (código por correo
+  // o login con Google). Null = correo sin verificar o cuenta antigua sin
+  // correo: la tienda le pide agregarlo/verificarlo antes de seguir.
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  // Se incrementa al cambiar la contraseña o desactivar la cuenta: invalida
+  // todos los tokens emitidos antes (cierra sesión en todos los equipos).
+  tokenVersion Int      @default(0) @map("token_version")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   customer          Customer?          @relation(fields: [customerId], references: [id])
+  verificationCodes StoreVerificationCode[]
   orders            StoreOrder[]
   addresses         StoreAddress[]
   pushSubscriptions PushSubscription[]
@@ -1871,4 +1879,26 @@ model TvSlide {
 
   @@index([sortOrder])
   @@map("tv_slides")
+}
+
+// Códigos de 6 dígitos enviados por correo para verificar el correo de una
+// cuenta de la tienda o recuperar la contraseña. Solo se guarda el hash del
+// código; vence a los 15 minutos y admite pocos intentos.
+model StoreVerificationCode {
+  id         String    @id @default(uuid())
+  customerId String    @map("customer_id")
+  purpose    String // VERIFY_EMAIL | RESET_PASSWORD
+  // Correo al que se envió: en VERIFY_EMAIL es el correo que queda en la
+  // cuenta recién cuando se confirma el código.
+  email      String
+  codeHash   String    @map("code_hash")
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  customer StoreCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, purpose])
+  @@map("store_verification_codes")
 }

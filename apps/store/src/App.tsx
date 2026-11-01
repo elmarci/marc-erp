@@ -9,6 +9,7 @@ import { MobileTabBar } from './components/MobileTabBar'
 import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
 import { WhatsAppFAB } from './components/WhatsAppFAB'
 import { AuthGate } from './pages/AuthGate'
+import { VerifyEmailGate } from './components/AccountSecurity'
 import { useAuthStore } from './authStore'
 import { HomePage } from './pages/HomePage'
 import { CatalogPage } from './pages/CatalogPage'
@@ -46,6 +47,7 @@ export default function App() {
   if (!isLoggedIn && !guestMode) return <AuthGate />
 
   return (
+    <VerifyEmailGate>
     <div className="min-h-screen bg-paper-bg">
       <Header />
       <CartDrawer />
@@ -83,5 +85,6 @@ export default function App() {
       {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/pedido') && <VoiceShoppingListButton />}
       {!location.pathname.startsWith('/checkout') && <WhatsAppFAB />}
     </div>
+    </VerifyEmailGate>
   )
 }

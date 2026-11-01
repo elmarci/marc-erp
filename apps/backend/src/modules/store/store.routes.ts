@@ -2,7 +2,8 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { storeService } from './store.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
-import { storeAuthMiddleware } from './store-auth.routes';
+import { storeAuthMiddleware, requireStoreAuth } from './store-auth.routes';
+import { BusinessError } from '../../utils/errors';
 
 const router = Router();
 
@@ -95,21 +96,34 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
     // storeAuthMiddleware es opcional (no bloquea invitados) — si hay sesión,
     // el pedido queda enlazado a la cuenta para su historial y beneficios.
     const storeCustomerId = (req as Request & { customerId?: string }).customerId;
+    // Canjear puntos exige el correo verificado (los puntos son dinero).
+    if ((data.pointsToRedeem ?? 0) > 0 && !(req as Request & { customerEmailVerified?: boolean }).customerEmailVerified) {
+      throw new BusinessError('Confirma tu correo para poder canjear puntos.');
+    }
     const order = await storeService.createOrder({ ...data, storeCustomerId });
     res.status(201).json({ success: true, data: order });
   } catch (err) { next(err); }
 });
 
-router.get('/orders/track/:phone', async (req: Request, res: Response, next: NextFunction) => {
+// "Mis pedidos": solo los pedidos hechos con la sesión iniciada. Antes era
+// /orders/track/:phone, público, y cualquiera veía nombre, dirección y
+// productos de otra persona con solo escribir su teléfono.
+router.get('/orders/mine', storeAuthMiddleware, requireStoreAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orders = await storeService.getOrdersByPhone(req.params.phone);
+    const storeCustomerId = (req as Request & { customerId: string }).customerId;
+    const orders = await storeService.getOrdersByStoreCustomer(storeCustomerId);
     res.json({ success: true, data: orders });
   } catch (err) { next(err); }
 });
 
-router.get('/orders/:orderNumber', async (req: Request, res: Response, next: NextFunction) => {
+// Detalle de un pedido: los números son correlativos (ORD-00001, 00002…),
+// así que además del número se exige el teléfono del pedido o ser la
+// cuenta que lo hizo.
+router.get('/orders/:orderNumber', storeAuthMiddleware, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const order = await storeService.getOrder(req.params.orderNumber);
+    const { phone } = z.object({ phone: z.string().max(20).optional() }).parse(req.query);
+    const storeCustomerId = (req as Request & { customerId?: string }).customerId;
+    const order = await storeService.getOrderForViewer(req.params.orderNumber, { phone, storeCustomerId });
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });
