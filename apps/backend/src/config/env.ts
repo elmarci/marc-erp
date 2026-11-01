@@ -25,6 +25,12 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().default('mailto:contacto@tiendamarc.com'),
+  // Correos transaccionales de la tienda (códigos de verificación y de
+  // recuperación de contraseña) vía la API HTTP de Resend — Railway bloquea
+  // SMTP saliente en planes básicos. Sin clave, en desarrollo el código se
+  // imprime en el log; en producción el envío falla con un error claro.
+  RESEND_API_KEY: z.string().optional(),
+  MAIL_FROM: z.string().default('Minimarket Marc <no-responder@tiendasmarc.pe>'),
 });
 
 function validateEnv() {

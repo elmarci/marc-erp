@@ -6,6 +6,11 @@ interface CustomerProfile {
   phone: string
   name: string
   email?: string | null
+  // undefined en sesiones guardadas antes de la verificación de correo: la
+  // tienda consulta el perfil y, si hace falta, pide verificar.
+  emailVerified?: boolean
+  erpLinked?: boolean
+  hasPassword?: boolean
 }
 
 interface AuthStore {

@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Package, LogOut, ChevronRight, RefreshCw, ShoppingBag,
-  MapPin, Plus, Trash2, Pencil, Check, X, CalendarDays, Gift, BarChart3,
+  MapPin, Plus, Trash2, Pencil, Check, X, CalendarDays, Gift, BarChart3, Mail, Lock,
 } from 'lucide-react'
 import { storeApi, type StoreAddress } from '../api'
 import { useAuthStore } from '../authStore'
 import { Link, useLocation } from 'react-router-dom'
 import { useCartStore } from '../cartStore'
 import { toast } from 'sonner'
+import { ChangePasswordForm, EmailCodeForm } from '../components/AccountSecurity'
 
 // yyyy-mm-dd para <input type="date">, en hora local — evita que un "hoy"
 // en UTC se muestre como "ayer" para quien está en Perú (UTC-5).
@@ -210,62 +211,87 @@ function AddressBook() {
 }
 
 /* ── Editar perfil ───────────────────────────────────────────────────── */
-function ProfileEditor({ name, email }: { name: string; email: string | null }) {
+// Nombre: directo. Correo: solo con código al correo nuevo. Contraseña:
+// pide la actual y cierra la sesión en los demás equipos.
+function ProfileEditor({ name, hasPassword }: { name: string; hasPassword: boolean }) {
   const queryClient = useQueryClient()
   const { customer, setCustomer } = useAuthStore()
-  const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState({ name, email: email ?? '' })
+  const [editing, setEditing] = useState<null | 'name' | 'email' | 'password'>(null)
+  const [form, setForm] = useState({ name })
 
   const mutation = useMutation({
-    mutationFn: () => storeApi.updateProfile({ name: form.name, email: form.email || undefined }),
+    mutationFn: () => storeApi.updateProfile({ name: form.name }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['store-profile'] })
-      if (customer) setCustomer({ ...customer, name: res.data.data.name, email: res.data.data.email })
-      setEditing(false)
+      if (customer) setCustomer({ ...customer, name: res.data.data.name })
+      setEditing(null)
       toast.success('Perfil actualizado')
     },
     onError: () => toast.error('No se pudo actualizar el perfil'),
   })
 
+  const linkCls = 'text-xs text-paper-ink-ghost hover:text-brand-blue-600 flex items-center gap-1 transition-colors'
+
   if (!editing) {
     return (
-      <button onClick={() => setEditing(true)} className="text-xs text-paper-ink-ghost hover:text-brand-blue-600 flex items-center gap-1 transition-colors">
-        <Pencil className="h-3 w-3" />Editar perfil
-      </button>
+      <div className="flex flex-wrap items-center justify-center gap-4">
+        <button onClick={() => setEditing('name')} className={linkCls}><Pencil className="h-3 w-3" />Editar nombre</button>
+        <button onClick={() => setEditing('email')} className={linkCls}><Mail className="h-3 w-3" />Cambiar correo</button>
+        <button onClick={() => setEditing('password')} className={linkCls}><Lock className="h-3 w-3" />{hasPassword ? 'Cambiar contraseña' : 'Crear contraseña'}</button>
+      </div>
+    )
+  }
+
+  if (editing === 'email') {
+    return (
+      <div className="w-full max-w-sm mx-auto text-left mt-2 bg-white border border-paper-line rounded-2xl p-4">
+        <p className="text-sm font-semibold text-paper-ink mb-2">Cambiar correo</p>
+        <EmailCodeForm changing currentEmail={customer?.email} onVerified={() => {
+          queryClient.invalidateQueries({ queryKey: ['store-profile'] })
+          setEditing(null)
+        }} />
+        <button onClick={() => setEditing(null)} className="text-xs text-paper-ink-ghost hover:text-paper-ink-soft mt-2">Cancelar</button>
+      </div>
+    )
+  }
+
+  if (editing === 'password') {
+    return (
+      <div className="w-full max-w-sm mx-auto text-left">
+        <ChangePasswordForm hasPassword={hasPassword} onDone={() => setEditing(null)} />
+      </div>
     )
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 mt-2">
-      <input value={form.name} onChange={e => setForm(v => ({ ...v, name: e.target.value }))} placeholder="Nombre"
+    <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+      <input value={form.name} onChange={e => setForm({ name: e.target.value })} placeholder="Nombre"
         className="bg-white border border-paper-line focus:border-brand-blue-400 rounded-xl px-3 py-1.5 text-sm text-paper-ink outline-none transition-colors" />
-      <input value={form.email} onChange={e => setForm(v => ({ ...v, email: e.target.value }))} placeholder="Email (opcional)"
-        className="bg-white border border-paper-line focus:border-brand-blue-400 rounded-xl px-3 py-1.5 text-sm text-paper-ink outline-none transition-colors" />
-      <button onClick={() => mutation.mutate()} disabled={mutation.isPending}
-        className="bg-brand-green-600 hover:bg-brand-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors">
+      <button onClick={() => mutation.mutate()} disabled={mutation.isPending || form.name.trim().length < 2}
+        className="bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors">
         Guardar
       </button>
-      <button onClick={() => setEditing(false)} className="text-xs text-paper-ink-ghost hover:text-paper-ink-soft px-2 transition-colors">Cancelar</button>
+      <button onClick={() => setEditing(null)} className="text-xs text-paper-ink-ghost hover:text-paper-ink-soft px-2 transition-colors">Cancelar</button>
     </div>
   )
 }
 
 export function TrackOrderPage() {
-  const { customer, logout, exitGuestMode } = useAuthStore()
+  const { customer, isLoggedIn, logout, exitGuestMode } = useAuthStore()
   const { addItem, openCart } = useCartStore()
   const location = useLocation()
 
   const { data: profileData } = useQuery({
     queryKey: ['store-profile'],
     queryFn: () => storeApi.getProfile(),
-    enabled: !!customer,
+    enabled: !!customer && !!isLoggedIn,
   })
   const profile = profileData?.data.data
 
   const { data, isLoading } = useQuery({
-    queryKey: ['track-orders', customer?.phone],
-    queryFn: () => storeApi.trackOrders(customer!.phone),
-    enabled: !!customer,
+    queryKey: ['my-orders', customer?.id],
+    queryFn: () => storeApi.myOrders(),
+    enabled: !!customer && !!isLoggedIn,
     refetchInterval: 15000,
   })
 
@@ -303,7 +329,7 @@ export function TrackOrderPage() {
 
   // Invitado sin cuenta — sus pedidos por WhatsApp no quedan asociados a un
   // perfil, así que no hay nada que mostrar acá sin iniciar sesión.
-  if (!customer) {
+  if (!customer || !isLoggedIn) {
     return (
       <main className="max-w-md mx-auto px-4 py-20 text-center">
         <Package className="h-12 w-12 mx-auto mb-4 text-brand-blue-600" />
@@ -332,8 +358,8 @@ export function TrackOrderPage() {
             <CalendarDays className="h-3 w-3" />Cliente desde {new Date(profile.createdAt).toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}
           </p>
         )}
-        <div className="flex items-center justify-center gap-4 mt-2">
-          <ProfileEditor name={customer!.name} email={customer!.email ?? null} />
+        <div className="flex flex-wrap items-center justify-center gap-4 mt-2">
+          <ProfileEditor name={customer!.name} hasPassword={profile?.hasPassword ?? customer!.hasPassword ?? true} />
           <button onClick={logout} className="text-xs text-paper-ink-ghost hover:text-brand-magenta-600 flex items-center gap-1 transition-colors">
             <LogOut className="h-3 w-3" />Cerrar sesión
           </button>
@@ -357,6 +383,11 @@ export function TrackOrderPage() {
       {/* Puntos y zona de canje */}
       <div id="canje" className="mb-4 scroll-mt-20">
         <PointsZone points={profile?.loyaltyPoints ?? 0} />
+        {profile && !profile.erpLinked && (
+          <p className="text-xs text-paper-ink-soft bg-paper-surface rounded-2xl px-4 py-3 mt-2">
+            ¿También compras en la tienda física? Para sumar esas compras y puntos a esta cuenta, pide en caja que registren tu correo <span className="font-semibold">{profile.email}</span> en tu ficha de cliente.
+          </p>
+        )}
       </div>
 
       {/* Reporte de consumos */}

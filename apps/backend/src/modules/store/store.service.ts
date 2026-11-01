@@ -392,20 +392,27 @@ export class StoreService {
     return order;
   }
 
-  async getOrdersByPhone(phone: string) {
+  async getOrdersByStoreCustomer(storeCustomerId: string) {
     return prisma.storeOrder.findMany({
-      where: { customerPhone: phone },
+      where: { storeCustomerId },
       include: { items: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async getOrder(orderNumber: string) {
+  // Devuelve el pedido solo si quien pregunta es la cuenta que lo hizo o
+  // conoce el teléfono del pedido. Si no, responde "no encontrado" (no
+  // revela que el número existe).
+  async getOrderForViewer(orderNumber: string, viewer: { phone?: string; storeCustomerId?: string }) {
     const order = await prisma.storeOrder.findUnique({
       where: { orderNumber },
       include: { items: true },
     });
     if (!order) throw new NotFoundError('Pedido');
+    const digits = (v: string) => v.replace(/\D/g, '').replace(/^51(?=9\d{8}$)/, '');
+    const ownsIt = !!viewer.storeCustomerId && order.storeCustomerId === viewer.storeCustomerId;
+    const knowsPhone = !!viewer.phone && digits(viewer.phone) === digits(order.customerPhone);
+    if (!ownsIt && !knowsPhone) throw new NotFoundError('Pedido');
     return order;
   }
 
