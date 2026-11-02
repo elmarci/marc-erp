@@ -8,19 +8,22 @@ import { usePosStore } from '@/stores/posStore';
 import { useOfflineSalesStore } from '@/stores/offlineSalesStore';
 import { cn } from '@/lib/utils';
 import { BtPrinterButton, BtPrinterPanel } from './BtPrinterPanel';
+import { HeldSalesButton, HeldSalesPanel } from './HeldSalesPanel';
 
 interface PosHeaderProps {
   onExitPos: () => void;
   onOpenSession: () => void;
+  onHeldResumed?: () => void;
 }
 
-export function PosHeader({ onExitPos, onOpenSession }: PosHeaderProps) {
+export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeaderProps) {
   const { user } = useAuthStore();
   const { cashSessionId } = usePosStore();
   const pendingOfflineSales = useOfflineSalesStore((s) => s.queue.length);
   const [time, setTime] = useState(new Date());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showPrinter, setShowPrinter] = useState(false);
+  const [showHeld, setShowHeld] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -53,13 +56,14 @@ export function PosHeader({ onExitPos, onOpenSession }: PosHeaderProps) {
           <Clock className="h-3.5 w-3.5" />
           <span className="font-mono">{format(time, 'HH:mm:ss')}</span>
         </div>
-        <div className="hidden sm:block text-muted-foreground">
+        <div className="hidden xl:block text-muted-foreground">
           {format(time, "EEEE d/MM", { locale: es })}
         </div>
       </div>
 
       {/* Derecha */}
       <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <HeldSalesButton onClick={() => setShowHeld(true)} />
         <BtPrinterButton onClick={() => setShowPrinter(true)} />
 
         {/* Estado online */}
@@ -99,10 +103,11 @@ export function PosHeader({ onExitPos, onOpenSession }: PosHeaderProps) {
           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
             {user?.firstName.charAt(0)}
           </div>
-          <span className="hidden sm:inline">{user?.firstName}</span>
+          <span className="hidden lg:inline">{user?.firstName}</span>
         </div>
       </div>
       {showPrinter && <BtPrinterPanel onClose={() => setShowPrinter(false)} />}
+      {showHeld && <HeldSalesPanel onClose={() => setShowHeld(false)} onResumed={onHeldResumed} />}
     </div>
   );
 }

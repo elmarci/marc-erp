@@ -28,13 +28,13 @@ interface CashSession {
   openedAt: string;
 }
 
-// Mismo corte que el "lg" de Tailwind (1024px): en PC la vista de dos
-// columnas; en celular/tablet, pestañas.
-function useIsDesktop() {
-  const query = '(min-width: 1024px)';
-  const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+// Dos columnas (carrito + productos) en PC y en tablet horizontal; en
+// celular y tablet vertical, pestañas Productos / Carrito.
+const SPLIT_LAYOUT_QUERY = '(min-width: 1024px), (min-width: 760px) and (orientation: landscape)';
+function useIsSplitLayout() {
+  const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia(SPLIT_LAYOUT_QUERY).matches);
   useEffect(() => {
-    const mql = window.matchMedia(query);
+    const mql = window.matchMedia(SPLIT_LAYOUT_QUERY);
     const onChange = () => setMatch(mql.matches);
     mql.addEventListener('change', onChange);
     return () => mql.removeEventListener('change', onChange);
@@ -426,20 +426,21 @@ export function PosPage() {
   const cartItems = usePosStore(s => s.items);
   const cartCount = cartItems.reduce((s, i) => s + i.quantity, 0);
   const cartTotal = usePosStore(s => s.total);
-  const isDesktop = useIsDesktop();
+  const isSplit = useIsSplitLayout();
 
   return (
     <div className="pos-screen flex flex-col bg-pos-bg">
       <PosHeader
         onExitPos={() => navigate('/dashboard')}
         onOpenSession={() => setShowOpenSession(true)}
+        onHeldResumed={() => setPosTab('cart')}
       />
 
       {/* Solo se monta un diseño a la vez: antes se montaban los dos (uno
           oculto con CSS) y en celular se duplicaban la grilla y sus consultas. */}
-      {isDesktop ? (
+      {isSplit ? (
         <div className="flex flex-1 overflow-hidden">
-          <PosCart onCheckout={() => setShowPayment(true)} className="w-96 shrink-0" />
+          <PosCart onCheckout={() => setShowPayment(true)} className="w-[21rem] lg:w-96 shrink-0" />
           <PosProductPanel onBarcodeSearch={handleBarcodeScanned} onCheckout={() => setShowPayment(true)} className="flex-1 min-w-0" />
         </div>
       ) : (
