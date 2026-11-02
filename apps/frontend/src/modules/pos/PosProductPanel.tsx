@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Package, AlertCircle, Scale, Tag, X, Mic, Star } from 'lucide-react';
+import { Search, Package, AlertCircle, Scale, Tag, X, Mic, Star, ScanBarcode } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { formatCurrency, cn, debounce, looksLikeScannedCode } from '@/lib/utils'
 import { toast } from 'sonner';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
+import { CameraScanner, isCameraScanSupported } from './CameraScanner';
 import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, wouldExceedStock, packExceedsStock, AUTO_ADJUST_HINT, type PackInfo } from './packSale';
 
 interface Product extends PackInfo {
@@ -458,6 +459,20 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
   // seguido lo vende igual (ver onTapNoStock).
   const lastTap = useRef<{ key: string; at: number }>({ key: '', at: 0 });
   const [showOffers, setShowOffers] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const hasFinePointer = useMemo(() => typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches, []);
+  // Cuántas unidades de cada producto ya están en el carrito: se muestra en
+  // la tarjeta para confirmar el toque sin tener que ir al carrito.
+  const cartItems = usePosStore(s => s.items);
+  const qtyInCart = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of cartItems) {
+      if (i.sellAsPack) continue; // el paquete tiene su propio botón
+      const id = i.productId.split('#')[0];
+      m.set(id, (m.get(id) ?? 0) + i.quantity);
+    }
+    return m;
+  }, [cartItems]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const addItem = usePosStore((s) => s.addItem);
   const renameItem = usePosStore((s) => s.renameItem);
@@ -681,29 +696,42 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
   return (
     <div className={cn('flex flex-col bg-pos-product', className)}>
       {/* Barra de búsqueda + botón ofertas */}
-      <div className="border-b p-3 flex flex-wrap gap-2">
-        <div className="flex-1 min-w-[140px]">
+      <div className="border-b p-2 sm:p-3 flex gap-2">
+        <div className="flex-1 min-w-0">
           <Input
             ref={searchInputRef}
             startIcon={<Search className="h-4 w-4" />}
-            placeholder="Buscar producto o escanear código..."
-            autoFocus
+            placeholder="Buscar producto o código..."
+            // En celular el foco automático abre el teclado y tapa la mitad
+            // de la pantalla: solo se enfoca solo en equipos con mouse.
+            autoFocus={hasFinePointer}
+            enterKeyHint="search"
             onChange={(e) => debouncedSearch(e.target.value)}
             onKeyDown={handleSearchKeyDown}
             className="bg-background"
           />
         </div>
+        {isCameraScanSupported() && (
+          <Button
+            variant="outline" size="sm" onClick={() => setShowCamera(true)}
+            title="Escanear códigos de barra con la cámara"
+            aria-label="Escanear con la cámara"
+            className="h-10 shrink-0 gap-1.5 border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground px-3">
+            <ScanBarcode className="h-5 w-5" /><span className="hidden sm:inline">Cámara</span>
+          </Button>
+        )}
         {voiceSupported && (
           <Button
             variant="outline" size="sm" onClick={toggleListening}
             title={isListening ? 'Toca para apagar el micrófono' : 'Decir "agregar dos gaseosas", "precio del aceite", "quitar la coca cola"...'}
-            className={cn('shrink-0 gap-1.5', isListening && 'border-destructive text-destructive bg-destructive/10 animate-pulse')}>
-            <Mic className="h-4 w-4" />{isListening ? 'Escuchando...' : 'Voz'}
+            aria-label="Comando de voz"
+            className={cn('h-10 shrink-0 gap-1.5 px-3', isListening && 'border-destructive text-destructive bg-destructive/10 animate-pulse')}>
+            <Mic className="h-4 w-4" /><span className="hidden sm:inline">{isListening ? 'Escuchando...' : 'Voz'}</span>
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={() => setShowOffers(true)}
-          className="shrink-0 gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
-          <Tag className="h-4 w-4" />Ofertas
+        <Button variant="outline" size="sm" onClick={() => setShowOffers(true)} aria-label="Ofertas"
+          className="h-10 shrink-0 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 px-3">
+          <Tag className="h-4 w-4" /><span className="hidden sm:inline">Ofertas</span>
         </Button>
       </div>
 
@@ -714,7 +742,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
             <Button
               variant={selectedCategory === null ? 'default' : 'outline'}
               size="sm"
-              className="shrink-0 h-7 text-xs"
+              className="shrink-0 h-9 lg:h-7 text-xs"
               onClick={() => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); }}
             >
               Todos
@@ -722,7 +750,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
             <Button
               variant={bulkOnly ? 'default' : 'outline'}
               size="sm"
-              className={cn('shrink-0 h-7 text-xs gap-1', bulkOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
+              className={cn('shrink-0 h-9 lg:h-7 text-xs gap-1', bulkOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
               onClick={() => { clearSearch(); setBulkOnly((v) => !v); }}
               title="Productos a granel — sin código de barras, acceso rápido"
             >
@@ -731,7 +759,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
             <Button
               variant={favoriteOnly ? 'default' : 'outline'}
               size="sm"
-              className={cn('shrink-0 h-7 text-xs gap-1', favoriteOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
+              className={cn('shrink-0 h-9 lg:h-7 text-xs gap-1', favoriteOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
               onClick={() => { clearSearch(); setFavoriteOnly((v) => !v); }}
               title="Favoritos — acceso rápido a los productos más vendidos sin código de barras"
             >
@@ -742,7 +770,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                 key={cat.id}
                 variant={selectedCategory === cat.id ? 'default' : 'outline'}
                 size="sm"
-                className="shrink-0 h-7 text-xs"
+                className="shrink-0 h-9 lg:h-7 text-xs"
                 onClick={() => { clearSearch(); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}
               >
                 {cat.name}
@@ -755,7 +783,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
               <Button
                 variant={selectedSubcategory === null ? 'secondary' : 'ghost'}
                 size="sm"
-                className="shrink-0 h-6 text-[11px]"
+                className="shrink-0 h-8 lg:h-6 text-[11px]"
                 onClick={() => { clearSearch(); setSelectedSubcategory(null); }}
               >
                 Todas
@@ -765,7 +793,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                   key={sub.id}
                   variant={selectedSubcategory === sub.id ? 'secondary' : 'ghost'}
                   size="sm"
-                  className="shrink-0 h-6 text-[11px]"
+                  className="shrink-0 h-8 lg:h-6 text-[11px]"
                   onClick={() => { clearSearch(); setSelectedSubcategory(sub.id); }}
                 >
                   {sub.name}
@@ -817,6 +845,11 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
                     : 'cursor-pointer bg-pos-product',
                 )}
               >
+                {(qtyInCart.get(product.id) ?? 0) > 0 && (
+                  <span className="pointer-events-none absolute -right-1.5 -top-1.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-black text-primary-foreground shadow ring-2 ring-background">
+                    {Number((qtyInCart.get(product.id) ?? 0).toFixed(2))}
+                  </span>
+                )}
                 {/* Imagen o placeholder */}
                 <div className="mb-2 flex h-10 w-full items-center justify-center rounded bg-muted">
                   {product.imageUrl ? (
@@ -901,8 +934,8 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
         )}
       </div>
 
-      {/* Footer con atajos */}
-      <div className="border-t px-4 py-2">
+      {/* Footer con atajos (solo PC: en celular quita espacio y no aplica) */}
+      <div className="hidden border-t px-4 py-2 lg:block">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{products.length} productos · <Scale className="inline h-3 w-3" /> = a granel</span>
           <div className="flex items-center gap-2">
@@ -921,6 +954,7 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
         />
       )}
       {showOffers && <OffersPanel onClose={() => setShowOffers(false)} />}
+      {showCamera && <CameraScanner onDetected={onBarcodeSearch} onClose={() => setShowCamera(false)} />}
     </div>
   );
 }

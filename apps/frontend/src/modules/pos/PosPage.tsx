@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { ShoppingCart, Grid3x3 } from 'lucide-react';
+import { ShoppingCart, Grid3x3, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { usePosStore } from '@/stores/posStore';
@@ -26,6 +26,20 @@ interface CashSession {
   cashRegisterId: string;
   cashRegister: { name: string };
   openedAt: string;
+}
+
+// Mismo corte que el "lg" de Tailwind (1024px): en PC la vista de dos
+// columnas; en celular/tablet, pestañas.
+function useIsDesktop() {
+  const query = '(min-width: 1024px)';
+  const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatch(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return match;
 }
 
 export function PosPage() {
@@ -407,6 +421,8 @@ export function PosPage() {
   const [posTab, setPosTab] = useState<'products' | 'cart'>('products');
   const cartItems = usePosStore(s => s.items);
   const cartCount = cartItems.reduce((s, i) => s + i.quantity, 0);
+  const cartTotal = usePosStore(s => s.total);
+  const isDesktop = useIsDesktop();
 
   return (
     <div className="pos-screen flex flex-col bg-pos-bg">
@@ -415,66 +431,68 @@ export function PosPage() {
         onOpenSession={() => setShowOpenSession(true)}
       />
 
-      {/* ── DESKTOP: layout horizontal original ── */}
-      <div className="hidden lg:flex flex-1 overflow-hidden">
-        <PosCart onCheckout={() => setShowPayment(true)} className="w-96 shrink-0" />
-        <PosProductPanel onBarcodeSearch={handleBarcodeScanned} className="flex-1 min-w-0" />
-      </div>
-
-      {/* ── TABLET/MÓVIL: tabs Productos / Carrito ── */}
-      <div className="flex lg:hidden flex-col flex-1 overflow-hidden">
-        {/* Tab bar */}
-        <div className="flex border-b bg-pos-cart shrink-0">
-          <button
-            onClick={() => setPosTab('products')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors border-b-2 ${
-              posTab === 'products' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
-            }`}>
-            <Grid3x3 className="h-4 w-4" />Productos
-          </button>
-          <button
-            onClick={() => setPosTab('cart')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold transition-colors border-b-2 ${
-              posTab === 'cart' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
-            }`}>
-            <ShoppingCart className="h-4 w-4" />
-            Carrito
-            {cartCount > 0 && (
-              <span className="h-5 w-5 bg-primary text-primary-foreground text-xs font-black rounded-full flex items-center justify-center">
-                {cartCount}
-              </span>
-            )}
-          </button>
+      {/* Solo se monta un diseño a la vez: antes se montaban los dos (uno
+          oculto con CSS) y en celular se duplicaban la grilla y sus consultas. */}
+      {isDesktop ? (
+        <div className="flex flex-1 overflow-hidden">
+          <PosCart onCheckout={() => setShowPayment(true)} className="w-96 shrink-0" />
+          <PosProductPanel onBarcodeSearch={handleBarcodeScanned} className="flex-1 min-w-0" />
         </div>
-
-        {/* Contenido del tab */}
-        <div className="flex-1 overflow-hidden">
-          {posTab === 'products' ? (
-            <PosProductPanel
-              onBarcodeSearch={handleBarcodeScanned}
-              className="h-full"
-              onProductAdded={() => {/* opcional: cambiar al carrito */}}
-            />
-          ) : (
-            <PosCart
-              onCheckout={() => setShowPayment(true)}
-              className="h-full"
-            />
-          )}
-        </div>
-
-        {/* Botón flotante "Cobrar" cuando está en productos y hay items */}
-        {posTab === 'products' && cartCount > 0 && (
-          <div className="p-3 border-t bg-pos-cart shrink-0">
+      ) : (
+        /* ── TABLET/MÓVIL: tabs Productos / Carrito + barra fija de cobro ── */
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex border-b bg-pos-cart shrink-0">
+            <button
+              onClick={() => setPosTab('products')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
+                posTab === 'products' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
+              }`}>
+              <Grid3x3 className="h-4 w-4" />Productos
+            </button>
             <button
               onClick={() => setPosTab('cart')}
-              className="w-full bg-primary text-primary-foreground font-bold py-3 rounded-xl flex items-center justify-center gap-2">
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
+                posTab === 'cart' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
+              }`}>
               <ShoppingCart className="h-4 w-4" />
-              Ver carrito ({cartCount}) — S/ {cartItems.reduce((s, i) => s + i.subtotal, 0).toFixed(2)}
+              Carrito
+              {cartCount > 0 && (
+                <span className="min-w-5 h-5 px-1 bg-primary text-primary-foreground text-xs font-black rounded-full flex items-center justify-center">
+                  {Number(cartCount.toFixed(2))}
+                </span>
+              )}
             </button>
           </div>
-        )}
-      </div>
+
+          <div className="flex-1 overflow-hidden">
+            {posTab === 'products' ? (
+              <PosProductPanel onBarcodeSearch={handleBarcodeScanned} className="h-full" />
+            ) : (
+              <PosCart onCheckout={() => setShowPayment(true)} className="h-full" />
+            )}
+          </div>
+
+          {/* En Productos: ver carrito o cobrar directo, sin cambiar de pestaña. */}
+          {posTab === 'products' && cartCount > 0 && (
+            <div className="flex gap-2 border-t bg-pos-cart p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shrink-0">
+              <button
+                onClick={() => setPosTab('cart')}
+                className="flex h-14 min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border bg-background px-3 text-left active:bg-muted">
+                <span className="min-w-0">
+                  <span className="block text-[11px] leading-tight text-muted-foreground">{Number(cartCount.toFixed(2))} producto{cartCount !== 1 ? 's' : ''} · ver</span>
+                  <span className="block text-lg font-black leading-tight">S/ {cartTotal.toFixed(2)}</span>
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+              </button>
+              <button
+                onClick={() => setShowPayment(true)}
+                className="h-14 flex-1 rounded-xl bg-primary text-lg font-bold text-primary-foreground active:bg-primary/90">
+                Cobrar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal de pago */}
       {showPayment && (
@@ -487,7 +505,7 @@ export function PosPage() {
 
       {/* Ticket de venta */}
       {receipt && (
-        <ReceiptModal data={receipt} onClose={() => setReceipt(null)} />
+        <ReceiptModal data={receipt} onClose={() => setReceipt(null)} autoPrint closeLabel="Nueva venta" />
       )}
 
       {/* Modal apertura de caja */}

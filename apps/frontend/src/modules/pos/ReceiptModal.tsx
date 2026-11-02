@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
-import { X, Printer, Mic } from 'lucide-react';
+import { X, Printer, Mic, Bluetooth, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { api, API_ORIGIN } from '@/services/api';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
+import { splitProductNameAndUnit, normalizeUnit, formatQty } from './receiptFormat';
+import { useBtPrinter, isBluetoothPrintSupported } from './bluetoothPrinter';
+import { buildTicketEscpos } from './ticketEscpos';
+import { connectPrinterWithFeedback } from './BtPrinterPanel';
 
 interface ReceiptItem {
   productName: string;
@@ -60,6 +64,11 @@ export interface ReceiptData {
 interface ReceiptModalProps {
   data: ReceiptData;
   onClose: () => void;
+  // Recién cobrada en el POS: si la impresora Bluetooth está conectada y
+  // "Imprimir solo al cobrar" activo, el ticket sale sin tocar nada.
+  autoPrint?: boolean;
+  // Texto del botón grande de cierre en celular ("Nueva venta" en el POS).
+  closeLabel?: string;
 }
 
 interface Setting { key: string; value: string }
@@ -74,6 +83,7 @@ function useBusinessSettings() {
   const get = (key: string, fallback = '') => data?.find((s) => s.key === key)?.value || fallback;
 
   return {
+    loaded: !!data,
     businessName: get('business_name', 'ERP MINIMARKET'),
     ruc: get('business_ruc'),
     address: get('business_address'),
@@ -93,38 +103,7 @@ function useBusinessSettings() {
 
 const QR_SIZE_PX = 120;
 
-// La tienda online (a diferencia del POS) pega el peso al nombre del
-// producto, ej. "Arroz Costeño 1kg (2.041 kg)" — así quedó guardado en
-// ventas de antes de que existiera item.unit (ver sales.service.ts/
-// store.service.ts). Se limpia ese sufijo del nombre mostrado y, si
-// item.unit no vino (venta vieja), se recupera la unidad de ahí mismo.
-// Ojo: nombres como "Aceite Cocinero 900ml (combo)" NO deben interpretarse
-// como granel — sólo se reconoce el paréntesis si termina en una unidad de
-// peso/volumen real (kg, g, l, ml) o "und"/"unidad".
-function splitProductNameAndUnit(name: string): { displayName: string; unit: string | null } {
-  const match = name.match(/^(.*)\s\([\d.,]+\s*(kg|g|l|ml|und|unidad)\)\s*$/i);
-  if (match) return { displayName: match[1].trim(), unit: match[2].toLowerCase() };
-  return { displayName: name, unit: null };
-}
-
-// La columna Unidad debe leer siempre igual para "no es a granel" — pero
-// según de dónde venga (product.bulkUnit configurado como "unidad" en vez
-// de "und", o el sufijo legado del nombre) a veces llegaba "und" y otras
-// veces "unidad", inconsistencia que se nota fea en el ticket. Se reduce
-// siempre a "und"; kg/g/l/ml quedan tal cual.
-function normalizeUnit(unit: string): string {
-  const u = unit.trim().toLowerCase();
-  return u === 'unidad' || u === 'unidades' || u === 'u' ? 'und' : u;
-}
-
-// Máximo 2 decimales — el peso real se guarda con 3 (ej. 2.041 kg) pero
-// mostrar el tercero en el ticket sólo alarga la columna sin aportar nada
-// que el cliente necesite ver.
-function formatQty(qty: number): string {
-  return Number.isInteger(qty) ? String(qty) : qty.toFixed(2);
-}
-
-export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
+export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'Cerrar' }: ReceiptModalProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const s = useBusinessSettings();
@@ -211,6 +190,46 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
     };
   };
 
+  // ── Impresora Bluetooth (ESC/POS) ──
+  const btStatus = useBtPrinter(st => st.status);
+  const btSupported = isBluetoothPrintSupported();
+  const [btBusy, setBtBusy] = useState(false);
+
+  const handleBtPrint = async (opts: { silent?: boolean } = {}) => {
+    const bt = useBtPrinter.getState();
+    setBtBusy(true);
+    try {
+      if (bt.status !== 'connected') {
+        const ok = (await bt.reconnect()) || (!opts.silent && (await connectPrinterWithFeedback()));
+        if (!ok) return;
+      }
+      const bytes = await buildTicketEscpos(data, {
+        businessName: s.businessName, ruc: s.ruc, address: s.address, phone: s.phone,
+        logoUrl: logoSrc, footer: s.footer, storeUrl: s.storeUrl,
+        showPoints: s.showPoints, showCoupon: s.showCoupon, showQr: s.showQr,
+        cardCommissionPercent: s.cardCommissionPercent,
+      }, useBtPrinter.getState().paperWidth);
+      await useBtPrinter.getState().print(bytes);
+      toast.success('Ticket enviado a la impresora', { duration: 1500 });
+    } catch (err) {
+      toast.error(`No se pudo imprimir: ${(err as Error)?.message ?? 'error'}`);
+    } finally {
+      setBtBusy(false);
+    }
+  };
+
+  // Impresión automática al cobrar: una sola vez, cuando ya cargó la
+  // configuración del negocio (nombre, RUC…) para no imprimir un ticket a medias.
+  const autoPrinted = useRef(false);
+  useEffect(() => {
+    if (!autoPrint || autoPrinted.current || !btSupported || !s.loaded) return;
+    const bt = useBtPrinter.getState();
+    if (!bt.autoPrint || bt.status !== 'connected') return;
+    autoPrinted.current = true;
+    handleBtPrint({ silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPrint, s.loaded]);
+
   const handleVoiceResult = useCallback((transcript: string) => {
     const command = parseVoiceCommand(transcript);
     if (command.type === 'PRINT') {
@@ -230,10 +249,10 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
   const timeStr = date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-4">
-          <h2 className="font-bold text-lg">Ticket de Venta</h2>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
+      <div className="flex max-h-[100dvh] w-full max-w-sm flex-col rounded-t-2xl bg-card shadow-2xl sm:rounded-2xl">
+        <div className="flex items-center justify-between gap-2 border-b p-3 sm:p-4">
+          <h2 className="font-bold text-lg"><span className="sm:hidden">Ticket</span><span className="hidden sm:inline">Ticket de Venta</span></h2>
           <div className="flex gap-2">
             {voiceSupported && (
               <Button
@@ -243,9 +262,16 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
                 <Mic className="h-4 w-4" />
               </Button>
             )}
-            <Button size="sm" onClick={handlePrint}>
-              <Printer className="mr-1.5 h-4 w-4" />
-              Imprimir
+            {btSupported && (
+              <Button size="sm" onClick={() => handleBtPrint()} disabled={btBusy}
+                title={btStatus === 'connected' ? 'Imprimir en la impresora Bluetooth' : 'Conectar impresora Bluetooth e imprimir'}>
+                {btBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Bluetooth className="mr-1.5 h-4 w-4" />}
+                Ticketera
+              </Button>
+            )}
+            <Button size="sm" variant={btSupported ? 'outline' : 'default'} onClick={handlePrint} title="Imprimir con la impresora del equipo">
+              <Printer className={cn('h-4 w-4', !btSupported && 'mr-1.5')} />
+              {!btSupported && 'Imprimir'}
             </Button>
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="h-4 w-4" />
@@ -260,7 +286,7 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
         )}
 
         {/* Ticket visual */}
-        <div className="p-4 max-h-[70vh] overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:max-h-[70vh]">
           <div
             ref={printRef}
             className="font-mono text-xs bg-white text-black p-4 rounded border space-y-1"
@@ -445,6 +471,11 @@ export function ReceiptModal({ data, onClose }: ReceiptModalProps) {
               </>
             )}
           </div>
+        </div>
+
+        {/* Celular: botón grande para seguir vendiendo */}
+        <div className="border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:hidden">
+          <Button className="h-12 w-full text-base font-bold" onClick={onClose}>{closeLabel}</Button>
         </div>
       </div>
     </div>
