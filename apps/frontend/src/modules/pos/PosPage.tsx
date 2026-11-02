@@ -212,12 +212,12 @@ export function PosPage() {
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, []);
 
-  const addProductToCart = (product: { id: string; name: string; barcode: string | null; salePrice: number; currentStock: number; bottleDeposit?: number; matchedPack?: boolean } & PackInfo, offline: boolean) => {
+  const addProductToCart = (product: { id: string; name: string; barcode: string | null; salePrice: number; currentStock: number; bottleDeposit?: number; matchedPack?: boolean } & PackInfo, offline: boolean): boolean => {
     // Escaneó el código del paquete/caja, no el de la unidad. Escanear siempre
     // vende: si el sistema no tiene stock, el inventario se ajusta al cobrar.
     if (product.matchedPack && hasPack(product)) {
       addPackToCart(product, { offline, force: true });
-      return;
+      return true;
     }
     const exceeds = wouldExceedStock(product.id, product.currentStock, product.packSize);
     const result = usePosStore.getState().addItem({
@@ -235,30 +235,34 @@ export function PosPage() {
     });
     if (result.addedQuantity <= 0) {
       toast.error(`"${product.name}" no se pudo agregar al carrito.`);
-      return;
+      return false;
     }
     if (exceeds) {
       toast.warning(`${product.name}: sin stock en el sistema. Se vende igual y el inventario se ajusta al cobrar.`, { duration: 2500 });
-      return;
+      return true;
     }
     toast.success(`${product.name} agregado${offline ? ' (sin conexión)' : ''}`, { duration: 1500 });
+    return true;
   };
 
-  const handleBarcodeScanned = useCallback(async (barcode: string) => {
+  // Devuelve si se agregó algo al carrito (el escáner de cámara lo usa para
+  // el sonido de acierto/error).
+  const handleBarcodeScanned = useCallback(async (barcode: string): Promise<boolean> => {
     try {
       const res = await api.get<{ data: { id: string; name: string; salePrice: number; currentStock: number; barcode: string | null; bottleDeposit?: number; matchedPack?: boolean } & PackInfo }>
-        (`/products/barcode/${barcode}`);
-      addProductToCart(res.data.data, false);
+        (`/products/barcode/${encodeURIComponent(barcode)}`);
+      return addProductToCart(res.data.data, false);
     } catch (err) {
       // Sin internet real (no un simple "no encontrado") — buscar en la copia
       // local del catálogo antes de rendirse, para poder seguir vendiendo.
       if (isNetworkError(err)) {
         const cached = useProductCacheStore.getState().findByBarcode(barcode);
-        if (cached) { addProductToCart(cached, true); return; }
+        if (cached) return addProductToCart(cached, true);
         toast.error(`Sin conexión y "${barcode}" no está en el catálogo local.`);
-        return;
+        return false;
       }
       toast.error(`Producto con código ${barcode} no encontrado.`);
+      return false;
     }
   }, []);
 
@@ -436,7 +440,7 @@ export function PosPage() {
       {isDesktop ? (
         <div className="flex flex-1 overflow-hidden">
           <PosCart onCheckout={() => setShowPayment(true)} className="w-96 shrink-0" />
-          <PosProductPanel onBarcodeSearch={handleBarcodeScanned} className="flex-1 min-w-0" />
+          <PosProductPanel onBarcodeSearch={handleBarcodeScanned} onCheckout={() => setShowPayment(true)} className="flex-1 min-w-0" />
         </div>
       ) : (
         /* ── TABLET/MÓVIL: tabs Productos / Carrito + barra fija de cobro ── */
@@ -466,7 +470,7 @@ export function PosPage() {
 
           <div className="flex-1 overflow-hidden">
             {posTab === 'products' ? (
-              <PosProductPanel onBarcodeSearch={handleBarcodeScanned} className="h-full" />
+              <PosProductPanel onBarcodeSearch={handleBarcodeScanned} onCheckout={() => setShowPayment(true)} className="h-full" />
             ) : (
               <PosCart onCheckout={() => setShowPayment(true)} className="h-full" />
             )}

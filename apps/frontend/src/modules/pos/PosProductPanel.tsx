@@ -35,7 +35,8 @@ interface Category {
 }
 
 interface PosProductPanelProps {
-  onBarcodeSearch: (barcode: string) => void;
+  onBarcodeSearch: (barcode: string) => Promise<boolean> | void;
+  onCheckout?: () => void;
   className?: string;
   onProductAdded?: () => void;
 }
@@ -440,7 +441,7 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelProps) {
+export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosProductPanelProps) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
@@ -954,7 +955,13 @@ export function PosProductPanel({ onBarcodeSearch, className }: PosProductPanelP
         />
       )}
       {showOffers && <OffersPanel onClose={() => setShowOffers(false)} />}
-      {showCamera && <CameraScanner onDetected={onBarcodeSearch} onClose={() => setShowCamera(false)} />}
+      {showCamera && (
+        <CameraScanner
+          onDetected={async (code) => (await onBarcodeSearch(code)) !== false}
+          onClose={() => setShowCamera(false)}
+          onCheckout={onCheckout ? () => { setShowCamera(false); onCheckout(); } : undefined}
+        />
+      )}
     </div>
   );
 }
