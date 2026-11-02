@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { usePosStore } from '@/stores/posStore';
 import { useOfflineSalesStore } from '@/stores/offlineSalesStore';
 import { cn } from '@/lib/utils';
+import { BtPrinterButton, BtPrinterPanel } from './BtPrinterPanel';
 
 interface PosHeaderProps {
   onExitPos: () => void;
@@ -19,6 +20,7 @@ export function PosHeader({ onExitPos, onOpenSession }: PosHeaderProps) {
   const pendingOfflineSales = useOfflineSalesStore((s) => s.queue.length);
   const [time, setTime] = useState(new Date());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showPrinter, setShowPrinter] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -34,19 +36,19 @@ export function PosHeader({ onExitPos, onOpenSession }: PosHeaderProps) {
   }, []);
 
   return (
-    <div className="flex h-12 shrink-0 items-center justify-between border-b bg-card px-4">
+    <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b bg-card px-2 sm:px-4 pt-[env(safe-area-inset-top)] box-content">
       {/* Izquierda */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onExitPos} className="gap-1.5 text-muted-foreground">
-          <ArrowLeft className="h-4 w-4" />
-          Salir
+      <div className="flex min-w-0 items-center gap-1 sm:gap-3">
+        <Button variant="ghost" size="sm" onClick={onExitPos} aria-label="Salir del punto de venta" className="gap-1.5 px-2 text-muted-foreground">
+          <ArrowLeft className="h-5 w-5 sm:h-4 sm:w-4" />
+          <span className="hidden sm:inline">Salir</span>
         </Button>
-        <div className="h-4 w-px bg-border" />
-        <span className="text-sm font-semibold">Punto de Venta</span>
+        <div className="hidden h-4 w-px bg-border sm:block" />
+        <span className="truncate text-sm font-semibold"><span className="sm:hidden">Venta</span><span className="hidden sm:inline">Punto de Venta</span></span>
       </div>
 
-      {/* Centro */}
-      <div className="flex items-center gap-4 text-sm">
+      {/* Centro (solo pantallas medianas en adelante: en celular ya está la hora del sistema) */}
+      <div className="hidden md:flex items-center gap-4 text-sm">
         <div className="flex items-center gap-1.5 text-muted-foreground">
           <Clock className="h-3.5 w-3.5" />
           <span className="font-mono">{format(time, 'HH:mm:ss')}</span>
@@ -57,7 +59,9 @@ export function PosHeader({ onExitPos, onOpenSession }: PosHeaderProps) {
       </div>
 
       {/* Derecha */}
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <BtPrinterButton onClick={() => setShowPrinter(true)} />
+
         {/* Estado online */}
         <div className={cn('flex items-center gap-1.5 text-xs', isOnline ? 'text-success' : 'text-destructive')}>
           {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
@@ -85,17 +89,20 @@ export function PosHeader({ onExitPos, onOpenSession }: PosHeaderProps) {
           onClick={!cashSessionId ? onOpenSession : undefined}
         >
           <div className={cn('h-1.5 w-1.5 rounded-full', cashSessionId ? 'bg-success' : 'bg-destructive')} />
-          {cashSessionId ? 'Caja abierta' : 'Caja cerrada — Abrir'}
+          {cashSessionId
+            ? <><span className="sm:hidden">Caja</span><span className="hidden sm:inline">Caja abierta</span></>
+            : <><span className="sm:hidden">Abrir caja</span><span className="hidden sm:inline">Caja cerrada — Abrir</span></>}
         </div>
 
         {/* Cajero */}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
             {user?.firstName.charAt(0)}
           </div>
           <span className="hidden sm:inline">{user?.firstName}</span>
         </div>
       </div>
+      {showPrinter && <BtPrinterPanel onClose={() => setShowPrinter(false)} />}
     </div>
   );
 }
