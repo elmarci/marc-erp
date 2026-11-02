@@ -227,12 +227,18 @@ export class SalesService {
         }
       }
     }
-    // Costo de lo vendido sin stock: el último costo realmente pagado, no el
-    // promedio (esa mercadería no entró por una compra registrada).
-    const unitCostOf = (product: (typeof products)[number]) =>
-      stockShortfall.has(product.id) && product.lastPurchaseCost != null
+    // Costo de lo vendido: siempre el promedio ponderado (costPrice), también
+    // en la venta sin stock — así el margen usa el mismo criterio en todas las
+    // ventas. lastPurchaseCost puede venir de otra presentación (un saco a
+    // S/ 81 de algo que se vende por kg a S/ 10) e inflaba el costo. Sólo se
+    // usa como respaldo si el producto no tiene costo promedio.
+    const unitCostOf = (product: (typeof products)[number]) => {
+      const avg = Number(product.costPrice);
+      if (avg > 0) return avg;
+      return stockShortfall.has(product.id) && product.lastPurchaseCost != null
         ? Number(product.lastPurchaseCost)
-        : Number(product.costPrice);
+        : avg;
+    };
 
     // Envases: sólo se puede cobrar/prestar garantía de un producto que
     // realmente está en esta venta y que de verdad maneja envase retornable.
