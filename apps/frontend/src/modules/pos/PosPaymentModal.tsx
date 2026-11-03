@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, DollarSign, CreditCard, Smartphone, Check, Mic } from 'lucide-react';
+import { X, DollarSign, CreditCard, Smartphone, Check, Mic, QrCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePosStore } from '@/stores/posStore';
@@ -53,8 +53,10 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
   const cardBase = isCard ? Math.min(enteredAmount, remaining) : 0;
   const previewCommission = isCard && !isComplete ? cardCommission(cardBase, commissionPercent) : 0;
   const amountToCharge = total + totalCommission + previewCommission;
-  const registerPayment = (): boolean => {
-    if (enteredAmount <= 0) {
+  const registerPayment = (override?: number): boolean => {
+    const enteredAmount = override ?? parseFloat(amount) ?? 0;
+    const cardBase = isCard ? Math.min(enteredAmount, remaining) : 0;
+    if (!(enteredAmount > 0)) {
       toast.error('Ingrese un monto válido.');
       return false;
     }
@@ -78,6 +80,25 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
     setAmount(Math.max(0, remaining - paymentAmount).toFixed(2));
     return true;
   };
+
+  // Efectivo justo: un toque registra el pago exacto y cierra la venta.
+  const handleExact = () => {
+    if (isComplete) { onConfirm(); return; }
+    if (registerPayment(remaining)) onConfirm();
+  };
+
+  // Montos rápidos útiles para ESTE total: el redondeo siguiente (a 1, 5 y
+  // 10 soles) y los billetes que alcanzan, sin repetir.
+  const quickAmounts = (() => {
+    const r = remaining;
+    const c = [Math.ceil(r), Math.ceil(r / 5) * 5, Math.ceil(r / 10) * 10, 20, 50, 100, 200]
+      .filter((v) => v > r + 0.001);
+    return [...new Set(c)].sort((a, b) => a - b).slice(0, 4);
+  })();
+  const cashChangePreview = selectedMethod === 'CASH' && !isComplete && enteredAmount > remaining + 0.001
+    ? enteredAmount - remaining : 0;
+  const isWallet = selectedMethod === 'YAPE' || selectedMethod === 'PLIN';
+  const [qrZoom, setQrZoom] = useState(false);
 
   const handlePrimaryAction = () => {
     if (isComplete) { onConfirm(); return; }
@@ -222,24 +243,49 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             </div>
           )}
 
-          {/* Montos rápidos (solo efectivo) */}
-          {selectedMethod === 'CASH' && (
-            <div>
-              <p className="mb-1.5 text-xs text-muted-foreground">Montos rápidos</p>
-              <div className="flex gap-2">
-                {[10, 20, 50, 100, 200].map((v) => (
+          {/* Efectivo: pago exacto en un toque + billetes que alcanzan */}
+          {selectedMethod === 'CASH' && !isComplete && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-5 gap-2">
+                <Button
+                  className="col-span-2 h-12 bg-success text-white hover:bg-success/90"
+                  disabled={isProcessing}
+                  onClick={handleExact}
+                >
+                  <Check className="mr-1 h-4 w-4" />Exacto
+                </Button>
+                {quickAmounts.map((v) => (
                   <Button
                     key={v}
                     variant="outline"
-                    size="sm"
-                    className="flex-1 text-xs"
+                    className={cn('h-12 text-sm font-semibold', enteredAmount === v && 'border-primary bg-primary/10 text-primary')}
                     onClick={() => setAmount(v.toFixed(2))}
                   >
-                    S/ {v}
+                    {v}
                   </Button>
-                ))}
+                )).slice(0, 3)}
               </div>
+              {cashChangePreview > 0 && (
+                <div className="flex items-center justify-between rounded-lg bg-success/10 px-3 py-2">
+                  <span className="text-sm font-medium text-success">Vuelto</span>
+                  <span className="text-xl font-black text-success">{formatCurrency(cashChangePreview)}</span>
+                </div>
+              )}
             </div>
+          )}
+
+          {/* Yape / Plin: QR del negocio para que el cliente escanee */}
+          {isWallet && !isComplete && (
+            <button
+              type="button"
+              onClick={() => setQrZoom(true)}
+              className="flex w-full items-center gap-3 rounded-xl border-2 border-[#742284]/40 bg-[#742284]/5 p-3 text-left">
+              <img src="/yape-qr.png" alt="QR de Yape" className="h-24 w-24 shrink-0 rounded-lg object-cover object-top" />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 font-semibold"><QrCode className="h-4 w-4" />Muestra el QR al cliente</span>
+                <span className="block text-xs text-muted-foreground">Sirve para Yape y Plin. Toca para verlo en grande. Cobra cuando veas la notificación del pago.</span>
+              </span>
+            </button>
           )}
 
           {/* Pagos agregados */}
@@ -282,6 +328,15 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             </div>
           )}
         </div>
+
+        {qrZoom && (
+          <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-[#742284] p-6" onClick={() => setQrZoom(false)}>
+            <p className="text-center text-lg font-bold text-white">Escanea con Yape o Plin</p>
+            <p className="text-4xl font-black text-white">{formatCurrency(remaining)}</p>
+            <img src="/yape-qr.png" alt="QR de Yape" className="w-full max-w-sm rounded-2xl" />
+            <p className="text-sm text-white/80">Toca para volver</p>
+          </div>
+        )}
 
         {/* Botón principal — siempre visible, fuera del scroll. Agrega el
             pago y, si con eso ya se cubre el total, confirma la venta en el

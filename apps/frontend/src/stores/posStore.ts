@@ -49,6 +49,22 @@ export interface CartPayment {
   cardLast4?: string;
 }
 
+// Lo que se guarda de una venta puesta "en espera" (ver heldSalesStore):
+// el carrito y sus datos, sin pagos (se cobran al retomarla).
+export interface CartSnapshot {
+  items: CartItem[];
+  customerId: string | null;
+  customerName: string | null;
+  documentType: string;
+  globalDiscountAmount: number;
+  globalDiscountPercent: number;
+  couponCode: string | null;
+  couponDiscountPercent: number;
+  pointsToRedeem: number;
+  pointsDiscountAmount: number;
+  notes: string;
+}
+
 interface PosState {
   cashSessionId: string | null;
   cashRegisterId: string | null;
@@ -96,6 +112,8 @@ interface PosState {
   addPayment: (payment: CartPayment) => void;
   removePayment: (index: number) => void;
   clearCart: () => void;
+  getSnapshot: () => CartSnapshot;
+  restoreSnapshot: (snap: CartSnapshot) => void;
 }
 
 function calcItemSubtotal(item: Omit<CartItem, 'subtotal'>): number {
@@ -286,6 +304,25 @@ export const usePosStore = create<PosState>()((set, get) => ({
     const { payments, items, globalDiscountAmount, globalDiscountPercent, couponDiscountPercent, pointsDiscountAmount } = get();
     const updated = payments.filter((_, i) => i !== index);
     set({ payments: updated, ...recalcTotals(items, globalDiscountAmount, globalDiscountPercent, updated, couponDiscountPercent, pointsDiscountAmount) });
+  },
+
+  getSnapshot: () => {
+    const s = get();
+    return {
+      items: s.items, customerId: s.customerId, customerName: s.customerName, documentType: s.documentType,
+      globalDiscountAmount: s.globalDiscountAmount, globalDiscountPercent: s.globalDiscountPercent,
+      couponCode: s.couponCode, couponDiscountPercent: s.couponDiscountPercent,
+      pointsToRedeem: s.pointsToRedeem, pointsDiscountAmount: s.pointsDiscountAmount, notes: s.notes,
+    };
+  },
+
+  restoreSnapshot: (snap) => {
+    set({
+      ...snap,
+      payments: [],
+      isCredit: false,
+      ...recalcTotals(snap.items, snap.globalDiscountAmount, snap.globalDiscountPercent, [], snap.couponDiscountPercent, snap.pointsDiscountAmount),
+    });
   },
 
   clearCart: () => {
