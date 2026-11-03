@@ -201,7 +201,10 @@ export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'C
     try {
       if (bt.status !== 'connected') {
         const ok = (await bt.reconnect()) || (!opts.silent && (await connectPrinterWithFeedback()));
-        if (!ok) return;
+        if (!ok) {
+          if (opts.silent) toast.warning('La ticketera se desconectó. Toca "Imprimir" para reconectarla.', { duration: 4000 });
+          return;
+        }
       }
       const bytes = await buildTicketEscpos(data, {
         businessName: s.businessName, ruc: s.ruc, address: s.address, phone: s.phone,
@@ -218,22 +221,38 @@ export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'C
     }
   };
 
-  // Impresión automática al cobrar: una sola vez, cuando ya cargó la
-  // configuración del negocio (nombre, RUC…) para no imprimir un ticket a medias.
-  const autoPrinted = useRef(false);
-  useEffect(() => {
-    if (!autoPrint || autoPrinted.current || !btSupported || !s.loaded) return;
+  // Un solo botón "Imprimir": si este equipo usa ticketera Bluetooth
+  // (conectada o ya emparejada antes) imprime directo ahí; si no, con la
+  // impresora del equipo (en PC con Chrome en modo --kiosk-printing sale
+  // directo, sin vista previa).
+  const usesBluetooth = () => {
+    if (!btSupported) return false;
     const bt = useBtPrinter.getState();
-    if (!bt.autoPrint || bt.status !== 'connected') return;
+    return bt.status === 'connected' || bt.status === 'printing' || !!bt.lastDeviceId;
+  };
+  const handleSmartPrint = (opts: { silent?: boolean } = {}) => {
+    if (usesBluetooth()) handleBtPrint(opts);
+    else handlePrint();
+  };
+
+  // Impresión automática al cobrar ("Imprimir solo al cobrar" en el panel de
+  // impresión): una sola vez, cuando ya cargó la configuración del negocio y,
+  // si el ticket lleva QR, cuando el QR ya está dibujado.
+  const autoPrinted = useRef(false);
+  const qrReady = !(s.showQr && s.storeUrl) || !!qrDataUrl;
+  useEffect(() => {
+    if (!autoPrint || autoPrinted.current || !s.loaded || !qrReady) return;
+    if (!useBtPrinter.getState().autoPrint) return;
     autoPrinted.current = true;
-    handleBtPrint({ silent: true });
+    // Un respiro para que el ticket termine de pintarse (logo) antes de imprimir.
+    setTimeout(() => handleSmartPrint({ silent: true }), 150);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPrint, s.loaded]);
+  }, [autoPrint, s.loaded, qrReady]);
 
   const handleVoiceResult = useCallback((transcript: string) => {
     const command = parseVoiceCommand(transcript);
     if (command.type === 'PRINT') {
-      handlePrint();
+      handleSmartPrint();
       return;
     }
     toast.error('Solo puedo "imprimir" el ticket desde aquí.');
@@ -262,17 +281,16 @@ export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'C
                 <Mic className="h-4 w-4" />
               </Button>
             )}
-            {btSupported && (
-              <Button size="sm" onClick={() => handleBtPrint()} disabled={btBusy}
-                title={btStatus === 'connected' ? 'Imprimir en la impresora Bluetooth' : 'Conectar impresora Bluetooth e imprimir'}>
-                {btBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Bluetooth className="mr-1.5 h-4 w-4" />}
-                Ticketera
+            <Button onClick={() => handleSmartPrint()} disabled={btBusy} className="h-10 px-4 font-semibold"
+              title={usesBluetooth() ? 'Imprimir en la ticketera Bluetooth' : 'Imprimir con la impresora del equipo'}>
+              {btBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : usesBluetooth() ? <Bluetooth className="mr-1.5 h-4 w-4" /> : <Printer className="mr-1.5 h-4 w-4" />}
+              Imprimir
+            </Button>
+            {usesBluetooth() && (
+              <Button size="icon" variant="outline" onClick={handlePrint} className="h-10 w-10" title="Imprimir con la impresora del equipo (no la ticketera)">
+                <Printer className="h-4 w-4" />
               </Button>
             )}
-            <Button size="sm" variant={btSupported ? 'outline' : 'default'} onClick={handlePrint} title="Imprimir con la impresora del equipo">
-              <Printer className={cn('h-4 w-4', !btSupported && 'mr-1.5')} />
-              {!btSupported && 'Imprimir'}
-            </Button>
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
