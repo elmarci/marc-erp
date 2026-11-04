@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star, PackagePlus, GlassWater, Tv } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star, PackagePlus, GlassWater, Tv, ChevronRight, ArrowRight, Package } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useTvLiveStore } from '@/stores/tvLiveStore';
 import { TvLiveModal } from './TvLiveModal';
+import { useProductCacheStore } from '@/stores/productCacheStore';
 
 interface Customer { id: string; firstName: string; lastName: string | null; phone: string | null; taxId: string | null }
 interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
@@ -303,6 +304,9 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
   // Descuento global por % (del subtotal) o por monto fijo en soles —
   // mutuamente excluyentes, igual que ya soporta el store internamente.
   const [discountMode, setDiscountMode] = useState<'percent' | 'amount'>('percent');
+  const [showDiscount, setShowDiscount] = useState(false);
+  const discountOpen = showDiscount || globalDiscountPercent > 0 || globalDiscountAmount > 0;
+  const productImages = useProductCacheStore((st) => st.products);
 
   const handleQuantityChange = (productId: string, value: string) => {
     const qty = parseFloat(value);
@@ -322,284 +326,293 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
 
   return (
     <>
-    <div className={cn('flex flex-col border-r bg-pos-cart', className)}>
-      {/* Header del carrito */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
+    <div className={cn('flex flex-col bg-pos-cart lg:border-r', className)}>
+      {/* Encabezado: cantidad + acciones secundarias */}
+      <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4 lg:border-b lg:py-3">
         <div className="flex items-center gap-2">
-          <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Carrito</span>
-          {items.length > 0 && (
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground font-bold">
-              {items.length}
-            </span>
-          )}
+          <ShoppingCart className="hidden h-4 w-4 text-muted-foreground lg:block" />
+          <span className="text-base font-bold lg:text-sm lg:font-semibold">
+            {items.length > 0 ? `${items.length} producto${items.length !== 1 ? 's' : ''}` : 'Carrito'}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           {/* Pantalla TV: mostrar la venta / una promo al cliente */}
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon"
             title="Pantalla TV: mostrar la venta o una promo al cliente"
-            className={cn('relative', tvOn ? 'text-primary' : 'text-muted-foreground')}
+            className={cn('relative h-10 w-10 lg:h-8 lg:w-8', tvOn ? 'text-primary' : 'text-muted-foreground')}
             onClick={() => setShowTv(true)}
           >
             <Tv className="h-4 w-4" />
-            {tvOn && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-red-500" />}
+            {tvOn && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />}
           </Button>
           {/* Venta excepcional (algo fuera de catálogo) */}
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon"
             title="Vender algo que no está en el catálogo"
-            className="text-muted-foreground"
+            className="h-10 w-10 text-muted-foreground lg:h-8 lg:w-8"
             onClick={() => setShowMiscItem(true)}
           >
             <PackagePlus className="h-4 w-4" />
           </Button>
-          {/* Cliente */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            title="Asignar cliente"
-            className={customerName ? 'text-primary' : 'text-muted-foreground'}
-            onClick={() => setShowCustomerSearch(true)}
-          >
-            <UserPlus className="h-4 w-4" />
-          </Button>
           {items.length > 0 && (
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="sm"
               title="Vaciar carrito"
-              className="text-destructive"
-              onClick={clearCart}
+              className="h-10 gap-1.5 px-3 text-destructive hover:bg-destructive/10 hover:text-destructive lg:h-8"
+              onClick={() => { if (items.length < 3 || window.confirm('¿Vaciar el carrito?')) clearCart(); }}
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-4 w-4" />Vaciar
             </Button>
           )}
         </div>
       </div>
 
-      {/* Cliente asignado */}
-      {customerName && (
-        <div className="flex items-center justify-between border-b bg-primary/5 px-4 py-2">
-          <span className="text-xs font-medium text-primary">Cliente: {customerName}</span>
-          <button onClick={() => setCustomer(null, null)} className="text-muted-foreground hover:text-destructive">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Cupón de descuento o puntos de fidelización del cliente (excluyentes) */}
-      {customerId && items.length > 0 && (
-        <>
-          <CouponBanner customerId={customerId} />
-          <LoyaltyPointsBanner customerId={customerId} />
-        </>
-      )}
-
-      {/* Lista de items */}
       <div className="flex-1 overflow-y-auto">
-        {items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground p-6">
-            <ShoppingCart className="h-12 w-12 opacity-20" />
-            <p className="text-sm text-center">
-              Escanea un código de barras o busca un producto para comenzar
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y">
-            {items.map((item) => (
-              <div key={item.productId} className="px-4 py-3 cart-item-enter">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium leading-tight truncate">{item.name}</p>
-                    {item.barcode && (
-                      <p className="text-xs text-muted-foreground font-mono">{item.barcode}</p>
-                    )}
+        <div className="space-y-3 px-4 pb-4 pt-2 lg:space-y-2 lg:px-3 lg:pt-3">
+          {/* Cliente: fila tocable, o el cliente asignado con opción de quitar */}
+          {customerName ? (
+            <div className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-2.5 lg:min-h-0 lg:rounded-xl lg:px-3 lg:py-2">
+              <UserPlus className="h-4 w-4 shrink-0 text-primary" />
+              <button className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-primary" onClick={() => setShowCustomerSearch(true)}>
+                {customerName}
+              </button>
+              <button onClick={() => setCustomer(null, null)} aria-label="Quitar cliente"
+                className="-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-destructive">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setShowCustomerSearch(true)}
+              className="flex min-h-[52px] w-full items-center gap-3 rounded-2xl border bg-card px-4 py-2.5 text-left shadow-sm transition-colors hover:bg-muted/50 lg:min-h-0 lg:rounded-xl lg:px-3 lg:py-2 lg:shadow-none">
+              <UserPlus className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="flex-1 text-sm font-medium">Agregar cliente</span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
+
+          {/* Cupón de descuento o puntos de fidelización del cliente (excluyentes) */}
+          {customerId && items.length > 0 && (
+            <div className="overflow-hidden rounded-2xl border empty:hidden lg:rounded-xl [&>*:last-child]:border-b-0">
+              <CouponBanner customerId={customerId} />
+              <LoyaltyPointsBanner customerId={customerId} />
+            </div>
+          )}
+
+          {/* Lista de items */}
+          {items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-muted-foreground">
+              <ShoppingCart className="h-12 w-12 opacity-20" />
+              <p className="text-center text-sm">
+                Escanea un código de barras o busca un producto para comenzar
+              </p>
+            </div>
+          ) : (
+            items.map((item) => {
+              const imageUrl = productImages[item.productId.split('#')[0]]?.imageUrl;
+              return (
+              <div key={item.productId} className="cart-item-enter rounded-2xl border bg-card p-3 shadow-sm lg:rounded-xl lg:shadow-none">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted/50 lg:h-11 lg:w-11 lg:rounded-lg">
+                    {imageUrl
+                      ? <img src={imageUrl} alt="" className="h-full w-full object-contain" loading="lazy" />
+                      : <Package className="h-6 w-6 text-muted-foreground/40" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm font-semibold leading-snug">{item.name}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</p>
                     {item.autoAdjust && (
                       <p className="mt-0.5 text-[11px] font-medium text-warning">Sin stock en el sistema · el inventario se ajusta al cobrar</p>
                     )}
                     {item.discountAmount > 0 && (
-                      <div className="flex items-center gap-1 mt-0.5">
+                      <div className="mt-0.5 flex items-center gap-1">
                         <Tag className="h-3 w-3 text-success" />
-                        <span className="text-xs text-success">
-                          Desc. S/ {item.discountAmount.toFixed(2)}
-                        </span>
+                        <span className="text-xs text-success">Desc. S/ {item.discountAmount.toFixed(2)}</span>
                       </div>
                     )}
                   </div>
                   <button
                     onClick={() => removeItem(item.productId)}
-                    className="text-muted-foreground hover:text-destructive shrink-0 mt-0.5"
+                    className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
                     aria-label="Eliminar producto"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between">
+                <div className="mt-3 flex items-center justify-between gap-3">
                   {/* Control de cantidad — en paquetes se mueve de a packSize
-                      unidades por clic, no de a 1, para no romper la promo */}
-                  <div className="flex items-center gap-1">
+                      unidades por toque, no de a 1, para no romper la promo */}
+                  <div className="flex items-center gap-1.5">
                     <Button
                       variant="outline"
-                      size="icon-sm"
-                      className="h-7 w-7"
+                      size="icon"
+                      className="h-10 w-10 rounded-xl lg:h-8 lg:w-8 lg:rounded-lg"
+                      aria-label="Quitar uno"
                       onClick={() => updateQuantity(item.productId, item.quantity - (item.packSize ?? 1))}
                     >
-                      <Minus className="h-3 w-3" />
+                      <Minus className="h-4 w-4" />
                     </Button>
                     <Input
                       type="number"
+                      inputMode="decimal"
                       value={item.quantity}
                       onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
-                      className="h-7 w-14 text-center text-sm font-semibold p-1"
+                      className="h-10 w-16 rounded-xl p-1 text-center text-base font-bold lg:h-8 lg:w-14 lg:rounded-lg lg:text-sm"
                       min={1}
                       max={item.autoAdjust ? undefined : item.stock}
                     />
                     <Button
                       variant="outline"
-                      size="icon-sm"
-                      className="h-7 w-7"
+                      size="icon"
+                      className="h-10 w-10 rounded-xl border-primary/60 text-primary lg:h-8 lg:w-8 lg:rounded-lg"
+                      aria-label="Agregar uno"
                       onClick={() => updateQuantity(item.productId, item.quantity + (item.packSize ?? 1))}
                       disabled={!item.autoAdjust && item.quantity + (item.packSize ?? 1) > item.stock}
                     >
-                      <Plus className="h-3 w-3" />
+                      <Plus className="h-4 w-4" />
                     </Button>
                   </div>
-
-                  {/* Precio */}
-                  <div className="text-right">
-                    <p className="text-sm font-bold">{formatCurrency(item.subtotal)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatCurrency(item.unitPrice)} c/u
-                    </p>
-                  </div>
+                  <p className="text-base font-extrabold">{formatCurrency(item.subtotal)}</p>
                 </div>
 
                 {/* Envase retornable — de los 3 casos reales sólo 2 dejan algo
                     pendiente por hacer seguimiento; el tercero (trajo su
                     envase) es el default y no genera ningún movimiento. */}
                 {!!item.bottleDepositUnit && (
-                  <div className="mt-2 rounded-md bg-muted/50 px-2 py-1.5">
+                  <div className="mt-3 rounded-xl bg-muted/50 p-2.5">
                     <div className="flex items-center gap-1.5">
-                      <GlassWater className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="text-xs text-muted-foreground shrink-0">
+                      <GlassWater className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         Envase {formatCurrency(item.bottleDepositUnit)} c/u:
                       </span>
                     </div>
-                    <div className="mt-1.5 grid grid-cols-3 gap-1">
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
                       <button type="button"
                         onClick={() => setBottleDepositChoice(item.productId, null)}
-                        className={cn('rounded px-1.5 py-1 text-[11px] font-medium leading-tight transition-colors',
-                          !item.bottleDepositChoice ? 'bg-success text-success-foreground' : 'bg-background border text-muted-foreground hover:text-foreground')}>
+                        className={cn('min-h-[36px] rounded-lg px-1.5 py-1 text-[11px] font-medium leading-tight transition-colors',
+                          !item.bottleDepositChoice ? 'bg-success text-success-foreground' : 'border bg-background text-muted-foreground hover:text-foreground')}>
                         Trajo su envase
                       </button>
                       <button type="button"
                         onClick={() => handleBottleDepositChoice(item.productId, 'CHARGE')}
-                        className={cn('rounded px-1.5 py-1 text-[11px] font-medium leading-tight transition-colors',
-                          item.bottleDepositChoice === 'CHARGE' ? 'bg-primary text-primary-foreground' : 'bg-background border text-muted-foreground hover:text-foreground')}>
+                        className={cn('min-h-[36px] rounded-lg px-1.5 py-1 text-[11px] font-medium leading-tight transition-colors',
+                          item.bottleDepositChoice === 'CHARGE' ? 'bg-primary text-primary-foreground' : 'border bg-background text-muted-foreground hover:text-foreground')}>
                         Dejó garantía
                       </button>
                       <button type="button"
                         onClick={() => handleBottleDepositChoice(item.productId, 'LOAN')}
-                        className={cn('rounded px-1.5 py-1 text-[11px] font-medium leading-tight transition-colors',
-                          item.bottleDepositChoice === 'LOAN' ? 'bg-amber-500 text-white' : 'bg-background border text-muted-foreground hover:text-foreground')}>
+                        className={cn('min-h-[36px] rounded-lg px-1.5 py-1 text-[11px] font-medium leading-tight transition-colors',
+                          item.bottleDepositChoice === 'LOAN' ? 'bg-amber-500 text-white' : 'border bg-background text-muted-foreground hover:text-foreground')}>
                         Sin garantía
                       </button>
                     </div>
                     {item.bottleDepositChoice === 'CHARGE' && (
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="mt-1.5 text-xs text-muted-foreground">
                         Se cobra {formatCurrency(item.bottleDepositUnit * item.quantity)} a <strong>{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong> — se le devuelve esa plata cuando traiga el envase vacío.
                       </p>
                     )}
                     {item.bottleDepositChoice === 'LOAN' && (
-                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                      <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
                         No se cobra nada — <strong>{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong> queda debiendo el envase (nada que devolverle al traerlo).
                       </p>
                     )}
                   </div>
                 )}
               </div>
-            ))}
-          </div>
-        )}
+              );
+            })
+          )}
+
+          {/* Descuento global — por % del subtotal o por monto fijo en soles */}
+          {items.length > 0 && (
+            <div className="rounded-2xl border bg-card shadow-sm lg:rounded-xl lg:shadow-none">
+              <button type="button" onClick={() => setShowDiscount((v) => !v)}
+                className="flex min-h-[52px] w-full items-center gap-3 px-4 py-2.5 text-left lg:min-h-0 lg:px-3 lg:py-2">
+                <Tag className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1 text-sm font-medium">{discountAmount > 0 ? 'Descuento' : 'Agregar descuento'}</span>
+                {discountAmount > 0 && <span className="text-sm font-semibold text-success">-{formatCurrency(discountAmount)}</span>}
+                <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform', discountOpen && 'rotate-90')} />
+              </button>
+              {discountOpen && (
+                <div className="flex items-center gap-2 border-t px-4 py-3 lg:px-3 lg:py-2">
+                  <div className="flex shrink-0 overflow-hidden rounded-xl border lg:rounded-md">
+                    <button
+                      type="button"
+                      className={cn('h-10 w-11 text-sm font-semibold lg:h-7 lg:w-8 lg:text-xs', discountMode === 'percent' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
+                      onClick={() => { setDiscountMode('percent'); setGlobalDiscount(0, 0); }}
+                    >
+                      %
+                    </button>
+                    <button
+                      type="button"
+                      className={cn('h-10 w-11 border-l text-sm font-semibold lg:h-7 lg:w-8 lg:text-xs', discountMode === 'amount' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
+                      onClick={() => { setDiscountMode('amount'); setGlobalDiscount(0, 0); }}
+                    >
+                      S/
+                    </button>
+                  </div>
+                  <Input
+                    key={discountMode}
+                    ref={discountRef}
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={discountMode === 'percent' ? 100 : undefined}
+                    step={discountMode === 'amount' ? 0.01 : 1}
+                    defaultValue={(discountMode === 'percent' ? globalDiscountPercent : globalDiscountAmount) || ''}
+                    placeholder="0"
+                    className="h-10 w-24 rounded-xl text-center text-base lg:h-7 lg:w-20 lg:rounded-md lg:text-sm"
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value) || 0;
+                      if (discountMode === 'percent') setGlobalDiscount(0, Math.min(100, v));
+                      else setGlobalDiscount(Math.max(0, v), 0);
+                    }}
+                  />
+                  <span className="ml-auto text-sm font-semibold text-success">-{formatCurrency(discountAmount)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {items.length > 0 && (
+            <p className="px-1 text-xs text-muted-foreground">Los precios incluyen impuestos.</p>
+          )}
+        </div>
       </div>
 
-      {/* Descuento global — por % del subtotal o por monto fijo en soles */}
-      {items.length > 0 && (
-        <div className="border-t px-4 py-2">
-          <div className="flex items-center gap-2">
-            <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <span className="text-xs text-muted-foreground shrink-0">Descuento:</span>
-            <div className="flex rounded-md border overflow-hidden shrink-0">
-              <button
-                type="button"
-                className={cn('px-1.5 py-0.5 text-xs font-medium', discountMode === 'percent' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
-                onClick={() => { setDiscountMode('percent'); setGlobalDiscount(0, 0); }}
-              >
-                %
-              </button>
-              <button
-                type="button"
-                className={cn('px-1.5 py-0.5 text-xs font-medium border-l', discountMode === 'amount' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
-                onClick={() => { setDiscountMode('amount'); setGlobalDiscount(0, 0); }}
-              >
-                S/
-              </button>
-            </div>
-            <Input
-              key={discountMode}
-              ref={discountRef}
-              type="number"
-              min={0}
-              max={discountMode === 'percent' ? 100 : undefined}
-              step={discountMode === 'amount' ? 0.01 : 1}
-              defaultValue={(discountMode === 'percent' ? globalDiscountPercent : globalDiscountAmount) || ''}
-              placeholder="0"
-              className="h-7 w-20 text-center text-sm"
-              onBlur={(e) => {
-                const v = parseFloat(e.target.value) || 0;
-                if (discountMode === 'percent') setGlobalDiscount(0, Math.min(100, v));
-                else setGlobalDiscount(Math.max(0, v), 0);
-              }}
-            />
-            <span className="text-xs text-muted-foreground ml-auto">
-              -{formatCurrency(discountAmount)}
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Totales */}
-      <div className="border-t bg-card p-4">
+      <div className="border-t bg-card px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 lg:pb-4">
         <div className="space-y-1.5">
           {discountAmount > 0 && (
             <>
-              <div className="flex justify-between text-sm text-muted-foreground">
+              <div className="flex justify-between px-1 text-sm text-muted-foreground">
                 <span>Subtotal</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-sm text-success">
+              <div className="flex justify-between px-1 text-sm text-success">
                 <span>Descuento</span>
                 <span>-{formatCurrency(discountAmount)}</span>
               </div>
             </>
           )}
-          <div className="flex justify-between border-t pt-2 text-xl font-bold">
-            <span>TOTAL</span>
+          <div className="flex items-center justify-between rounded-xl bg-primary/10 px-3 py-2.5 text-xl font-bold">
+            <span className="text-base">Total</span>
             <span className="text-primary">{formatCurrency(total)}</span>
           </div>
         </div>
 
         <Button
-          className="mt-4 w-full"
+          className="mt-3 h-14 w-full gap-2 rounded-xl text-lg font-bold"
           size="xl"
           onClick={onCheckout}
           disabled={items.length === 0}
         >
           Cobrar {items.length > 0 && formatCurrency(total)}
+          {items.length > 0 && <ArrowRight className="h-5 w-5" />}
         </Button>
       </div>
     </div>
@@ -631,24 +644,30 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
     )}
 
     {showTv && <TvLiveModal onClose={() => setShowTv(false)} />}
-    {showMiscItem && (
-      <MiscItemModal
-        onAdd={({ productId, description, amount, quantity }) => {
-          // Cada venta excepcional es su propia línea aunque comparta el
-          // mismo producto comodín — un id único evita que dos "Otros" con
-          // descripción/precio distintos se mezclen en una sola línea.
-          addItem({
-            productId: `${productId}#${crypto.randomUUID()}`, name: description, barcode: null, quantity,
-            unitPrice: amount, originalPrice: amount, discountAmount: 0, discountPercent: 0,
-            stock: quantity,
-          });
-          toast.success(`${description} agregado — ${formatCurrency(amount * quantity)}`);
-          setShowMiscItem(false);
-        }}
-        onClose={() => setShowMiscItem(false)}
-      />
-    )}
+    {showMiscItem && <MiscItemSheet onClose={() => setShowMiscItem(false)} />}
     </>
   );
 }
 
+
+/** "Producto manual" / venta excepcional: algo que no está en el catálogo. */
+export function MiscItemSheet({ onClose }: { onClose: () => void }) {
+  const addItem = usePosStore((s) => s.addItem);
+  return (
+    <MiscItemModal
+      onAdd={({ productId, description, amount, quantity }) => {
+        // Cada venta excepcional es su propia línea aunque comparta el
+        // mismo producto comodín — un id único evita que dos "Otros" con
+        // descripción/precio distintos se mezclen en una sola línea.
+        addItem({
+          productId: `${productId}#${crypto.randomUUID()}`, name: description, barcode: null, quantity,
+          unitPrice: amount, originalPrice: amount, discountAmount: 0, discountPercent: 0,
+          stock: quantity,
+        });
+        toast.success(`${description} agregado — ${formatCurrency(amount * quantity)}`);
+        onClose();
+      }}
+      onClose={onClose}
+    />
+  );
+}

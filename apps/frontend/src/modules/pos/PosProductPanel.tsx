@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Package, AlertCircle, Scale, Tag, X, Mic, Star, ScanBarcode } from 'lucide-react';
+import { Search, Package, AlertCircle, Scale, Tag, X, Mic, Star, ScanBarcode, Plus, PlusCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
 import { CameraScanner, isCameraScanSupported } from './CameraScanner';
+import { MiscItemSheet } from './PosCart';
 import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, wouldExceedStock, packExceedsStock, AUTO_ADJUST_HINT, type PackInfo } from './packSale';
 
 interface Product extends PackInfo {
@@ -40,6 +41,8 @@ interface PosProductPanelProps {
   className?: string;
   onProductAdded?: () => void;
 }
+
+const PRODUCT_GRID = 'grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6';
 
 /* ─── Bulk weight modal ───────────────────────────────────────────────────── */
 // Precisión de pesaje: 1 gramo (0.001 kg). Con pasos de 10g el peso
@@ -461,6 +464,7 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
   const lastTap = useRef<{ key: string; at: number }>({ key: '', at: 0 });
   const [showOffers, setShowOffers] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+  const [showMisc, setShowMisc] = useState(false);
   const hasFinePointer = useMemo(() => typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches, []);
   // Cuántas unidades de cada producto ya están en el carrito: se muestra en
   // la tarjeta para confirmar el toque sin tener que ir al carrito.
@@ -697,120 +701,126 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
   return (
     <div className={cn('flex flex-col bg-pos-product', className)}>
       {/* Barra de búsqueda + botón ofertas */}
-      <div className="border-b p-2 sm:p-3 flex gap-2">
-        <div className="flex-1 min-w-0">
-          <Input
-            ref={searchInputRef}
-            startIcon={<Search className="h-4 w-4" />}
-            placeholder="Buscar producto o código..."
-            // En celular el foco automático abre el teclado y tapa la mitad
-            // de la pantalla: solo se enfoca solo en equipos con mouse.
-            autoFocus={hasFinePointer}
-            enterKeyHint="search"
-            onChange={(e) => debouncedSearch(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            className="bg-background"
-          />
+      <div className="space-y-3 border-b px-4 py-3">
+        {/* Buscador + escáner */}
+        <div className="flex gap-2">
+          <div className="min-w-0 flex-1">
+            <Input
+              ref={searchInputRef}
+              startIcon={<Search className="h-4 w-4" />}
+              placeholder="Buscar producto o código"
+              // En celular el foco automático abre el teclado y tapa la mitad
+              // de la pantalla: solo se enfoca solo en equipos con mouse.
+              autoFocus={hasFinePointer}
+              enterKeyHint="search"
+              onChange={(e) => debouncedSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              className="h-12 rounded-xl bg-muted/40 lg:h-10"
+            />
+          </div>
+          {isCameraScanSupported() && (
+            <Button
+              onClick={() => setShowCamera(true)}
+              title="Escanear códigos de barra con la cámara"
+              aria-label="Escanear con la cámara"
+              className="h-12 w-12 shrink-0 rounded-xl p-0 lg:h-10 lg:w-auto lg:gap-1.5 lg:px-3">
+              <ScanBarcode className="h-6 w-6 lg:h-5 lg:w-5" /><span className="hidden lg:inline">Cámara</span>
+            </Button>
+          )}
+          {voiceSupported && (
+            <Button
+              variant="outline" onClick={toggleListening}
+              title={isListening ? 'Toca para apagar el micrófono' : 'Decir "agregar dos gaseosas", "precio del aceite", "quitar la coca cola"...'}
+              aria-label="Comando de voz"
+              className={cn('h-12 w-12 shrink-0 rounded-xl p-0 text-muted-foreground lg:h-10 lg:w-auto lg:gap-1.5 lg:px-3', isListening && 'border-destructive text-destructive bg-destructive/10 animate-pulse')}>
+              <Mic className="h-5 w-5 lg:h-4 lg:w-4" /><span className="hidden lg:inline">{isListening ? 'Escuchando...' : 'Voz'}</span>
+            </Button>
+          )}
         </div>
-        {isCameraScanSupported() && (
-          <Button
-            variant="outline" size="sm" onClick={() => setShowCamera(true)}
-            title="Escanear códigos de barra con la cámara"
-            aria-label="Escanear con la cámara"
-            className="h-10 shrink-0 gap-1.5 border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground px-3">
-            <ScanBarcode className="h-5 w-5" /><span className="hidden sm:inline">Cámara</span>
-          </Button>
-        )}
-        {voiceSupported && (
-          <Button
-            variant="outline" size="sm" onClick={toggleListening}
-            title={isListening ? 'Toca para apagar el micrófono' : 'Decir "agregar dos gaseosas", "precio del aceite", "quitar la coca cola"...'}
-            aria-label="Comando de voz"
-            className={cn('h-10 shrink-0 gap-1.5 px-3', isListening && 'border-destructive text-destructive bg-destructive/10 animate-pulse')}>
-            <Mic className="h-4 w-4" /><span className="hidden sm:inline">{isListening ? 'Escuchando...' : 'Voz'}</span>
-          </Button>
-        )}
-        <Button variant="outline" size="sm" onClick={() => setShowOffers(true)} aria-label="Ofertas"
-          className="h-10 shrink-0 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 px-3">
-          <Tag className="h-4 w-4" /><span className="hidden sm:inline">Ofertas</span>
-        </Button>
-      </div>
 
-      {/* Filtros de categoría */}
-      {categories && categories.length > 0 && (
-        <div className="border-b">
-          <div className="flex gap-2 overflow-x-auto h-scroll px-3 py-2">
+        {/* Filtros */}
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 h-scroll">
+          <Button
+            variant={selectedCategory === null && !bulkOnly && !favoriteOnly ? 'default' : 'outline'}
+            className="h-10 shrink-0 rounded-xl px-5 text-sm font-semibold lg:h-8 lg:px-3 lg:text-xs"
+            onClick={() => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); setBulkOnly(false); setFavoriteOnly(false); }}
+          >
+            Todos
+          </Button>
+          <Button
+            variant="outline"
+            className={cn('h-10 shrink-0 gap-1.5 rounded-xl px-4 text-sm font-medium lg:h-8 lg:px-3 lg:text-xs', bulkOnly && 'border-amber-500 bg-amber-500 text-black hover:bg-amber-600')}
+            onClick={() => { clearSearch(); setBulkOnly((v) => !v); }}
+            title="Productos a granel — sin código de barras, acceso rápido"
+          >
+            <Scale className="h-4 w-4 lg:h-3 lg:w-3" />A granel
+          </Button>
+          <Button
+            variant="outline"
+            className={cn('h-10 shrink-0 gap-1.5 rounded-xl px-4 text-sm font-medium lg:h-8 lg:px-3 lg:text-xs', favoriteOnly && 'border-amber-500 bg-amber-500 text-black hover:bg-amber-600')}
+            onClick={() => { clearSearch(); setFavoriteOnly((v) => !v); }}
+            title="Favoritos — acceso rápido a los productos más vendidos sin código de barras"
+          >
+            <Star className="h-4 w-4 lg:h-3 lg:w-3" />Favoritos
+          </Button>
+          {categories?.map((cat) => (
             <Button
-              variant={selectedCategory === null ? 'default' : 'outline'}
-              size="sm"
-              className="shrink-0 h-9 lg:h-7 text-xs"
-              onClick={() => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); }}
+              key={cat.id}
+              variant={selectedCategory === cat.id ? 'default' : 'outline'}
+              className="h-10 shrink-0 rounded-xl px-4 text-sm font-medium lg:h-8 lg:px-3 lg:text-xs"
+              onClick={() => { clearSearch(); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}
             >
-              Todos
+              {cat.name}
             </Button>
+          ))}
+        </div>
+        {/* Subcategorías de la categoría general seleccionada */}
+        {subcategories.length > 0 && (
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 h-scroll">
             <Button
-              variant={bulkOnly ? 'default' : 'outline'}
-              size="sm"
-              className={cn('shrink-0 h-9 lg:h-7 text-xs gap-1', bulkOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
-              onClick={() => { clearSearch(); setBulkOnly((v) => !v); }}
-              title="Productos a granel — sin código de barras, acceso rápido"
+              variant={selectedSubcategory === null ? 'secondary' : 'ghost'}
+              className="h-9 shrink-0 rounded-full px-4 text-xs lg:h-7"
+              onClick={() => { clearSearch(); setSelectedSubcategory(null); }}
             >
-              <Scale className="h-3 w-3" />A granel
+              Todas
             </Button>
-            <Button
-              variant={favoriteOnly ? 'default' : 'outline'}
-              size="sm"
-              className={cn('shrink-0 h-9 lg:h-7 text-xs gap-1', favoriteOnly && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
-              onClick={() => { clearSearch(); setFavoriteOnly((v) => !v); }}
-              title="Favoritos — acceso rápido a los productos más vendidos sin código de barras"
-            >
-              <Star className="h-3 w-3" />Favoritos
-            </Button>
-            {categories.map((cat) => (
+            {subcategories.map((sub) => (
               <Button
-                key={cat.id}
-                variant={selectedCategory === cat.id ? 'default' : 'outline'}
-                size="sm"
-                className="shrink-0 h-9 lg:h-7 text-xs"
-                onClick={() => { clearSearch(); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}
+                key={sub.id}
+                variant={selectedSubcategory === sub.id ? 'secondary' : 'ghost'}
+                className="h-9 shrink-0 rounded-full px-4 text-xs lg:h-7"
+                onClick={() => { clearSearch(); setSelectedSubcategory(sub.id); }}
               >
-                {cat.name}
+                {sub.name}
               </Button>
             ))}
           </div>
-          {/* Subcategorías de la categoría general seleccionada */}
-          {subcategories.length > 0 && (
-            <div className="flex gap-1.5 overflow-x-auto h-scroll px-3 pb-2">
-              <Button
-                variant={selectedSubcategory === null ? 'secondary' : 'ghost'}
-                size="sm"
-                className="shrink-0 h-8 lg:h-6 text-[11px]"
-                onClick={() => { clearSearch(); setSelectedSubcategory(null); }}
-              >
-                Todas
-              </Button>
-              {subcategories.map((sub) => (
-                <Button
-                  key={sub.id}
-                  variant={selectedSubcategory === sub.id ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="shrink-0 h-8 lg:h-6 text-[11px]"
-                  onClick={() => { clearSearch(); setSelectedSubcategory(sub.id); }}
-                >
-                  {sub.name}
-                </Button>
-              ))}
-            </div>
-          )}
+        )}
+
+        {/* Acciones */}
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" onClick={() => setShowOffers(true)}
+            className="h-11 gap-2 rounded-xl text-sm font-semibold lg:h-9">
+            <Tag className="h-4 w-4 text-primary" />Ofertas
+          </Button>
+          <Button variant="outline" onClick={() => setShowMisc(true)}
+            title="Vender algo que no está en el catálogo"
+            className="h-11 gap-2 rounded-xl text-sm font-semibold lg:h-9">
+            <PlusCircle className="h-4 w-4 text-primary" />Producto manual
+          </Button>
         </div>
-      )}
+      </div>
 
       {/* Grid de productos */}
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h3 className="text-base font-bold">Productos</h3>
+          {!isLoading && <span className="text-xs text-muted-foreground">{products.length} · precio por kg / unidad</span>}
+        </div>
         {isLoading ? (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <div className={PRODUCT_GRID}>
             {[...Array(12)].map((_, i) => (
-              <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
+              <div key={i} className="h-44 rounded-2xl bg-muted animate-pulse lg:h-32" />
             ))}
           </div>
         ) : products.length === 0 ? (
@@ -819,13 +829,13 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
             <p className="text-sm">No se encontraron productos</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <div className={PRODUCT_GRID}>
             {products.map((product) => {
               const hh = happyHourByProductId.get(product.id);
               const packOn = hasPack(product) && !product.isBulk;
               const packOk = packOn && product.currentStock >= (product.packSize ?? 0);
               return (
-              <div key={product.id} className="flex flex-col gap-1">
+              <div key={product.id} className="flex flex-col gap-1.5">
               <button
                 onClick={(e) => {
                   e.currentTarget.blur();
@@ -837,13 +847,10 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
                   handleAddProduct(product, undefined, second);
                 }}
                 className={cn(
-                  'relative flex flex-1 flex-col rounded-xl border p-2.5 text-left transition-all',
-                  'hover:border-primary hover:shadow-md active:scale-95',
+                  'relative flex flex-1 flex-col rounded-2xl border bg-card p-3 text-left shadow-sm transition-all',
+                  'hover:border-primary/60 hover:shadow-md active:scale-[0.97]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  'min-h-[88px]', // área táctil suficiente
-                  product.currentStock <= 0
-                    ? 'cursor-pointer opacity-60'
-                    : 'cursor-pointer bg-pos-product',
+                  product.currentStock <= 0 && 'opacity-70',
                 )}
               >
                 {(qtyInCart.get(product.id) ?? 0) > 0 && (
@@ -851,59 +858,44 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
                     {Number((qtyInCart.get(product.id) ?? 0).toFixed(2))}
                   </span>
                 )}
-                {/* Imagen o placeholder */}
-                <div className="mb-2 flex h-10 w-full items-center justify-center rounded bg-muted">
+                {/* Imagen */}
+                <div className="relative flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-muted/40 lg:h-16">
                   {product.imageUrl ? (
-                    <img
-                      src={product.imageUrl}
-                      alt={product.name}
-                      className="h-full w-full rounded object-cover"
-                      loading="lazy"
-                    />
+                    <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain" loading="lazy" />
                   ) : (
-                    <Package className="h-5 w-5 text-muted-foreground/40" />
+                    <Package className="h-8 w-8 text-muted-foreground/30 lg:h-6 lg:w-6" />
                   )}
+                  {/* Etiquetas */}
+                  <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
+                    {hh && <Badge variant="success" className="px-1.5 py-0 text-[10px]">🔥 Hora feliz</Badge>}
+                    {product.currentStock <= 0 ? (
+                      <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">Sin stock</span>
+                    ) : product.currentStock <= 5 ? (
+                      <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                        {product.currentStock === 1 ? 'Última unidad' : `Quedan ${product.currentStock}`}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 {/* Nombre */}
-                <p className="line-clamp-2 text-xs font-medium leading-tight">{product.name}</p>
+                <p className="mt-2.5 line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-tight lg:min-h-[2.25rem] lg:text-xs">{product.name}</p>
 
-                {/* Precio + bulk badge */}
-                <div className="mt-1 flex items-center gap-1">
-                  {hh ? (
-                    <p className="text-sm font-bold text-success">
-                      {formatCurrency(hh.effectivePrice)}
-                      <span className="ml-1 text-[10px] font-normal text-muted-foreground line-through">{formatCurrency(product.salePrice)}</span>
+                {/* Precio + agregar */}
+                <div className="mt-2 flex items-end justify-between gap-2">
+                  <div className="min-w-0">
+                    {hh && <p className="text-[11px] leading-none text-muted-foreground line-through">{formatCurrency(product.salePrice)}</p>}
+                    <p className="whitespace-nowrap text-base font-extrabold leading-tight text-primary lg:text-sm">
+                      {formatCurrency(hh ? hh.effectivePrice : product.salePrice)}
+                      <span className="ml-0.5 text-xs font-normal text-muted-foreground">/{product.isBulk ? (product.bulkUnit ?? 'kg') : 'und'}</span>
                     </p>
-                  ) : (
-                    <p className="text-sm font-bold text-primary">
-                      {formatCurrency(product.salePrice)}
-                      {product.isBulk && <span className="text-[10px] font-normal text-muted-foreground">/{product.bulkUnit ?? 'u'}</span>}
-                    </p>
-                  )}
+                  </div>
+                  <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-2 border-primary/70 text-primary lg:h-7 lg:w-7 lg:rounded-lg">
+                    <Plus className="h-5 w-5 lg:h-4 lg:w-4" />
+                  </span>
                 </div>
-                {product.isBulk && (
-                  <div className="absolute left-1 top-1">
-                    <Scale className="h-3 w-3 text-primary/60" />
-                  </div>
-                )}
-                {hh && (
-                  <Badge variant="success" className="absolute left-1 top-1 text-[9px] px-1 py-0 gap-0.5">
-                    🔥 Hora feliz
-                  </Badge>
-                )}
-
-                {/* Stock badge */}
-                {product.currentStock <= 5 && product.currentStock > 0 && (
-                  <Badge variant="warning" className="absolute right-1 top-1 text-[10px] px-1 py-0">
-                    {product.currentStock}
-                  </Badge>
-                )}
                 {product.currentStock <= 0 && (
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center rounded-lg bg-background/60">
-                    <span className="text-xs font-bold text-destructive">Sin stock</span>
-                    <span className="text-[10px] font-medium text-muted-foreground">2 toques = vender igual</span>
-                  </div>
+                  <p className="mt-1.5 text-[10px] font-medium text-muted-foreground">2 toques = vender igual</p>
                 )}
               </button>
               {packOn && (
@@ -919,7 +911,7 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
                   }}
                   title={`Agregar ${(product.packLabel || 'paquete').toLowerCase()} de ${product.packSize} unidades`}
                   className={cn(
-                    'flex min-h-[36px] items-center justify-between gap-1 rounded-lg border border-primary/40 bg-primary/5 px-2 py-1 text-xs font-semibold text-primary transition-all',
+                    'flex min-h-[40px] items-center justify-between gap-1 rounded-xl border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition-all',
                     'hover:bg-primary/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     !packOk && 'opacity-50',
                   )}
@@ -955,6 +947,7 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
         />
       )}
       {showOffers && <OffersPanel onClose={() => setShowOffers(false)} />}
+      {showMisc && <MiscItemSheet onClose={() => setShowMisc(false)} />}
       {showCamera && (
         <CameraScanner
           onDetected={async (code) => (await onBarcodeSearch(code)) !== false}
