@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { ShoppingCart, Grid3x3, ChevronRight } from 'lucide-react';
+import { ShoppingCart, Grid3x3, ChevronRight, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { usePosStore } from '@/stores/posStore';
@@ -446,27 +446,29 @@ export function PosPage() {
       ) : (
         /* ── TABLET/MÓVIL: tabs Productos / Carrito + barra fija de cobro ── */
         <div className="flex flex-col flex-1 overflow-hidden">
-          <div className="flex border-b bg-pos-cart shrink-0">
-            <button
-              onClick={() => setPosTab('products')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
-                posTab === 'products' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
-              }`}>
-              <Grid3x3 className="h-4 w-4" />Productos
-            </button>
-            <button
-              onClick={() => setPosTab('cart')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
-                posTab === 'cart' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
-              }`}>
-              <ShoppingCart className="h-4 w-4" />
-              Carrito
-              {cartCount > 0 && (
-                <span className="min-w-5 h-5 px-1 bg-primary text-primary-foreground text-xs font-black rounded-full flex items-center justify-center">
-                  {Number(cartCount.toFixed(2))}
-                </span>
-              )}
-            </button>
+          <div className="shrink-0 border-b bg-pos-cart px-4 py-2.5">
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+              <button
+                onClick={() => setPosTab('products')}
+                className={`flex h-10 items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-colors ${
+                  posTab === 'products' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground'
+                }`}>
+                <Grid3x3 className="h-4 w-4" />Productos
+              </button>
+              <button
+                onClick={() => setPosTab('cart')}
+                className={`flex h-10 items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-colors ${
+                  posTab === 'cart' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground'
+                }`}>
+                <ShoppingCart className="h-4 w-4" />
+                Carrito
+                {cartCount > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-black text-primary-foreground">
+                    {Number(cartCount.toFixed(2))}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-hidden">
@@ -479,20 +481,23 @@ export function PosPage() {
 
           {/* En Productos: ver carrito o cobrar directo, sin cambiar de pestaña. */}
           {posTab === 'products' && cartCount > 0 && (
-            <div className="flex gap-2 border-t bg-pos-cart p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shrink-0">
+            <div className="flex shrink-0 gap-3 border-t bg-pos-cart px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
               <button
                 onClick={() => setPosTab('cart')}
-                className="flex h-14 min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border bg-background px-3 text-left active:bg-muted">
-                <span className="min-w-0">
-                  <span className="block text-[11px] leading-tight text-muted-foreground">{Number(cartCount.toFixed(2))} producto{cartCount !== 1 ? 's' : ''} · ver</span>
+                className="flex h-14 min-w-0 flex-1 items-center gap-3 rounded-xl border bg-background px-3 text-left active:bg-muted">
+                <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <ShoppingCart className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[11px] leading-tight text-muted-foreground">{Number(cartCount.toFixed(2))} producto{cartCount !== 1 ? 's' : ''}</span>
                   <span className="block text-lg font-black leading-tight">S/ {cartTotal.toFixed(2)}</span>
                 </span>
                 <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
               </button>
               <button
                 onClick={() => setShowPayment(true)}
-                className="h-14 flex-1 rounded-xl bg-primary text-lg font-bold text-primary-foreground active:bg-primary/90">
-                Cobrar
+                className="flex h-14 w-[38%] shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary text-lg font-bold text-primary-foreground active:bg-primary/90">
+                Cobrar<ArrowRight className="h-5 w-5" />
               </button>
             </div>
           )}
