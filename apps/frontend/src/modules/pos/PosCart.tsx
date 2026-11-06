@@ -12,6 +12,8 @@ import { useTvLiveStore } from '@/stores/tvLiveStore';
 import { TvLiveModal } from './TvLiveModal';
 import { useProductCacheStore } from '@/stores/productCacheStore';
 import { ProductThumb } from './ProductThumb';
+import { OfferSuggestions } from './OfferSuggestions';
+import { OffersBrowser } from './OffersBrowser';
 
 interface Customer { id: string; firstName: string; lastName: string | null; phone: string | null; taxId: string | null }
 interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
@@ -286,6 +288,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showMiscItem, setShowMiscItem] = useState(false);
   const [showTv, setShowTv] = useState(false);
+  const [showOffers, setShowOffers] = useState(false);
   const tvOn = useTvLiveStore((s) => s.enabled);
   // Tanto "Dejó garantía" como "Sin garantía" dejan algo pendiente por
   // rastrear (a quién devolverle la plata en un caso, quién debe traer el
@@ -478,6 +481,10 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
 
       </div>
 
+      {/* En celular las ofertas para esta venta van en una fila fija sobre
+          los totales; en PC salen arriba de la grilla de productos. */}
+      {onBack && <OfferSuggestions onSeeAll={() => setShowOffers(true)} className="border-t border-border/60 px-4 pb-2 pt-2.5" />}
+
       {/* Totales + cobrar (con el descuento fijo: % del subtotal o monto en soles) */}
       <div className="shrink-0 border-t border-border/60 bg-card px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 lg:px-3 lg:pb-3">
         {items.length > 0 && (
@@ -562,6 +569,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
     )}
 
     {showTv && <TvLiveModal onClose={() => setShowTv(false)} />}
+    {showOffers && <OffersBrowser onClose={() => setShowOffers(false)} />}
     {showMiscItem && <MiscItemSheet onClose={() => setShowMiscItem(false)} />}
     </>
   );
