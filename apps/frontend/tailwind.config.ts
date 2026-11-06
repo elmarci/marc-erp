@@ -11,6 +11,10 @@ const config: Config = {
       screens: { '2xl': '1400px' },
     },
     extend: {
+      fontFamily: {
+        // Voz de marca MARC (ver skill marc-brand): Outfit para títulos y montos grandes.
+        display: ['Outfit', 'Public Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',

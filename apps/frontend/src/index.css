@@ -102,6 +102,8 @@
   .pos-screen {
     height: 100dvh;
     overflow: hidden;
+    /* Tipografía de la marca MARC: Public Sans para lo transaccional */
+    font-family: 'Public Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
 
   /* Animación de entrada para items del carrito */

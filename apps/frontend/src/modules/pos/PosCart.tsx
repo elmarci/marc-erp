@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star, PackagePlus, GlassWater, Tv, ChevronRight, ArrowRight, Package } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star, PackagePlus, GlassWater, Tv, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useTvLiveStore } from '@/stores/tvLiveStore';
 import { TvLiveModal } from './TvLiveModal';
 import { useProductCacheStore } from '@/stores/productCacheStore';
+import { ProductThumb } from './ProductThumb';
 
 interface Customer { id: string; firstName: string; lastName: string | null; phone: string | null; taxId: string | null }
 interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
@@ -269,9 +270,11 @@ function CustomerSearchModal({ onSelect, onClose }: {
 interface PosCartProps {
   onCheckout: () => void;
   className?: string;
+  /** Celular: el carrito es una pantalla aparte con flecha para volver a los productos. */
+  onBack?: () => void;
 }
 
-export function PosCart({ onCheckout, className }: PosCartProps) {
+export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
   const {
     items, subtotal, discountAmount, taxAmount, total,
     updateQuantity, removeItem, clearCart, customerId, customerName, setCustomer,
@@ -326,293 +329,229 @@ export function PosCart({ onCheckout, className }: PosCartProps) {
 
   return (
     <>
-    <div className={cn('flex flex-col bg-pos-cart lg:border-r', className)}>
-      {/* Encabezado: cantidad + acciones secundarias */}
-      <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4 lg:border-b lg:py-3">
-        <div className="flex items-center gap-2">
-          <ShoppingCart className="hidden h-4 w-4 text-muted-foreground lg:block" />
-          <span className="text-base font-bold lg:text-sm lg:font-semibold">
-            {items.length > 0 ? `${items.length} producto${items.length !== 1 ? 's' : ''}` : 'Carrito'}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          {/* Pantalla TV: mostrar la venta / una promo al cliente */}
-          <Button
-            variant="ghost"
-            size="icon"
-            title="Pantalla TV: mostrar la venta o una promo al cliente"
-            className={cn('relative h-10 w-10 lg:h-8 lg:w-8', tvOn ? 'text-primary' : 'text-muted-foreground')}
-            onClick={() => setShowTv(true)}
-          >
-            <Tv className="h-4 w-4" />
-            {tvOn && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />}
-          </Button>
-          {/* Venta excepcional (algo fuera de catálogo) */}
-          <Button
-            variant="ghost"
-            size="icon"
-            title="Vender algo que no está en el catálogo"
-            className="h-10 w-10 text-muted-foreground lg:h-8 lg:w-8"
-            onClick={() => setShowMiscItem(true)}
-          >
-            <PackagePlus className="h-4 w-4" />
-          </Button>
-          {items.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              title="Vaciar carrito"
-              className="h-10 gap-1.5 px-3 text-destructive hover:bg-destructive/10 hover:text-destructive lg:h-8"
-              onClick={() => { if (items.length < 3 || window.confirm('¿Vaciar el carrito?')) clearCart(); }}
-            >
-              <Trash2 className="h-4 w-4" />Vaciar
-            </Button>
-          )}
-        </div>
+    <div className={cn('flex flex-col bg-card lg:border-r lg:border-border/60', className)}>
+      {/* Encabezado */}
+      <div className="flex h-14 shrink-0 items-center gap-1 px-2 lg:h-12 lg:px-3">
+        {onBack && (
+          <button onClick={onBack} aria-label="Volver a productos"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-foreground hover:bg-muted">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
+        <h2 className={cn('flex-1 font-display text-lg font-semibold lg:text-base', !onBack && 'pl-2 lg:pl-1')}>
+          Carrito
+          {items.length > 0 && <span className="ml-2 font-sans text-sm font-normal text-muted-foreground">{items.length} producto{items.length !== 1 ? 's' : ''}</span>}
+        </h2>
+        <button title="Pantalla TV: mostrar la venta o una promo al cliente" aria-label="Pantalla TV"
+          onClick={() => setShowTv(true)}
+          className={cn('relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted lg:h-8 lg:w-8', tvOn ? 'text-primary' : 'text-muted-foreground')}>
+          <Tv className="h-[18px] w-[18px] lg:h-4 lg:w-4" />
+          {tvOn && <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-red-500 lg:right-1 lg:top-1" />}
+        </button>
+        <button title="Vender algo que no está en el catálogo" aria-label="Producto manual"
+          onClick={() => setShowMiscItem(true)}
+          className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-muted lg:h-8 lg:w-8">
+          <PackagePlus className="h-[18px] w-[18px] lg:h-4 lg:w-4" />
+        </button>
+        {items.length > 0 && (
+          <button onClick={() => { if (items.length < 3 || window.confirm('¿Vaciar el carrito?')) clearCart(); }}
+            className="h-10 rounded-full px-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive lg:h-8 lg:text-xs">
+            Vaciar
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="space-y-3 px-4 pb-4 pt-2 lg:space-y-2 lg:px-3 lg:pt-3">
-          {/* Cliente: fila tocable, o el cliente asignado con opción de quitar */}
-          {customerName ? (
-            <div className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-2.5 lg:min-h-0 lg:rounded-xl lg:px-3 lg:py-2">
-              <UserPlus className="h-4 w-4 shrink-0 text-primary" />
-              <button className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-primary" onClick={() => setShowCustomerSearch(true)}>
-                {customerName}
-              </button>
-              <button onClick={() => setCustomer(null, null)} aria-label="Quitar cliente"
-                className="-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-destructive">
+        {/* Cliente */}
+        <div className="px-4 pb-2 lg:px-3">
+          <button onClick={() => setShowCustomerSearch(true)}
+            className="flex h-12 w-full items-center gap-3 rounded-xl bg-muted/70 px-3.5 text-left transition-colors hover:bg-muted lg:h-10">
+            <UserPlus className={cn('h-[18px] w-[18px] shrink-0', customerName ? 'text-primary' : 'text-muted-foreground')} />
+            <span className={cn('min-w-0 flex-1 truncate text-sm', customerName ? 'font-semibold' : 'text-foreground/80')}>
+              {customerName ?? 'Agregar cliente'}
+            </span>
+            {customerName ? (
+              <span role="button" aria-label="Quitar cliente"
+                onClick={(e) => { e.stopPropagation(); setCustomer(null, null); }}
+                className="-mr-1 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-background hover:text-destructive">
                 <X className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setShowCustomerSearch(true)}
-              className="flex min-h-[52px] w-full items-center gap-3 rounded-2xl border bg-card px-4 py-2.5 text-left shadow-sm transition-colors hover:bg-muted/50 lg:min-h-0 lg:rounded-xl lg:px-3 lg:py-2 lg:shadow-none">
-              <UserPlus className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="flex-1 text-sm font-medium">Agregar cliente</span>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-          )}
+              </span>
+            ) : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          </button>
+        </div>
 
-          {/* Cupón de descuento o puntos de fidelización del cliente (excluyentes) */}
-          {customerId && items.length > 0 && (
-            <div className="overflow-hidden rounded-2xl border empty:hidden lg:rounded-xl [&>*:last-child]:border-b-0">
-              <CouponBanner customerId={customerId} />
-              <LoyaltyPointsBanner customerId={customerId} />
-            </div>
-          )}
+        {/* Cupón de descuento o puntos de fidelización del cliente (excluyentes) */}
+        {customerId && items.length > 0 && (
+          <div className="mx-4 mb-2 overflow-hidden rounded-xl empty:hidden lg:mx-3 [&>*:last-child]:border-b-0">
+            <CouponBanner customerId={customerId} />
+            <LoyaltyPointsBanner customerId={customerId} />
+          </div>
+        )}
 
-          {/* Lista de items */}
-          {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-muted-foreground">
-              <ShoppingCart className="h-12 w-12 opacity-20" />
-              <p className="text-center text-sm">
-                Escanea un código de barras o busca un producto para comenzar
-              </p>
-            </div>
-          ) : (
-            items.map((item) => {
+        {/* Productos */}
+        {items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 px-8 py-16 text-center text-muted-foreground">
+            <ShoppingCart className="h-10 w-10 opacity-25" />
+            <p className="text-sm">Escanea un código o toca un producto para empezar la venta.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-border/60">
+            {items.map((item) => {
               const imageUrl = productImages[item.productId.split('#')[0]]?.imageUrl;
+              const step = item.packSize ?? 1;
               return (
-              <div key={item.productId} className="cart-item-enter rounded-2xl border bg-card p-3 shadow-sm lg:rounded-xl lg:shadow-none">
+              <li key={item.productId} className="cart-item-enter px-4 py-3 lg:px-3 lg:py-2.5">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted/50 lg:h-11 lg:w-11 lg:rounded-lg">
-                    {imageUrl
-                      ? <img src={imageUrl} alt="" className="h-full w-full object-contain" loading="lazy" />
-                      : <Package className="h-6 w-6 text-muted-foreground/40" />}
-                  </div>
+                  <ProductThumb name={item.name} imageUrl={imageUrl} className="h-11 w-11 lg:h-9 lg:w-9" />
                   <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-sm font-semibold leading-snug">{item.name}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</p>
+                    <p className="line-clamp-2 text-[15px] font-medium leading-snug lg:text-sm">{item.name}</p>
+                    <p className="mt-0.5 text-[13px] text-muted-foreground tabular-nums lg:text-xs">
+                      {formatCurrency(item.unitPrice)} c/u
+                      {item.discountAmount > 0 && <span className="ml-2 text-success">− {formatCurrency(item.discountAmount)}</span>}
+                    </p>
                     {item.autoAdjust && (
-                      <p className="mt-0.5 text-[11px] font-medium text-warning">Sin stock en el sistema · el inventario se ajusta al cobrar</p>
-                    )}
-                    {item.discountAmount > 0 && (
-                      <div className="mt-0.5 flex items-center gap-1">
-                        <Tag className="h-3 w-3 text-success" />
-                        <span className="text-xs text-success">Desc. S/ {item.discountAmount.toFixed(2)}</span>
-                      </div>
+                      <p className="mt-0.5 text-[12px] text-amber-600 dark:text-amber-400">Sin stock en el sistema · se ajusta al cobrar</p>
                     )}
                   </div>
-                  <button
-                    onClick={() => removeItem(item.productId)}
-                    className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
-                    aria-label="Eliminar producto"
-                  >
-                    <Trash2 className="h-4 w-4" />
+                  <button onClick={() => removeItem(item.productId)} aria-label="Eliminar producto"
+                    className="-mr-2 -mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive lg:h-7 lg:w-7">
+                    <Trash2 className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
                   </button>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  {/* Control de cantidad — en paquetes se mueve de a packSize
-                      unidades por toque, no de a 1, para no romper la promo */}
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 rounded-xl lg:h-8 lg:w-8 lg:rounded-lg"
-                      aria-label="Quitar uno"
-                      onClick={() => updateQuantity(item.productId, item.quantity - (item.packSize ?? 1))}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
+                <div className="mt-2 flex items-center justify-between pl-14 lg:pl-12">
+                  {/* Cantidad — en paquetes se mueve de a packSize unidades por toque */}
+                  <div className="flex items-center rounded-full bg-muted/80">
+                    <button onClick={() => updateQuantity(item.productId, item.quantity - step)} aria-label="Quitar uno"
+                      className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-background active:scale-90 lg:h-7 lg:w-7">
+                      <Minus className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
+                    </button>
+                    <input
+                      type="number" inputMode="decimal"
                       value={item.quantity}
                       onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
-                      className="h-10 w-16 rounded-xl p-1 text-center text-base font-bold lg:h-8 lg:w-14 lg:rounded-lg lg:text-sm"
-                      min={1}
-                      max={item.autoAdjust ? undefined : item.stock}
+                      className="h-9 w-12 bg-transparent text-center text-[15px] font-semibold tabular-nums outline-none [appearance:textfield] lg:h-7 lg:w-10 lg:text-sm [&::-webkit-inner-spin-button]:appearance-none"
+                      min={1} max={item.autoAdjust ? undefined : item.stock}
                     />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 rounded-xl border-primary/60 text-primary lg:h-8 lg:w-8 lg:rounded-lg"
-                      aria-label="Agregar uno"
-                      onClick={() => updateQuantity(item.productId, item.quantity + (item.packSize ?? 1))}
-                      disabled={!item.autoAdjust && item.quantity + (item.packSize ?? 1) > item.stock}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
+                    <button onClick={() => updateQuantity(item.productId, item.quantity + step)} aria-label="Agregar uno"
+                      disabled={!item.autoAdjust && item.quantity + step > item.stock}
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-primary hover:bg-background active:scale-90 disabled:text-muted-foreground/40 lg:h-7 lg:w-7">
+                      <Plus className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
+                    </button>
                   </div>
-                  <p className="text-base font-extrabold">{formatCurrency(item.subtotal)}</p>
+                  <p className="text-[15px] font-semibold tabular-nums lg:text-sm">{formatCurrency(item.subtotal)}</p>
                 </div>
 
                 {/* Envase retornable — de los 3 casos reales sólo 2 dejan algo
                     pendiente por hacer seguimiento; el tercero (trajo su
                     envase) es el default y no genera ningún movimiento. */}
                 {!!item.bottleDepositUnit && (
-                  <div className="mt-3 rounded-xl bg-muted/50 p-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <GlassWater className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        Envase {formatCurrency(item.bottleDepositUnit)} c/u:
-                      </span>
-                    </div>
-                    <div className="mt-2 grid grid-cols-3 gap-1.5">
-                      <button type="button"
-                        onClick={() => setBottleDepositChoice(item.productId, null)}
-                        className={cn('min-h-[36px] rounded-lg px-1.5 py-1 text-[11px] font-medium leading-tight transition-colors',
-                          !item.bottleDepositChoice ? 'bg-success text-success-foreground' : 'border bg-background text-muted-foreground hover:text-foreground')}>
-                        Trajo su envase
-                      </button>
-                      <button type="button"
-                        onClick={() => handleBottleDepositChoice(item.productId, 'CHARGE')}
-                        className={cn('min-h-[36px] rounded-lg px-1.5 py-1 text-[11px] font-medium leading-tight transition-colors',
-                          item.bottleDepositChoice === 'CHARGE' ? 'bg-primary text-primary-foreground' : 'border bg-background text-muted-foreground hover:text-foreground')}>
-                        Dejó garantía
-                      </button>
-                      <button type="button"
-                        onClick={() => handleBottleDepositChoice(item.productId, 'LOAN')}
-                        className={cn('min-h-[36px] rounded-lg px-1.5 py-1 text-[11px] font-medium leading-tight transition-colors',
-                          item.bottleDepositChoice === 'LOAN' ? 'bg-amber-500 text-white' : 'border bg-background text-muted-foreground hover:text-foreground')}>
-                        Sin garantía
-                      </button>
+                  <div className="ml-14 mt-2.5 lg:ml-12">
+                    <p className="mb-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                      <GlassWater className="h-3.5 w-3.5" />Envase {formatCurrency(item.bottleDepositUnit)} c/u
+                    </p>
+                    <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/70 p-1">
+                      {([
+                        [null, 'Trajo envase'],
+                        ['CHARGE', 'Dejó garantía'],
+                        ['LOAN', 'Sin garantía'],
+                      ] as const).map(([choice, label]) => (
+                        <button key={label} type="button"
+                          onClick={() => choice ? handleBottleDepositChoice(item.productId, choice) : setBottleDepositChoice(item.productId, null)}
+                          className={cn('min-h-[34px] rounded-md px-1 text-[11px] font-medium leading-tight transition-colors',
+                            (item.bottleDepositChoice ?? null) === choice ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>
+                          {label}
+                        </button>
+                      ))}
                     </div>
                     {item.bottleDepositChoice === 'CHARGE' && (
-                      <p className="mt-1.5 text-xs text-muted-foreground">
-                        Se cobra {formatCurrency(item.bottleDepositUnit * item.quantity)} a <strong>{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong> — se le devuelve esa plata cuando traiga el envase vacío.
+                      <p className="mt-1.5 text-[12px] text-muted-foreground">
+                        Se cobra {formatCurrency(item.bottleDepositUnit * item.quantity)} a <strong className="text-foreground">{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong>; se le devuelve al traer el envase.
                       </p>
                     )}
                     {item.bottleDepositChoice === 'LOAN' && (
-                      <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
-                        No se cobra nada — <strong>{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong> queda debiendo el envase (nada que devolverle al traerlo).
+                      <p className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-400">
+                        No se cobra. <strong>{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong> queda debiendo el envase.
                       </p>
                     )}
                   </div>
                 )}
-              </div>
+              </li>
               );
-            })
-          )}
+            })}
+          </ul>
+        )}
 
-          {/* Descuento global — por % del subtotal o por monto fijo en soles */}
-          {items.length > 0 && (
-            <div className="rounded-2xl border bg-card shadow-sm lg:rounded-xl lg:shadow-none">
-              <button type="button" onClick={() => setShowDiscount((v) => !v)}
-                className="flex min-h-[52px] w-full items-center gap-3 px-4 py-2.5 text-left lg:min-h-0 lg:px-3 lg:py-2">
-                <Tag className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="flex-1 text-sm font-medium">{discountAmount > 0 ? 'Descuento' : 'Agregar descuento'}</span>
-                {discountAmount > 0 && <span className="text-sm font-semibold text-success">-{formatCurrency(discountAmount)}</span>}
-                <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform', discountOpen && 'rotate-90')} />
+        {/* Descuento global — por % del subtotal o por monto fijo en soles */}
+        {items.length > 0 && (
+          <div className="px-4 pb-4 pt-2 lg:px-3">
+            {!discountOpen ? (
+              <button type="button" onClick={() => setShowDiscount(true)}
+                className="flex items-center gap-2 py-1 text-sm font-medium text-primary">
+                <Tag className="h-4 w-4" />Agregar descuento
               </button>
-              {discountOpen && (
-                <div className="flex items-center gap-2 border-t px-4 py-3 lg:px-3 lg:py-2">
-                  <div className="flex shrink-0 overflow-hidden rounded-xl border lg:rounded-md">
-                    <button
-                      type="button"
-                      className={cn('h-10 w-11 text-sm font-semibold lg:h-7 lg:w-8 lg:text-xs', discountMode === 'percent' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
-                      onClick={() => { setDiscountMode('percent'); setGlobalDiscount(0, 0); }}
-                    >
-                      %
+            ) : (
+              <div className="flex items-center gap-2 rounded-xl bg-muted/70 p-2">
+                <Tag className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="flex shrink-0 rounded-lg bg-background p-0.5">
+                  {(['percent', 'amount'] as const).map((m) => (
+                    <button key={m} type="button"
+                      className={cn('h-8 w-9 rounded-md text-sm font-semibold lg:h-7', discountMode === m ? 'bg-foreground text-background' : 'text-muted-foreground')}
+                      onClick={() => { setDiscountMode(m); setGlobalDiscount(0, 0); }}>
+                      {m === 'percent' ? '%' : 'S/'}
                     </button>
-                    <button
-                      type="button"
-                      className={cn('h-10 w-11 border-l text-sm font-semibold lg:h-7 lg:w-8 lg:text-xs', discountMode === 'amount' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}
-                      onClick={() => { setDiscountMode('amount'); setGlobalDiscount(0, 0); }}
-                    >
-                      S/
-                    </button>
-                  </div>
-                  <Input
-                    key={discountMode}
-                    ref={discountRef}
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    max={discountMode === 'percent' ? 100 : undefined}
-                    step={discountMode === 'amount' ? 0.01 : 1}
-                    defaultValue={(discountMode === 'percent' ? globalDiscountPercent : globalDiscountAmount) || ''}
-                    placeholder="0"
-                    className="h-10 w-24 rounded-xl text-center text-base lg:h-7 lg:w-20 lg:rounded-md lg:text-sm"
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value) || 0;
-                      if (discountMode === 'percent') setGlobalDiscount(0, Math.min(100, v));
-                      else setGlobalDiscount(Math.max(0, v), 0);
-                    }}
-                  />
-                  <span className="ml-auto text-sm font-semibold text-success">-{formatCurrency(discountAmount)}</span>
+                  ))}
                 </div>
-              )}
-            </div>
-          )}
-
-          {items.length > 0 && (
-            <p className="px-1 text-xs text-muted-foreground">Los precios incluyen impuestos.</p>
-          )}
-        </div>
+                <input
+                  key={discountMode}
+                  ref={discountRef}
+                  type="number" inputMode="decimal"
+                  min={0} max={discountMode === 'percent' ? 100 : undefined}
+                  step={discountMode === 'amount' ? 0.01 : 1}
+                  defaultValue={(discountMode === 'percent' ? globalDiscountPercent : globalDiscountAmount) || ''}
+                  placeholder="0"
+                  autoFocus={showDiscount && !globalDiscountPercent && !globalDiscountAmount}
+                  className="h-9 w-20 rounded-lg bg-background text-center text-[15px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/40 lg:h-8"
+                  onBlur={(e) => {
+                    const v = parseFloat(e.target.value) || 0;
+                    if (discountMode === 'percent') setGlobalDiscount(0, Math.min(100, v));
+                    else setGlobalDiscount(Math.max(0, v), 0);
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                />
+                <span className="ml-auto pr-1 text-sm font-semibold text-success tabular-nums">
+                  {discountAmount > 0 ? `− ${formatCurrency(discountAmount)}` : ''}
+                </span>
+                {discountAmount === 0 && (
+                  <button type="button" aria-label="Cerrar descuento" onClick={() => setShowDiscount(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-background">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Totales */}
-      <div className="border-t bg-card px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 lg:pb-4">
-        <div className="space-y-1.5">
-          {discountAmount > 0 && (
-            <>
-              <div className="flex justify-between px-1 text-sm text-muted-foreground">
-                <span>Subtotal</span>
-                <span>{formatCurrency(subtotal)}</span>
-              </div>
-              <div className="flex justify-between px-1 text-sm text-success">
-                <span>Descuento</span>
-                <span>-{formatCurrency(discountAmount)}</span>
-              </div>
-            </>
-          )}
-          <div className="flex items-center justify-between rounded-xl bg-primary/10 px-3 py-2.5 text-xl font-bold">
-            <span className="text-base">Total</span>
-            <span className="text-primary">{formatCurrency(total)}</span>
+      {/* Totales + cobrar */}
+      <div className="shrink-0 border-t border-border/60 bg-card px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 lg:px-3 lg:pb-3">
+        {discountAmount > 0 && (
+          <div className="mb-1 space-y-0.5 text-sm tabular-nums">
+            <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+            <div className="flex justify-between text-success"><span>Descuento</span><span>− {formatCurrency(discountAmount)}</span></div>
           </div>
+        )}
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm text-muted-foreground">Total <span className="text-xs">(inc. impuestos)</span></span>
+          <span className="font-display text-[28px] font-semibold leading-tight tabular-nums lg:text-2xl">{formatCurrency(total)}</span>
         </div>
-
         <Button
-          className="mt-3 h-14 w-full gap-2 rounded-xl text-lg font-bold"
-          size="xl"
+          className="mt-3 h-14 w-full rounded-xl text-base font-semibold lg:h-12"
           onClick={onCheckout}
           disabled={items.length === 0}
         >
-          Cobrar {items.length > 0 && formatCurrency(total)}
-          {items.length > 0 && <ArrowRight className="h-5 w-5" />}
+          Cobrar
         </Button>
       </div>
     </div>
