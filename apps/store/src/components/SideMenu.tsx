@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   X, Home, LayoutGrid, Store, Tag, Package, Gift, BarChart3, MapPin,
-  MessageCircle, LogOut, User, ChevronRight,
+  MessageCircle, LogOut, User, ChevronRight, ShoppingBasket,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
@@ -44,6 +44,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
     { to: '/catalogo', icon: Store, label: 'Catálogo completo' },
     { to: '/categorias', icon: LayoutGrid, label: 'Categorías' },
     { to: '/ofertas', icon: Tag, label: 'Ofertas', badge: offersCount },
+    { to: '/canasta', icon: ShoppingBasket, label: 'Arma tu canasta' },
   ]
 
   const accountLinks = isLoggedIn ? [

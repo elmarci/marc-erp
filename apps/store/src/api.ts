@@ -138,8 +138,41 @@ export interface TvLiveData {
   thanksUntil: number | null
 }
 
+// "Arma tu canasta" — ver apps/backend/src/modules/baskets.
+export interface BasketLine { product: Product; quantity: number; subtotal: number }
+export interface BasketItem extends BasketLine {
+  slotKey: string
+  slotLabel: string
+  alternatives: BasketLine[]
+}
+export interface BasketProposal {
+  key: 'economica' | 'recomendada' | 'completa'
+  label: string
+  people: number
+  total: number
+  leftover: number
+  items: BasketItem[]
+}
+export interface BasketSuggestResponse {
+  understood: { budget: number | null; people: number | null; occasion: string | null }
+  missing: Array<'budget' | 'people' | 'occasion'>
+  occasions: Array<{ key: string; name: string; emoji?: string }>
+  result: {
+    status: 'ok' | 'short' | 'empty'
+    people: number
+    budget: number
+    proposals: BasketProposal[]
+    minTotal?: number
+    maxPeople?: number
+    missingSlots?: string[]
+  } | null
+}
+
 // API calls
 export const storeApi = {
+  suggestBasket: (body: { text?: string; budget?: number; people?: number; occasion?: string }) =>
+    api.post<{ data: BasketSuggestResponse }>('/store/basket-suggest', body),
+
   getTvConfig: () =>
     api.get<{ data: { slides: TvSlideData[]; generatedAt: string } }>('/tv/config'),
 

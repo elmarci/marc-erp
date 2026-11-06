@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { storeService } from './store.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { storeAuthMiddleware } from './store-auth.routes';
+import { basketService } from '../baskets/basket.service';
 
 const router = Router();
 
@@ -47,6 +48,22 @@ router.get('/products/:id', async (req: Request, res: Response, next: NextFuncti
 router.get('/categories', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await storeService.getCategories();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// "Arma tu canasta": el cliente escribe "tengo S/ 20 para un desayuno de 4"
+// (o elige monto, personas y ocasión con botones) y recibe propuestas con
+// productos en stock. Público, como el resto del catálogo.
+router.post('/basket-suggest', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const input = z.object({
+      text: z.string().trim().max(300).optional(),
+      budget: z.coerce.number().min(1).max(2000).optional(),
+      people: z.coerce.number().int().min(1).max(50).optional(),
+      occasion: z.string().max(40).optional(),
+    }).parse(req.body ?? {});
+    const data = await basketService.suggest(input);
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });

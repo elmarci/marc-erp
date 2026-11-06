@@ -18,6 +18,7 @@ import { CheckoutPage } from './pages/CheckoutPage'
 import { OrderConfirmPage } from './pages/OrderConfirmPage'
 import { TrackOrderPage } from './pages/TrackOrderPage'
 import { OffersPage } from './pages/OffersPage'
+import { BasketPage } from './pages/BasketPage'
 import { TvPage } from './pages/TvPage'
 
 export default function App() {
@@ -76,12 +77,15 @@ export default function App() {
             <Route path="/pedido/:orderNumber" element={<OrderConfirmPage />} />
             <Route path="/mis-pedidos" element={<TrackOrderPage />} />
             <Route path="/ofertas" element={<OffersPage />} />
+            <Route path="/canasta" element={<BasketPage />} />
           </Routes>
         </motion.div>
       </AnimatePresence>
       <MobileTabBar />
-      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/pedido') && <VoiceShoppingListButton />}
-      {!location.pathname.startsWith('/checkout') && <WhatsAppFAB />}
+      {/* /canasta tiene su propia barra fija de total y su propio micrófono:
+          los botones flotantes la tapaban. */}
+      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/pedido') && !location.pathname.startsWith('/canasta') && <VoiceShoppingListButton />}
+      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/canasta') && <WhatsAppFAB />}
     </div>
   )
 }
