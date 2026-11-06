@@ -460,13 +460,13 @@ export function PosPage() {
                     className="flex h-[52px] min-w-0 flex-1 items-center gap-3 rounded-xl bg-muted/80 px-3.5 text-left active:bg-muted">
                     <span className="relative shrink-0">
                       <ShoppingCart className="h-5 w-5" />
-                      <span className="absolute -right-2.5 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-foreground px-1 text-[10px] font-semibold text-background tabular-nums">
+                      <span className="absolute -right-2.5 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums">
                         {Number(cartCount.toFixed(2))}
                       </span>
                     </span>
                     <span className="min-w-0 flex-1 pl-1">
                       <span className="block text-[11px] leading-tight text-muted-foreground">Ver carrito</span>
-                      <span className="block font-display text-lg font-semibold leading-tight tabular-nums">{formatCurrency(cartTotal)}</span>
+                      <span className="block text-lg font-semibold leading-tight tabular-nums">{formatCurrency(cartTotal)}</span>
                     </span>
                     <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
                   </button>

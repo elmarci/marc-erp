@@ -148,7 +148,7 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             <p className="text-sm text-muted-foreground">
               Cobrar · {items.length} producto{items.length !== 1 ? 's' : ''}
             </p>
-            <p className="font-display text-[40px] font-semibold leading-tight tabular-nums">{formatCurrency(amountToCharge)}</p>
+            <p className="text-4xl font-bold leading-tight tabular-nums">{formatCurrency(amountToCharge)}</p>
             {amountToCharge > total + 0.001 && (
               <p className="text-sm text-muted-foreground">
                 Venta {formatCurrency(total)} + comisión tarjeta {formatCurrency(amountToCharge - total)}
@@ -199,7 +199,7 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
                       disabled
                         ? 'bg-muted/50 text-muted-foreground/50 cursor-not-allowed'
                         : selectedMethod === pm.method
-                          ? 'bg-foreground text-background'
+                          ? 'bg-primary text-primary-foreground'
                           : 'bg-muted/80 text-foreground/80 hover:bg-muted',
                     )}
                   >
@@ -252,7 +252,7 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
                   <Button
                     key={v}
                     variant="ghost"
-                    className={cn('h-12 rounded-xl bg-muted/80 text-[15px] font-semibold tabular-nums hover:bg-muted', enteredAmount === v && 'bg-foreground text-background hover:bg-foreground')}
+                    className={cn('h-12 rounded-xl bg-muted/80 text-sm font-semibold tabular-nums hover:bg-muted', enteredAmount === v && 'bg-primary/10 text-primary hover:bg-primary/10')}
                     onClick={() => setAmount(v.toFixed(2))}
                   >
                     {v}

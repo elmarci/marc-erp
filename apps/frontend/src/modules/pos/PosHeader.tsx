@@ -54,7 +54,7 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
           <span className="hidden sm:inline">Salir</span>
         </Button>
         <div className="hidden h-4 w-px bg-border sm:block" />
-        <span className="truncate font-display text-lg font-semibold sm:text-base"><span className="sm:hidden">Nueva venta</span><span className="hidden sm:inline">Punto de Venta</span></span>
+        <span className="truncate text-lg font-semibold sm:text-base"><span className="sm:hidden">Nueva venta</span><span className="hidden sm:inline">Punto de Venta</span></span>
       </div>
 
       {/* Centro (solo pantallas medianas en adelante: en celular ya está la hora del sistema) */}

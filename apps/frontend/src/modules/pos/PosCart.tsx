@@ -312,8 +312,10 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
   const productImages = useProductCacheStore((st) => st.products);
 
   const handleQuantityChange = (productId: string, value: string) => {
-    const qty = parseFloat(value);
-    if (isNaN(qty) || qty < 0) return;
+    const qty = parseFloat(value.replace(',', '.'));
+    // Vacío o 0 al salir del campo = se deja como estaba (para quitar el
+    // producto está la papelera; así no se borra por error).
+    if (isNaN(qty) || qty <= 0) return;
     const item = items.find((i) => i.productId === productId);
     // Paquete/2x1: si escriben un número que no es múltiplo del tamaño del
     // paquete, se redondea al múltiplo más cercano — vender "media promo"
@@ -338,9 +340,9 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
             <ArrowLeft className="h-5 w-5" />
           </button>
         )}
-        <h2 className={cn('flex-1 font-display text-lg font-semibold lg:text-base', !onBack && 'pl-2 lg:pl-1')}>
+        <h2 className={cn('flex-1 text-lg font-semibold lg:text-base', !onBack && 'pl-2 lg:pl-1')}>
           Carrito
-          {items.length > 0 && <span className="ml-2 font-sans text-sm font-normal text-muted-foreground">{items.length} producto{items.length !== 1 ? 's' : ''}</span>}
+          {items.length > 0 && <span className="ml-2 text-sm font-normal text-muted-foreground">{items.length} producto{items.length !== 1 ? 's' : ''}</span>}
         </h2>
         <button title="Pantalla TV: mostrar la venta o una promo al cliente" aria-label="Pantalla TV"
           onClick={() => setShowTv(true)}
@@ -404,13 +406,13 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
                 <div className="flex items-start gap-3">
                   <ProductThumb name={item.name} imageUrl={imageUrl} className="h-11 w-11 lg:h-9 lg:w-9" />
                   <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-[15px] font-medium leading-snug lg:text-sm">{item.name}</p>
-                    <p className="mt-0.5 text-[13px] text-muted-foreground tabular-nums lg:text-xs">
+                    <p className="line-clamp-2 text-sm font-medium leading-snug lg:text-sm">{item.name}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground tabular-nums lg:text-xs">
                       {formatCurrency(item.unitPrice)} c/u
                       {item.discountAmount > 0 && <span className="ml-2 text-success">− {formatCurrency(item.discountAmount)}</span>}
                     </p>
                     {item.autoAdjust && (
-                      <p className="mt-0.5 text-[12px] text-amber-600 dark:text-amber-400">Sin stock en el sistema · se ajusta al cobrar</p>
+                      <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">Sin stock en el sistema · se ajusta al cobrar</p>
                     )}
                   </div>
                   <button onClick={() => removeItem(item.productId)} aria-label="Eliminar producto"
@@ -426,20 +428,14 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
                       className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-background active:scale-90 lg:h-7 lg:w-7">
                       <Minus className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
                     </button>
-                    <input
-                      type="number" inputMode="decimal"
-                      value={item.quantity}
-                      onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
-                      className="h-9 w-12 bg-transparent text-center text-[15px] font-semibold tabular-nums outline-none [appearance:textfield] lg:h-7 lg:w-10 lg:text-sm [&::-webkit-inner-spin-button]:appearance-none"
-                      min={1} max={item.autoAdjust ? undefined : item.stock}
-                    />
+                    <QtyInput value={item.quantity} onCommit={(v) => handleQuantityChange(item.productId, v)} />
                     <button onClick={() => updateQuantity(item.productId, item.quantity + step)} aria-label="Agregar uno"
                       disabled={!item.autoAdjust && item.quantity + step > item.stock}
                       className="flex h-9 w-9 items-center justify-center rounded-full text-primary hover:bg-background active:scale-90 disabled:text-muted-foreground/40 lg:h-7 lg:w-7">
                       <Plus className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
                     </button>
                   </div>
-                  <p className="text-[15px] font-semibold tabular-nums lg:text-sm">{formatCurrency(item.subtotal)}</p>
+                  <p className="text-sm font-semibold tabular-nums lg:text-sm">{formatCurrency(item.subtotal)}</p>
                 </div>
 
                 {/* Envase retornable — de los 3 casos reales sólo 2 dejan algo
@@ -447,7 +443,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
                     envase) es el default y no genera ningún movimiento. */}
                 {!!item.bottleDepositUnit && (
                   <div className="ml-14 mt-2.5 lg:ml-12">
-                    <p className="mb-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                    <p className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                       <GlassWater className="h-3.5 w-3.5" />Envase {formatCurrency(item.bottleDepositUnit)} c/u
                     </p>
                     <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/70 p-1">
@@ -465,12 +461,12 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
                       ))}
                     </div>
                     {item.bottleDepositChoice === 'CHARGE' && (
-                      <p className="mt-1.5 text-[12px] text-muted-foreground">
+                      <p className="mt-1.5 text-xs text-muted-foreground">
                         Se cobra {formatCurrency(item.bottleDepositUnit * item.quantity)} a <strong className="text-foreground">{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong>; se le devuelve al traer el envase.
                       </p>
                     )}
                     {item.bottleDepositChoice === 'LOAN' && (
-                      <p className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-400">
+                      <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
                         No se cobra. <strong>{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong> queda debiendo el envase.
                       </p>
                     )}
@@ -496,7 +492,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
                 <div className="flex shrink-0 rounded-lg bg-background p-0.5">
                   {(['percent', 'amount'] as const).map((m) => (
                     <button key={m} type="button"
-                      className={cn('h-8 w-9 rounded-md text-sm font-semibold lg:h-7', discountMode === m ? 'bg-foreground text-background' : 'text-muted-foreground')}
+                      className={cn('h-8 w-9 rounded-md text-sm font-semibold lg:h-7', discountMode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
                       onClick={() => { setDiscountMode(m); setGlobalDiscount(0, 0); }}>
                       {m === 'percent' ? '%' : 'S/'}
                     </button>
@@ -511,7 +507,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
                   defaultValue={(discountMode === 'percent' ? globalDiscountPercent : globalDiscountAmount) || ''}
                   placeholder="0"
                   autoFocus={showDiscount && !globalDiscountPercent && !globalDiscountAmount}
-                  className="h-9 w-20 rounded-lg bg-background text-center text-[15px] font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/40 lg:h-8"
+                  className="h-9 w-20 rounded-lg bg-background text-center text-sm font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/40 lg:h-8"
                   onBlur={(e) => {
                     const v = parseFloat(e.target.value) || 0;
                     if (discountMode === 'percent') setGlobalDiscount(0, Math.min(100, v));
@@ -544,7 +540,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
         )}
         <div className="flex items-baseline justify-between">
           <span className="text-sm text-muted-foreground">Total <span className="text-xs">(inc. impuestos)</span></span>
-          <span className="font-display text-[28px] font-semibold leading-tight tabular-nums lg:text-2xl">{formatCurrency(total)}</span>
+          <span className="text-2xl font-bold leading-tight tabular-nums">{formatCurrency(total)}</span>
         </div>
         <Button
           className="mt-3 h-14 w-full rounded-xl text-base font-semibold lg:h-12"
@@ -588,6 +584,36 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
   );
 }
 
+
+/**
+ * Cantidad editable: mientras se escribe se guarda un borrador local, así se
+ * puede borrar el número y escribir otro (4 → 19) sin que el carrito lo
+ * rechace a medio escribir. Se aplica al salir del campo o con Enter. Al
+ * tocarlo se selecciona todo, para escribir encima directamente.
+ */
+function QtyInput({ value, onCommit }: { value: number; onCommit: (v: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const cancelled = useRef(false);
+  const commit = () => {
+    if (!cancelled.current && draft !== null && draft !== String(value)) onCommit(draft);
+    cancelled.current = false;
+    setDraft(null);
+  };
+  return (
+    <input
+      type="text" inputMode="decimal" aria-label="Cantidad"
+      value={draft ?? String(value)}
+      onFocus={(e) => { setDraft(String(value)); e.currentTarget.select(); }}
+      onChange={(e) => setDraft(e.target.value.replace(/[^0-9.,]/g, ''))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') { cancelled.current = true; e.currentTarget.blur(); }
+      }}
+      className="h-9 w-12 bg-transparent text-center text-sm font-semibold tabular-nums outline-none focus:rounded-md focus:bg-background lg:h-7 lg:w-10 lg:text-sm"
+    />
+  );
+}
 
 /** "Producto manual" / venta excepcional: algo que no está en el catálogo. */
 export function MiscItemSheet({ onClose }: { onClose: () => void }) {

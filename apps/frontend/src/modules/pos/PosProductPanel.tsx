@@ -448,16 +448,16 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
 function Chip({ active, onClick, icon, children }: { active?: boolean; onClick: () => void; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <button onClick={onClick}
-      className={cn('flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium transition-colors lg:h-8 lg:px-3',
-        active ? 'bg-foreground text-background' : 'bg-muted text-foreground/80 hover:bg-muted/70')}>
+      className={cn('flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors lg:h-8 lg:px-3',
+        active ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground/80 hover:bg-muted/70')}>
       {icon}{children}
     </button>
   );
 }
 
 function StockNote({ product, compact }: { product: Product; compact?: boolean }) {
-  if (product.currentStock <= 0) return <span className="text-[12px] font-medium text-destructive">{compact ? 'Sin stock' : 'Sin stock · 2 toques vende igual'}</span>;
-  if (product.currentStock <= 5) return <span className="text-[12px] font-medium text-amber-600 dark:text-amber-400">{product.currentStock === 1 ? 'Última unidad' : `Quedan ${product.currentStock}`}</span>;
+  if (product.currentStock <= 0) return <span className="text-xs font-medium text-destructive">{compact ? 'Sin stock' : 'Sin stock · 2 toques vende igual'}</span>;
+  if (product.currentStock <= 5) return <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{product.currentStock === 1 ? 'Última unidad' : `Quedan ${product.currentStock}`}</span>;
   return null;
 }
 
@@ -765,7 +765,7 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
               onChange={(e) => debouncedSearch(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               className={cn(
-                'h-11 w-full rounded-xl bg-muted pl-11 text-[15px] outline-none placeholder:text-muted-foreground/80',
+                'h-11 w-full rounded-xl bg-muted pl-11 text-sm outline-none placeholder:text-muted-foreground/80',
                 'focus:bg-card focus:ring-2 focus:ring-primary/40 lg:h-10 lg:bg-muted/70 lg:text-sm',
                 voiceSupported ? 'pr-11' : 'pr-3',
               )}
@@ -795,7 +795,7 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
         {/* Filtros: píldoras sin borde; la activa en tinta oscura */}
         <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 h-scroll">
           <Chip active={allActive} onClick={resetFilters}>Todos</Chip>
-          <Chip onClick={() => setShowOffers(true)} icon={<Tag className="h-3.5 w-3.5 text-[#d6006c]" />}>Ofertas</Chip>
+          <Chip onClick={() => setShowOffers(true)} icon={<Tag className="h-3.5 w-3.5 text-primary" />}>Ofertas</Chip>
           <Chip active={favoriteOnly} onClick={() => { clearSearch(); setFavoriteOnly((v) => !v); }} icon={<Star className="h-3.5 w-3.5" />}>Favoritos</Chip>
           <Chip active={bulkOnly} onClick={() => { clearSearch(); setBulkOnly((v) => !v); }}>A granel</Chip>
           <Chip onClick={() => setShowMisc(true)} icon={<Plus className="h-3.5 w-3.5" />}>Manual</Chip>
@@ -809,12 +809,12 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
         </div>
         {/* Subcategorías de la categoría general seleccionada */}
         {subcategories.length > 0 && (
-          <div className="-mx-4 flex gap-4 overflow-x-auto px-4 text-[13px] h-scroll">
+          <div className="-mx-4 flex gap-4 overflow-x-auto px-4 text-sm h-scroll">
             {[{ id: null as string | null, name: 'Todas' }, ...subcategories].map((sub) => (
               <button key={sub.id ?? 'all'}
                 onClick={() => { clearSearch(); setSelectedSubcategory(sub.id); }}
                 className={cn('shrink-0 border-b-2 pb-1 font-medium transition-colors',
-                  selectedSubcategory === sub.id ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground')}>
+                  selectedSubcategory === sub.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground')}>
                 {sub.name}
               </button>
             ))}
@@ -849,8 +849,8 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
                       onClick={(e) => { e.currentTarget.blur(); tapProduct(product); }}>
                       <ProductThumb name={product.name} imageUrl={product.imageUrl} className="h-12 w-12" />
                       <span className="min-w-0 flex-1">
-                        <span className="line-clamp-2 text-[15px] font-medium leading-snug">{product.name}</span>
-                        <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-[13px]">
+                        <span className="line-clamp-2 text-sm font-medium leading-snug">{product.name}</span>
+                        <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-sm">
                           <span className="font-semibold tabular-nums">{formatCurrency(hh ? hh.effectivePrice : product.salePrice)}</span>
                           {product.isBulk && <span className="text-muted-foreground">por {product.bulkUnit ?? 'kg'}</span>}
                           {hh && <span className="text-muted-foreground line-through tabular-nums">{formatCurrency(product.salePrice)}</span>}
@@ -887,7 +887,7 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
                     <button className="flex flex-1 flex-col text-left focus-visible:outline-none"
                       onClick={(e) => { e.currentTarget.blur(); tapProduct(product); }}>
                       {product.imageUrl && <ProductThumb name={product.name} imageUrl={product.imageUrl} className="mb-2 h-20 w-full lg:h-16" />}
-                      <span className="line-clamp-2 min-h-[2.4em] text-[13px] font-medium leading-tight">{product.name}</span>
+                      <span className="line-clamp-2 min-h-[2.4em] text-sm font-medium leading-tight">{product.name}</span>
                       <span className="mt-1.5 flex items-center justify-between gap-1">
                         <span className="min-w-0 truncate text-sm font-semibold tabular-nums">
                           {formatCurrency(hh ? hh.effectivePrice : product.salePrice)}
