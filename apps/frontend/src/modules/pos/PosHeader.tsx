@@ -46,7 +46,7 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
   }, []);
 
   return (
-    <div className="box-content flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-card px-2 pt-[env(safe-area-inset-top)] sm:h-12 sm:px-4">
+    <div className="box-content flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-card px-2 pt-[env(safe-area-inset-top)] sm:h-12 sm:px-4">
       {/* Izquierda */}
       <div className="flex min-w-0 items-center gap-1 sm:gap-3">
         <Button variant="ghost" size="sm" onClick={onExitPos} aria-label="Salir del punto de venta" className="gap-1.5 px-2 text-muted-foreground">
@@ -54,7 +54,7 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
           <span className="hidden sm:inline">Salir</span>
         </Button>
         <div className="hidden h-4 w-px bg-border sm:block" />
-        <span className="truncate text-base font-bold sm:text-sm sm:font-semibold"><span className="sm:hidden">Nueva venta</span><span className="hidden sm:inline">Punto de Venta</span></span>
+        <span className="truncate text-lg font-semibold sm:text-base"><span className="sm:hidden">Nueva venta</span><span className="hidden sm:inline">Punto de Venta</span></span>
       </div>
 
       {/* Centro (solo pantallas medianas en adelante: en celular ya está la hora del sistema) */}
@@ -95,9 +95,9 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
         {/* Estado de caja */}
         <div
           className={cn(
-            'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold sm:px-2.5 sm:py-1 sm:font-medium',
+            'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
             cashSessionId
-              ? 'bg-success/15 text-success'
+              ? 'text-muted-foreground'
               : 'bg-destructive/15 text-destructive cursor-pointer hover:bg-destructive/25',
           )}
           onClick={!cashSessionId ? onOpenSession : undefined}

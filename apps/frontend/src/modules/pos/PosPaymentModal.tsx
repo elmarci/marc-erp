@@ -143,36 +143,30 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
         rounded-t-2xl sm:rounded-2xl
         flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b p-4 sm:p-5 shrink-0">
+        <div className="flex items-start justify-between px-5 pb-1 pt-4 shrink-0">
           <div>
-            <h2 className="text-lg font-bold">Cobrar Venta</h2>
             <p className="text-sm text-muted-foreground">
-              {items.length} producto{items.length !== 1 ? 's' : ''}
+              Cobrar · {items.length} producto{items.length !== 1 ? 's' : ''}
             </p>
+            <p className="text-4xl font-bold leading-tight tabular-nums">{formatCurrency(amountToCharge)}</p>
+            {amountToCharge > total + 0.001 && (
+              <p className="text-sm text-muted-foreground">
+                Venta {formatCurrency(total)} + comisión tarjeta {formatCurrency(amountToCharge - total)}
+              </p>
+            )}
+            {totalPaid > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Pendiente: <span className="font-semibold text-foreground">{formatCurrency(remaining)}</span>
+              </p>
+            )}
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="-mr-2 rounded-full" onClick={onClose} aria-label="Cerrar">
             <X className="h-5 w-5" />
           </Button>
         </div>
 
         {/* Contenido scrollable */}
-        <div className="overflow-y-auto flex-1 p-4 sm:p-5 space-y-4 sm:space-y-5">
-          {/* Total */}
-          <div className="rounded-xl bg-primary/10 p-4 text-center">
-            <p className="text-sm text-muted-foreground">Total a cobrar</p>
-            <p className="text-4xl font-bold text-primary">{formatCurrency(amountToCharge)}</p>
-            {amountToCharge > total + 0.001 && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                Venta {formatCurrency(total)} + comisión tarjeta {formatCurrency(amountToCharge - total)}
-              </p>
-            )}
-            {totalPaid > 0 && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                Pendiente: <span className="font-semibold text-foreground">{formatCurrency(remaining)}</span>
-              </p>
-            )}
-          </div>
-
+        <div className="overflow-y-auto flex-1 px-5 pb-5 pt-3 space-y-5">
           {/* Métodos de pago */}
           <div>
             <div className="mb-2 flex items-center justify-between">
@@ -181,8 +175,8 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
                 <button
                   type="button" onClick={toggleListening}
                   title={isListening ? 'Toca para apagar el micrófono' : 'Decir "cobrar con yape" o "fiado"'}
-                  className={cn('flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors',
-                    isListening ? 'border-destructive text-destructive bg-destructive/10 animate-pulse' : 'border-border text-muted-foreground hover:bg-muted')}>
+                  className={cn('flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                    isListening ? 'text-destructive bg-destructive/10 animate-pulse' : 'text-muted-foreground hover:bg-muted')}>
                   <Mic className="h-3.5 w-3.5" />{isListening ? 'Escuchando...' : 'Voz'}
                 </button>
               )}
@@ -201,12 +195,12 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
                       setAmount(remaining.toFixed(2));
                     }}
                     className={cn(
-                      'flex flex-col items-center gap-1.5 rounded-lg border p-2.5 text-xs font-medium transition-all',
+                      'flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center text-xs font-medium leading-tight transition-colors',
                       disabled
-                        ? 'border-border opacity-40 cursor-not-allowed'
+                        ? 'bg-muted/50 text-muted-foreground/50 cursor-not-allowed'
                         : selectedMethod === pm.method
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border hover:border-primary/50 hover:bg-muted',
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted/80 text-foreground/80 hover:bg-muted',
                     )}
                   >
                     <pm.icon className="h-4 w-4" />
@@ -224,7 +218,7 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="text-lg font-bold"
+              className="h-12 rounded-xl border-0 bg-muted/80 text-xl font-semibold tabular-nums focus-visible:bg-card"
               min={0}
               step={0.10}
             />
@@ -248,7 +242,7 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             <div className="space-y-2">
               <div className="grid grid-cols-5 gap-2">
                 <Button
-                  className="col-span-2 h-12 bg-success text-white hover:bg-success/90"
+                  className="col-span-2 h-12 rounded-xl bg-primary/10 font-semibold text-primary shadow-none hover:bg-primary/15"
                   disabled={isProcessing}
                   onClick={handleExact}
                 >
@@ -257,8 +251,8 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
                 {quickAmounts.map((v) => (
                   <Button
                     key={v}
-                    variant="outline"
-                    className={cn('h-12 text-sm font-semibold', enteredAmount === v && 'border-primary bg-primary/10 text-primary')}
+                    variant="ghost"
+                    className={cn('h-12 rounded-xl bg-muted/80 text-sm font-semibold tabular-nums hover:bg-muted', enteredAmount === v && 'bg-primary/10 text-primary hover:bg-primary/10')}
                     onClick={() => setAmount(v.toFixed(2))}
                   >
                     {v}
@@ -342,9 +336,9 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             pago y, si con eso ya se cubre el total, confirma la venta en el
             mismo toque; si es un pago parcial (dividido), solo lo agrega y
             queda listo para el siguiente método. */}
-        <div className="border-t p-4 sm:p-5 shrink-0 safe-bottom">
+        <div className="border-t border-border/60 px-5 py-4 shrink-0 safe-bottom">
           <Button
-            className="w-full min-h-[54px] text-base"
+            className="w-full min-h-[56px] rounded-xl text-base font-semibold"
             size="xl"
             disabled={(!isComplete && enteredAmount <= 0) || isProcessing}
             loading={isProcessing}

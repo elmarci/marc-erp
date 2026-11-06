@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Package, AlertCircle, Scale, Tag, X, Mic, Star, ScanBarcode, Plus, PlusCircle } from 'lucide-react';
+import { Search, Package, AlertCircle, Scale, Tag, X, Mic, Star, ScanBarcode, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
 import { CameraScanner, isCameraScanSupported } from './CameraScanner';
 import { MiscItemSheet } from './PosCart';
+import { ProductThumb } from './ProductThumb';
 import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, wouldExceedStock, packExceedsStock, AUTO_ADJUST_HINT, type PackInfo } from './packSale';
 
 interface Product extends PackInfo {
@@ -42,7 +43,6 @@ interface PosProductPanelProps {
   onProductAdded?: () => void;
 }
 
-const PRODUCT_GRID = 'grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6';
 
 /* ─── Bulk weight modal ───────────────────────────────────────────────────── */
 // Precisión de pesaje: 1 gramo (0.001 kg). Con pasos de 10g el peso
@@ -444,6 +444,34 @@ function OffersPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+/* ─── Piezas de la lista de productos ─────────────────────────────────────── */
+function Chip({ active, onClick, icon, children }: { active?: boolean; onClick: () => void; icon?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick}
+      className={cn('flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors lg:h-8 lg:px-3',
+        active ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground/80 hover:bg-muted/70')}>
+      {icon}{children}
+    </button>
+  );
+}
+
+function StockNote({ product, compact }: { product: Product; compact?: boolean }) {
+  if (product.currentStock <= 0) return <span className="text-xs font-medium text-destructive">{compact ? 'Sin stock' : 'Sin stock · 2 toques vende igual'}</span>;
+  if (product.currentStock <= 5) return <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{product.currentStock === 1 ? 'Última unidad' : `Quedan ${product.currentStock}`}</span>;
+  return null;
+}
+
+/** Botón "+" de la fila; con productos en el carrito muestra cuántos van. */
+function AddButton({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button onClick={(e) => { e.currentTarget.blur(); onClick(); }} aria-label="Agregar"
+      className={cn('flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-2 text-sm font-semibold tabular-nums transition-colors active:scale-95',
+        count > 0 ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary')}>
+      {count > 0 ? Number(count.toFixed(2)) : <Plus className="h-5 w-5" />}
+    </button>
+  );
+}
+
 export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosProductPanelProps) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -698,16 +726,37 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
     }
   };
 
+  const resetFilters = () => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); setBulkOnly(false); setFavoriteOnly(false); };
+  const allActive = selectedCategory === null && !bulkOnly && !favoriteOnly;
+
+  // Toque en un producto: si el sistema no tiene stock, el primer toque avisa
+  // y el segundo seguido lo vende igual.
+  const tapProduct = (product: Product) => {
+    if (!wouldExceedStock(product.id, product.currentStock, product.packSize)) { handleAddProduct(product); return; }
+    const now = Date.now();
+    const second = lastTap.current.key === product.id && now - lastTap.current.at < 900;
+    lastTap.current = second ? { key: '', at: 0 } : { key: product.id, at: now };
+    handleAddProduct(product, undefined, second);
+  };
+  const tapPack = (product: Product) => {
+    if (!packExceedsStock(product)) { addPackToCart(product); return; }
+    const key = product.id + '#pack';
+    const now = Date.now();
+    const second = lastTap.current.key === key && now - lastTap.current.at < 900;
+    lastTap.current = second ? { key: '', at: 0 } : { key, at: now };
+    addPackToCart(product, { force: second });
+  };
+
   return (
-    <div className={cn('flex flex-col bg-pos-product', className)}>
-      {/* Barra de búsqueda + botón ofertas */}
-      <div className="space-y-3 border-b px-4 py-3">
-        {/* Buscador + escáner */}
+    <div className={cn('flex flex-col bg-card lg:bg-pos-bg', className)}>
+      {/* Buscador + filtros */}
+      <div className="space-y-3 bg-card px-4 pb-3 pt-3 lg:border-b lg:border-border/60">
         <div className="flex gap-2">
-          <div className="min-w-0 flex-1">
-            <Input
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+            <input
               ref={searchInputRef}
-              startIcon={<Search className="h-4 w-4" />}
+              type="search"
               placeholder="Buscar producto o código"
               // En celular el foco automático abre el teclado y tapa la mitad
               // de la pantalla: solo se enfoca solo en equipos con mouse.
@@ -715,227 +764,161 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
               enterKeyHint="search"
               onChange={(e) => debouncedSearch(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              className="h-12 rounded-xl bg-muted/40 lg:h-10"
+              className={cn(
+                'h-11 w-full rounded-xl bg-muted pl-11 text-sm outline-none placeholder:text-muted-foreground/80',
+                'focus:bg-card focus:ring-2 focus:ring-primary/40 lg:h-10 lg:bg-muted/70 lg:text-sm',
+                voiceSupported ? 'pr-11' : 'pr-3',
+              )}
             />
+            {voiceSupported && (
+              <button
+                type="button" onClick={toggleListening}
+                title={isListening ? 'Toca para apagar el micrófono' : 'Decir "agregar dos gaseosas", "precio del aceite", "quitar la coca cola"...'}
+                aria-label="Comando de voz"
+                className={cn('absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground',
+                  isListening && 'animate-pulse text-destructive')}>
+                <Mic className="h-[18px] w-[18px]" />
+              </button>
+            )}
           </div>
           {isCameraScanSupported() && (
-            <Button
+            <button
               onClick={() => setShowCamera(true)}
               title="Escanear códigos de barra con la cámara"
               aria-label="Escanear con la cámara"
-              className="h-12 w-12 shrink-0 rounded-xl p-0 lg:h-10 lg:w-auto lg:gap-1.5 lg:px-3">
-              <ScanBarcode className="h-6 w-6 lg:h-5 lg:w-5" /><span className="hidden lg:inline">Cámara</span>
-            </Button>
-          )}
-          {voiceSupported && (
-            <Button
-              variant="outline" onClick={toggleListening}
-              title={isListening ? 'Toca para apagar el micrófono' : 'Decir "agregar dos gaseosas", "precio del aceite", "quitar la coca cola"...'}
-              aria-label="Comando de voz"
-              className={cn('h-12 w-12 shrink-0 rounded-xl p-0 text-muted-foreground lg:h-10 lg:w-auto lg:gap-1.5 lg:px-3', isListening && 'border-destructive text-destructive bg-destructive/10 animate-pulse')}>
-              <Mic className="h-5 w-5 lg:h-4 lg:w-4" /><span className="hidden lg:inline">{isListening ? 'Escuchando...' : 'Voz'}</span>
-            </Button>
+              className="flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 lg:h-10 lg:w-auto lg:px-4 lg:text-sm lg:font-medium">
+              <ScanBarcode className="h-5 w-5" /><span className="hidden lg:inline">Cámara</span>
+            </button>
           )}
         </div>
 
-        {/* Filtros */}
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 h-scroll">
-          <Button
-            variant={selectedCategory === null && !bulkOnly && !favoriteOnly ? 'default' : 'outline'}
-            className="h-10 shrink-0 rounded-xl px-5 text-sm font-semibold lg:h-8 lg:px-3 lg:text-xs"
-            onClick={() => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); setBulkOnly(false); setFavoriteOnly(false); }}
-          >
-            Todos
-          </Button>
-          <Button
-            variant="outline"
-            className={cn('h-10 shrink-0 gap-1.5 rounded-xl px-4 text-sm font-medium lg:h-8 lg:px-3 lg:text-xs', bulkOnly && 'border-amber-500 bg-amber-500 text-black hover:bg-amber-600')}
-            onClick={() => { clearSearch(); setBulkOnly((v) => !v); }}
-            title="Productos a granel — sin código de barras, acceso rápido"
-          >
-            <Scale className="h-4 w-4 lg:h-3 lg:w-3" />A granel
-          </Button>
-          <Button
-            variant="outline"
-            className={cn('h-10 shrink-0 gap-1.5 rounded-xl px-4 text-sm font-medium lg:h-8 lg:px-3 lg:text-xs', favoriteOnly && 'border-amber-500 bg-amber-500 text-black hover:bg-amber-600')}
-            onClick={() => { clearSearch(); setFavoriteOnly((v) => !v); }}
-            title="Favoritos — acceso rápido a los productos más vendidos sin código de barras"
-          >
-            <Star className="h-4 w-4 lg:h-3 lg:w-3" />Favoritos
-          </Button>
+        {/* Filtros: píldoras sin borde; la activa en tinta oscura */}
+        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 h-scroll">
+          <Chip active={allActive} onClick={resetFilters}>Todos</Chip>
+          <Chip onClick={() => setShowOffers(true)} icon={<Tag className="h-3.5 w-3.5 text-primary" />}>Ofertas</Chip>
+          <Chip active={favoriteOnly} onClick={() => { clearSearch(); setFavoriteOnly((v) => !v); }} icon={<Star className="h-3.5 w-3.5" />}>Favoritos</Chip>
+          <Chip active={bulkOnly} onClick={() => { clearSearch(); setBulkOnly((v) => !v); }}>A granel</Chip>
+          <Chip onClick={() => setShowMisc(true)} icon={<Plus className="h-3.5 w-3.5" />}>Manual</Chip>
+          <span aria-hidden className="mx-1 my-2 w-px shrink-0 bg-border" />
           {categories?.map((cat) => (
-            <Button
-              key={cat.id}
-              variant={selectedCategory === cat.id ? 'default' : 'outline'}
-              className="h-10 shrink-0 rounded-xl px-4 text-sm font-medium lg:h-8 lg:px-3 lg:text-xs"
-              onClick={() => { clearSearch(); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}
-            >
+            <Chip key={cat.id} active={selectedCategory === cat.id}
+              onClick={() => { clearSearch(); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}>
               {cat.name}
-            </Button>
+            </Chip>
           ))}
         </div>
         {/* Subcategorías de la categoría general seleccionada */}
         {subcategories.length > 0 && (
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 h-scroll">
-            <Button
-              variant={selectedSubcategory === null ? 'secondary' : 'ghost'}
-              className="h-9 shrink-0 rounded-full px-4 text-xs lg:h-7"
-              onClick={() => { clearSearch(); setSelectedSubcategory(null); }}
-            >
-              Todas
-            </Button>
-            {subcategories.map((sub) => (
-              <Button
-                key={sub.id}
-                variant={selectedSubcategory === sub.id ? 'secondary' : 'ghost'}
-                className="h-9 shrink-0 rounded-full px-4 text-xs lg:h-7"
+          <div className="-mx-4 flex gap-4 overflow-x-auto px-4 text-sm h-scroll">
+            {[{ id: null as string | null, name: 'Todas' }, ...subcategories].map((sub) => (
+              <button key={sub.id ?? 'all'}
                 onClick={() => { clearSearch(); setSelectedSubcategory(sub.id); }}
-              >
+                className={cn('shrink-0 border-b-2 pb-1 font-medium transition-colors',
+                  selectedSubcategory === sub.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground')}>
                 {sub.name}
-              </Button>
+              </button>
             ))}
           </div>
         )}
-
-        {/* Acciones */}
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={() => setShowOffers(true)}
-            className="h-11 gap-2 rounded-xl text-sm font-semibold lg:h-9">
-            <Tag className="h-4 w-4 text-primary" />Ofertas
-          </Button>
-          <Button variant="outline" onClick={() => setShowMisc(true)}
-            title="Vender algo que no está en el catálogo"
-            className="h-11 gap-2 rounded-xl text-sm font-semibold lg:h-9">
-            <PlusCircle className="h-4 w-4 text-primary" />Producto manual
-          </Button>
-        </div>
       </div>
 
-      {/* Grid de productos */}
-      <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4">
-        <div className="mb-3 flex items-baseline justify-between">
-          <h3 className="text-base font-bold">Productos</h3>
-          {!isLoading && <span className="text-xs text-muted-foreground">{products.length} · precio por kg / unidad</span>}
-        </div>
+      {/* Productos: lista en celular, grilla en PC/tablet */}
+      <div className="flex-1 overflow-y-auto pb-4 sm:pt-3 lg:p-4">
         {isLoading ? (
-          <div className={PRODUCT_GRID}>
-            {[...Array(12)].map((_, i) => (
-              <div key={i} className="h-44 rounded-2xl bg-muted animate-pulse lg:h-32" />
+          <div className="space-y-px px-4 sm:grid sm:grid-cols-3 sm:gap-3 sm:space-y-0 md:grid-cols-4 lg:px-0 xl:grid-cols-5">
+            {[...Array(10)].map((_, i) => (
+              <div key={i} className="h-[72px] animate-pulse rounded-xl bg-muted/70 sm:h-36" />
             ))}
           </div>
         ) : products.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 gap-3 text-muted-foreground">
-            <Package className="h-12 w-12 opacity-20" />
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
+            <Package className="h-10 w-10 opacity-25" />
             <p className="text-sm">No se encontraron productos</p>
           </div>
         ) : (
-          <div className={PRODUCT_GRID}>
-            {products.map((product) => {
-              const hh = happyHourByProductId.get(product.id);
-              const packOn = hasPack(product) && !product.isBulk;
-              const packOk = packOn && product.currentStock >= (product.packSize ?? 0);
-              return (
-              <div key={product.id} className="flex flex-col gap-1.5">
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  if (!wouldExceedStock(product.id, product.currentStock, product.packSize)) { handleAddProduct(product); return; }
-                  // El sistema no tiene stock: el primer toque avisa, el segundo seguido lo vende igual.
-                  const now = Date.now();
-                  const second = lastTap.current.key === product.id && now - lastTap.current.at < 900;
-                  lastTap.current = second ? { key: '', at: 0 } : { key: product.id, at: now };
-                  handleAddProduct(product, undefined, second);
-                }}
-                className={cn(
-                  'relative flex flex-1 flex-col rounded-2xl border bg-card p-3 text-left shadow-sm transition-all',
-                  'hover:border-primary/60 hover:shadow-md active:scale-[0.97]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  product.currentStock <= 0 && 'opacity-70',
-                )}
-              >
-                {(qtyInCart.get(product.id) ?? 0) > 0 && (
-                  <span className="pointer-events-none absolute -right-1.5 -top-1.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-black text-primary-foreground shadow ring-2 ring-background">
-                    {Number((qtyInCart.get(product.id) ?? 0).toFixed(2))}
-                  </span>
-                )}
-                {/* Imagen */}
-                <div className="relative flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-muted/40 lg:h-16">
-                  {product.imageUrl ? (
-                    <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain" loading="lazy" />
-                  ) : (
-                    <Package className="h-8 w-8 text-muted-foreground/30 lg:h-6 lg:w-6" />
-                  )}
-                  {/* Etiquetas */}
-                  <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
-                    {hh && <Badge variant="success" className="px-1.5 py-0 text-[10px]">🔥 Hora feliz</Badge>}
-                    {product.currentStock <= 0 ? (
-                      <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">Sin stock</span>
-                    ) : product.currentStock <= 5 ? (
-                      <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
-                        {product.currentStock === 1 ? 'Última unidad' : `Quedan ${product.currentStock}`}
+          <>
+            {/* Celular: filas */}
+            <ul className="divide-y divide-border/60 sm:hidden">
+              {products.map((product) => {
+                const hh = happyHourByProductId.get(product.id);
+                const inCart = qtyInCart.get(product.id) ?? 0;
+                const packOn = hasPack(product) && !product.isBulk;
+                return (
+                  <li key={product.id} className="flex items-center gap-3 px-4 py-3">
+                    <button className="flex min-w-0 flex-1 items-center gap-3 text-left active:opacity-70"
+                      onClick={(e) => { e.currentTarget.blur(); tapProduct(product); }}>
+                      <ProductThumb name={product.name} imageUrl={product.imageUrl} className="h-12 w-12" />
+                      <span className="min-w-0 flex-1">
+                        <span className="line-clamp-2 text-sm font-medium leading-snug">{product.name}</span>
+                        <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-sm">
+                          <span className="font-semibold tabular-nums">{formatCurrency(hh ? hh.effectivePrice : product.salePrice)}</span>
+                          {product.isBulk && <span className="text-muted-foreground">por {product.bulkUnit ?? 'kg'}</span>}
+                          {hh && <span className="text-muted-foreground line-through tabular-nums">{formatCurrency(product.salePrice)}</span>}
+                          <StockNote product={product} />
+                        </span>
                       </span>
-                    ) : null}
-                  </div>
-                </div>
+                    </button>
+                    {packOn && (
+                      <button onClick={(e) => { e.currentTarget.blur(); tapPack(product); }}
+                        title={`Agregar ${(product.packLabel || 'paquete').toLowerCase()} de ${product.packSize} unidades`}
+                        className="shrink-0 rounded-lg bg-muted px-2 py-1.5 text-center text-[11px] font-medium leading-tight active:scale-95">
+                        {product.packLabel || 'Paq'} x{product.packSize}<br />
+                        <span className="font-semibold tabular-nums">{formatCurrency(Number(product.packPrice))}</span>
+                      </button>
+                    )}
+                    <AddButton count={inCart} onClick={() => tapProduct(product)} />
+                  </li>
+                );
+              })}
+            </ul>
 
-                {/* Nombre */}
-                <p className="mt-2.5 line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-tight lg:min-h-[2.25rem] lg:text-xs">{product.name}</p>
-
-                {/* Precio + agregar */}
-                <div className="mt-2 flex items-end justify-between gap-2">
-                  <div className="min-w-0">
-                    {hh && <p className="text-[11px] leading-none text-muted-foreground line-through">{formatCurrency(product.salePrice)}</p>}
-                    <p className="whitespace-nowrap text-base font-extrabold leading-tight text-primary lg:text-sm">
-                      {formatCurrency(hh ? hh.effectivePrice : product.salePrice)}
-                      <span className="ml-0.5 text-xs font-normal text-muted-foreground">/{product.isBulk ? (product.bulkUnit ?? 'kg') : 'und'}</span>
-                    </p>
+            {/* Tablet / PC: grilla compacta */}
+            <div className="hidden gap-3 px-4 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:px-0 xl:grid-cols-5 2xl:grid-cols-6">
+              {products.map((product) => {
+                const hh = happyHourByProductId.get(product.id);
+                const inCart = qtyInCart.get(product.id) ?? 0;
+                const packOn = hasPack(product) && !product.isBulk;
+                const packOk = packOn && product.currentStock >= (product.packSize ?? 0);
+                return (
+                  <div key={product.id} className={cn(
+                    'group flex flex-col rounded-xl bg-card p-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] transition-shadow hover:shadow-md dark:ring-white/5',
+                    inCart > 0 && 'ring-2 ring-primary/50',
+                  )}>
+                    <button className="flex flex-1 flex-col text-left focus-visible:outline-none"
+                      onClick={(e) => { e.currentTarget.blur(); tapProduct(product); }}>
+                      {product.imageUrl && <ProductThumb name={product.name} imageUrl={product.imageUrl} className="mb-2 h-20 w-full lg:h-16" />}
+                      <span className="line-clamp-2 min-h-[2.4em] text-sm font-medium leading-tight">{product.name}</span>
+                      <span className="mt-1.5 flex items-center justify-between gap-1">
+                        <span className="min-w-0 truncate text-sm font-semibold tabular-nums">
+                          {formatCurrency(hh ? hh.effectivePrice : product.salePrice)}
+                          {product.isBulk && <span className="ml-0.5 text-[11px] font-normal text-muted-foreground">/{product.bulkUnit ?? 'kg'}</span>}
+                        </span>
+                        {inCart > 0
+                          ? <span className="rounded-full bg-primary px-1.5 text-[11px] font-semibold leading-5 text-primary-foreground tabular-nums">{Number(inCart.toFixed(2))}</span>
+                          : <StockNote product={product} compact />}
+                      </span>
+                      {hh && <span className="mt-0.5 text-[11px] text-primary">Hora feliz · antes <span className="line-through">{formatCurrency(product.salePrice)}</span></span>}
+                    </button>
+                    {packOn && (
+                      <button onClick={(e) => { e.currentTarget.blur(); tapPack(product); }}
+                        title={`Agregar ${(product.packLabel || 'paquete').toLowerCase()} de ${product.packSize} unidades`}
+                        className={cn('mt-2 flex items-center justify-between rounded-lg bg-muted/70 px-2 py-1 text-[11px] font-medium hover:bg-muted', !packOk && 'opacity-50')}>
+                        <span className="truncate">{product.packLabel || 'Paq'} x{product.packSize}</span>
+                        <span className="font-semibold tabular-nums">{formatCurrency(Number(product.packPrice))}</span>
+                      </button>
+                    )}
                   </div>
-                  <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-2 border-primary/70 text-primary lg:h-7 lg:w-7 lg:rounded-lg">
-                    <Plus className="h-5 w-5 lg:h-4 lg:w-4" />
-                  </span>
-                </div>
-                {product.currentStock <= 0 && (
-                  <p className="mt-1.5 text-[10px] font-medium text-muted-foreground">2 toques = vender igual</p>
-                )}
-              </button>
-              {packOn && (
-                <button
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    if (!packExceedsStock(product)) { addPackToCart(product); return; }
-                    const key = product.id + '#pack';
-                    const now = Date.now();
-                    const second = lastTap.current.key === key && now - lastTap.current.at < 900;
-                    lastTap.current = second ? { key: '', at: 0 } : { key, at: now };
-                    addPackToCart(product, { force: second });
-                  }}
-                  title={`Agregar ${(product.packLabel || 'paquete').toLowerCase()} de ${product.packSize} unidades`}
-                  className={cn(
-                    'flex min-h-[40px] items-center justify-between gap-1 rounded-xl border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition-all',
-                    'hover:bg-primary/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    !packOk && 'opacity-50',
-                  )}
-                >
-                  <span className="flex min-w-0 items-center gap-1 truncate"><Package className="h-3 w-3 shrink-0" />{product.packLabel || 'Paq'} x{product.packSize}</span>
-                  <span className="shrink-0 whitespace-nowrap">{formatCurrency(Number(product.packPrice))}</span>
-                </button>
-              )}
-              </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
-      {/* Footer con atajos (solo PC: en celular quita espacio y no aplica) */}
-      <div className="hidden border-t px-4 py-2 lg:block">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{products.length} productos · <Scale className="inline h-3 w-3" /> = a granel</span>
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-3 w-3" />
-            <span>Enter en búsqueda para agregar por código</span>
-          </div>
-        </div>
+      {/* Pie con atajos (solo PC) */}
+      <div className="hidden items-center justify-between border-t border-border/60 bg-card px-4 py-2 text-xs text-muted-foreground lg:flex">
+        <span>{products.length} productos</span>
+        <span className="flex items-center gap-1.5"><AlertCircle className="h-3 w-3" />Enter en la búsqueda agrega por código</span>
       </div>
 
       {/* Modales */}

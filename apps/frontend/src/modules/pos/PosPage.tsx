@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { ShoppingCart, Grid3x3, ChevronRight, ArrowRight } from 'lucide-react';
+import { ShoppingCart, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { usePosStore } from '@/stores/posStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useProductCacheStore, type CachedProduct } from '@/stores/productCacheStore';
 import { useOfflineSalesStore } from '@/stores/offlineSalesStore';
+import { formatCurrency } from '@/lib/utils';
 import { PosCart } from './PosCart';
 import { PosProductPanel } from './PosProductPanel';
 import { PosHeader } from './PosHeader';
@@ -444,62 +445,39 @@ export function PosPage() {
           <PosProductPanel onBarcodeSearch={handleBarcodeScanned} onCheckout={() => setShowPayment(true)} className="flex-1 min-w-0" />
         </div>
       ) : (
-        /* ── TABLET/MÓVIL: tabs Productos / Carrito + barra fija de cobro ── */
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <div className="shrink-0 border-b bg-pos-cart px-4 py-2.5">
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-              <button
-                onClick={() => setPosTab('products')}
-                className={`flex h-10 items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-colors ${
-                  posTab === 'products' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground'
-                }`}>
-                <Grid3x3 className="h-4 w-4" />Productos
-              </button>
-              <button
-                onClick={() => setPosTab('cart')}
-                className={`flex h-10 items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-colors ${
-                  posTab === 'cart' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground'
-                }`}>
-                <ShoppingCart className="h-4 w-4" />
-                Carrito
-                {cartCount > 0 && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-black text-primary-foreground">
-                    {Number(cartCount.toFixed(2))}
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-hidden">
-            {posTab === 'products' ? (
-              <PosProductPanel onBarcodeSearch={handleBarcodeScanned} onCheckout={() => setShowPayment(true)} className="h-full" />
-            ) : (
-              <PosCart onCheckout={() => setShowPayment(true)} className="h-full" />
-            )}
-          </div>
-
-          {/* En Productos: ver carrito o cobrar directo, sin cambiar de pestaña. */}
-          {posTab === 'products' && cartCount > 0 && (
-            <div className="flex shrink-0 gap-3 border-t bg-pos-cart px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-              <button
-                onClick={() => setPosTab('cart')}
-                className="flex h-14 min-w-0 flex-1 items-center gap-3 rounded-xl border bg-background px-3 text-left active:bg-muted">
-                <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <ShoppingCart className="h-4 w-4" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[11px] leading-tight text-muted-foreground">{Number(cartCount.toFixed(2))} producto{cartCount !== 1 ? 's' : ''}</span>
-                  <span className="block text-lg font-black leading-tight">S/ {cartTotal.toFixed(2)}</span>
-                </span>
-                <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
-              </button>
-              <button
-                onClick={() => setShowPayment(true)}
-                className="flex h-14 w-[38%] shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary text-lg font-bold text-primary-foreground active:bg-primary/90">
-                Cobrar<ArrowRight className="h-5 w-5" />
-              </button>
-            </div>
+        /* ── CELULAR/TABLET: productos con barra de carrito abajo; el carrito
+              se abre como pantalla aparte (flecha para volver). ── */
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {posTab === 'cart' ? (
+            <PosCart onCheckout={() => setShowPayment(true)} onBack={() => setPosTab('products')} className="flex-1 overflow-hidden" />
+          ) : (
+            <>
+              <PosProductPanel onBarcodeSearch={handleBarcodeScanned} onCheckout={() => setShowPayment(true)} className="flex-1 overflow-hidden" />
+              {cartCount > 0 && (
+                <div className="flex shrink-0 gap-2 border-t border-border/60 bg-card px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+                  <button
+                    onClick={() => setPosTab('cart')}
+                    className="flex h-[52px] min-w-0 flex-1 items-center gap-3 rounded-xl bg-muted/80 px-3.5 text-left active:bg-muted">
+                    <span className="relative shrink-0">
+                      <ShoppingCart className="h-5 w-5" />
+                      <span className="absolute -right-2.5 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums">
+                        {Number(cartCount.toFixed(2))}
+                      </span>
+                    </span>
+                    <span className="min-w-0 flex-1 pl-1">
+                      <span className="block text-[11px] leading-tight text-muted-foreground">Ver carrito</span>
+                      <span className="block text-lg font-semibold leading-tight tabular-nums">{formatCurrency(cartTotal)}</span>
+                    </span>
+                    <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                  </button>
+                  <button
+                    onClick={() => setShowPayment(true)}
+                    className="h-[52px] w-[36%] shrink-0 rounded-xl bg-primary text-base font-semibold text-primary-foreground active:bg-primary/90">
+                    Cobrar
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
