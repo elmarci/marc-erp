@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ChevronRight, Flame, LayoutGrid, Tag } from 'lucide-react'
+import { ChevronRight, Flame, LayoutGrid, ShoppingBasket, Tag } from 'lucide-react'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { PromoCarousel } from '../components/PromoCarousel'
@@ -89,6 +89,24 @@ export function HomePage() {
           </StaggerGroup>
         </div>
       )}
+
+      {/* Arma tu canasta — el cliente dice cuánto tiene y para qué comida, y
+          se le arma la compra con lo que hay en stock (ver BasketPage). */}
+      <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-5">
+        <Reveal>
+          <MotionLink to="/canasta" whileTap={{ scale: 0.98 }}
+            className="group flex items-center gap-4 bg-white rounded-3xl shadow-md hover:shadow-lg transition-shadow p-4 sm:p-5">
+            <div className="h-12 w-12 rounded-2xl bg-brand-blue-50 flex items-center justify-center shrink-0">
+              <ShoppingBasket className="h-6 w-6 text-brand-blue-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-display font-bold text-paper-ink">Arma tu canasta</p>
+              <p className="text-sm text-paper-ink-soft leading-snug">“Tengo S/ 20 para un desayuno de 4” y te armamos la compra.</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-paper-ink-ghost shrink-0 transition-transform group-hover:translate-x-0.5" />
+          </MotionLink>
+        </Reveal>
+      </div>
 
       {/* Categorías — acceso rápido tipo app. Antes era sólo un ícono
           uniforme (se veía "pobre" — feedback real de testeo); ahora usa la
