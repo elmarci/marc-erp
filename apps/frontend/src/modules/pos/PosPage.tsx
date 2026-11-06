@@ -12,6 +12,7 @@ import { PosProductPanel } from './PosProductPanel';
 import { PosHeader } from './PosHeader';
 import { addPackToCart, hasPack, unitStockLeft, wouldExceedStock, type PackInfo } from './packSale';
 import { useTvCartSync, sendTvThanks } from './tvCartSync';
+import { autoDiscountFor, useAutoOffers } from './autoOffers';
 import { PosPaymentModal } from './PosPaymentModal';
 import { OpenSessionModal } from './OpenSessionModal';
 import { ReceiptModal, type ReceiptData } from './ReceiptModal';
@@ -221,6 +222,8 @@ export function PosPage() {
       return true;
     }
     const exceeds = wouldExceedStock(product.id, product.currentStock, product.packSize);
+    // Hora feliz u oferta de % / monto vigente: el descuento entra solo al escanear.
+    const autoDiscount = autoDiscountFor(product.id, Number(product.salePrice));
     const result = usePosStore.getState().addItem({
       productId: product.id,
       name: product.name,
@@ -228,7 +231,7 @@ export function PosPage() {
       quantity: 1,
       unitPrice: Number(product.salePrice),
       originalPrice: Number(product.salePrice),
-      discountAmount: 0,
+      discountAmount: autoDiscount,
       discountPercent: 0,
       stock: unitStockLeft(product.id, product.currentStock, product.packSize),
       bottleDepositUnit: Number(product.bottleDeposit ?? 0) || undefined,
@@ -242,7 +245,7 @@ export function PosPage() {
       toast.warning(`${product.name}: sin stock en el sistema. Se vende igual y el inventario se ajusta al cobrar.`, { duration: 2500 });
       return true;
     }
-    toast.success(`${product.name} agregado${offline ? ' (sin conexión)' : ''}`, { duration: 1500 });
+    toast.success(`${product.name} agregado${autoDiscount > 0 ? ` con oferta (−${formatCurrency(autoDiscount)})` : ''}${offline ? ' (sin conexión)' : ''}`, { duration: 1500 });
     return true;
   };
 
@@ -428,6 +431,9 @@ export function PosPage() {
   const cartCount = cartItems.reduce((s, i) => s + i.quantity, 0);
   const cartTotal = usePosStore(s => s.total);
   const isSplit = useIsSplitLayout();
+  // Mantiene al día los descuentos automáticos también para el lector de códigos,
+  // aunque en el celular se esté viendo el carrito y no la lista.
+  useAutoOffers();
 
   return (
     <div className="pos-screen flex flex-col bg-pos-bg">

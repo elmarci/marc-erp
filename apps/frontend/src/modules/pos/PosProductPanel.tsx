@@ -13,6 +13,8 @@ import { parseVoiceCommand } from './voiceCommands';
 import { CameraScanner, isCameraScanSupported } from './CameraScanner';
 import { MiscItemSheet } from './PosCart';
 import { ProductThumb } from './ProductThumb';
+import { useAutoOffers } from './autoOffers';
+import { OffersList } from './OffersList';
 import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, wouldExceedStock, packExceedsStock, AUTO_ADJUST_HINT, type PackInfo } from './packSale';
 
 interface Product extends PackInfo {
@@ -179,271 +181,6 @@ function BulkModal({ product, onConfirm, onClose }: {
   );
 }
 
-/* ─── Offers panel ────────────────────────────────────────────────────────── */
-interface Offer {
-  id: string; name: string; type: string; value: number;
-  valueType: 'PERCENTAGE' | 'FIXED' | null;
-  buyQuantity: number | null; getQuantity: number | null;
-  isActive: boolean; storeBadge: string | null;
-  products: Array<{ quantity?: number; asPack?: boolean; product: { id: string; name: string; salePrice: number; barcode: string | null; currentStock: number; imageUrl: string | null; isBulk: boolean; bulkUnit: string | null; isPack?: boolean; category: { name: string } } & PackInfo }>;
-}
-
-interface HappyHourPromo {
-  id: string; name: string; value: number; valueType: 'PERCENTAGE' | 'FIXED' | null;
-  priority: number;
-  products: Array<{ product: { id: string; salePrice: number } }>;
-}
-
-function OffersPanel({ onClose }: { onClose: () => void }) {
-  const addItem = usePosStore(s => s.addItem);
-
-  const { data } = useQuery({
-    queryKey: ['pos-offers'],
-    queryFn: async () => (await api.get<{ data: Offer[] }>('/promotions?limit=50')).data.data,
-    // Las promos sobre paquete/caja se presentan ya con el precio y el stock del
-    // paquete (ver presentForOffer), así el resto del panel no distingue.
-    select: d => d.filter(o => o.isActive).map(o => ({
-      ...o,
-      products: o.products.map(e => ({ ...e, product: presentForOffer(e.product, e.asPack) })),
-    })),
-  });
-
-  const applyOffer = (offer: Offer, product: Offer['products'][0]['product']) => {
-    const originalPrice = Number(product.salePrice);
-    let finalPrice = originalPrice;
-    let qty = 1;
-    let label = offer.storeBadge ?? offer.name;
-
-    if (offer.type === 'PERCENTAGE_DISCOUNT') {
-      finalPrice = Math.round(originalPrice * (1 - offer.value / 100) * 100) / 100;
-    } else if (offer.type === 'FIXED_DISCOUNT') {
-      finalPrice = Math.max(0, Math.round((originalPrice - offer.value) * 100) / 100);
-    } else if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
-      const paidUnits = offer.buyQuantity ?? 2;
-      const totalUnits = offer.getQuantity ?? 3;
-      // Precio total del pack — sin dividir entre unidades para evitar redondeo
-      const packPrice = offer.type === 'BUNDLE_PRICE'
-        ? Number(offer.value)
-        : Math.round(originalPrice * paidUnits * 100) / 100; // 2×5.20 = 10.40 exacto
-      const packLabel = `${offer.storeBadge ?? offer.name} — pack de ${totalUnits}`;
-      // Clave: la cantidad real que se agrega al carrito son las unidades
-      // FÍSICAS del pack (totalUnits), no "1 pack" — si no, el stock queda
-      // mal descontado (se resta 1 en vez de las 2-3 unidades reales que se
-      // lleva el cliente) y el tope de stock disponible pierde sentido.
-      if (product.currentStock < totalUnits) {
-        toast.error(`No hay stock suficiente de "${product.name}" para esta oferta (necesita ${totalUnits}, disponible: ${product.currentStock}).`);
-        return;
-      }
-      const unitEffectivePrice = Math.round((packPrice / totalUnits) * 100) / 100;
-      const perUnitDiscount = Math.round((originalPrice - unitEffectivePrice) * 100) / 100;
-      const packResult = addItem({
-        ...packLineFields(product),
-        name: `${product.name} (${packLabel})`,
-        barcode: product.barcode,
-        quantity: totalUnits,
-        unitPrice: originalPrice,
-        originalPrice,
-        discountAmount: perUnitDiscount,
-        discountPercent: 0,
-        stock: product.currentStock,
-        packSize: totalUnits,
-      });
-      if (packResult.addedQuantity <= 0) {
-        toast.error(`No hay stock suficiente de "${product.name}" para otro paquete de ${totalUnits}.`);
-        return;
-      }
-      if (packResult.capped) {
-        toast.warning(`Solo se pudieron agregar ${packResult.addedQuantity} unidad(es) más de "${product.name}" — stock limitado.`);
-      } else {
-        toast.success(`${packLabel} agregado — ${formatCurrency(packPrice)}`);
-      }
-      return;
-    }
-
-    // Descuento simple (% o monto fijo): unitPrice = original, discountAmount = descuento
-    const discountPerUnit = Math.round((originalPrice - finalPrice) * 100) / 100;
-    const discountResult = addItem({
-      ...packLineFields(product),
-      name: `${product.name} (${label})`,
-      barcode: product.barcode,
-      quantity: 1,
-      unitPrice: originalPrice,
-      originalPrice,
-      discountAmount: discountPerUnit,
-      discountPercent: 0,
-      stock: product.currentStock,
-    });
-    if (discountResult.addedQuantity <= 0) {
-      toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito (${product.currentStock}).`);
-      return;
-    }
-    toast.success(`${product.name} con oferta — ${formatCurrency(finalPrice)}`);
-  };
-
-  // Combo de productos DISTINTOS a un precio total fijo — a diferencia de
-  // applyOffer(), aquí se agregan TODOS los componentes de una sola vez (el
-  // combo no existe si falta uno), y el descuento se reparte entre ellos en
-  // proporción a su precio normal para que la suma de subtotales dé
-  // exactamente el precio del combo.
-  const applyCombo = (offer: Offer) => {
-    const comboTotal = Number(offer.value);
-    const items = offer.products;
-    for (const { quantity, product } of items) {
-      const need = quantity ?? 1;
-      if (product.currentStock < need) {
-        toast.error(`No hay stock suficiente de "${product.name}" para este combo (necesita ${need}, disponible: ${product.currentStock}).`);
-        return;
-      }
-    }
-    const sumPrice = items.reduce((s, { quantity, product }) => s + Number(product.salePrice) * (quantity ?? 1), 0);
-    if (sumPrice <= 0) return;
-    const totalDiscount = Math.max(0, Math.round((sumPrice - comboTotal) * 100) / 100);
-
-    let assignedDiscount = 0;
-    let anyCapped = false;
-    items.forEach(({ quantity, product }, idx) => {
-      const qty = quantity ?? 1;
-      const orig = Number(product.salePrice);
-      const lineOriginal = orig * qty;
-      const lineDiscount = idx === items.length - 1
-        ? Math.round((totalDiscount - assignedDiscount) * 100) / 100
-        : Math.round((totalDiscount * (lineOriginal / sumPrice)) * 100) / 100;
-      assignedDiscount += lineDiscount;
-      const perUnitDiscount = Math.round((lineDiscount / qty) * 100) / 100;
-
-      const result = addItem({
-        ...packLineFields(product),
-        name: `${product.name} (${offer.storeBadge ?? offer.name})`,
-        barcode: product.barcode,
-        quantity: qty,
-        unitPrice: orig,
-        originalPrice: orig,
-        discountAmount: perUnitDiscount,
-        discountPercent: 0,
-        stock: product.currentStock,
-      });
-      if (result.capped) anyCapped = true;
-    });
-
-    if (anyCapped) {
-      toast.warning('Stock limitado en algún producto del combo — se agregó lo disponible.');
-    } else {
-      toast.success(`${offer.name} agregado — ${formatCurrency(comboTotal)}`);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-card shadow-2xl flex flex-col max-h-[80vh]">
-        <div className="flex items-center justify-between border-b p-4">
-          <h3 className="font-bold flex items-center gap-2">
-            <Tag className="h-4 w-4 text-primary" />Ofertas activas
-          </h3>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
-        </div>
-        <div className="overflow-y-auto p-4 space-y-4">
-          {!data || data.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No hay ofertas activas</p>
-          ) : data.map(offer => (
-            <div key={offer.id} className="border rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold">{offer.name}</p>
-                  <p className="text-xs text-success font-medium">
-                    {offer.type === 'PERCENTAGE_DISCOUNT' ? `${offer.value}% OFF` :
-                     offer.type === 'FIXED_DISCOUNT' ? `S/ ${offer.value} OFF` :
-                     offer.type === 'BUY_X_GET_Y' ? `Lleva ${offer.getQuantity ?? 3}, paga ${offer.buyQuantity ?? 2}` :
-                     offer.type === 'BUNDLE_PRICE' ? `${offer.getQuantity ?? '?'} x S/ ${offer.value}` :
-                     offer.type === 'COMBO' ? `Combo por ${formatCurrency(offer.value)}` : 'Precio especial'}
-                  </p>
-                </div>
-                {offer.storeBadge && <Badge variant="success" className="text-xs">{offer.storeBadge}</Badge>}
-              </div>
-              {offer.type === 'COMBO' && offer.products.length > 0 && (() => {
-                const sumPrice = offer.products.reduce((s, { quantity, product }) => s + Number(product.salePrice) * (quantity ?? 1), 0);
-                const missing = offer.products.filter(({ quantity, product }) => product.currentStock < (quantity ?? 1));
-                return (
-                  <div className="space-y-2">
-                    <div className="bg-muted/50 rounded-lg px-3 py-2 space-y-1">
-                      {offer.products.map(({ quantity, product }) => (
-                        <div key={product.id} className="flex items-center justify-between text-sm">
-                          <span>{product.name}{(quantity ?? 1) > 1 ? ` x${quantity}` : ''}</span>
-                          <span className="text-muted-foreground">{formatCurrency(Number(product.salePrice) * (quantity ?? 1))}</span>
-                        </div>
-                      ))}
-                      <div className="flex items-center justify-between text-sm font-bold border-t pt-1 mt-1">
-                        <span className="line-through text-muted-foreground font-normal">{formatCurrency(sumPrice)}</span>
-                        <span className="text-success">{formatCurrency(Number(offer.value))}</span>
-                      </div>
-                    </div>
-                    {missing.length > 0 && (
-                      <p className="text-xs text-destructive">Sin stock suficiente: {missing.map(m => m.product.name).join(', ')}</p>
-                    )}
-                    <Button size="sm" className="w-full" onClick={() => applyCombo(offer)} disabled={missing.length > 0}>
-                      Agregar combo
-                    </Button>
-                  </div>
-                );
-              })()}
-              {offer.type !== 'COMBO' && offer.products.length > 0 && (
-                <div className="space-y-2">
-                  {offer.products.map(({ product }) => {
-                    const orig = Number(product.salePrice);
-                    let finalPrice = orig;
-                    let qty = 1;
-                    let priceLabel = '';
-                    let packsAvailable: number | null = null;
-
-                    if (offer.type === 'PERCENTAGE_DISCOUNT') {
-                      finalPrice = Math.round(orig * (1 - offer.value / 100) * 100) / 100;
-                      priceLabel = `c/u con ${offer.value}% OFF`;
-                    } else if (offer.type === 'FIXED_DISCOUNT') {
-                      finalPrice = Math.max(0, Math.round((orig - offer.value) * 100) / 100);
-                      priceLabel = `c/u con S/${offer.value} OFF`;
-                    } else if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
-                      const paidUnits = offer.buyQuantity ?? 2;
-                      const totalUnits = offer.getQuantity ?? 3;
-                      finalPrice = offer.type === 'BUNDLE_PRICE'
-                        ? Math.round((offer.value / totalUnits) * 100) / 100
-                        : Math.round((orig * paidUnits / totalUnits) * 100) / 100;
-                      qty = totalUnits;
-                      priceLabel = `c/u · agrega ${totalUnits} uds · total ${formatCurrency(finalPrice * totalUnits)}`;
-                      // Cuántos paquetes completos alcanza el stock actual —
-                      // esto es lo que antes el sistema no calculaba.
-                      packsAvailable = Math.floor(product.currentStock / totalUnits);
-                    }
-
-                    return (
-                      <div key={product.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
-                        <div>
-                          <p className="text-sm font-medium">{product.name}</p>
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="line-through text-muted-foreground">{formatCurrency(orig)}</span>
-                            <span className="text-success font-bold">{formatCurrency(finalPrice)}</span>
-                            {priceLabel && <span className="text-muted-foreground">{priceLabel}</span>}
-                          </div>
-                          {packsAvailable !== null && (
-                            <p className={cn('text-xs mt-0.5', packsAvailable <= 0 ? 'text-destructive' : 'text-muted-foreground')}>
-                              {packsAvailable <= 0 ? 'Sin stock para armar un paquete' : `Alcanza para ${packsAvailable} paquete${packsAvailable === 1 ? '' : 's'} (stock: ${product.currentStock})`}
-                            </p>
-                          )}
-                        </div>
-                        <Button size="sm" onClick={() => applyOffer(offer, product)} disabled={packsAvailable !== null && packsAvailable <= 0}>
-                          Agregar {qty > 1 ? `(${qty}u)` : ''}
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ─── Piezas de la lista de productos ─────────────────────────────────────── */
 function Chip({ active, onClick, icon, children }: { active?: boolean; onClick: () => void; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -453,6 +190,10 @@ function Chip({ active, onClick, icon, children }: { active?: boolean; onClick: 
       {icon}{children}
     </button>
   );
+}
+
+function OfferBadge({ children }: { children: React.ReactNode }) {
+  return <span className="rounded bg-primary/10 px-1.5 text-[11px] font-semibold leading-5 text-primary">{children}</span>;
 }
 
 function StockNote({ product, compact }: { product: Product; compact?: boolean }) {
@@ -490,7 +231,8 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
   // Último toque en un producto sin stock en el sistema: el segundo toque
   // seguido lo vende igual (ver onTapNoStock).
   const lastTap = useRef<{ key: string; at: number }>({ key: '', at: 0 });
-  const [showOffers, setShowOffers] = useState(false);
+  // Filtro Ofertas: muestra los productos en oferta y combos en la misma lista.
+  const [offersOnly, setOffersOnly] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showMisc, setShowMisc] = useState(false);
   const hasFinePointer = useMemo(() => typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches, []);
@@ -554,29 +296,9 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
 
   const products = productsData ?? [];
 
-  // Hora Feliz automática — se recalcula solo cada minuto para que el
-  // descuento entre y salga sin que el cajero tenga que hacer nada.
-  const { data: happyHours } = useQuery({
-    queryKey: ['pos-happy-hours'],
-    queryFn: async () => (await api.get<{ data: HappyHourPromo[] }>('/promotions/active-now')).data.data,
-    refetchInterval: 60000,
-    staleTime: 30000,
-  });
-
-  const happyHourByProductId = useMemo(() => {
-    const map = new Map<string, { name: string; effectivePrice: number }>();
-    for (const promo of happyHours ?? []) {
-      for (const { product } of promo.products) {
-        if (map.has(product.id)) continue; // ya asignado por una promo de mayor prioridad
-        const orig = Number(product.salePrice);
-        const effectivePrice = promo.valueType === 'FIXED'
-          ? Math.max(0, Math.round((orig - promo.value) * 100) / 100)
-          : Math.round(orig * (1 - promo.value / 100) * 100) / 100;
-        map.set(product.id, { name: promo.name, effectivePrice });
-      }
-    }
-    return map;
-  }, [happyHours]);
+  // Descuentos automáticos (Hora feliz + ofertas de % o monto vigentes): se
+  // aplican solos al tocar o escanear, sin que el cajero tenga que buscarlos.
+  const { deals: happyHourByProductId, tags: offerTags, offers } = useAutoOffers();
 
   // force = vender aunque el sistema diga que no hay (doble toque): lo que
   // falte se marca para ajuste automático de inventario al cobrar.
@@ -726,8 +448,8 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
     }
   };
 
-  const resetFilters = () => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); setBulkOnly(false); setFavoriteOnly(false); };
-  const allActive = selectedCategory === null && !bulkOnly && !favoriteOnly;
+  const resetFilters = () => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); setBulkOnly(false); setFavoriteOnly(false); setOffersOnly(false); };
+  const allActive = selectedCategory === null && !bulkOnly && !favoriteOnly && !offersOnly;
 
   // Toque en un producto: si el sistema no tiene stock, el primer toque avisa
   // y el segundo seguido lo vende igual.
@@ -795,20 +517,21 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
         {/* Filtros: píldoras sin borde; la activa en tinta oscura */}
         <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 h-scroll">
           <Chip active={allActive} onClick={resetFilters}>Todos</Chip>
-          <Chip onClick={() => setShowOffers(true)} icon={<Tag className="h-3.5 w-3.5 text-primary" />}>Ofertas</Chip>
-          <Chip active={favoriteOnly} onClick={() => { clearSearch(); setFavoriteOnly((v) => !v); }} icon={<Star className="h-3.5 w-3.5" />}>Favoritos</Chip>
-          <Chip active={bulkOnly} onClick={() => { clearSearch(); setBulkOnly((v) => !v); }}>A granel</Chip>
+          <Chip active={offersOnly} onClick={() => { setOffersOnly((v) => !v); setBulkOnly(false); setFavoriteOnly(false); setSelectedCategory(null); setSelectedSubcategory(null); }}
+            icon={<Tag className="h-3.5 w-3.5" />}>Ofertas{offers.length > 0 && <span className="tabular-nums opacity-70">{offers.length}</span>}</Chip>
+          <Chip active={favoriteOnly} onClick={() => { clearSearch(); setOffersOnly(false); setFavoriteOnly((v) => !v); }} icon={<Star className="h-3.5 w-3.5" />}>Favoritos</Chip>
+          <Chip active={bulkOnly} onClick={() => { clearSearch(); setOffersOnly(false); setBulkOnly((v) => !v); }}>A granel</Chip>
           <Chip onClick={() => setShowMisc(true)} icon={<Plus className="h-3.5 w-3.5" />}>Manual</Chip>
           <span aria-hidden className="mx-1 my-2 w-px shrink-0 bg-border" />
           {categories?.map((cat) => (
             <Chip key={cat.id} active={selectedCategory === cat.id}
-              onClick={() => { clearSearch(); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}>
+              onClick={() => { clearSearch(); setOffersOnly(false); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}>
               {cat.name}
             </Chip>
           ))}
         </div>
         {/* Subcategorías de la categoría general seleccionada */}
-        {subcategories.length > 0 && (
+        {subcategories.length > 0 && !offersOnly && (
           <div className="-mx-4 flex gap-4 overflow-x-auto px-4 text-sm h-scroll">
             {[{ id: null as string | null, name: 'Todas' }, ...subcategories].map((sub) => (
               <button key={sub.id ?? 'all'}
@@ -824,7 +547,9 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
 
       {/* Productos: lista en celular, grilla en PC/tablet */}
       <div className="flex-1 overflow-y-auto pb-4 sm:pt-3 lg:p-4">
-        {isLoading ? (
+        {offersOnly ? (
+          <OffersList offers={offers} search={search} />
+        ) : isLoading ? (
           <div className="space-y-px px-4 sm:grid sm:grid-cols-3 sm:gap-3 sm:space-y-0 md:grid-cols-4 lg:px-0 xl:grid-cols-5">
             {[...Array(10)].map((_, i) => (
               <div key={i} className="h-[72px] animate-pulse rounded-xl bg-muted/70 sm:h-36" />
@@ -853,7 +578,8 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
                         <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-sm">
                           <span className="font-semibold tabular-nums">{formatCurrency(hh ? hh.effectivePrice : product.salePrice)}</span>
                           {product.isBulk && <span className="text-muted-foreground">por {product.bulkUnit ?? 'kg'}</span>}
-                          {hh && <span className="text-muted-foreground line-through tabular-nums">{formatCurrency(product.salePrice)}</span>}
+                          {hh && <span className="text-xs text-muted-foreground line-through tabular-nums">{formatCurrency(product.salePrice)}</span>}
+                          {(hh || offerTags.has(product.id)) && <OfferBadge>{hh?.label ?? offerTags.get(product.id)}</OfferBadge>}
                           <StockNote product={product} />
                         </span>
                       </span>
@@ -897,7 +623,12 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
                           ? <span className="rounded-full bg-primary px-1.5 text-[11px] font-semibold leading-5 text-primary-foreground tabular-nums">{Number(inCart.toFixed(2))}</span>
                           : <StockNote product={product} compact />}
                       </span>
-                      {hh && <span className="mt-0.5 text-[11px] text-primary">Hora feliz · antes <span className="line-through">{formatCurrency(product.salePrice)}</span></span>}
+                      {(hh || offerTags.has(product.id)) && (
+                        <span className="mt-1 flex items-center gap-1.5 text-[11px]">
+                          <OfferBadge>{hh?.label ?? offerTags.get(product.id)}</OfferBadge>
+                          {hh && <span className="text-muted-foreground line-through tabular-nums">{formatCurrency(product.salePrice)}</span>}
+                        </span>
+                      )}
                     </button>
                     {packOn && (
                       <button onClick={(e) => { e.currentTarget.blur(); tapPack(product); }}
@@ -929,8 +660,7 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
           onClose={() => setBulkProduct(null)}
         />
       )}
-      {showOffers && <OffersPanel onClose={() => setShowOffers(false)} />}
-      {showMisc && <MiscItemSheet onClose={() => setShowMisc(false)} />}
+            {showMisc && <MiscItemSheet onClose={() => setShowMisc(false)} />}
       {showCamera && (
         <CameraScanner
           onDetected={async (code) => (await onBarcodeSearch(code)) !== false}
