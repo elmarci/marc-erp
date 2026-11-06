@@ -307,8 +307,6 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
   // Descuento global por % (del subtotal) o por monto fijo en soles —
   // mutuamente excluyentes, igual que ya soporta el store internamente.
   const [discountMode, setDiscountMode] = useState<'percent' | 'amount'>('percent');
-  const [showDiscount, setShowDiscount] = useState(false);
-  const discountOpen = showDiscount || globalDiscountPercent > 0 || globalDiscountAmount > 0;
   const productImages = useProductCacheStore((st) => st.products);
 
   const handleQuantityChange = (productId: string, value: string) => {
@@ -478,60 +476,45 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
           </ul>
         )}
 
-        {/* Descuento global — por % del subtotal o por monto fijo en soles */}
-        {items.length > 0 && (
-          <div className="px-4 pb-4 pt-2 lg:px-3">
-            {!discountOpen ? (
-              <button type="button" onClick={() => setShowDiscount(true)}
-                className="flex items-center gap-2 py-1 text-sm font-medium text-primary">
-                <Tag className="h-4 w-4" />Agregar descuento
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 rounded-xl bg-muted/70 p-2">
-                <Tag className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="flex shrink-0 rounded-lg bg-background p-0.5">
-                  {(['percent', 'amount'] as const).map((m) => (
-                    <button key={m} type="button"
-                      className={cn('h-8 w-9 rounded-md text-sm font-semibold lg:h-7', discountMode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
-                      onClick={() => { setDiscountMode(m); setGlobalDiscount(0, 0); }}>
-                      {m === 'percent' ? '%' : 'S/'}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  key={discountMode}
-                  ref={discountRef}
-                  type="number" inputMode="decimal"
-                  min={0} max={discountMode === 'percent' ? 100 : undefined}
-                  step={discountMode === 'amount' ? 0.01 : 1}
-                  defaultValue={(discountMode === 'percent' ? globalDiscountPercent : globalDiscountAmount) || ''}
-                  placeholder="0"
-                  autoFocus={showDiscount && !globalDiscountPercent && !globalDiscountAmount}
-                  className="h-9 w-20 rounded-lg bg-background text-center text-sm font-semibold tabular-nums outline-none focus:ring-2 focus:ring-primary/40 lg:h-8"
-                  onBlur={(e) => {
-                    const v = parseFloat(e.target.value) || 0;
-                    if (discountMode === 'percent') setGlobalDiscount(0, Math.min(100, v));
-                    else setGlobalDiscount(Math.max(0, v), 0);
-                  }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                />
-                <span className="ml-auto pr-1 text-sm font-semibold text-success tabular-nums">
-                  {discountAmount > 0 ? `− ${formatCurrency(discountAmount)}` : ''}
-                </span>
-                {discountAmount === 0 && (
-                  <button type="button" aria-label="Cerrar descuento" onClick={() => setShowDiscount(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-background">
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Totales + cobrar */}
+      {/* Totales + cobrar (con el descuento fijo: % del subtotal o monto en soles) */}
       <div className="shrink-0 border-t border-border/60 bg-card px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 lg:px-3 lg:pb-3">
+        {items.length > 0 && (
+          <div className="mb-2.5 flex items-center gap-2">
+            <Tag className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Descuento</span>
+            <div className="flex shrink-0 rounded-lg bg-muted/80 p-0.5">
+              {(['percent', 'amount'] as const).map((m) => (
+                <button key={m} type="button"
+                  className={cn('h-8 w-9 rounded-md text-sm font-semibold lg:h-7', discountMode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}
+                  onClick={() => { setDiscountMode(m); setGlobalDiscount(0, 0); }}>
+                  {m === 'percent' ? '%' : 'S/'}
+                </button>
+              ))}
+            </div>
+            <input
+              key={discountMode}
+              ref={discountRef}
+              type="number" inputMode="decimal"
+              min={0} max={discountMode === 'percent' ? 100 : undefined}
+              step={discountMode === 'amount' ? 0.01 : 1}
+              defaultValue={(discountMode === 'percent' ? globalDiscountPercent : globalDiscountAmount) || ''}
+              placeholder="0"
+              className="h-9 w-20 rounded-lg bg-muted/80 text-center text-sm font-semibold tabular-nums outline-none focus:bg-card focus:ring-2 focus:ring-primary/40 lg:h-8"
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={(e) => {
+                const v = parseFloat(e.target.value) || 0;
+                if (discountMode === 'percent') setGlobalDiscount(0, Math.min(100, v));
+                else setGlobalDiscount(Math.max(0, v), 0);
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+            />
+            <span className="ml-auto text-sm font-semibold text-success tabular-nums">
+              {discountAmount > 0 ? `− ${formatCurrency(discountAmount)}` : ''}
+            </span>
+          </div>
+        )}
         {discountAmount > 0 && (
           <div className="mb-1 space-y-0.5 text-sm tabular-nums">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
