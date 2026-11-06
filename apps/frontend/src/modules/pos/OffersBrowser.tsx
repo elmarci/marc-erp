@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
-import { ArrowLeft, Plus, Search, Tag } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Plus, ScanBarcode, Search, Tag, X } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { usePosStore } from '@/stores/posStore';
 import { ProductThumb } from './ProductThumb';
-import { addCombo, addOfferProduct, discountedPrice, offerTag, useLiveOffers, type Offer } from './autoOffers';
+import { addCombo, addOfferProduct, discountedPrice, offerTag, setOfferScanHandler, useLiveOffers, type Offer } from './autoOffers';
+import { CameraScanner, isCameraScanSupported } from './CameraScanner';
 
 type Kind = 'discount' | 'pack' | 'combo';
 type Sort = 'venta' | 'ahorro' | 'vence' | 'az';
@@ -19,12 +20,18 @@ interface Entry {
   oldPrice: number;
   saving: number;
   categories: string[];
+  /** Códigos de barra (unidad y paquete) de los productos de la oferta. */
+  codes: string[];
   inCart: boolean;
   noStock: boolean;
 }
 
 const KIND_LABEL: Record<Kind | 'all', string> = { all: 'Todas', discount: 'Descuentos', pack: 'Packs', combo: 'Combos' };
 const PAGE = 20;
+
+function codesOf(p: { barcode: string | null; packBarcode?: string | null }) {
+  return [p.barcode, p.packBarcode].filter((c): c is string => !!c).map((c) => c.toLowerCase());
+}
 
 function fmtDate(iso?: string | null) {
   if (!iso) return null;
@@ -44,6 +51,13 @@ export function OffersBrowser({ onClose }: { onClose: () => void }) {
   const [cat, setCat] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>('venta');
   const [limit, setLimit] = useState(PAGE);
+  const [showCamera, setShowCamera] = useState(false);
+
+  // El lector de códigos busca la oferta del producto leído.
+  useEffect(() => {
+    setOfferScanHandler((code) => { setQ(code); setKind('all'); setCat(null); setLimit(PAGE); });
+    return () => setOfferScanHandler(null);
+  }, []);
 
   const entries = useMemo<Entry[]>(() => {
     const out: Entry[] = [];
@@ -55,6 +69,7 @@ export function OffersBrowser({ onClose }: { onClose: () => void }) {
           detail: o.products.map(({ quantity, product }) => `${(quantity ?? 1) > 1 ? `${quantity} ` : ''}${product.name}`).join(' + '),
           price: Number(o.value), oldPrice: sum, saving: Math.max(0, sum - Number(o.value)),
           categories: [...new Set(o.products.map((e) => e.product.category?.name).filter(Boolean))],
+          codes: o.products.flatMap((e) => codesOf(e.product)),
           inCart: o.products.some((e) => cartIds.has(e.product.id)),
           noStock: o.products.some(({ quantity, product }) => product.currentStock < (quantity ?? 1)),
         });
@@ -71,6 +86,7 @@ export function OffersBrowser({ onClose }: { onClose: () => void }) {
           price: isPack ? total : discountedPrice(o, orig), oldPrice: isPack ? orig * units : orig,
           saving: isPack ? orig * units - total : orig - discountedPrice(o, orig),
           categories: e.product.category?.name ? [e.product.category.name] : [],
+          codes: codesOf(e.product),
           inCart: cartIds.has(e.product.id),
           noStock: isPack ? e.product.currentStock < units : e.product.currentStock <= 0,
         });
@@ -93,7 +109,7 @@ export function OffersBrowser({ onClose }: { onClose: () => void }) {
     const list = entries.filter((e) =>
       (kind === 'all' || e.kind === kind) &&
       (!cat || e.categories.includes(cat)) &&
-      (!term || e.name.toLowerCase().includes(term) || e.detail.toLowerCase().includes(term) || offerTag(e.offer).toLowerCase().includes(term)));
+      (!term || e.codes.includes(term) || e.name.toLowerCase().includes(term) || e.detail.toLowerCase().includes(term) || offerTag(e.offer).toLowerCase().includes(term)));
     const byEnd = (e: Entry) => (e.offer.endDate ? new Date(e.offer.endDate).getTime() : Infinity);
     const cmp: Record<Sort, (a: Entry, b: Entry) => number> = {
       venta: (a, b) => Number(b.inCart) - Number(a.inCart) || b.saving - a.saving,
@@ -118,11 +134,25 @@ export function OffersBrowser({ onClose }: { onClose: () => void }) {
             </button>
             <h2 className="flex-1 text-lg font-semibold">Ofertas <span className="text-sm font-normal text-muted-foreground">{entries.length} vigentes</span></h2>
           </div>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
-            <input type="search" value={q} onChange={(e) => { setQ(e.target.value); reset(); }}
-              placeholder="Buscar oferta o producto" enterKeyHint="search"
-              className="h-11 w-full rounded-xl bg-muted pl-11 pr-3 text-sm outline-none focus:bg-card focus:ring-2 focus:ring-primary/40" />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+              <input type="text" value={q} onChange={(e) => { setQ(e.target.value); reset(); }}
+                placeholder="Buscar oferta, producto o código" enterKeyHint="search"
+                className="h-11 w-full rounded-xl bg-muted pl-11 pr-10 text-sm outline-none focus:bg-card focus:ring-2 focus:ring-primary/40" />
+              {q && (
+                <button onClick={() => { setQ(''); reset(); }} aria-label="Borrar búsqueda"
+                  className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {isCameraScanSupported() && (
+              <button onClick={() => setShowCamera(true)} aria-label="Buscar oferta con la cámara" title="Leer código con la cámara"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary active:scale-95">
+                <ScanBarcode className="h-5 w-5" />
+              </button>
+            )}
           </div>
           <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 h-scroll">
             {(['all', 'discount', 'pack', 'combo'] as const).map((k) => (
@@ -160,7 +190,7 @@ export function OffersBrowser({ onClose }: { onClose: () => void }) {
           ) : shown.length === 0 ? (
             <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
               <Tag className="h-10 w-10 opacity-25" />
-              <p className="text-sm">{entries.length === 0 ? 'No hay ofertas vigentes ahora' : 'Ninguna oferta coincide'}</p>
+              <p className="text-sm">{entries.length === 0 ? 'No hay ofertas vigentes ahora' : /^\d{6,}$/.test(q.trim()) ? 'Ese producto no tiene ofertas vigentes' : 'Ninguna oferta coincide'}</p>
             </div>
           ) : (
             <>
@@ -209,6 +239,14 @@ export function OffersBrowser({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
+      {showCamera && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <CameraScanner
+            onDetected={(code) => { setQ(code); setKind('all'); setCat(null); reset(); setShowCamera(false); return true; }}
+            onClose={() => setShowCamera(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }

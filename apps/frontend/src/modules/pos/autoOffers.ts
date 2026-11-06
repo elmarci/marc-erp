@@ -332,3 +332,14 @@ export function useCartSuggestions(): CartSuggestion[] {
     return out.sort((a, b) => b.saving - a.saving);
   }, [offers, items]);
 }
+
+// Mientras la pantalla de ofertas está abierta, lo que lee el lector de
+// códigos (o la cámara) se usa para buscar ofertas de ese producto en vez de
+// agregarlo a la venta.
+let offerScanHandler: ((code: string) => void) | null = null;
+export function setOfferScanHandler(h: ((code: string) => void) | null) { offerScanHandler = h; }
+export function routeScanToOffers(code: string): boolean {
+  if (!offerScanHandler) return false;
+  offerScanHandler(code);
+  return true;
+}

@@ -15,6 +15,7 @@ import { MiscItemSheet } from './PosCart';
 import { ProductThumb } from './ProductThumb';
 import { useAutoOffers } from './autoOffers';
 import { OffersBrowser } from './OffersBrowser';
+import { OfferSuggestions } from './OfferSuggestions';
 import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, wouldExceedStock, packExceedsStock, AUTO_ADJUST_HINT, type PackInfo } from './packSale';
 
 interface Product extends PackInfo {
@@ -43,6 +44,8 @@ interface PosProductPanelProps {
   onCheckout?: () => void;
   className?: string;
   onProductAdded?: () => void;
+  /** PC/tablet: muestra arriba de la grilla las ofertas que aplican a la venta. */
+  suggestOffers?: boolean;
 }
 
 
@@ -213,7 +216,7 @@ function AddButton({ count, onClick }: { count: number; onClick: () => void }) {
   );
 }
 
-export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosProductPanelProps) {
+export function PosProductPanel({ onBarcodeSearch, onCheckout, className, suggestOffers }: PosProductPanelProps) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
@@ -544,6 +547,8 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
           </div>
         )}
       </div>
+
+      {suggestOffers && <OfferSuggestions onSeeAll={() => setShowOffers(true)} className="px-4 pt-3" />}
 
       {/* Productos: lista en celular, grilla en PC/tablet */}
       <div className="flex-1 overflow-y-auto pb-4 sm:pt-3 lg:p-4">

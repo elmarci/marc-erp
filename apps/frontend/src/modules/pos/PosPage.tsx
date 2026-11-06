@@ -12,7 +12,7 @@ import { PosProductPanel } from './PosProductPanel';
 import { PosHeader } from './PosHeader';
 import { addPackToCart, hasPack, unitStockLeft, wouldExceedStock, type PackInfo } from './packSale';
 import { useTvCartSync, sendTvThanks } from './tvCartSync';
-import { autoDiscountFor, useAutoOffers } from './autoOffers';
+import { autoDiscountFor, routeScanToOffers, useAutoOffers } from './autoOffers';
 import { PosPaymentModal } from './PosPaymentModal';
 import { OpenSessionModal } from './OpenSessionModal';
 import { ReceiptModal, type ReceiptData } from './ReceiptModal';
@@ -172,11 +172,11 @@ export function PosPage() {
           e.stopPropagation();
           restoreSnapshotIfAny();
           (document.activeElement as HTMLElement | null)?.blur();
-          handleBarcodeScanned(barcodeBuffer.current);
+          if (!routeScanToOffers(barcodeBuffer.current)) handleBarcodeScanned(barcodeBuffer.current);
         } else if (!isEditable && barcodeBuffer.current.length >= 3) {
           e.preventDefault();
           (document.activeElement as HTMLElement | null)?.blur();
-          handleBarcodeScanned(barcodeBuffer.current);
+          if (!routeScanToOffers(barcodeBuffer.current)) handleBarcodeScanned(barcodeBuffer.current);
         }
         resetBuffer();
         return;
@@ -448,7 +448,7 @@ export function PosPage() {
       {isSplit ? (
         <div className="flex flex-1 overflow-hidden">
           <PosCart onCheckout={() => setShowPayment(true)} className="w-[21rem] lg:w-96 shrink-0" />
-          <PosProductPanel onBarcodeSearch={handleBarcodeScanned} onCheckout={() => setShowPayment(true)} className="flex-1 min-w-0" />
+          <PosProductPanel onBarcodeSearch={handleBarcodeScanned} onCheckout={() => setShowPayment(true)} className="flex-1 min-w-0" suggestOffers />
         </div>
       ) : (
         /* ── CELULAR/TABLET: productos con barra de carrito abajo; el carrito
