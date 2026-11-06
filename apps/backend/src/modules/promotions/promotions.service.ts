@@ -10,6 +10,8 @@ interface ComboItemInput { productId: string; quantity: number; asPack?: boolean
 const PRODUCT_SELECT = {
   id: true, name: true, salePrice: true, imageUrl: true, currentStock: true, barcode: true, isBulk: true, bulkUnit: true,
   packSize: true, packPrice: true, packLabel: true, packBarcode: true,
+  // El buscador de ofertas del POS filtra por categoría.
+  category: { select: { name: true } },
 } as const;
 
 export class PromotionsService {

@@ -12,6 +12,8 @@ import { useTvLiveStore } from '@/stores/tvLiveStore';
 import { TvLiveModal } from './TvLiveModal';
 import { useProductCacheStore } from '@/stores/productCacheStore';
 import { ProductThumb } from './ProductThumb';
+import { useCartSuggestions } from './autoOffers';
+import { OffersBrowser } from './OffersBrowser';
 
 interface Customer { id: string; firstName: string; lastName: string | null; phone: string | null; taxId: string | null }
 interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
@@ -286,6 +288,8 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showMiscItem, setShowMiscItem] = useState(false);
   const [showTv, setShowTv] = useState(false);
+  const [showOffers, setShowOffers] = useState(false);
+  const suggestions = useCartSuggestions();
   const tvOn = useTvLiveStore((s) => s.enabled);
   // Tanto "Dejó garantía" como "Sin garantía" dejan algo pendiente por
   // rastrear (a quién devolverle la plata en un caso, quién debe traer el
@@ -476,6 +480,33 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
           </ul>
         )}
 
+        {/* Ofertas que aplican a lo que se está vendiendo */}
+        {suggestions.length > 0 && (
+          <div className="px-4 pb-4 pt-2 lg:px-3">
+            <div className="rounded-xl bg-primary/5 p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
+                <Tag className="h-3.5 w-3.5" />Ofertas para esta venta
+              </p>
+              <ul className="space-y-2">
+                {suggestions.slice(0, 3).map((sg) => (
+                  <li key={sg.key} className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{sg.title}</p>
+                      <p className="text-xs text-muted-foreground">{sg.detail}</p>
+                    </div>
+                    <button onClick={sg.apply}
+                      className="h-9 shrink-0 rounded-full bg-primary px-3.5 text-sm font-semibold text-primary-foreground active:scale-95 lg:h-8 lg:text-xs">
+                      Aplicar
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button onClick={() => setShowOffers(true)} className="mt-2.5 text-xs font-medium text-primary">
+                Ver todas las ofertas{suggestions.length > 3 ? ` (+${suggestions.length - 3} para esta venta)` : ''}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Totales + cobrar (con el descuento fijo: % del subtotal o monto en soles) */}
@@ -562,6 +593,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
     )}
 
     {showTv && <TvLiveModal onClose={() => setShowTv(false)} />}
+    {showOffers && <OffersBrowser onClose={() => setShowOffers(false)} />}
     {showMiscItem && <MiscItemSheet onClose={() => setShowMiscItem(false)} />}
     </>
   );

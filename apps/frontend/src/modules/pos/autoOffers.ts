@@ -141,55 +141,88 @@ export function autoDiscountFor(productId: string, price: number): number {
   return d ? Math.max(0, round2(price - d.effectivePrice)) : 0;
 }
 
-/* ─── Agregar una oferta desde el filtro Ofertas ─────────────────────────── */
+/* ─── Agregar ofertas al carrito ─────────────────────────────────────────── */
 
-export function addOfferProduct(offer: Offer, product: Offer['products'][0]['product']) {
+// Cada oferta va en su propia línea del carrito (id del producto + sufijo), así
+// no se mezcla con las unidades sueltas del mismo producto ni pierde su
+// descuento. Al cobrar, PosPage se queda solo con lo que va antes del '#'.
+function offerLineId(product: { id: string; isPack?: boolean }, offerId: string) {
+  return product.isPack ? packLineFields(product) : { productId: `${product.id}#of-${offerId}` };
+}
+
+// Stock que queda para una línea de oferta, descontando lo que ya ocupan las
+// otras líneas del mismo producto en el carrito.
+function stockLeft(product: { id: string; currentStock: number; isPack?: boolean }, lineId: string) {
+  if (product.isPack) return product.currentStock;
+  const others = usePosStore.getState().items
+    .filter((i) => i.productId.split('#')[0] === product.id && i.productId !== lineId && !i.sellAsPack)
+    .reduce((s, i) => s + i.quantity, 0);
+  return Math.max(0, product.currentStock - others);
+}
+
+// Saca hasta `qty` unidades de la línea suelta del producto (si las hay): se
+// usa al convertir lo que ya estaba en el carrito en una oferta.
+function takeFromPlainLine(productId: string, qty: number): number {
+  const st = usePosStore.getState();
+  const line = st.items.find((i) => i.productId === productId);
+  if (!line || qty <= 0) return 0;
+  const taken = Math.min(line.quantity, qty);
+  st.updateQuantity(productId, line.quantity - taken);
+  return taken;
+}
+
+function packMath(offer: Offer, price: number) {
+  const units = offer.getQuantity ?? 3;
+  const total = offer.type === 'BUNDLE_PRICE' ? Number(offer.value) : round2(price * (offer.buyQuantity ?? 2));
+  return { units, total, perUnitDiscount: round2(price - round2(total / units)) };
+}
+
+/** Agrega el producto con la oferta. `convert` = usa las unidades sueltas que ya están en el carrito. */
+export function addOfferProduct(offer: Offer, product: Offer['products'][0]['product'], opts: { convert?: boolean; packs?: number } = {}) {
   const addItem = usePosStore.getState().addItem;
   const originalPrice = Number(product.salePrice);
   const label = offer.storeBadge ?? offer.name;
 
   if (offer.type === 'BUY_X_GET_Y' || offer.type === 'BUNDLE_PRICE') {
-    const paidUnits = offer.buyQuantity ?? 2;
-    const totalUnits = offer.getQuantity ?? 3;
-    // Precio total del pack — sin dividir entre unidades para evitar redondeo
-    const packPrice = offer.type === 'BUNDLE_PRICE' ? Number(offer.value) : round2(originalPrice * paidUnits);
-    const packLabel = `${label} — pack de ${totalUnits}`;
-    // La cantidad que se agrega son las unidades FÍSICAS del pack (no "1
-    // pack"), para que el stock se descuente bien.
-    if (product.currentStock < totalUnits) {
-      toast.error(`No hay stock suficiente de "${product.name}" para esta oferta (necesita ${totalUnits}, disponible: ${product.currentStock}).`);
+    const { units, total, perUnitDiscount } = packMath(offer, originalPrice);
+    const packs = opts.packs ?? 1;
+    const ids = offerLineId(product, offer.id);
+    if (opts.convert && !product.isPack) takeFromPlainLine(product.id, units * packs);
+    if (stockLeft(product, ids.productId) - (usePosStore.getState().items.find((i) => i.productId === ids.productId)?.quantity ?? 0) < units * packs) {
+      toast.error(`No hay stock suficiente de "${product.name}" para esta oferta (necesita ${units * packs}).`);
       return;
     }
-    const perUnitDiscount = round2(originalPrice - round2(packPrice / totalUnits));
     const r = addItem({
-      ...packLineFields(product),
-      name: `${product.name} (${packLabel})`,
-      barcode: product.barcode, quantity: totalUnits,
+      ...ids,
+      name: `${product.name} (${offerTag(offer)})`,
+      barcode: product.barcode, quantity: units * packs,
       unitPrice: originalPrice, originalPrice, discountAmount: perUnitDiscount, discountPercent: 0,
-      stock: product.currentStock, packSize: totalUnits,
+      stock: stockLeft(product, ids.productId), packSize: units,
     });
-    if (r.addedQuantity <= 0) toast.error(`No hay stock suficiente de "${product.name}" para otro paquete de ${totalUnits}.`);
-    else if (r.capped) toast.warning(`Solo se pudieron agregar ${r.addedQuantity} unidad(es) más de "${product.name}": stock limitado.`);
-    else toast.success(`${packLabel} agregado: ${formatCurrency(packPrice)}`);
+    if (r.addedQuantity <= 0) toast.error(`No hay stock suficiente de "${product.name}" para otro paquete de ${units}.`);
+    else toast.success(`${label}: ${units * packs} ${product.name} por ${formatCurrency(total * packs)}`, { duration: 1800 });
     return;
   }
 
   // Descuento simple (% o monto fijo)
   const finalPrice = discountedPrice(offer, originalPrice);
+  const ids = offerLineId(product, offer.id);
+  const qty = opts.convert && !product.isPack ? takeFromPlainLine(product.id, Infinity) || 1 : 1;
   const r = addItem({
-    ...packLineFields(product),
-    name: product.name,
-    barcode: product.barcode, quantity: 1,
+    ...ids,
+    name: `${product.name} (${offerTag(offer)})`,
+    barcode: product.barcode, quantity: qty,
     unitPrice: originalPrice, originalPrice, discountAmount: round2(originalPrice - finalPrice), discountPercent: 0,
-    stock: product.currentStock,
+    stock: stockLeft(product, ids.productId),
   });
-  if (r.addedQuantity <= 0) { toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito (${product.currentStock}).`); return; }
-  toast.success(`${product.name} con oferta: ${formatCurrency(finalPrice)}`, { duration: 1500 });
+  if (r.addedQuantity <= 0) { toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito.`); return; }
+  toast.success(`${product.name} con oferta: ${formatCurrency(finalPrice)} c/u`, { duration: 1500 });
 }
 
 // Combo de productos DISTINTOS a un precio total fijo: se agregan todos los
 // componentes de una vez y el descuento se reparte en proporción a su precio
-// normal, para que la suma de subtotales dé exacto el precio del combo.
+// normal, para que la suma de subtotales dé exacto el precio del combo. Si un
+// componente ya estaba suelto en el carrito, se usa esa unidad (no se duplica).
 export function addCombo(offer: Offer) {
   const addItem = usePosStore.getState().addItem;
   const comboTotal = Number(offer.value);
@@ -205,7 +238,6 @@ export function addCombo(offer: Offer) {
   if (sumPrice <= 0) return;
   const totalDiscount = Math.max(0, round2(sumPrice - comboTotal));
   let assigned = 0;
-  let anyCapped = false;
   items.forEach(({ quantity, product }, idx) => {
     const qty = quantity ?? 1;
     const orig = Number(product.salePrice);
@@ -213,15 +245,90 @@ export function addCombo(offer: Offer) {
       ? round2(totalDiscount - assigned)
       : round2(totalDiscount * ((orig * qty) / sumPrice));
     assigned += lineDiscount;
-    const r = addItem({
-      ...packLineFields(product),
+    if (!product.isPack) takeFromPlainLine(product.id, qty);
+    const lineId = product.isPack ? packLineFields(product) : { productId: `${product.id}#combo-${offer.id}` };
+    addItem({
+      ...lineId,
       name: `${product.name} (${offer.storeBadge ?? offer.name})`,
       barcode: product.barcode, quantity: qty,
       unitPrice: orig, originalPrice: orig, discountAmount: round2(lineDiscount / qty), discountPercent: 0,
-      stock: product.currentStock,
+      // El combo se vende aunque el sistema marque poco stock de algún componente
+      // ya contado arriba; el tope real lo controla la validación previa.
+      stock: Math.max(qty, stockLeft(product, lineId.productId)),
     });
-    if (r.capped) anyCapped = true;
   });
-  if (anyCapped) toast.warning('Stock limitado en algún producto del combo: se agregó lo disponible.');
-  else toast.success(`${offer.name} agregado: ${formatCurrency(comboTotal)}`);
+  toast.success(`${offer.name} agregado: ${formatCurrency(comboTotal)}`);
+}
+
+/* ─── Ofertas recomendadas para la venta en curso ────────────────────────── */
+
+export interface CartSuggestion {
+  key: string;
+  offer: Offer;
+  title: string;
+  detail: string;
+  saving: number;
+  apply: () => void;
+}
+
+/**
+ * Ofertas que aplican a lo que ya está en el carrito, ordenadas por ahorro:
+ * - Pack ("lleva 3 paga 2") de un producto que se está llevando suelto.
+ * - Descuento de un producto que entró sin él (p. ej. antes de cargar las ofertas).
+ * - Combo que incluye algún producto del carrito.
+ */
+export function useCartSuggestions(): CartSuggestion[] {
+  const { data: offers } = useLiveOffers();
+  const items = usePosStore((s) => s.items);
+  return useMemo(() => {
+    const plain = new Map(items.filter((i) => !i.productId.includes('#')).map((i) => [i.productId, i]));
+    if (plain.size === 0 || !offers) return [];
+    const out: CartSuggestion[] = [];
+    for (const o of offers) {
+      if (o.type === 'COMBO') {
+        const inCart = o.products.filter((e) => !e.product.isPack && plain.has(e.product.id));
+        if (inCart.length === 0) continue;
+        const missing = o.products.filter((e) => !inCart.includes(e));
+        const sum = o.products.reduce((s, { quantity, product }) => s + Number(product.salePrice) * (quantity ?? 1), 0);
+        const saving = round2(sum - Number(o.value));
+        if (saving <= 0) continue;
+        out.push({
+          key: `combo-${o.id}`, offer: o, saving,
+          title: `${o.name}: ${formatCurrency(Number(o.value))}`,
+          detail: missing.length ? `Agrega ${missing.map((m) => m.product.name).join(' y ')} y ahorra ${formatCurrency(saving)}` : `Ya lleva todo: ahorra ${formatCurrency(saving)}`,
+          apply: () => addCombo(o),
+        });
+        continue;
+      }
+      for (const e of o.products) {
+        const line = !e.asPack ? plain.get(e.product.id) : undefined;
+        if (!line) continue;
+        const price = Number(e.product.salePrice);
+        if (o.type === 'BUY_X_GET_Y' || o.type === 'BUNDLE_PRICE') {
+          const { units, total, perUnitDiscount } = packMath(o, price);
+          if (perUnitDiscount <= 0) continue;
+          const packs = Math.max(1, Math.floor(line.quantity / units));
+          const add = Math.max(0, packs * units - line.quantity);
+          out.push({
+            key: `pack-${o.id}-${e.product.id}`, offer: o, saving: round2(perUnitDiscount * units * packs),
+            title: `${e.product.name}: ${offerTag(o)}`,
+            detail: add > 0
+              ? `Agrega ${add} más: ${units} por ${formatCurrency(total)}`
+              : `Aplica a ${packs * units} unidades: ahorra ${formatCurrency(round2(perUnitDiscount * units * packs))}`,
+            apply: () => addOfferProduct(o, e.product, { convert: true, packs }),
+          });
+        } else if (o.type === 'PERCENTAGE_DISCOUNT' || o.type === 'FIXED_DISCOUNT') {
+          const disc = round2(price - discountedPrice(o, price));
+          if (disc <= line.discountAmount + 0.001) continue;
+          out.push({
+            key: `disc-${o.id}-${e.product.id}`, offer: o, saving: round2((disc - line.discountAmount) * line.quantity),
+            title: `${e.product.name}: ${offerTag(o)}`,
+            detail: `Queda a ${formatCurrency(price - disc)} c/u`,
+            apply: () => addOfferProduct(o, e.product, { convert: true }),
+          });
+        }
+      }
+    }
+    return out.sort((a, b) => b.saving - a.saving);
+  }, [offers, items]);
 }

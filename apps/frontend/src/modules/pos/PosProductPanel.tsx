@@ -14,7 +14,7 @@ import { CameraScanner, isCameraScanSupported } from './CameraScanner';
 import { MiscItemSheet } from './PosCart';
 import { ProductThumb } from './ProductThumb';
 import { useAutoOffers } from './autoOffers';
-import { OffersList } from './OffersList';
+import { OffersBrowser } from './OffersBrowser';
 import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, wouldExceedStock, packExceedsStock, AUTO_ADJUST_HINT, type PackInfo } from './packSale';
 
 interface Product extends PackInfo {
@@ -231,8 +231,8 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
   // Último toque en un producto sin stock en el sistema: el segundo toque
   // seguido lo vende igual (ver onTapNoStock).
   const lastTap = useRef<{ key: string; at: number }>({ key: '', at: 0 });
-  // Filtro Ofertas: muestra los productos en oferta y combos en la misma lista.
-  const [offersOnly, setOffersOnly] = useState(false);
+  // Pantalla de ofertas (buscador + filtros), dentro del mismo punto de venta.
+  const [showOffers, setShowOffers] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showMisc, setShowMisc] = useState(false);
   const hasFinePointer = useMemo(() => typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches, []);
@@ -448,8 +448,8 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
     }
   };
 
-  const resetFilters = () => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); setBulkOnly(false); setFavoriteOnly(false); setOffersOnly(false); };
-  const allActive = selectedCategory === null && !bulkOnly && !favoriteOnly && !offersOnly;
+  const resetFilters = () => { clearSearch(); setSelectedCategory(null); setSelectedSubcategory(null); setBulkOnly(false); setFavoriteOnly(false); };
+  const allActive = selectedCategory === null && !bulkOnly && !favoriteOnly;
 
   // Toque en un producto: si el sistema no tiene stock, el primer toque avisa
   // y el segundo seguido lo vende igual.
@@ -517,21 +517,21 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
         {/* Filtros: píldoras sin borde; la activa en tinta oscura */}
         <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 h-scroll">
           <Chip active={allActive} onClick={resetFilters}>Todos</Chip>
-          <Chip active={offersOnly} onClick={() => { setOffersOnly((v) => !v); setBulkOnly(false); setFavoriteOnly(false); setSelectedCategory(null); setSelectedSubcategory(null); }}
+          <Chip onClick={() => setShowOffers(true)}
             icon={<Tag className="h-3.5 w-3.5" />}>Ofertas{offers.length > 0 && <span className="tabular-nums opacity-70">{offers.length}</span>}</Chip>
-          <Chip active={favoriteOnly} onClick={() => { clearSearch(); setOffersOnly(false); setFavoriteOnly((v) => !v); }} icon={<Star className="h-3.5 w-3.5" />}>Favoritos</Chip>
-          <Chip active={bulkOnly} onClick={() => { clearSearch(); setOffersOnly(false); setBulkOnly((v) => !v); }}>A granel</Chip>
+          <Chip active={favoriteOnly} onClick={() => { clearSearch(); setFavoriteOnly((v) => !v); }} icon={<Star className="h-3.5 w-3.5" />}>Favoritos</Chip>
+          <Chip active={bulkOnly} onClick={() => { clearSearch(); setBulkOnly((v) => !v); }}>A granel</Chip>
           <Chip onClick={() => setShowMisc(true)} icon={<Plus className="h-3.5 w-3.5" />}>Manual</Chip>
           <span aria-hidden className="mx-1 my-2 w-px shrink-0 bg-border" />
           {categories?.map((cat) => (
             <Chip key={cat.id} active={selectedCategory === cat.id}
-              onClick={() => { clearSearch(); setOffersOnly(false); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}>
+              onClick={() => { clearSearch(); setSelectedCategory(cat.id); setSelectedSubcategory(null); }}>
               {cat.name}
             </Chip>
           ))}
         </div>
         {/* Subcategorías de la categoría general seleccionada */}
-        {subcategories.length > 0 && !offersOnly && (
+        {subcategories.length > 0 && (
           <div className="-mx-4 flex gap-4 overflow-x-auto px-4 text-sm h-scroll">
             {[{ id: null as string | null, name: 'Todas' }, ...subcategories].map((sub) => (
               <button key={sub.id ?? 'all'}
@@ -547,9 +547,7 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
 
       {/* Productos: lista en celular, grilla en PC/tablet */}
       <div className="flex-1 overflow-y-auto pb-4 sm:pt-3 lg:p-4">
-        {offersOnly ? (
-          <OffersList offers={offers} search={search} />
-        ) : isLoading ? (
+        {isLoading ? (
           <div className="space-y-px px-4 sm:grid sm:grid-cols-3 sm:gap-3 sm:space-y-0 md:grid-cols-4 lg:px-0 xl:grid-cols-5">
             {[...Array(10)].map((_, i) => (
               <div key={i} className="h-[72px] animate-pulse rounded-xl bg-muted/70 sm:h-36" />
@@ -660,7 +658,8 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className }: PosP
           onClose={() => setBulkProduct(null)}
         />
       )}
-            {showMisc && <MiscItemSheet onClose={() => setShowMisc(false)} />}
+            {showOffers && <OffersBrowser onClose={() => setShowOffers(false)} />}
+      {showMisc && <MiscItemSheet onClose={() => setShowMisc(false)} />}
       {showCamera && (
         <CameraScanner
           onDetected={async (code) => (await onBarcodeSearch(code)) !== false}
