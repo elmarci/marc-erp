@@ -5,6 +5,7 @@ import { GoogleLogin, type CredentialResponse } from '@react-oauth/google'
 import { api, storeApi } from '../api'
 import { useAuthStore } from '../authStore'
 import { toast } from 'sonner'
+import { Link } from 'react-router-dom'
 
 // El botón de Google sólo se pinta si hay Client ID — sin GoogleOAuthProvider
 // montado en main.tsx, <GoogleLogin> no tiene contexto y rompería el render.
@@ -190,6 +191,11 @@ export function AuthGate() {
 
         <p className="flex items-center justify-center gap-1.5 text-xs text-paper-ink-ghost mt-4">
           <ShieldCheck className="h-3.5 w-3.5" />Tus datos están seguros con nosotros
+        </p>
+        <p className="text-center text-xs text-paper-ink-ghost mt-2">
+          Al continuar aceptas los{' '}
+          <Link to="/terminos" className="underline hover:text-paper-ink-soft">Términos y condiciones</Link> y la{' '}
+          <Link to="/privacidad" className="underline hover:text-paper-ink-soft">Política de privacidad</Link>.
         </p>
       </div>
     </div>
