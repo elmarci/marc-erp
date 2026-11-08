@@ -20,6 +20,7 @@ import { TrackOrderPage } from './pages/TrackOrderPage'
 import { OffersPage } from './pages/OffersPage'
 import { BasketPage } from './pages/BasketPage'
 import { TvPage } from './pages/TvPage'
+import { PrivacyPage, TermsPage } from './pages/LegalPage'
 
 export default function App() {
   const location = useLocation()
@@ -40,6 +41,11 @@ export default function App() {
   // Pantalla de la TV de la tienda: pública, sin login ni cabecera/banners de
   // la app — nadie la maneja, solo muestra ofertas y precios en loop.
   if (location.pathname === '/tv') return <TvPage />
+
+  // Políticas: públicas y sin login — Google las exige para el inicio de
+  // sesión con Google y deben poder leerse antes de registrarse.
+  if (location.pathname === '/privacidad') return <PrivacyPage />
+  if (location.pathname === '/terminos') return <TermsPage />
 
   // El registro es la vía principal (perfil real, historial, puntos) pero
   // quien no quiera crear cuenta puede seguir como invitado y pedir por
