@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/services/api';
+import { useAuthStore } from '@/stores/authStore';
 import { cn, formatCurrency, formatDateTime, STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -60,6 +61,8 @@ function limaDateStr(date: Date): string {
 type SortField = 'createdAt' | 'totalAmount' | 'saleNumber';
 
 export function SalesPage() {
+  // Cajero/vendedor y almacén: solo sus ventas del día (el backend lo fuerza igual).
+  const limited = useAuthStore((st) => st.hasRole('CASHIER', 'WAREHOUSE'));
   const [searchParams, setSearchParams] = useSearchParams();
   const page = parseInt(searchParams.get('page') ?? '1');
 
@@ -149,12 +152,14 @@ export function SalesPage() {
   const { data: summary } = useQuery({
     queryKey: ['sales-summary', filterParams.toString()],
     queryFn: async () => (await api.get<{ data: SalesSummary }>(`/sales/summary?${filterParams.toString()}`)).data.data,
+    enabled: !limited,
   });
 
   const { data: cashiers } = useQuery({
     queryKey: ['sales-cashiers'],
     queryFn: async () => (await api.get<{ data: Cashier[] }>('/sales/meta/cashiers')).data.data,
     staleTime: 5 * 60_000,
+    enabled: !limited,
   });
 
   const toggleSort = (field: SortField) => {
@@ -181,11 +186,11 @@ export function SalesPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Ventas</h1>
-          <p className="text-sm text-muted-foreground">Historial, filtros avanzados y reportes de ventas</p>
+          <h1 className="text-2xl font-bold">{limited ? 'Mis ventas de hoy' : 'Ventas'}</h1>
+          {!limited && <p className="text-sm text-muted-foreground">Historial, filtros avanzados y reportes de ventas</p>}
         </div>
         <div className="flex gap-2">
-          {pageTab === 'historial' && (
+          {pageTab === 'historial' && !limited && (
             <Button variant="outline" onClick={() => downloadExcel(exportUrl(), 'ventas.xlsx')}>
               <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
             </Button>
@@ -224,6 +229,11 @@ export function SalesPage() {
       )}
 
       {pageTab === 'historial' && (
+      <>
+      {limited && (
+        <p className="text-sm text-muted-foreground">Tus ventas de hoy. Puedes abrir cada una para reimprimir el ticket o hacer una devolución.</p>
+      )}
+      {!limited && (
       <>
       {/* KPI cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -402,6 +412,9 @@ export function SalesPage() {
           </div>
         </CardContent>
       </Card>
+
+      </>
+      )}
 
       <Card>
         <CardContent className="p-0">
