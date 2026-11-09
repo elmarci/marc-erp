@@ -108,7 +108,7 @@ export function SalesPage() {
     ? { from: limaDateStr(new Date(Date.now() - PRESETS[preset].days * 86400000)), to: limaDateStr(new Date()) }
     : null;
 
-  const hasFilters = !!(debouncedSearch || status || paymentMethod || documentType || cashierId || isCredit || minTotal || maxTotal || dateFrom || dateTo || preset !== 3);
+  const hasFilters = !!(debouncedSearch || status || paymentMethod || documentType || cashierId || isCredit || minTotal || maxTotal || (!limited && (dateFrom || dateTo || preset !== 3)));
 
   const clearFilters = () => {
     setSearch('');
@@ -159,7 +159,6 @@ export function SalesPage() {
     queryKey: ['sales-cashiers'],
     queryFn: async () => (await api.get<{ data: Cashier[] }>('/sales/meta/cashiers')).data.data,
     staleTime: 5 * 60_000,
-    enabled: !limited,
   });
 
   const toggleSort = (field: SortField) => {
@@ -186,7 +185,7 @@ export function SalesPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{limited ? 'Mis ventas de hoy' : 'Ventas'}</h1>
+          <h1 className="text-2xl font-bold">{limited ? 'Ventas de hoy' : 'Ventas'}</h1>
           {!limited && <p className="text-sm text-muted-foreground">Historial, filtros avanzados y reportes de ventas</p>}
         </div>
         <div className="flex gap-2">
@@ -231,7 +230,7 @@ export function SalesPage() {
       {pageTab === 'historial' && (
       <>
       {limited && (
-        <p className="text-sm text-muted-foreground">Tus ventas de hoy. Puedes abrir cada una para reimprimir el ticket o hacer una devolución.</p>
+        <p className="text-sm text-muted-foreground">Ventas de hoy de la tienda. Filtra por pago, cliente o cajero, y abre cada una para reimprimir el ticket o hacer una devolución.</p>
       )}
       {!limited && (
       <>
@@ -337,7 +336,10 @@ export function SalesPage() {
         </div>
       )}
 
-      {/* Filters */}
+      </>
+      )}
+
+      {/* Filters — cajero/vendedor también filtra, pero siempre dentro del día */}
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
@@ -346,6 +348,7 @@ export function SalesPage() {
               <Input className="pl-9" placeholder="Buscar por N° venta, cliente, documento o cajero..."
                 value={search} onChange={(e) => handleSearch(e.target.value)} />
             </div>
+            {!limited && (<>
             <div className="flex gap-1 rounded-lg border p-1">
               {PRESETS.map((p, i) => (
                 <button key={p.label} type="button"
@@ -362,6 +365,7 @@ export function SalesPage() {
             </div>
             <Input type="date" value={dateFrom} onChange={(e) => setParam('dateFrom', e.target.value)} className="w-40" title="Desde" />
             <Input type="date" value={dateTo} onChange={(e) => setParam('dateTo', e.target.value)} className="w-40" title="Hasta" />
+            </>)}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -412,9 +416,6 @@ export function SalesPage() {
           </div>
         </CardContent>
       </Card>
-
-      </>
-      )}
 
       <Card>
         <CardContent className="p-0">

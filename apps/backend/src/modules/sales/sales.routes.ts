@@ -7,8 +7,8 @@ import { sendExcel } from '../../utils/excel';
 import { limaDateFromParam, limaDateToParam, parseLimaDate, todayLimaDateString } from '../../utils/timezone';
 import { NotFoundError } from '../../utils/errors';
 
-// Cajero/vendedor y almacén solo ven SUS ventas del día (reimprimir o devolver);
-// totales, otros días, exportar y ventas de otras cajas quedan para supervisor+.
+// Cajero/vendedor y almacén solo ven las ventas DEL DÍA (pueden filtrarlas por
+// pago, cliente, cajero…); totales, otros días y exportar quedan para supervisor+.
 const isLimitedRole = (role?: string) => role === 'CASHIER' || role === 'WAREHOUSE';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -116,8 +116,6 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const query = listSchema.parse(req.query) as ListSalesQuery;
     if (isLimitedRole(req.user!.role)) {
       const today = todayLimaDateString();
-      query.cashierId = req.user!.sub;
-      query.cashSessionId = undefined;
       query.dateFrom = parseLimaDate(today, false);
       query.dateTo = parseLimaDate(today, true);
     }
@@ -134,7 +132,7 @@ router.get('/summary', authorizeMinRole('SUPERVISOR'), async (req: Request, res:
   } catch (err) { next(err); }
 });
 
-router.get('/meta/cashiers', authorizeMinRole('SUPERVISOR'), async (_req: Request, res: Response, next: NextFunction) => {
+router.get('/meta/cashiers', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const cashiers = await salesService.listCashiers();
     res.json({ success: true, data: cashiers });
