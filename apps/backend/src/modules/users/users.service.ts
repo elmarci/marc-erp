@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import { UserRole, UserStatus, Prisma } from '@prisma/client';
+import type { WorkSchedule } from '../attendance/attendance.service';
 import { prisma } from '../../database/client';
 import { env } from '../../config/env';
 import {
@@ -17,6 +18,7 @@ export interface CreateUserInput {
   role: UserRole;
   password: string;
   pin?: string;
+  workSchedule?: WorkSchedule | null;
 }
 
 interface UpdateUserInput {
@@ -26,6 +28,7 @@ interface UpdateUserInput {
   role?: UserRole;
   status?: UserStatus;
   pin?: string;
+  workSchedule?: WorkSchedule | null;
 }
 
 export interface ListUsersQuery {
@@ -65,6 +68,7 @@ export class UsersService {
         passwordHash,
         pin: pinHash,
         mustChangePassword: true,
+        ...(input.workSchedule ? { workSchedule: input.workSchedule } : {}),
       },
       select: {
         id: true,
@@ -116,6 +120,7 @@ export class UsersService {
           role: true,
           status: true,
           lastLoginAt: true,
+          workSchedule: true,
           createdAt: true,
         },
         skip,
@@ -151,6 +156,7 @@ export class UsersService {
         mustChangePassword: true,
         lastLoginAt: true,
         avatarUrl: true,
+        workSchedule: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -182,6 +188,9 @@ export class UsersService {
         ...(input.role !== undefined ? { role: input.role } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
         ...(pinHash !== undefined ? { pin: pinHash || null } : {}),
+        ...(input.workSchedule !== undefined
+          ? { workSchedule: input.workSchedule ?? Prisma.DbNull }
+          : {}),
       },
       select: {
         id: true,

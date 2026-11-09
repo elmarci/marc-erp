@@ -1,11 +1,12 @@
 import { useNavigate } from 'react-router-dom';
-import { LogOut, User, Moon, Sun, Bell, Menu } from 'lucide-react';
+import { LogOut, User, Moon, Sun, Bell, Menu, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/services/api';
 import { getInitials, ROLE_LABELS } from '@/lib/utils';
 import { useState } from 'react';
+import { MARK_LABELS, useMyAttendance } from '@/modules/attendance/attendance';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +19,10 @@ import {
 export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const { user, logout, refreshToken } = useAuthStore();
   const navigate = useNavigate();
+  // Atajo de marcación para quien tiene horario asignado (vendedoras, etc.):
+  // lleva a Asistencia, donde confirma y ve sus marcas del día.
+  const { data: attendance } = useMyAttendance(!!user);
+  const pendingMark = attendance?.schedule ? attendance.nextAction : null;
   const [darkMode, setDarkMode] = useState(
     () => document.documentElement.classList.contains('dark'),
   );
@@ -50,6 +55,12 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
       <div className="hidden lg:block" />
 
       <div className="flex items-center gap-2">
+        {pendingMark && (
+          <Button variant={pendingMark === 'CHECK_IN' ? 'default' : 'outline'} size="sm" onClick={() => navigate('/attendance')}>
+            <Clock className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">{MARK_LABELS[pendingMark]}</span>
+          </Button>
+        )}
         {/* Notificaciones */}
         <Button variant="ghost" size="icon" aria-label="Notificaciones">
           <Bell className="h-5 w-5" />

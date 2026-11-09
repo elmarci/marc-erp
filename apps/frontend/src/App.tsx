@@ -21,6 +21,7 @@ import { RidersPage } from '@/modules/riders/RidersPage';
 import { TvScreenPage } from '@/modules/tv/TvScreenPage';
 import { CashPage } from '@/modules/cash/CashPage';
 import { UsersPage } from '@/modules/users/UsersPage';
+import { AttendancePage } from '@/modules/attendance/AttendancePage';
 import { SettingsPage } from '@/modules/settings/SettingsPage';
 import { CategoriesPage } from '@/modules/categories/CategoriesPage';
 import { ChangePasswordPage } from '@/modules/auth/ChangePasswordPage';
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="riders" element={<RidersPage />} />
           <Route path="tv" element={<TvScreenPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="attendance" element={<AttendancePage />} />
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
