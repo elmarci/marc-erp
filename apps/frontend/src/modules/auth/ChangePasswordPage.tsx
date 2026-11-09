@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api, getErrorMessage } from '@/services/api';
@@ -26,7 +26,7 @@ type FormData = z.infer<typeof schema>;
 
 export function ChangePasswordPage() {
   const navigate = useNavigate();
-  const { setUser, user } = useAuthStore();
+  const { setUser, user, logout, refreshToken } = useAuthStore();
   const [loading, setLoading] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
@@ -44,6 +44,19 @@ export function ChangePasswordPage() {
       toast.error(getErrorMessage(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Salir sin cambiarla ahora: cierra la sesión y vuelve al login (p. ej. para
+  // entrar con otra cuenta). El cambio se volverá a pedir en el próximo ingreso.
+  const handleExit = async () => {
+    try {
+      if (refreshToken) await api.post('/auth/logout', { refreshToken });
+    } catch {
+      // Si falla, igual cerramos la sesión local.
+    } finally {
+      logout();
+      navigate('/login', { replace: true });
     }
   };
 
@@ -81,6 +94,14 @@ export function ChangePasswordPage() {
               Cambiar Contraseña
             </Button>
           </form>
+          <button
+            type="button"
+            onClick={handleExit}
+            className="mt-5 flex w-full items-center justify-center gap-2 text-sm text-slate-400 hover:text-slate-200"
+          >
+            <LogOut className="h-4 w-4" />
+            Ahora no, volver al inicio de sesión
+          </button>
         </div>
       </div>
     </div>
