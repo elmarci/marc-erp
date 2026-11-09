@@ -26,8 +26,24 @@ type FormData = z.infer<typeof schema>;
 
 export function ChangePasswordPage() {
   const navigate = useNavigate();
-  const { setUser, user } = useAuthStore();
+  const { setUser, user, logout, refreshToken } = useAuthStore();
   const [loading, setLoading] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  // Salir sin cambiar la contraseña: cierra esta sesión y vuelve al login
+  // general (para entrar con otra cuenta). La cuenta sigue marcada para cambio
+  // obligatorio, así que la próxima vez que entre se le volverá a pedir.
+  const handleExit = async () => {
+    setLeaving(true);
+    try {
+      if (refreshToken) await api.post('/auth/logout', { refreshToken }, { timeout: 4000 });
+    } catch {
+      // Si falla el logout en el servidor, igual limpiamos la sesión local.
+    } finally {
+      logout();
+      navigate('/login', { replace: true });
+    }
+  };
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -81,6 +97,22 @@ export function ChangePasswordPage() {
               Cambiar Contraseña
             </Button>
           </form>
+
+          <div className="mt-6 border-t border-slate-700 pt-4 text-center">
+            {user && (
+              <p className="mb-2 text-xs text-slate-400">
+                Sesión de <span className="font-medium text-slate-300">{user.firstName} {user.lastName}</span> ({user.username})
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleExit}
+              disabled={leaving || loading}
+              className="text-sm font-medium text-slate-300 underline-offset-4 hover:text-white hover:underline disabled:opacity-50"
+            >
+              {leaving ? 'Saliendo…' : 'Ahora no, salir e ingresar con otra cuenta'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
