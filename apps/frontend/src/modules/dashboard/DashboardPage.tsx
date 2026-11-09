@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/services/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { useAuthStore } from '@/stores/authStore';
+import { CashierDashboard } from './CashierDashboard';
 
 // Fijado a hora de Lima — sin esto, el encabezado y la hora de "ventas
 // recientes" se muestran en la zona horaria del navegador del cajero.
@@ -85,7 +87,14 @@ function KpiCard({
   );
 }
 
+// Cajero/vendedor: dashboard solo del día + su jornada y sus ventas. El resto
+// de roles ve el dashboard completo.
 export function DashboardPage() {
+  const role = useAuthStore((s) => s.user?.role);
+  return role === 'CASHIER' ? <CashierDashboard /> : <FullDashboard />;
+}
+
+function FullDashboard() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: async () => {

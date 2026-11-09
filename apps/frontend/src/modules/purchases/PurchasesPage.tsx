@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
@@ -508,6 +508,78 @@ interface DirectLine {
   trackExpiry: boolean; batchNumber: string; expiryDate: string;
 }
 
+/* ─── Catálogo del proveedor (opcional, colapsado) ─────────────────────── */
+// Antes se mostraba completo encima del formulario y, con proveedores de
+// 100+ productos, había que bajar mucho para llegar a "Agregar productos".
+// Ahora es un acceso plegado: se abre solo si se quiere consultar.
+function SupplierCatalogPicker({ catalog, onPick }: {
+  catalog: SupplierCatalogItem[];
+  onPick: (item: SupplierCatalogItem) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
+  if (catalog.length === 0) return null;
+  const q = filter.trim().toLowerCase();
+  const shown = q ? catalog.filter(c => c.product.name.toLowerCase().includes(q)) : catalog;
+  return (
+    <div className="rounded-lg border">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-muted/50 rounded-lg">
+        <span className="flex items-center gap-2 font-medium">
+          <BookOpen className="h-4 w-4 text-muted-foreground" />
+          {open ? 'Ocultar catálogo del proveedor' : 'Ver catálogo del proveedor'}
+          <span className="text-xs font-normal text-muted-foreground">({catalog.length})</span>
+        </span>
+        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+      </button>
+      {open && (
+        <div className="border-t p-3 space-y-2">
+          {catalog.length > 12 && (
+            <Input placeholder="Filtrar catálogo..." value={filter} onChange={e => setFilter(e.target.value)} className="h-8" />
+          )}
+          <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+            {shown.map(c => (
+              <button key={c.productId} type="button" onClick={() => onPick(c)}
+                className="rounded-full border px-3 py-1 text-xs hover:border-primary hover:bg-primary/5 transition-colors">
+                {c.product.name} · S/ {c.price.toFixed(2)}
+              </button>
+            ))}
+            {shown.length === 0 && <p className="text-xs text-muted-foreground">Sin coincidencias.</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Lleva el foco al campo "Cantidad" de la línea recién agregada (que queda
+// arriba de la lista). Enter en Cantidad pasa a Costo y Enter en Costo
+// vuelve al buscador, listo para escanear el siguiente producto.
+function useLineFocus() {
+  const searchRef = useRef<HTMLInputElement>(null);
+  const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const costRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [focusId, setFocusId] = useState<{ id: string } | null>(null);
+  useEffect(() => {
+    if (!focusId) return;
+    const el = qtyRefs.current[focusId.id];
+    if (el) { el.focus(); el.select(); }
+  }, [focusId]);
+  const focusLine = (id: string) => setFocusId({ id });
+  const onQtyEnter = (id: string) => (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const cost = costRefs.current[id];
+    if (cost && !cost.disabled) { cost.focus(); cost.select(); } else searchRef.current?.focus();
+  };
+  const onCostEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    searchRef.current?.focus();
+  };
+  return { searchRef, qtyRefs, costRefs, focusLine, onQtyEnter, onCostEnter };
+}
+
 function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; onCreated: (order: OrderDetail) => void }) {
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState('');
@@ -565,15 +637,24 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
     enabled: debouncedSearch.length >= 2,
   });
 
+  const { searchRef, qtyRefs, costRefs, focusLine, onQtyEnter, onCostEnter } = useLineFocus();
+
+  // Lo último escaneado/agregado va siempre arriba de la lista, con el foco
+  // en Cantidad. Si ya estaba, se sube al primer lugar (sin duplicarlo).
   const addLine = (p: { id: string; name: string; isBulk?: boolean; bulkUnit?: string | null; trackExpiry?: boolean }, defaultCost: number) => {
-    if (lines.find(l => l.productId === p.id)) return;
-    setLines(v => [...v, {
-      productId: p.id, name: p.name, isBulk: !!p.isBulk, bulkUnit: p.bulkUnit ?? null,
-      isBonus: false, quantity: '1', unitCost: String(defaultCost),
-      useBulkEntry: false, sacks: '', weightPerSack: '', totalCost: '',
-      trackExpiry: !!p.trackExpiry, batchNumber: '', expiryDate: '',
-    }]);
+    setLines(v => {
+      const existing = v.find(l => l.productId === p.id);
+      const rest = v.filter(l => l.productId !== p.id);
+      return [existing ?? {
+        productId: p.id, name: p.name, isBulk: !!p.isBulk, bulkUnit: p.bulkUnit ?? null,
+        isBonus: false, quantity: '1', unitCost: String(defaultCost),
+        useBulkEntry: false, sacks: '', weightPerSack: '', totalCost: '',
+        trackExpiry: !!p.trackExpiry, batchNumber: '', expiryDate: '',
+      }, ...rest];
+    });
+    if (lines.some(l => l.productId === p.id)) toast.info(`${p.name} ya estaba en la lista — se movió arriba.`);
     setSearch('');
+    focusLine(p.id);
   };
 
   const handleScanKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -675,8 +756,6 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const catalogToShow = (catalog ?? []).filter(c => !lines.find(l => l.productId === c.productId));
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-3xl rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
@@ -707,25 +786,17 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
             </div>
           </div>
 
-          {supplierId && catalogToShow.length > 0 && (
-            <div>
-              <label className="mb-1 block text-sm font-medium">Catálogo de este proveedor</label>
-              <div className="flex flex-wrap gap-1.5">
-                {catalogToShow.map(c => (
-                  <button key={c.productId} onClick={() => addLine(c.product, c.price)}
-                    className="rounded-full border px-3 py-1 text-xs hover:border-primary hover:bg-primary/5 transition-colors">
-                    {c.product.name} · S/ {c.price.toFixed(2)}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {supplierId && catalog && (
+            <SupplierCatalogPicker
+              catalog={catalog.filter(c => !lines.find(l => l.productId === c.productId))}
+              onPick={c => addLine(c.product, c.price)} />
           )}
 
           <div>
             <label className="mb-1 block text-sm font-medium">Agregar productos</label>
             <div className="relative">
               <ScanBarcode className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Buscar por nombre o escanear código de barras..." value={search}
+              <Input ref={searchRef} className="pl-9" placeholder="Buscar por nombre o escanear código de barras..." value={search}
                 onChange={e => setSearch(e.target.value)} onKeyDown={handleScanKeyDown} />
             </div>
             {products && products.length > 0 && search.length >= 2 && (
@@ -776,7 +847,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                     <div className="grid grid-cols-4 gap-2 items-end">
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">N° sacos</label>
-                        <Input type="number" min={0} value={l.sacks} onChange={e => updateLine(idx, { sacks: e.target.value })} className="h-9" />
+                        <Input ref={el => { qtyRefs.current[l.productId] = el; }} type="number" min={0} value={l.sacks} onChange={e => updateLine(idx, { sacks: e.target.value })} className="h-9" />
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">Peso/saco ({l.bulkUnit})</label>
@@ -795,12 +866,14 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
                     <div className="grid grid-cols-3 gap-2 items-end">
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">Cantidad{l.isBulk ? ` (${l.bulkUnit})` : ''}</label>
-                        <Input type="number" min={0} step={l.isBulk ? 0.01 : 1} value={l.quantity}
+                        <Input ref={el => { qtyRefs.current[l.productId] = el; }} type="number" min={0} step={l.isBulk ? 0.01 : 1} value={l.quantity}
+                          onKeyDown={onQtyEnter(l.productId)}
                           onChange={e => updateLine(idx, { quantity: e.target.value })} className="h-9" />
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-muted-foreground">Costo unit.</label>
-                        <MoneyInput size="sm" min={0} value={l.isBonus ? '0' : l.unitCost} disabled={l.isBonus}
+                        <MoneyInput ref={el => { costRefs.current[l.productId] = el; }} size="sm" min={0} value={l.isBonus ? '0' : l.unitCost} disabled={l.isBonus}
+                          onKeyDown={onCostEnter}
                           onChange={e => updateLine(idx, { unitCost: e.target.value })} />
                       </div>
                       <div className="text-base text-right font-bold tabular-nums pb-1.5">
@@ -959,17 +1032,23 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     enabled: !!supplierId,
   });
 
+  const { searchRef, qtyRefs, costRefs, focusLine, onQtyEnter, onCostEnter } = useLineFocus();
+
+  // Igual que en Registrar Compra: lo último agregado queda arriba y con foco.
+  const pushTop = (row: { productId: string; name: string; orderedQty: number; unitCost: number }) => {
+    setItems(v => [v.find(i => i.productId === row.productId) ?? row, ...v.filter(i => i.productId !== row.productId)]);
+    if (items.some(i => i.productId === row.productId)) toast.info(`${row.name} ya estaba en la lista — se movió arriba.`);
+    focusLine(row.productId);
+  };
+
   const addProduct = (p: Product) => {
-    if (items.find(i => i.productId === p.id)) return;
     const catalogPrice = catalog?.find(c => c.productId === p.id)?.price;
-    setItems(v => [...v, { productId: p.id, name: p.name, orderedQty: 1, unitCost: catalogPrice ?? Number(p.costPrice) }]);
+    pushTop({ productId: p.id, name: p.name, orderedQty: 1, unitCost: catalogPrice ?? Number(p.costPrice) });
     setSearch('');
   };
 
-  const quickAddFromCatalog = (item: SupplierCatalogItem) => {
-    if (items.find(i => i.productId === item.productId)) return;
-    setItems(v => [...v, { productId: item.productId, name: item.product.name, orderedQty: 1, unitCost: item.price }]);
-  };
+  const quickAddFromCatalog = (item: SupplierCatalogItem) =>
+    pushTop({ productId: item.productId, name: item.product.name, orderedQty: 1, unitCost: item.price });
 
   // Escanear código de barras agrega directo el producto a la orden — no
   // hace falta buscarlo ni hacer clic en la lista de coincidencias.
@@ -1032,19 +1111,11 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             </div>
           </div>
 
-          {/* Catálogo del proveedor seleccionado */}
-          {supplierId && catalog && catalog.length > 0 && (
-            <div>
-              <label className="mb-1 block text-sm font-medium">Catálogo de este proveedor</label>
-              <div className="flex flex-wrap gap-1.5">
-                {catalog.filter(c => !items.find(i => i.productId === c.productId)).map(c => (
-                  <button key={c.productId} onClick={() => quickAddFromCatalog(c)}
-                    className="rounded-full border px-3 py-1 text-xs hover:border-primary hover:bg-primary/5 transition-colors">
-                    {c.product.name} · S/ {c.price.toFixed(2)}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* Catálogo del proveedor seleccionado (plegado, opcional) */}
+          {supplierId && catalog && (
+            <SupplierCatalogPicker
+              catalog={catalog.filter(c => !items.find(i => i.productId === c.productId))}
+              onPick={quickAddFromCatalog} />
           )}
 
           {/* Product search */}
@@ -1052,7 +1123,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             <label className="mb-1 block text-sm font-medium">Agregar productos</label>
             <div className="relative">
               <ScanBarcode className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Buscar por nombre o escanear código de barras..." value={search}
+              <Input ref={searchRef} className="pl-9" placeholder="Buscar por nombre o escanear código de barras..." value={search}
                 onChange={e => setSearch(e.target.value)} onKeyDown={handleScanKeyDown} />
             </div>
             {products && products.length > 0 && search.length >= 2 && (
@@ -1085,12 +1156,14 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                   <tr key={item.productId}>
                     <td className="py-2">{item.name}</td>
                     <td className="py-2 px-2">
-                      <Input type="number" min={1} value={item.orderedQty}
+                      <Input ref={el => { qtyRefs.current[item.productId] = el; }} type="number" min={1} value={item.orderedQty}
+                        onKeyDown={onQtyEnter(item.productId)}
                         onChange={e => updateItem(idx, 'orderedQty', Number(e.target.value))}
                         className="h-9 text-center" />
                     </td>
                     <td className="py-2 px-2">
-                      <MoneyInput size="sm" min={0} value={item.unitCost}
+                      <MoneyInput ref={el => { costRefs.current[item.productId] = el; }} size="sm" min={0} value={item.unitCost}
+                        onKeyDown={onCostEnter}
                         onChange={e => updateItem(idx, 'unitCost', Number(e.target.value))} />
                     </td>
                     <td className="py-2 text-right font-semibold tabular-nums">{formatCurrency(item.orderedQty * item.unitCost)}</td>
