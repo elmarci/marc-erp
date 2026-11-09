@@ -20,6 +20,7 @@ import {
   Bell,
   Bike,
   Tv,
+  Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -47,6 +48,7 @@ const navItems: NavItem[] = [
   { path: '/purchases', label: 'Compras', icon: ShoppingBag, minRole: 'WAREHOUSE' },
   { path: '/inventory', label: 'Inventario', icon: Boxes, minRole: 'WAREHOUSE' },
   { path: '/cash', label: 'Caja', icon: Wallet },
+  { path: '/attendance', label: 'Asistencia', icon: Clock },
   { path: '/store-orders', label: 'Pedidos Online', icon: Store, minRole: 'CASHIER' },
   { path: '/riders', label: 'Repartidores', icon: Bike, minRole: 'SUPERVISOR' },
   { path: '/tv', label: 'Pantalla TV', icon: Tv, minRole: 'SUPERVISOR' },

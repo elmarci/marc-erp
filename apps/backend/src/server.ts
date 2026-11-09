@@ -19,6 +19,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 // Rutas
 import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
+import attendanceRoutes from './modules/attendance/attendance.routes';
 import productsRoutes from './modules/products/products.routes';
 import categoriesRoutes from './modules/categories/categories.routes';
 import salesRoutes from './modules/sales/sales.routes';
@@ -135,6 +136,7 @@ const API_PREFIX = '/api/v1';
 
 app.use(`${API_PREFIX}/auth`, authRoutes);
 app.use(`${API_PREFIX}/users`, usersRoutes);
+app.use(`${API_PREFIX}/attendance`, attendanceRoutes);
 app.use(`${API_PREFIX}/products/categories`, categoriesRoutes);
 app.use(`${API_PREFIX}/categories`, categoriesRoutes);
 app.use(`${API_PREFIX}/products`, productsRoutes);

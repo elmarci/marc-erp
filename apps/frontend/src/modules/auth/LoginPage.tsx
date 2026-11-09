@@ -87,7 +87,7 @@ export function LoginPage() {
               </label>
               <Input
                 {...register('login')}
-                placeholder="admin o admin@minimarket.com"
+                placeholder="Tu usuario o correo"
                 autoComplete="username"
                 autoFocus
                 error={errors.login?.message}
@@ -125,12 +125,6 @@ export function LoginPage() {
               Ingresar al Sistema
             </Button>
           </form>
-
-          <div className="mt-6 rounded-lg bg-slate-700/30 p-3 text-xs text-slate-400">
-            <p className="font-medium text-slate-300">Accesos de prueba:</p>
-            <p className="mt-1">Admin: <span className="text-slate-200">admin</span> / <span className="text-slate-200">Admin123!</span></p>
-            <p>Cajero: <span className="text-slate-200">cajero1</span> / <span className="text-slate-200">Cajero123!</span></p>
-          </div>
         </div>
       </div>
     </div>

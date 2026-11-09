@@ -176,11 +176,16 @@ model User {
   lastLoginAt         DateTime?  @map("last_login_at")
   lastLoginIp         String?    @map("last_login_ip")
   avatarUrl           String?    @map("avatar_url")
+  // Horario laboral para control de asistencia (ver modules/attendance):
+  // { toleranceMinutes, days: { "1".."7": { start, end, lunchStart?, lunchEnd? } } }
+  // donde 1 = lunes … 7 = domingo y las horas son "HH:MM" en hora de Lima.
+  workSchedule        Json?      @map("work_schedule")
   createdAt           DateTime   @default(now()) @map("created_at")
   updatedAt           DateTime   @updatedAt @map("updated_at")
   deletedAt           DateTime?  @map("deleted_at")
 
   sessions                  UserSession[]
+  attendanceRecords         AttendanceRecord[]
   cashSessions              CashSession[]
   salesAsCashier            Sale[]                     @relation("CashierSales")
   salesAsCreated            Sale[]                     @relation("CreatedBySales")
@@ -1871,4 +1876,36 @@ model TvSlide {
 
   @@index([sortOrder])
   @@map("tv_slides")
+}
+
+// ─── Asistencia del personal ──────────────────────────────────────────────────
+// Un registro por persona y día (hora de Lima). Las horas programadas se
+// copian al marcar para que cambiar el horario después no altere el historial.
+model AttendanceRecord {
+  id                String    @id @default(uuid())
+  userId            String    @map("user_id")
+  workDate          String    @map("work_date") // "YYYY-MM-DD" en hora de Lima
+  checkInAt         DateTime? @map("check_in_at")
+  lunchOutAt        DateTime? @map("lunch_out_at")
+  lunchInAt         DateTime? @map("lunch_in_at")
+  checkOutAt        DateTime? @map("check_out_at")
+  scheduledStart    String?   @map("scheduled_start")
+  scheduledEnd      String?   @map("scheduled_end")
+  scheduledLunchStart String? @map("scheduled_lunch_start")
+  scheduledLunchEnd String?   @map("scheduled_lunch_end")
+  toleranceMinutes  Int       @default(0) @map("tolerance_minutes")
+  lateMinutes       Int       @default(0) @map("late_minutes")
+  lunchLateMinutes  Int       @default(0) @map("lunch_late_minutes")
+  earlyLeaveMinutes Int       @default(0) @map("early_leave_minutes")
+  checkInIp         String?   @map("check_in_ip")
+  note              String?
+  editedById        String?   @map("edited_by_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, workDate])
+  @@index([workDate])
+  @@map("attendance_records")
 }

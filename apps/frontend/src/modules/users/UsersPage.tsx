@@ -1,21 +1,24 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Plus, Edit, UserX } from 'lucide-react';
+import { Users, Plus, Edit, UserX, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { api, getErrorMessage } from '@/services/api';
 import { formatDateTime, ROLE_LABELS, STATUS_LABELS } from '@/lib/utils';
+import { UserFormModal, EditableUser } from './UserFormModal';
+import type { WorkSchedule } from '@/modules/attendance/attendance';
 
 interface User {
-  id: string; email: string; username: string; firstName: string; lastName: string;
-  role: string; status: string; lastLoginAt: string | null;
+  id: string; email: string; username: string; firstName: string; lastName: string; phone: string | null;
+  role: string; status: string; lastLoginAt: string | null; workSchedule: WorkSchedule | null;
 }
 
 export function UsersPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
+  const [page] = useState(1);
+  const [form, setForm] = useState<{ user?: EditableUser } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', page],
@@ -37,7 +40,7 @@ export function UsersPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Usuarios</h1>
-        <Button><Plus className="mr-2 h-4 w-4" />Nuevo Usuario</Button>
+        <Button onClick={() => setForm({})}><Plus className="mr-2 h-4 w-4" />Nuevo usuario</Button>
       </div>
 
       <Card>
@@ -67,7 +70,10 @@ export function UsersPage() {
                     <tr key={user.id} className="hover:bg-muted/30">
                       <td className="px-4 py-3">
                         <p className="font-medium">{user.firstName} {user.lastName}</p>
-                        <p className="text-xs text-muted-foreground">@{user.username}</p>
+                        <p className="text-xs text-muted-foreground">
+                          @{user.username}
+                          {user.workSchedule && <span className="ml-2 inline-flex items-center gap-1"><Clock className="h-3 w-3" />con horario</span>}
+                        </p>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                       <td className="px-4 py-3 text-center">
@@ -83,7 +89,7 @@ export function UsersPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex justify-center gap-1">
-                          <Button variant="ghost" size="icon-sm"><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon-sm" aria-label="Editar" onClick={() => setForm({ user })}><Edit className="h-4 w-4" /></Button>
                           {user.status === 'ACTIVE' && (
                             <Button variant="ghost" size="icon-sm" className="text-destructive"
                               onClick={() => { if (confirm('¿Desactivar usuario?')) deactivateMutation.mutate(user.id); }}>
@@ -100,6 +106,14 @@ export function UsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {form && (
+        <UserFormModal
+          user={form.user}
+          onClose={() => setForm(null)}
+          onSaved={() => { queryClient.invalidateQueries({ queryKey: ['users'] }); if (form.user) setForm(null); }}
+        />
+      )}
     </div>
   );
 }

@@ -60,17 +60,12 @@ docker-compose exec backend npm run db:migrate
 docker-compose exec backend npm run db:seed
 ```
 
-## Credenciales de Acceso (después de seed)
+## Usuarios de desarrollo
 
-| Usuario | Contraseña | Rol |
-|---------|-----------|-----|
-| admin | Admin123! | Super Admin |
-| supervisor | Admin123! | Supervisor |
-| cajero1 | Cajero123! | Cajero |
-| cajero2 | Cajero123! | Cajero |
-| almacen | Almacen123! | Almacenero |
-
-**PIN rápido (para turno de caja):** `1234`
+El seed (`npm run db:seed`) crea usuarios de **prueba solo para desarrollo local**; sus
+contraseñas están en `apps/backend/src/database/seeds/index.ts`. Nunca ejecutes el seed en
+producción ni dejes esas contraseñas en una base real: cámbialas o desactiva esos usuarios
+desde **Usuarios** en el ERP.
 
 ## Scripts Disponibles
 

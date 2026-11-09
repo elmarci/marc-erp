@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { UserRole, UserStatus } from '@prisma/client';
 import { usersService, CreateUserInput, ListUsersQuery } from './users.service';
 import { authenticate, authorize } from '../../middleware/auth';
+import { workScheduleSchema } from '../attendance/attendance.service';
 
 const router = Router();
 
@@ -18,6 +19,7 @@ const createUserSchema = z.object({
     .min(8)
     .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Debe tener mayúscula, minúscula y número'),
   pin: z.string().length(4).regex(/^\d+$/).optional(),
+  workSchedule: workScheduleSchema.nullable().optional(),
 });
 
 const updateUserSchema = z.object({
@@ -27,6 +29,8 @@ const updateUserSchema = z.object({
   role: z.nativeEnum(UserRole).optional(),
   status: z.nativeEnum(UserStatus).optional(),
   pin: z.string().length(4).regex(/^\d+$/).optional(),
+  // null = quitar horario (sin control de asistencia).
+  workSchedule: workScheduleSchema.nullable().optional(),
 });
 
 const listQuerySchema = z.object({
