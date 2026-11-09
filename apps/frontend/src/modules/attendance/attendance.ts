@@ -77,6 +77,12 @@ export function shortDay(workDate: string): string {
   return `${wd} ${workDate.slice(8, 10)}/${workDate.slice(5, 7)}`;
 }
 
+/** "07:30" → 450 */
+export function toMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
 export function formatMinutes(min: number | null | undefined): string {
   if (!min) return '0 min';
   const h = Math.floor(min / 60);
