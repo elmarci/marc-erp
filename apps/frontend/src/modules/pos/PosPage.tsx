@@ -272,7 +272,7 @@ export function PosPage() {
 
   const handleSaleComplete = useCallback(async () => {
     const { items, payments, cashSessionId: storedSessionId, customerId, documentType,
-      globalDiscountAmount, globalDiscountPercent, couponCode, pointsToRedeem, isCredit, notes, total, subtotal } = usePosStore.getState();
+      globalDiscountAmount, globalDiscountPercent, couponCode, pointsToRedeem, isCredit, notes, total, subtotal, walletAuth } = usePosStore.getState();
     let sessionId = storedSessionId;
     // Ojo: el "discountAmount" combinado del store ya incluye el descuento del
     // cupón (para mostrarlo en pantalla). Al backend le mandamos solo el
@@ -348,6 +348,7 @@ export function PosPage() {
       discountAmount: manualDiscountAmount,
       couponCode: couponCode ?? undefined,
       pointsToRedeem: pointsToRedeem || undefined,
+      walletAuthToken: payments.some((p) => p.method === 'WALLET') ? walletAuth?.token : undefined,
       isCredit,
       notes,
       bottleDeposits: items
@@ -391,7 +392,11 @@ export function PosPage() {
       usePosStore.getState().clearCart();
       setShowPayment(false);
     } catch (err) {
-      if (isNetworkError(err)) {
+      if (isNetworkError(err) && payments.some((p) => p.method === 'WALLET')) {
+        // El saldo se valida y descuenta en el servidor: sin conexión no se
+        // puede cobrar con saldo (no se guarda en la cola offline).
+        toast.error('Sin conexión no se puede cobrar con saldo. Quita el pago con saldo y cobra con otro método.');
+      } else if (isNetworkError(err)) {
         // Sin internet real: la venta ya se cobró en el mostrador, no se
         // puede perder — se guarda localmente y se sube sola cuando vuelva
         // la señal (ver useOfflineSync / offlineSync.ts).

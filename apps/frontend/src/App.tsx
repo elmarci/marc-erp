@@ -11,6 +11,7 @@ import { ProductFormPage } from '@/modules/products/ProductFormPage';
 import { SalesPage } from '@/modules/sales/SalesPage';
 import { SaleDetailPage } from '@/modules/sales/SaleDetailPage';
 import { CustomersPage } from '@/modules/customers/CustomersPage';
+import { WalletsPage } from '@/modules/wallet/WalletsPage';
 import { PurchasesPage } from '@/modules/purchases/PurchasesPage';
 import { InventoryPage } from '@/modules/inventory/InventoryPage';
 import { ReportsPage } from '@/modules/reports/ReportsPage';
@@ -72,6 +73,7 @@ export default function App() {
           <Route path="sales" element={<SalesPage />} />
           <Route path="sales/:id" element={<SaleDetailPage />} />
           <Route path="customers" element={<CustomersPage />} />
+          <Route path="wallets" element={<WalletsPage />} />
           <Route path="purchases" element={<PurchasesPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="cash" element={<CashPage />} />

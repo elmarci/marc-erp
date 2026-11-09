@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   X, Home, LayoutGrid, Store, Tag, Package, Gift, BarChart3, MapPin,
-  MessageCircle, LogOut, User, ChevronRight, ShoppingBasket,
+  MessageCircle, LogOut, User, ChevronRight, ShoppingBasket, Wallet,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
@@ -49,6 +49,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
 
   const accountLinks = isLoggedIn ? [
     { to: '/mis-pedidos', icon: Package, label: 'Mis pedidos' },
+    { to: '/mis-pedidos#saldo', icon: Wallet, label: 'Mi saldo' },
     { to: '/mis-pedidos#canje', icon: Gift, label: 'Puntos y canje' },
     { to: '/mis-pedidos#consumo', icon: BarChart3, label: 'Reporte de consumos' },
     { to: '/mis-pedidos#direcciones', icon: MapPin, label: 'Mis direcciones' },

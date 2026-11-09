@@ -90,6 +90,8 @@ enum PaymentMethod {
   YAPE
   PLIN
   OTHER
+  // Saldo prepago (monedero) del cliente — ver WalletMovement.
+  WALLET
 }
 
 enum DocumentType {
@@ -212,6 +214,8 @@ model User {
   treasuryTransfers         TreasuryTransfer[]
   loans                     Loan[]
   loanPayments              LoanPayment[]
+  walletMovements                WalletMovement[]           @relation("WalletMovementUser")
+  walletTopupsReviewed           WalletTopupRequest[]       @relation("WalletTopupReviewer")
 
   @@index([email])
   @@index([username])
@@ -944,6 +948,13 @@ model Customer {
   creditLimit    Decimal      @default(0) @map("credit_limit") @db.Decimal(10, 2)
   currentBalance Decimal      @default(0) @map("current_balance") @db.Decimal(10, 2)
   loyaltyPoints  Int          @default(0) @map("loyalty_points")
+  // Saldo prepago (monedero): lo que el cliente tiene para gastar en la
+  // tienda online o en el POS. Nunca negativo — cada cambio pasa por
+  // wallet.service.ts y deja su fila en WalletMovement.
+  walletBalance  Decimal      @default(0) @map("wallet_balance") @db.Decimal(10, 2)
+  // PIN de 4 dígitos (hash bcrypt) para pagar con saldo en el POS sin
+  // celular; lo elige el propio cliente desde su perfil de la tienda.
+  walletPinHash  String?      @map("wallet_pin_hash")
   notes          String?
   isActive       Boolean      @default(true) @map("is_active")
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -956,6 +967,9 @@ model Customer {
   storeAccounts   StoreCustomer[]
   bottleDeposits  BottleDepositMovement[]
   loans           Loan[]
+  walletMovements WalletMovement[]
+  walletRecurring WalletRecurring?
+  walletTopups    WalletTopupRequest[]
 
   @@index([taxId])
   @@index([phone])
@@ -1570,6 +1584,85 @@ model CustomerDebtPayment {
 }
 
 // =============================================================================
+// SALDO PREPAGO (MONEDERO)
+// =============================================================================
+
+// Historial inmutable de cada cambio de saldo. amount es con signo
+// (+ entra, - sale) y balanceAfter el saldo resultante, para poder auditar
+// fila por fila sin recalcular.
+//   type:   CARGA | CONSUMO | DEVOLUCION | AJUSTE
+//   origin: PAGO (el cliente pagó la recarga) | BENEFICIO (regalo/beneficio,
+//           no entra dinero) | MENSUAL (recarga automática) | ONLINE
+//           (recarga por Yape desde la tienda, verificada) | null
+model WalletMovement {
+  id           String   @id @default(uuid())
+  customerId   String   @map("customer_id")
+  type         String
+  origin       String?
+  amount       Decimal  @db.Decimal(10, 2)
+  balanceAfter Decimal  @map("balance_after") @db.Decimal(10, 2)
+  method       String? // CASH | YAPE | PLIN... cuando la recarga fue pagada
+  description  String
+  saleId       String?  @map("sale_id")
+  storeOrderId String?  @map("store_order_id")
+  topupId      String?  @map("topup_id")
+  userId       String?  @map("user_id") // staff que lo hizo; null = cliente o sistema
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  user     User?    @relation("WalletMovementUser", fields: [userId], references: [id])
+
+  @@index([customerId, createdAt])
+  @@index([saleId])
+  @@index([storeOrderId])
+  @@map("wallet_movements")
+}
+
+// Recarga mensual automática (ej. S/ 100 el día 1 a un trabajador). Suma al
+// saldo (es acumulable). lastPeriod = "AAAA-MM" de la última recarga hecha,
+// así el proceso periódico es idempotente aunque corra varias veces.
+model WalletRecurring {
+  id          String   @id @default(uuid())
+  customerId  String   @unique @map("customer_id")
+  amount      Decimal  @db.Decimal(10, 2)
+  dayOfMonth  Int      @map("day_of_month") // 1-28
+  origin      String   @default("BENEFICIO") // BENEFICIO | PAGO
+  isActive    Boolean  @default(true) @map("is_active")
+  lastPeriod  String?  @map("last_period")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@map("wallet_recurring")
+}
+
+// Solicitud de recarga desde la tienda online: el cliente paga por Yape y
+// deja el número de operación; el saldo se acredita recién cuando el staff
+// la verifica en su Yape y la aprueba.
+//   status: PENDING | APPROVED | REJECTED
+model WalletTopupRequest {
+  id              String    @id @default(uuid())
+  customerId      String    @map("customer_id")
+  amount          Decimal   @db.Decimal(10, 2)
+  method          String    @default("YAPE")
+  operationNumber String    @map("operation_number")
+  status          String    @default("PENDING")
+  reviewedById    String?   @map("reviewed_by_id")
+  reviewedAt      DateTime? @map("reviewed_at")
+  rejectReason    String?   @map("reject_reason")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  customer   Customer @relation(fields: [customerId], references: [id])
+  reviewedBy User?    @relation("WalletTopupReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status])
+  @@index([customerId])
+  @@map("wallet_topup_requests")
+}
+
+// =============================================================================
 // TIENDA ONLINE
 // =============================================================================
 
@@ -1695,6 +1788,10 @@ model StoreOrder {
   // ganados), con el mismo resguardo atómico contra doble-canje.
   pointsRedeemed        Int     @default(0) @map("points_redeemed")
   pointsDiscountAmount  Decimal @default(0) @map("points_discount_amount") @db.Decimal(12, 2)
+  // Parte del total pagada con saldo prepago. Se descuenta del saldo al
+  // CREAR el pedido (no al confirmarlo) para que no se pueda gastar dos
+  // veces; si el pedido se cancela antes de confirmarse, vuelve al saldo.
+  walletAmount         Decimal        @default(0) @map("wallet_amount") @db.Decimal(12, 2)
   // ── Reparto (biker) ──────────────────────────────────────────────────
   // riderId nulo = todavía no lo tomó nadie; si además status está en
   // CONFIRMED/PREPARING/READY, el pedido aparece en la bolsa de disponibles

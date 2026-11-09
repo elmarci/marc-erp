@@ -16,6 +16,7 @@ interface StoreOrder {
   status: string; paymentMethod: string; paymentStatus: string
   subtotal: number; deliveryCost: number; total: number; createdAt: string; notes: string | null
   saleId: string | null
+  walletAmount: number
   latitude: number | null; longitude: number | null
   riderId: string | null; deliveryStatus: string | null; rider: { id: string; nombre: string } | null
   packageTamano: string; packageTipo: string; packagePesoKg: number; packageFragil: boolean
@@ -82,8 +83,8 @@ const NEXT_STATUS: Record<string, string> = {
   CONFIRMED: 'PREPARING', PREPARING: 'READY', READY: 'DELIVERED',
 }
 
-const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega' }
-const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵', YAPE_CONTRAENTREGA: '💜' }
+const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega', WALLET: 'Saldo' }
+const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵', YAPE_CONTRAENTREGA: '💜', WALLET: '👛' }
 // Se cobran recién al entregar — nunca quedan "pago pendiente de verificar"
 // como sí pasa con un Yape/Plin pagado por adelantado.
 const PAYS_ON_DELIVERY = new Set(['CASH', 'YAPE_CONTRAENTREGA'])
@@ -399,6 +400,18 @@ export function StoreOrdersPage() {
                             <span>Total</span>
                             <span className="text-success">{formatCurrency(order.total)}</span>
                           </div>
+                          {Number(order.walletAmount) > 0 && (
+                            <div className="flex justify-between text-sm text-muted-foreground">
+                              <span>Pagado con saldo del cliente</span>
+                              <span>{formatCurrency(order.walletAmount)}</span>
+                            </div>
+                          )}
+                          {Number(order.walletAmount) > 0 && Number(order.walletAmount) < Number(order.total) && (
+                            <div className="flex justify-between text-sm font-semibold">
+                              <span>Por cobrar ({PAYMENT_LABELS[order.paymentMethod]})</span>
+                              <span>{formatCurrency(Number(order.total) - Number(order.walletAmount))}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -470,7 +483,14 @@ export function StoreOrdersPage() {
                         {/* Cancel */}
                         {!['CANCELLED', 'DELIVERED'].includes(order.status) && (
                           <Button size="sm" variant="destructive" className="ml-auto"
-                            onClick={() => { if (confirm('¿Cancelar este pedido?')) updateMutation.mutate({ id: order.id, status: 'CANCELLED' }) }}>
+                            onClick={() => {
+                              const msg = Number(order.walletAmount) > 0
+                                ? (order.saleId
+                                  ? '¿Cancelar este pedido? Se pagó con saldo y ya tiene venta: para devolverle el saldo al cliente, anula también la venta en Ventas.'
+                                  : `¿Cancelar este pedido? Se le devolverán ${formatCurrency(order.walletAmount)} al saldo del cliente.`)
+                                : '¿Cancelar este pedido?'
+                              if (confirm(msg)) updateMutation.mutate({ id: order.id, status: 'CANCELLED' })
+                            }}>
                             Cancelar
                           </Button>
                         )}

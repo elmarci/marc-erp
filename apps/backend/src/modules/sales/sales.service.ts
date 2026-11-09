@@ -1,4 +1,5 @@
 import { PaymentMethod, DocumentType, Prisma } from '@prisma/client';
+import { walletService } from '../wallet/wallet.service';
 import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
 import { logger } from '../../config/logger';
@@ -56,6 +57,8 @@ export interface CreateSaleInput {
   amountTendered?: number;
   couponCode?: string;
   pointsToRedeem?: number;
+  // Autorización (QR o PIN del cliente) para cobrar con saldo prepago.
+  walletAuthToken?: string;
   isOfflineSync?: boolean;
   offlineCreatedAt?: Date;
   bottleDeposits?: BottleDepositItemInput[];
@@ -395,6 +398,15 @@ export class SalesService {
       }
     }
 
+    // Pago con saldo prepago: el cliente tuvo que identificarse con su QR o
+    // su PIN (walletAuthToken). El descuento real va dentro de la
+    // transacción, con resta condicional (nunca deja saldo negativo).
+    const walletPortion = Math.round(input.payments.filter((p) => p.method === 'WALLET').reduce((s, p) => s + p.amount, 0) * 100) / 100;
+    if (walletPortion > 0) {
+      if (input.isOfflineSync) throw new BusinessError('No se puede cobrar con saldo sin conexión.');
+      await walletService.checkAuth(input.walletAuthToken, input.customerId);
+    }
+
     // Generar número de venta
     const saleNumber = await this.generateSaleNumber();
 
@@ -548,6 +560,13 @@ export class SalesService {
         }
       }
 
+      if (walletPortion > 0 && input.customerId) {
+        await walletService.applyMovement(tx, {
+          customerId: input.customerId, amount: -walletPortion, type: 'CONSUMO',
+          description: `Compra en tienda ${newSale.saleNumber}`, saleId: newSale.id, userId: input.cashierId,
+        });
+      }
+
       // Canjear el cupón — condicionado a que siga ACTIVE para evitar que dos
       // ventas concurrentes lo usen dos veces (carrera).
       if (coupon) {
@@ -607,6 +626,7 @@ export class SalesService {
       return { ...newSale, generatedCoupon };
     });
 
+    if (walletPortion > 0 && input.walletAuthToken) await walletService.consumeAuth(input.walletAuthToken);
     logger.info({ saleId: sale.id, total: totalAmount, cashierId: input.cashierId }, 'Sale completed');
     await redis.del('reports:dashboard').catch(() => {});
     // Notificar en tiempo real: venta creada
@@ -732,7 +752,7 @@ export class SalesService {
   async void(id: string, reason: string, voidedById: string) {
     const sale = await prisma.sale.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: true, payments: true },
     });
 
     if (!sale) throw new NotFoundError('Venta');
@@ -785,6 +805,15 @@ export class SalesService {
             notes: `Anulación de venta ${sale.saleNumber}`,
           },
         });
+      }
+
+      // Lo pagado con saldo prepago vuelve al saldo del cliente (menos lo
+      // que ya se le haya devuelto por devoluciones parciales a saldo).
+      const walletPaid = sale.payments.filter((p) => p.method === 'WALLET').reduce((s, p) => s + Number(p.amount), 0);
+      if (walletPaid > 0) {
+        const refunded = await tx.walletMovement.aggregate({ where: { saleId: id, type: 'DEVOLUCION' }, _sum: { amount: true } });
+        const pending = Math.round((walletPaid - Number(refunded._sum.amount ?? 0)) * 100) / 100;
+        await walletService.refundSale(tx, sale, pending, 'Anulación de venta', voidedById);
       }
 
       // Revertir crédito si aplica
@@ -886,6 +915,11 @@ export class SalesService {
             userId: processedById,
           },
         });
+      }
+
+      // Devolución a saldo prepago: el monto vuelve al saldo del cliente.
+      if (input.refundMethod === 'WALLET') {
+        await walletService.refundSale(tx, sale, Math.round(totalRefund * 100) / 100, 'Devolución de venta', processedById);
       }
 
       // Actualizar estado de venta

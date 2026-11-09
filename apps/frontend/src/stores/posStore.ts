@@ -65,6 +65,8 @@ export interface CartSnapshot {
   notes: string;
 }
 
+export interface WalletAuth { token: string; customerId: string; name: string; balance: number }
+
 interface PosState {
   cashSessionId: string | null;
   cashRegisterId: string | null;
@@ -81,6 +83,9 @@ interface PosState {
   pointsDiscountAmount: number;
   isCredit: boolean;
   notes: string;
+  // Cliente verificado con su QR o PIN para cobrar con saldo prepago. El
+  // token lo exige el backend en la venta; vale para este cliente y venta.
+  walletAuth: WalletAuth | null;
 
   // Calculated
   subtotal: number;
@@ -103,6 +108,7 @@ interface PosState {
   updateDiscount: (productId: string, discountAmount: number, discountPercent: number) => void;
   removeItem: (productId: string) => void;
   setCustomer: (id: string | null, name: string | null) => void;
+  setWalletAuth: (auth: WalletAuth | null) => void;
   setDocumentType: (type: string) => void;
   setGlobalDiscount: (amount: number, percent: number) => void;
   setCoupon: (code: string | null, percent: number) => void;
@@ -162,6 +168,7 @@ export const usePosStore = create<PosState>()((set, get) => ({
   pointsDiscountAmount: 0,
   isCredit: false,
   notes: '',
+  walletAuth: null,
   subtotal: 0,
   discountAmount: 0,
   taxAmount: 0,
@@ -261,13 +268,18 @@ export const usePosStore = create<PosState>()((set, get) => ({
   },
 
   setCustomer: (id, name) => {
-    const { items, globalDiscountAmount, globalDiscountPercent, payments } = get();
+    const { items, globalDiscountAmount, globalDiscountPercent, walletAuth } = get();
     // El cupón y los puntos quedan validados para un cliente específico — si
     // cambia o se quita el cliente, dejan de ser válidos para esta venta.
+    // Igual el saldo: si cambia el cliente, se quita lo cobrado con saldo.
+    const keepWallet = !!walletAuth && walletAuth.customerId === id;
+    const payments = keepWallet ? get().payments : get().payments.filter((p) => p.method !== 'WALLET');
     set({ customerId: id, customerName: name, couponCode: null, couponDiscountPercent: 0,
-      pointsToRedeem: 0, pointsDiscountAmount: 0,
+      pointsToRedeem: 0, pointsDiscountAmount: 0, payments, walletAuth: keepWallet ? walletAuth : null,
       ...recalcTotals(items, globalDiscountAmount, globalDiscountPercent, payments, 0, 0) });
   },
+
+  setWalletAuth: (auth) => set({ walletAuth: auth }),
 
   setDocumentType: (type) => set({ documentType: type }),
 
@@ -321,6 +333,7 @@ export const usePosStore = create<PosState>()((set, get) => ({
       ...snap,
       payments: [],
       isCredit: false,
+      walletAuth: null,
       ...recalcTotals(snap.items, snap.globalDiscountAmount, snap.globalDiscountPercent, [], snap.couponDiscountPercent, snap.pointsDiscountAmount),
     });
   },
@@ -340,6 +353,7 @@ export const usePosStore = create<PosState>()((set, get) => ({
       pointsDiscountAmount: 0,
       isCredit: false,
       notes: '',
+      walletAuth: null,
       subtotal: 0,
       discountAmount: 0,
       taxAmount: 0,

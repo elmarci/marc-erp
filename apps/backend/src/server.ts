@@ -44,6 +44,8 @@ import { treasuryService } from './modules/treasury/treasury.service';
 import { promotionsService } from './modules/promotions/promotions.service';
 import { pushService } from './modules/push/push.service';
 import bottleDepositsRoutes from './modules/bottle-deposits/bottle-deposits.routes';
+import { walletAdminRouter, walletStoreRouter } from './modules/wallet/wallet.routes';
+import { walletService } from './modules/wallet/wallet.service';
 
 const app = express();
 const httpServer = createServer(app);
@@ -150,6 +152,7 @@ app.use(`${API_PREFIX}/purchases`, purchasesRoutes);
 app.use(`${API_PREFIX}/inventory`, inventoryRoutes);
 app.use(`${API_PREFIX}/store`, storeRoutes);
 app.use(`${API_PREFIX}/store/auth`, storeAuthRoutes);
+app.use(`${API_PREFIX}/store/wallet`, walletStoreRouter);
 app.use(`${API_PREFIX}/store/push`, pushRoutes);
 app.use(`${API_PREFIX}/delivery/auth`, deliveryAuthRoutes);
 app.use(`${API_PREFIX}/delivery`, deliveryRoutes);
@@ -159,6 +162,7 @@ app.use(`${API_PREFIX}/coupons`, couponsRoutes);
 app.use(`${API_PREFIX}/treasury`, treasuryRoutes);
 app.use(`${API_PREFIX}/loans`, loansRoutes);
 app.use(`${API_PREFIX}/bottle-deposits`, bottleDepositsRoutes);
+app.use(`${API_PREFIX}/wallet`, walletAdminRouter);
 
 // ─── Swagger docs ────────────────────────────────────────────────────────────
 if (env.NODE_ENV === 'development') {
@@ -230,6 +234,17 @@ async function bootstrap() {
         logger.error({ err }, 'Error al procesar gastos recurrentes'),
       );
     }, 6 * 60 * 60 * 1000);
+
+    // Recargas mensuales de saldo prepago (ej. S/ 100 el día 1 a un
+    // trabajador): se revisan al iniciar y cada hora; son idempotentes por mes.
+    await walletService.processRecurring().catch((err) =>
+      logger.error({ err }, 'Error al procesar recargas mensuales de saldo'),
+    );
+    setInterval(() => {
+      walletService.processRecurring().catch((err) =>
+        logger.error({ err }, 'Error al procesar recargas mensuales de saldo'),
+      );
+    }, 60 * 60 * 1000);
 
     // Notificaciones push de hora feliz: se revisa cada minuto si alguna
     // arranca justo ahora (ver checkAndNotifyHappyHours) — la granularidad

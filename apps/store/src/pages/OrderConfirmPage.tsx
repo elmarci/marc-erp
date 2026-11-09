@@ -8,8 +8,8 @@ import { io } from 'socket.io-client'
 const WHATSAPP_NUMBER = '51930555831'
 const API_BASE = import.meta.env['VITE_API_URL']?.replace('/api/v1', '') ?? 'http://localhost:3001'
 
-const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega' }
-const PAYMENT_ICONS: Record<string, string> = { YAPE: '/yape.png', PLIN: '/plin.png', CASH: '/cash.png', YAPE_CONTRAENTREGA: '/yape.png' }
+const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega', WALLET: 'Saldo' }
+const PAYMENT_ICONS: Record<string, string> = { YAPE: '/yape.png', PLIN: '/plin.png', CASH: '/cash.png', YAPE_CONTRAENTREGA: '/yape.png', WALLET: '/logo-icon.png' }
 // Métodos que se cobran ANTES de entregar y por eso necesitan verificación de
 // comprobante — CASH y YAPE_CONTRAENTREGA se cobran recién al entregar, así
 // que nunca quedan "pendientes de pago" en este sentido.
@@ -102,12 +102,12 @@ export function OrderConfirmPage() {
             <div className="bg-paper-surface rounded-xl p-4 mb-4 border border-paper-line flex flex-col items-center text-center gap-2">
               <img src="/yape-qr.png" alt="QR de Yape para pagar" className="w-40 rounded-xl border border-paper-line" />
               <p className="text-paper-ink-soft text-sm">Monto a pagar:</p>
-              <p className="text-3xl font-black text-paper-ink">S/ {Number(order.total).toFixed(2)}</p>
+              <p className="text-3xl font-black text-paper-ink">S/ {(Number(order.total) - Number(order.walletAmount ?? 0)).toFixed(2)}</p>
             </div>
           ) : (
             <div className="bg-paper-surface rounded-xl p-4 mb-4 border border-paper-line">
               <p className="text-paper-ink-soft text-sm mb-1">Monto a pagar:</p>
-              <p className="text-3xl font-black text-paper-ink">S/ {Number(order.total).toFixed(2)}</p>
+              <p className="text-3xl font-black text-paper-ink">S/ {(Number(order.total) - Number(order.walletAmount ?? 0)).toFixed(2)}</p>
               <p className="text-paper-ink-soft text-sm mt-2">Enviar al número:</p>
               <p className="text-2xl font-black text-brand-blue-700">930 555 831</p>
             </div>
@@ -224,6 +224,16 @@ export function OrderConfirmPage() {
             <span>TOTAL</span>
             <span className="text-brand-green-700 tabular-nums">S/ {Number(order.total).toFixed(2)}</span>
           </div>
+          {Number(order.walletAmount ?? 0) > 0 && Number(order.walletAmount) < Number(order.total) && (
+            <>
+              <div className="flex justify-between text-brand-blue-700">
+                <span>Pagado con tu saldo</span><span className="tabular-nums">-S/ {Number(order.walletAmount).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-semibold text-paper-ink">
+                <span>Por pagar ({PAYMENT_LABELS[order.paymentMethod]})</span><span className="tabular-nums">S/ {(Number(order.total) - Number(order.walletAmount)).toFixed(2)}</span>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="border-t border-dashed border-paper-line mt-3 pt-3 space-y-1.5 text-sm text-paper-ink-soft">

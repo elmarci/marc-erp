@@ -9,6 +9,7 @@ import { useAuthStore } from '../authStore'
 import { Link, useLocation } from 'react-router-dom'
 import { useCartStore } from '../cartStore'
 import { toast } from 'sonner'
+import { WalletCard } from '../components/WalletCard'
 
 // yyyy-mm-dd para <input type="date">, en hora local — evita que un "hoy"
 // en UTC se muestre como "ayer" para quien está en Perú (UTC-5).
@@ -108,7 +109,7 @@ const STATUS: Record<string, { label: string; color: string; emoji: string }> = 
   DELIVERED: { label: 'Entregado',   color: 'text-brand-green-700', emoji: '✅' },
   CANCELLED: { label: 'Cancelado',   color: 'text-brand-magenta-600', emoji: '❌' },
 }
-const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega' }
+const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega', WALLET: 'Saldo' }
 const DISTRICTS = ['Pachacamac', 'Villa María del Triunfo', 'San Juan de Miraflores', 'Villa El Salvador', 'Lurín', 'Cieneguilla', 'Otro']
 
 /* ── Libreta de direcciones ──────────────────────────────────────────── */
@@ -352,6 +353,11 @@ export function TrackOrderPage() {
           <p className="text-lg font-display font-semibold text-paper-ink">{totalSpent.toFixed(0)}</p>
           <p className="text-xs text-paper-ink-ghost">Comprado</p>
         </div>
+      </div>
+
+      {/* Saldo prepago: pagar en caja con QR/PIN, recargar por Yape, movimientos */}
+      <div id="saldo" className="mb-4 scroll-mt-20">
+        <WalletCard />
       </div>
 
       {/* Puntos y zona de canje */}

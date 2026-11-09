@@ -126,7 +126,7 @@ export class StoreAuthService {
       where: { id: customerId },
       include: {
         addresses: { orderBy: { isDefault: 'desc' } },
-        customer: { select: { loyaltyPoints: true } },
+        customer: { select: { loyaltyPoints: true, walletBalance: true } },
       },
     });
     if (!customer) throw new NotFoundError('Cliente');
@@ -134,6 +134,7 @@ export class StoreAuthService {
       ...this.safeCustomer(customer),
       addresses: customer.addresses,
       loyaltyPoints: customer.customer?.loyaltyPoints ?? 0,
+      walletBalance: Number(customer.customer?.walletBalance ?? 0),
     };
   }
 

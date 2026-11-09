@@ -51,7 +51,9 @@ function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quanti
       fragil: order.packageFragil,
     },
     contraEntrega,
-    monto: Number(order.total),
+    // Lo que el biker cobra: el total menos lo que el cliente ya pagó con
+    // su saldo prepago (pago mixto saldo + contra entrega).
+    monto: Math.round((Number(order.total) - Number(order.walletAmount ?? 0)) * 100) / 100,
     metodoPago,
     tarifaReparto,
     isNew,

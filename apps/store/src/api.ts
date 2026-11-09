@@ -83,7 +83,26 @@ export interface StoreProfile {
   email: string | null
   createdAt: string
   loyaltyPoints: number
+  walletBalance: number
   addresses: StoreAddress[]
+}
+
+export interface WalletMovement {
+  id: string
+  type: 'CARGA' | 'CONSUMO' | 'DEVOLUCION' | 'AJUSTE'
+  origin: string | null
+  amount: number
+  balanceAfter: number
+  description: string
+  createdAt: string
+}
+
+export interface WalletInfo {
+  balance: number
+  hasPin: boolean
+  monthly: { amount: number; dayOfMonth: number } | null
+  movements: WalletMovement[]
+  topups: Array<{ id: string; amount: number; status: 'PENDING' | 'APPROVED' | 'REJECTED'; operationNumber: string; rejectReason: string | null; createdAt: string }>
 }
 
 export interface StoreOrder {
@@ -102,6 +121,7 @@ export interface StoreOrder {
   total: number
   pointsRedeemed: number
   pointsDiscountAmount: number
+  walletAmount: number
   createdAt: string
   items: Array<{
     id: string
@@ -201,7 +221,7 @@ export const storeApi = {
     customerName: string; customerPhone: string; customerEmail?: string;
     deliveryType: string; address?: string; district?: string;
     reference?: string; notes?: string; paymentMethod: string;
-    latitude?: number; longitude?: number; pointsToRedeem?: number;
+    latitude?: number; longitude?: number; pointsToRedeem?: number; walletAmount?: number;
     items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) =>
     api.post<{ data: StoreOrder }>('/store/orders', data),
@@ -234,6 +254,18 @@ export const storeApi = {
     api.post<{ data: { customer: { id: string; name: string; phone: string; email: string | null }; token: string } }>(
       '/store/auth/google', { idToken, phone, name }
     ),
+
+  getWallet: () =>
+    api.get<{ data: WalletInfo }>('/store/wallet'),
+
+  requestTopup: (amount: number, operationNumber: string) =>
+    api.post<{ data: { id: string; amount: number; status: string } }>('/store/wallet/topup', { amount, operationNumber }),
+
+  setWalletPin: (pin: string) =>
+    api.post('/store/wallet/pin', { pin }),
+
+  getWalletQr: () =>
+    api.post<{ data: { code: string; expiresIn: number } }>('/store/wallet/qr'),
 
   getVapidPublicKey: () =>
     api.get<{ data: { publicKey: string | null } }>('/store/push/vapid-public-key'),
