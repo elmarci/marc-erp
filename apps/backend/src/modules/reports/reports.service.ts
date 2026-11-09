@@ -7,6 +7,103 @@ interface DateRange {
 }
 
 export class ReportsService {
+  /**
+   * Dashboard del cajero/vendedor: solo lo del día. "Ventas de hoy" es del
+   * NEGOCIO (todas las vendedoras juntas, igual que en el dashboard del admin);
+   * "mySales" es solo lo que vendió quien está logueada (cashierId). No se
+   * mandan ventas del mes, gráfica de 7 días ni top productos del mes.
+   */
+  async getCashierDashboard(userId: string) {
+    const LIMA_OFFSET_MS = -5 * 60 * 60 * 1000;
+    const nowLima = new Date(Date.now() + LIMA_OFFSET_MS);
+    const y = nowLima.getUTCFullYear(), m = nowLima.getUTCMonth(), d = nowLima.getUTCDate();
+    const startOfDay = new Date(Date.UTC(y, m, d, 5, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(y, m, d + 1, 4, 59, 59, 999));
+    const today = { gte: startOfDay, lte: endOfDay };
+    const mine = { cashierId: userId, createdAt: today };
+
+    const [todaySales, lowStock, pendingOrders, myCompleted, myItems, myPayments, myCancelled, myRecent, openSessions] = await Promise.all([
+      prisma.sale.aggregate({
+        where: { status: 'COMPLETED', createdAt: today },
+        _sum: { totalAmount: true },
+        _count: { id: true },
+      }),
+      prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT COUNT(*)::bigint as count FROM products
+        WHERE deleted_at IS NULL AND status = 'ACTIVE' AND current_stock <= min_stock
+      `,
+      prisma.purchaseOrder.count({
+        where: { status: { in: ['PENDING_APPROVAL', 'APPROVED', 'SENT'] } },
+      }),
+      prisma.sale.aggregate({
+        where: { ...mine, status: 'COMPLETED' },
+        _sum: { totalAmount: true, commissionAmount: true },
+        _count: { id: true },
+        _min: { createdAt: true },
+        _max: { createdAt: true },
+      }),
+      prisma.saleItem.aggregate({
+        where: { sale: { ...mine, status: 'COMPLETED' } },
+        _sum: { quantity: true },
+      }),
+      prisma.salePayment.groupBy({
+        by: ['method'],
+        where: { sale: { ...mine, status: 'COMPLETED' } },
+        _sum: { amount: true },
+      }),
+      prisma.sale.count({ where: { ...mine, status: 'CANCELLED' } }),
+      prisma.sale.findMany({
+        where: { ...mine, status: 'COMPLETED' },
+        select: { id: true, saleNumber: true, totalAmount: true, createdAt: true, _count: { select: { items: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      prisma.cashSession.findMany({
+        where: { status: 'OPEN', cashRegister: { isActive: true } },
+        select: {
+          id: true, openedAt: true,
+          cashRegister: { select: { name: true } },
+          user: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { openedAt: 'asc' },
+      }),
+    ]);
+
+    const myCount = myCompleted._count.id;
+    const myTotal = Number(myCompleted._sum.totalAmount ?? 0);
+    const businessTotal = Number(todaySales._sum.totalAmount ?? 0);
+
+    return {
+      role: 'CASHIER' as const,
+      kpis: {
+        todaySales: { total: businessTotal, count: todaySales._count.id },
+        lowStockCount: Number((lowStock[0] as { count: bigint }).count),
+        pendingOrders,
+      },
+      mySales: {
+        count: myCount,
+        total: myTotal,
+        averageTicket: myCount > 0 ? myTotal / myCount : 0,
+        unitsSold: Number(myItems._sum.quantity ?? 0),
+        cardCommissions: Number(myCompleted._sum.commissionAmount ?? 0),
+        shareOfBusiness: businessTotal > 0 ? (myTotal / businessTotal) * 100 : 0,
+        cancelledCount: myCancelled,
+        firstSaleAt: myCompleted._min.createdAt,
+        lastSaleAt: myCompleted._max.createdAt,
+        byMethod: myPayments
+          .map((p) => ({ method: p.method, total: Number(p._sum.amount ?? 0) }))
+          .sort((a, b) => b.total - a.total),
+        recent: myRecent.map(({ _count, ...s }) => ({ ...s, totalAmount: Number(s.totalAmount), itemsCount: _count.items })),
+      },
+      openCash: openSessions.map((s) => ({
+        id: s.id,
+        register: s.cashRegister.name,
+        openedAt: s.openedAt,
+        openedBy: `${s.user.firstName} ${s.user.lastName}`.trim(),
+      })),
+    };
+  }
+
   async getDashboard() {
     const cacheKey = 'reports:dashboard';
     const cached = await redis.get(cacheKey);

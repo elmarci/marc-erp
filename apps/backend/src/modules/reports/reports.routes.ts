@@ -16,7 +16,12 @@ router.use(authenticate);
 // Dashboard accesible para todos los roles autenticados
 router.get('/dashboard', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = await reportsService.getDashboard();
+    // Cajero/vendedor: dashboard reducido al día (sin ventas del mes ni de los
+    // últimos 7 días) + su propia gestión. Se filtra en el backend, no solo en
+    // pantalla, para que esos datos no viajen a su navegador.
+    const data = req.user!.role === 'CASHIER'
+      ? await reportsService.getCashierDashboard(req.user!.sub)
+      : await reportsService.getDashboard();
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });

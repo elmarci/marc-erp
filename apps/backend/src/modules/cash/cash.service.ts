@@ -11,12 +11,19 @@ export class CashService {
     notes?: string,
     fromTreasury = false,
   ) {
-    // Verificar no haya sesión abierta en esta caja
+    // Una sola caja abierta para todo el negocio: todas las vendedoras venden
+    // en la misma sesión (el POS se une a la que esté abierta), así el cuadre
+    // del día es uno solo. Si ya hay una abierta, en cualquier caja, no se abre otra.
     const existing = await prisma.cashSession.findFirst({
-      where: { cashRegisterId, status: 'OPEN' },
+      where: { status: 'OPEN' },
+      include: { cashRegister: { select: { name: true } }, user: { select: { firstName: true } } },
     });
     if (existing) {
-      throw new BusinessError('Ya existe una sesión de caja abierta en esta caja. Ciérrela primero.');
+      throw new BusinessError(
+        existing.cashRegisterId === cashRegisterId
+          ? 'Ya existe una sesión de caja abierta en esta caja. Ciérrela primero.'
+          : `Ya hay una caja abierta (${existing.cashRegister.name}, abierta por ${existing.user.firstName}). Vendan todos en esa caja; ciérrela primero si quieren cambiar.`,
+      );
     }
 
     const cashRegister = await prisma.cashRegister.findFirst({
