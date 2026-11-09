@@ -4,7 +4,12 @@ import { PaymentMethod, DocumentType } from '@prisma/client';
 import { salesService, CreateSaleInput, ReturnSaleInput, ListSalesQuery } from './sales.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { sendExcel } from '../../utils/excel';
-import { limaDateFromParam, limaDateToParam } from '../../utils/timezone';
+import { limaDateFromParam, limaDateToParam, parseLimaDate, todayLimaDateString } from '../../utils/timezone';
+import { NotFoundError } from '../../utils/errors';
+
+// Cajero/vendedor y almacén solo ven las ventas DEL DÍA (pueden filtrarlas por
+// pago, cliente, cajero…); totales, otros días y exportar quedan para supervisor+.
+const isLimitedRole = (role?: string) => role === 'CASHIER' || role === 'WAREHOUSE';
 
 const STATUS_LABELS: Record<string, string> = {
   COMPLETED: 'Completada', CANCELLED: 'Anulada', RETURNED: 'Devuelta', PARTIALLY_RETURNED: 'Devuelta parcial',
@@ -109,12 +114,17 @@ router.use(authenticate);
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const query = listSchema.parse(req.query) as ListSalesQuery;
+    if (isLimitedRole(req.user!.role)) {
+      const today = todayLimaDateString();
+      query.dateFrom = parseLimaDate(today, false);
+      query.dateTo = parseLimaDate(today, true);
+    }
     const result = await salesService.list(query);
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 });
 
-router.get('/summary', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/summary', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const query = listSchema.omit({ page: true, limit: true, sortBy: true, sortOrder: true }).parse(req.query);
     const summary = await salesService.summary(query);
@@ -129,7 +139,7 @@ router.get('/meta/cashiers', async (_req: Request, res: Response, next: NextFunc
   } catch (err) { next(err); }
 });
 
-router.get('/export', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/export', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const query = listSchema.omit({ page: true, limit: true }).parse(req.query);
     const sales = await salesService.exportList(query);
@@ -179,6 +189,11 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sale = await salesService.getById(req.params.id);
+    // Detalle: cajero/almacén solo ventas de hoy (incluye pedidos online del día
+    // que abren desde Pedidos Online); días anteriores no.
+    if (isLimitedRole(req.user!.role) && sale.createdAt < parseLimaDate(todayLimaDateString(), false)) {
+      throw new NotFoundError('Venta');
+    }
     res.json({ success: true, data: sale });
   } catch (err) { next(err); }
 });

@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/services/api';
+import { useAuthStore } from '@/stores/authStore';
 import { cn, formatCurrency, formatDateTime, STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -60,6 +61,8 @@ function limaDateStr(date: Date): string {
 type SortField = 'createdAt' | 'totalAmount' | 'saleNumber';
 
 export function SalesPage() {
+  // Cajero/vendedor y almacén: solo sus ventas del día (el backend lo fuerza igual).
+  const limited = useAuthStore((st) => st.hasRole('CASHIER', 'WAREHOUSE'));
   const [searchParams, setSearchParams] = useSearchParams();
   const page = parseInt(searchParams.get('page') ?? '1');
 
@@ -105,7 +108,7 @@ export function SalesPage() {
     ? { from: limaDateStr(new Date(Date.now() - PRESETS[preset].days * 86400000)), to: limaDateStr(new Date()) }
     : null;
 
-  const hasFilters = !!(debouncedSearch || status || paymentMethod || documentType || cashierId || isCredit || minTotal || maxTotal || dateFrom || dateTo || preset !== 3);
+  const hasFilters = !!(debouncedSearch || status || paymentMethod || documentType || cashierId || isCredit || minTotal || maxTotal || (!limited && (dateFrom || dateTo || preset !== 3)));
 
   const clearFilters = () => {
     setSearch('');
@@ -149,6 +152,7 @@ export function SalesPage() {
   const { data: summary } = useQuery({
     queryKey: ['sales-summary', filterParams.toString()],
     queryFn: async () => (await api.get<{ data: SalesSummary }>(`/sales/summary?${filterParams.toString()}`)).data.data,
+    enabled: !limited,
   });
 
   const { data: cashiers } = useQuery({
@@ -181,11 +185,11 @@ export function SalesPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Ventas</h1>
-          <p className="text-sm text-muted-foreground">Historial, filtros avanzados y reportes de ventas</p>
+          <h1 className="text-2xl font-bold">{limited ? 'Ventas de hoy' : 'Ventas'}</h1>
+          {!limited && <p className="text-sm text-muted-foreground">Historial, filtros avanzados y reportes de ventas</p>}
         </div>
         <div className="flex gap-2">
-          {pageTab === 'historial' && (
+          {pageTab === 'historial' && !limited && (
             <Button variant="outline" onClick={() => downloadExcel(exportUrl(), 'ventas.xlsx')}>
               <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
             </Button>
@@ -224,6 +228,11 @@ export function SalesPage() {
       )}
 
       {pageTab === 'historial' && (
+      <>
+      {limited && (
+        <p className="text-sm text-muted-foreground">Ventas de hoy de la tienda. Filtra por pago, cliente o cajero, y abre cada una para reimprimir el ticket o hacer una devolución.</p>
+      )}
+      {!limited && (
       <>
       {/* KPI cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -327,7 +336,10 @@ export function SalesPage() {
         </div>
       )}
 
-      {/* Filters */}
+      </>
+      )}
+
+      {/* Filters — cajero/vendedor también filtra, pero siempre dentro del día */}
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
@@ -336,6 +348,7 @@ export function SalesPage() {
               <Input className="pl-9" placeholder="Buscar por N° venta, cliente, documento o cajero..."
                 value={search} onChange={(e) => handleSearch(e.target.value)} />
             </div>
+            {!limited && (<>
             <div className="flex gap-1 rounded-lg border p-1">
               {PRESETS.map((p, i) => (
                 <button key={p.label} type="button"
@@ -352,6 +365,7 @@ export function SalesPage() {
             </div>
             <Input type="date" value={dateFrom} onChange={(e) => setParam('dateFrom', e.target.value)} className="w-40" title="Desde" />
             <Input type="date" value={dateTo} onChange={(e) => setParam('dateTo', e.target.value)} className="w-40" title="Hasta" />
+            </>)}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
