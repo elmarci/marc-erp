@@ -127,6 +127,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   YAPE: 'Yape',
   PLIN: 'Plin',
   OTHER: 'Otro',
+  WALLET: 'Saldo',
 };
 
 export const ROLE_LABELS: Record<string, string> = {

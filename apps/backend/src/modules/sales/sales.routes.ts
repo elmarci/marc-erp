@@ -16,7 +16,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 const PAYMENT_LABELS: Record<string, string> = {
   CASH: 'Efectivo', DEBIT_CARD: 'T. Débito', CREDIT_CARD: 'T. Crédito',
-  TRANSFER: 'Transferencia', CREDIT: 'Crédito', YAPE: 'Yape', PLIN: 'Plin', OTHER: 'Otro',
+  TRANSFER: 'Transferencia', CREDIT: 'Crédito', YAPE: 'Yape', PLIN: 'Plin', OTHER: 'Otro', WALLET: 'Saldo',
 };
 
 const router = Router();
@@ -74,6 +74,7 @@ const createSaleSchema = z.object({
   amountTendered: z.number().min(0).optional(),
   couponCode: z.string().optional(),
   pointsToRedeem: z.coerce.number().int().min(0).optional(),
+  walletAuthToken: z.string().max(64).optional(),
   // Venta hecha en el POS mientras no había internet, sincronizada después —
   // no bloquear por stock/sesión ya cerrada, ver sales.service.ts.
   isOfflineSync: z.boolean().optional(),

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, DollarSign, CreditCard, Smartphone, Check, Mic, QrCode } from 'lucide-react';
+import { X, DollarSign, CreditCard, Smartphone, Check, Mic, QrCode, Wallet } from 'lucide-react';
+import { WalletPayPanel } from './WalletPayPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePosStore } from '@/stores/posStore';
@@ -25,10 +26,11 @@ const PAYMENT_METHODS = [
   { method: 'CREDIT_CARD', icon: CreditCard, label: 'Tarjeta Crédito', shortcut: '5' },
   { method: 'TRANSFER', icon: DollarSign, label: 'Transferencia', shortcut: '6' },
   { method: 'CREDIT', icon: DollarSign, label: 'Fiado', shortcut: '7' },
+  { method: 'WALLET', icon: Wallet, label: 'Saldo', shortcut: '8' },
 ];
 
 export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPaymentModalProps) {
-  const { total, payments, addPayment, removePayment, totalPaid, change, items, setIsCredit, customerId, totalCommission } = usePosStore();
+  const { total, payments, addPayment, removePayment, totalPaid, change, items, setIsCredit, customerId, totalCommission, walletAuth } = usePosStore();
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => (await api.get<{ data: Array<{ key: string; value: string }> }>('/settings')).data.data,
@@ -69,6 +71,21 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
     if (selectedMethod === 'CREDIT' && enteredAmount > remaining) {
       toast.error('El monto de fiado no puede exceder el saldo pendiente.');
       return false;
+    }
+    if (selectedMethod === 'WALLET') {
+      if (!walletAuth || walletAuth.customerId !== customerId) {
+        toast.error('Verifica al cliente con su QR o PIN para cobrar con saldo.');
+        return false;
+      }
+      const usedWallet = payments.filter((p) => p.method === 'WALLET').reduce((s, p) => s + p.amount, 0);
+      if (enteredAmount > walletAuth.balance - usedWallet + 0.001) {
+        toast.error(`El saldo disponible es ${formatCurrency(walletAuth.balance - usedWallet)}.`);
+        return false;
+      }
+      if (enteredAmount > remaining + 0.001) {
+        toast.error('El pago con saldo no puede exceder lo que falta.');
+        return false;
+      }
     }
     const paymentAmount = isCard ? cardBase : enteredAmount;
     addPayment({
@@ -192,7 +209,10 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
                     onClick={() => {
                       if (disabled) { toast.error('Asigna un cliente a la venta antes de fiar.'); return; }
                       setSelectedMethod(pm.method);
-                      setAmount(remaining.toFixed(2));
+                      const walletLeft = walletAuth && walletAuth.customerId === customerId
+                        ? walletAuth.balance - payments.filter((p) => p.method === 'WALLET').reduce((t, p) => t + p.amount, 0)
+                        : 0;
+                      setAmount((pm.method === 'WALLET' ? Math.max(0, Math.min(walletLeft, remaining)) : remaining).toFixed(2));
                     }}
                     className={cn(
                       'flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center text-xs font-medium leading-tight transition-colors',
@@ -266,6 +286,11 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
                 </div>
               )}
             </div>
+          )}
+
+          {/* Saldo prepago: verificar al cliente (QR o PIN) antes de cobrar */}
+          {selectedMethod === 'WALLET' && !isComplete && (
+            <WalletPayPanel remaining={remaining} onAmount={(a) => setAmount(a.toFixed(2))} />
           )}
 
           {/* Yape / Plin: QR del negocio para que el cliente escanee */}

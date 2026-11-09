@@ -91,7 +91,8 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
       // CheckoutPage.tsx cuando haya una.
       // YAPE_CONTRAENTREGA = paga por Yape recién cuando le llega el pedido
       // (no antes) — mismo espíritu que CASH pero por Yape en vez de billetes.
-      paymentMethod: z.enum(['YAPE', 'CASH', 'YAPE_CONTRAENTREGA']),
+      // WALLET = todo el pedido se paga con el saldo prepago del cliente.
+      paymentMethod: z.enum(['YAPE', 'CASH', 'YAPE_CONTRAENTREGA', 'WALLET']),
       // Ubicación GPS opcional que el cliente comparte desde el navegador —
       // nunca se confía en ella para nada crítico, sólo ayuda a la entrega.
       latitude: z.coerce.number().min(-90).max(90).optional(),
@@ -100,6 +101,8 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
       // (storeAuthMiddleware la resuelve más abajo); un invitado no puede
       // canjear puntos que no tiene forma de tener.
       pointsToRedeem: z.coerce.number().int().min(0).optional(),
+      // Cuánto del total pagar con el saldo prepago (requiere sesión).
+      walletAmount: z.coerce.number().min(0).optional(),
       items: z.array(z.object({
         // Acepta UUID normal O IDs de bundle (bundle-offerId-productId)
         productId: z.string().min(1),

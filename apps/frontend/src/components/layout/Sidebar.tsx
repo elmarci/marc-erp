@@ -21,6 +21,7 @@ import {
   Bike,
   Tv,
   Clock,
+  WalletCards,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { path: '/sales', label: 'Ventas', icon: Receipt },
   { path: '/products', label: 'Productos', icon: Package },
   { path: '/customers', label: 'Clientes', icon: UserCheck },
+  { path: '/wallets', label: 'Saldos', icon: WalletCards, minRole: 'ADMIN' },
   { path: '/purchases', label: 'Compras', icon: ShoppingBag, minRole: 'WAREHOUSE' },
   { path: '/inventory', label: 'Inventario', icon: Boxes, minRole: 'WAREHOUSE' },
   { path: '/cash', label: 'Caja', icon: Wallet },

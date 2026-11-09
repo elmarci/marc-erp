@@ -49,7 +49,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 const PAYMENT_LABELS: Record<string, string> = {
   CASH: 'Efectivo', DEBIT_CARD: 'T. Débito', CREDIT_CARD: 'T. Crédito',
-  YAPE: 'Yape', PLIN: 'Plin', TRANSFER: 'Transferencia', CREDIT: 'Crédito',
+  YAPE: 'Yape', PLIN: 'Plin', TRANSFER: 'Transferencia', CREDIT: 'Crédito', WALLET: 'Saldo',
 };
 
 /* ─── Customer Form Modal ─────────────────────────────────────────────── */

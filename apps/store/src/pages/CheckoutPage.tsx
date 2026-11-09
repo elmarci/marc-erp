@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store, Plus, LocateFixed, CheckCircle2, Gift } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store, Plus, LocateFixed, CheckCircle2, Gift, Wallet } from 'lucide-react'
 import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
@@ -47,6 +47,15 @@ export function CheckoutPage() {
   const pointsToRedeem = usePoints ? Math.min(pointsAvailable, pointsNeeded) : 0
   const pointsDiscount = Math.min(pointsToRedeem * pointValue, total)
   const finalTotal = total - pointsDiscount
+
+  // Saldo prepago: si tiene, se usa por defecto (lo puede desmarcar). Cubre
+  // todo o parte del pedido; el resto se paga con el método que elija.
+  const queryClient = useQueryClient()
+  const walletBalance = profileData?.data.data.walletBalance ?? 0
+  const [useWallet, setUseWallet] = useState(true)
+  const walletUse = isLoggedIn && useWallet ? Math.min(walletBalance, finalTotal) : 0
+  const toPay = Math.max(0, Math.round((finalTotal - walletUse) * 100) / 100)
+  const walletCoversAll = walletUse > 0 && toPay <= 0
 
   const [form, setForm] = useState({
     customerName: customer?.name ?? '',
@@ -107,7 +116,8 @@ export function CheckoutPage() {
       district: form.district || undefined,
       reference: form.reference || undefined,
       notes: form.notes || undefined,
-      paymentMethod: form.paymentMethod,
+      paymentMethod: walletCoversAll ? 'WALLET' : form.paymentMethod,
+      walletAmount: walletUse > 0 ? walletUse : undefined,
       latitude: coords?.lat,
       longitude: coords?.lng,
       pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
@@ -127,10 +137,15 @@ export function CheckoutPage() {
           reference: form.reference || undefined, isDefault: savedAddresses.length === 0,
         }).catch(() => {})
       }
+      queryClient.invalidateQueries({ queryKey: ['store-profile'] })
+      queryClient.invalidateQueries({ queryKey: ['store-wallet'] })
       clearCart()
       navigate(`/pedido/${res.data.data.orderNumber}`)
     },
-    onError: () => toast.error('Error al procesar el pedido. Intenta de nuevo.'),
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+      toast.error(msg ?? 'Error al procesar el pedido. Intenta de nuevo.')
+    },
   })
 
   if (items.length === 0) {
@@ -369,7 +384,33 @@ export function CheckoutPage() {
                   <p className="text-sm text-paper-ink-soft">Elige tu método de pago preferido</p>
                 </div>
 
+                {isLoggedIn && walletBalance > 0 && (
+                  <label className={`flex items-center gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all ${
+                    useWallet ? 'border-brand-blue-500 bg-brand-blue-50 ring-2 ring-brand-blue-100' : 'border-paper-line bg-white shadow-sm'
+                  }`}>
+                    <div className="h-11 w-11 rounded-xl bg-brand-blue-600 text-white flex items-center justify-center shrink-0">
+                      <Wallet className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-base text-paper-ink">Usar mi saldo</p>
+                      <p className="text-sm text-paper-ink-soft mt-0.5">
+                        Tienes <b className="text-paper-ink">S/ {walletBalance.toFixed(2)}</b>
+                        {useWallet && !walletCoversAll && walletUse > 0 && <> · cubre S/ {walletUse.toFixed(2)}, el resto lo pagas abajo</>}
+                        {useWallet && walletCoversAll && <> · cubre todo tu pedido</>}
+                      </p>
+                    </div>
+                    <input type="checkbox" checked={useWallet} onChange={e => setUseWallet(e.target.checked)}
+                      className="h-5 w-5 rounded border-paper-line text-brand-blue-600 focus:ring-brand-blue-400 shrink-0" />
+                  </label>
+                )}
+
+                {walletCoversAll ? (
+                  <div className="rounded-xl bg-paper-surface p-4 text-sm text-paper-ink-soft">
+                    No tienes que pagar nada más: se descontarán <b className="text-paper-ink">S/ {walletUse.toFixed(2)}</b> de tu saldo y te quedarán <b className="text-paper-ink">S/ {(walletBalance - walletUse).toFixed(2)}</b>.
+                  </div>
+                ) : (
                 <div className="space-y-3">
+                  {walletUse > 0 && <p className="text-sm font-semibold text-paper-ink">¿Cómo pagas los S/ {toPay.toFixed(2)} restantes?</p>}
                   {/* Plin deshabilitado temporalmente — no hay cuenta Plin
                       activa todavía; se reactiva sumando la opción de vuelta
                       acá y en el enum de store.routes.ts cuando haya una. */}
@@ -411,22 +452,23 @@ export function CheckoutPage() {
                     </button>
                   ))}
                 </div>
+                )}
 
-                {form.paymentMethod === 'YAPE' && (
+                {!walletCoversAll && form.paymentMethod === 'YAPE' && (
                   <div className="bg-brand-blue-50 border border-brand-blue-200 rounded-xl p-4 text-sm flex flex-col items-center text-center gap-2">
                     <p className="font-semibold text-paper-ink">Escanea y paga con Yape</p>
                     <img src="/yape-qr.png" alt="QR de Yape para pagar" className="w-40 rounded-xl border border-paper-line" />
                     <p className="text-paper-ink-soft">
-                      Paga <strong className="text-paper-ink">S/ {finalTotal.toFixed(2)}</strong> y guarda tu captura — te la pedimos apenas confirmes el pedido.
+                      Paga <strong className="text-paper-ink">S/ {toPay.toFixed(2)}</strong> y guarda tu captura — te la pedimos apenas confirmes el pedido.
                     </p>
                   </div>
                 )}
 
-                {form.paymentMethod === 'YAPE_CONTRAENTREGA' && (
+                {!walletCoversAll && form.paymentMethod === 'YAPE_CONTRAENTREGA' && (
                   <div className="bg-brand-blue-50 border border-brand-blue-200 rounded-xl p-4 text-sm flex flex-col items-center text-center gap-2">
                     <p className="font-semibold text-paper-ink">Yapeas cuando te llegue el pedido</p>
                     <p className="text-paper-ink-soft">
-                      No necesitas pagar ahora. {form.deliveryType === 'PICKUP' ? 'Al recoger tu pedido' : 'Cuando el repartidor llegue'} te mostramos el QR o número para que Yapees <strong className="text-paper-ink">S/ {finalTotal.toFixed(2)}</strong>.
+                      No necesitas pagar ahora. {form.deliveryType === 'PICKUP' ? 'Al recoger tu pedido' : 'Cuando el repartidor llegue'} te mostramos el QR o número para que Yapees <strong className="text-paper-ink">S/ {toPay.toFixed(2)}</strong>.
                     </p>
                   </div>
                 )}
@@ -437,13 +479,13 @@ export function CheckoutPage() {
                     <ArrowLeft className="h-4 w-4" />Atrás
                   </button>
                   <button
-                    onClick={() => { if (!form.paymentMethod) { toast.error('Elige un método de pago'); return } mutation.mutate() }}
+                    onClick={() => { if (!walletCoversAll && !form.paymentMethod) { toast.error('Elige un método de pago'); return } mutation.mutate() }}
                     disabled={mutation.isPending}
                     className="flex-1 bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-50 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors text-base">
                     {mutation.isPending ? (
                       <><div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Procesando...</>
                     ) : (
-                      <><Check className="h-5 w-5" />Confirmar pedido · S/ {finalTotal.toFixed(2)}</>
+                      <><Check className="h-5 w-5" />{walletCoversAll ? `Pagar con saldo · S/ ${walletUse.toFixed(2)}` : `Confirmar pedido · S/ ${toPay.toFixed(2)}`}</>
                     )}
                   </button>
                 </div>
@@ -527,6 +569,18 @@ export function CheckoutPage() {
                 <span>TOTAL</span>
                 <span className="text-brand-green-700 tabular-nums">S/ {finalTotal.toFixed(2)}</span>
               </div>
+              {walletUse > 0 && (
+                <div className="mt-2 space-y-1 text-sm">
+                  <div className="flex justify-between text-brand-blue-700">
+                    <span>Con tu saldo</span>
+                    <span className="tabular-nums">-S/ {walletUse.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-paper-ink">
+                    <span>Por pagar</span>
+                    <span className="tabular-nums">S/ {toPay.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
 
               {/* Summary of selected options */}
               {(form.deliveryType || form.paymentMethod) && (

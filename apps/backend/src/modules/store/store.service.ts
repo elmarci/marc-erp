@@ -5,6 +5,7 @@ import { redis } from '../../config/redis';
 import { getSettingValues } from '../../utils/settings';
 import { nowInLima } from '../../utils/timezone';
 import { deliveryService } from '../delivery/delivery.service';
+import { walletService } from '../wallet/wallet.service';
 
 export class StoreService {
 
@@ -255,10 +256,11 @@ export class StoreService {
     customerName: string; customerPhone: string; customerEmail?: string;
     deliveryType: 'DELIVERY' | 'PICKUP';
     address?: string; district?: string; reference?: string; notes?: string;
-    paymentMethod: 'YAPE' | 'PLIN' | 'CASH' | 'YAPE_CONTRAENTREGA';
+    paymentMethod: 'YAPE' | 'PLIN' | 'CASH' | 'YAPE_CONTRAENTREGA' | 'WALLET';
     latitude?: number; longitude?: number;
     storeCustomerId?: string;
     pointsToRedeem?: number;
+    walletAmount?: number;
     items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) {
     // Extraer IDs reales
@@ -354,11 +356,31 @@ export class StoreService {
 
     const total = subtotal + deliveryCost - pointsDiscountAmount;
 
+    // Pago con saldo prepago (total o parcial). Se valida contra el total
+    // calculado acá (nunca contra lo que diga el navegador) y se descuenta
+    // del saldo en la MISMA transacción que crea el pedido.
+    const walletAmount = Math.round(Math.min(data.walletAmount ?? 0, total) * 100) / 100;
+    let walletCustomerId: string | null = null;
+    if (walletAmount > 0) {
+      if (!data.storeCustomerId) throw new BusinessError('Debes iniciar sesión para pagar con tu saldo.');
+      const sc = await prisma.storeCustomer.findUnique({ where: { id: data.storeCustomerId } });
+      if (!sc?.customerId) throw new BusinessError('Tu cuenta todavía no está enlazada. Cierra sesión y vuelve a entrar.');
+      walletCustomerId = sc.customerId;
+    }
+    const remaining = Math.round((total - walletAmount) * 100) / 100;
+    if (data.paymentMethod === 'WALLET' && remaining > 0.009) {
+      throw new BusinessError('Tu saldo no alcanza para todo el pedido: elige cómo pagar el resto.');
+    }
+    // Si el saldo cubre todo, el método del pedido es WALLET y ya está pagado.
+    const paymentMethod = walletAmount > 0 && remaining <= 0.009 ? 'WALLET' : data.paymentMethod;
+    if (paymentMethod === 'WALLET' && walletAmount <= 0) throw new BusinessError('Elige un método de pago.');
+
     // Generate order number
     const count = await prisma.storeOrder.count();
     const orderNumber = `ORD-${String(count + 1).padStart(5, '0')}`;
 
-    const order = await prisma.storeOrder.create({
+    const order = await prisma.$transaction(async (tx) => {
+     const created = await tx.storeOrder.create({
       data: {
         orderNumber,
         customerName: data.customerName,
@@ -369,7 +391,9 @@ export class StoreService {
         district: data.district,
         reference: data.reference,
         notes: data.notes,
-        paymentMethod: data.paymentMethod,
+        paymentMethod,
+        paymentStatus: paymentMethod === 'WALLET' ? 'VERIFIED' : 'PENDING',
+        walletAmount,
         storeCustomerId: data.storeCustomerId,
         latitude: data.latitude,
         longitude: data.longitude,
@@ -381,6 +405,14 @@ export class StoreService {
         items: { create: orderItems },
       },
       include: { items: true },
+     });
+     if (walletAmount > 0 && walletCustomerId) {
+       await walletService.applyMovement(tx, {
+         customerId: walletCustomerId, amount: -walletAmount, type: 'CONSUMO',
+         description: `Pedido web ${orderNumber}`, storeOrderId: created.id,
+       });
+     }
+     return created;
     });
 
     emitEvent('store:new-order', {
@@ -447,7 +479,7 @@ export class StoreService {
     // en la contabilidad del ERP, sólo cambia CUÁNDO se cobra (no antes de
     // entregar), así que cae en el mismo enum PaymentMethod.YAPE de la venta.
     const paymentMethodMap: Record<string, string> = {
-      YAPE: 'YAPE', PLIN: 'PLIN', CASH: 'CASH', YAPE_CONTRAENTREGA: 'YAPE',
+      YAPE: 'YAPE', PLIN: 'PLIN', CASH: 'CASH', YAPE_CONTRAENTREGA: 'YAPE', WALLET: 'WALLET',
     };
     const paymentMethod = paymentMethodMap[order.paymentMethod] ?? 'CASH';
 
@@ -513,6 +545,7 @@ export class StoreService {
       // cualquier otro descuento de una venta hecha en el POS.
       const pointsDiscountAmount = Number(order.pointsDiscountAmount);
       const discountedSubtotal = subtotal - pointsDiscountAmount;
+      const walletPaid = Math.min(Number(order.walletAmount), discountedSubtotal);
 
       const taxRate = 0.18;
       const netAmount = discountedSubtotal / (1 + taxRate);
@@ -544,11 +577,15 @@ export class StoreService {
           items: {
             create: saleItems,
           },
+          // Lo pagado con saldo va como pago "WALLET" (no cuenta como
+          // efectivo en el cierre de caja); el resto, con el método elegido.
           payments: {
-            create: [{
-              method: paymentMethod as never,
-              amount: discountedSubtotal,
-            }],
+            create: [
+              ...(walletPaid > 0 ? [{ method: 'WALLET' as never, amount: walletPaid }] : []),
+              ...(discountedSubtotal - walletPaid > 0.009 && paymentMethod !== 'WALLET'
+                ? [{ method: paymentMethod as never, amount: Math.round((discountedSubtotal - walletPaid) * 100) / 100 }]
+                : []),
+            ],
           },
         },
       });
@@ -603,6 +640,12 @@ export class StoreService {
         });
       }
 
+      // El consumo de saldo (hecho al crear el pedido) queda ligado a la
+      // venta: si después se anula la venta, el saldo vuelve desde ahí.
+      if (Number(order.walletAmount) > 0) {
+        await tx.walletMovement.updateMany({ where: { storeOrderId: order.id, type: 'CONSUMO' }, data: { saleId: sale.id } });
+      }
+
       // Update store order: CONFIRMED + link to sale
       const updated = await tx.storeOrder.update({
         where: { id },
@@ -630,10 +673,19 @@ export class StoreService {
       throw new BusinessError('Este pedido tiene un repartidor asignado — la entrega la confirma él desde su app.');
     }
 
-    const order = await prisma.storeOrder.update({
-      where: { id },
-      data: { status, ...(paymentStatus ? { paymentStatus } : {}) },
-      include: { items: true },
+    // Cancelar un pedido aún no confirmado devuelve el saldo usado. Si ya
+    // se confirmó, existe la venta: el saldo vuelve al anular esa venta.
+    const order = await prisma.$transaction(async (tx) => {
+      const updated = await tx.storeOrder.update({
+        where: { id },
+        data: { status, ...(paymentStatus ? { paymentStatus } : {}) },
+        include: { items: true },
+      });
+      if (status === 'CANCELLED' && current.status !== 'CANCELLED' && !current.saleId && Number(current.walletAmount) > 0 && current.storeCustomerId) {
+        const sc = await tx.storeCustomer.findUnique({ where: { id: current.storeCustomerId } });
+        if (sc?.customerId) await walletService.refundStoreOrder(tx, current, sc.customerId);
+      }
+      return updated;
     });
 
     // Notificar al cliente en tiempo real

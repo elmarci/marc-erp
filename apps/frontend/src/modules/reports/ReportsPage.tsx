@@ -75,7 +75,7 @@ function getDateRange(days: number) {
 
 const PAYMENT_LABELS: Record<string, string> = {
   CASH: 'Efectivo', DEBIT_CARD: 'Tarjeta débito', CREDIT_CARD: 'Tarjeta crédito',
-  TRANSFER: 'Transferencia', YAPE: 'Yape', PLIN: 'Plin', CREDIT: 'Crédito', OTHER: 'Otro',
+  TRANSFER: 'Transferencia', YAPE: 'Yape', PLIN: 'Plin', CREDIT: 'Crédito', OTHER: 'Otro', WALLET: 'Saldo',
 };
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
