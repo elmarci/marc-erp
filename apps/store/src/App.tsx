@@ -6,7 +6,7 @@ import { CartDrawer } from './components/CartDrawer'
 import { InstallAppBanner } from './components/InstallAppBanner'
 import { NotifyOptInBanner } from './components/NotifyOptInBanner'
 import { MobileTabBar } from './components/MobileTabBar'
-import { CartBar } from './components/CartBar'
+import { CartBar, VOICE_LIST_ROUTES } from './components/CartBar'
 import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
 import { WhatsAppFAB } from './components/WhatsAppFAB'
 import { AuthGate } from './pages/AuthGate'
@@ -95,7 +95,7 @@ export default function App() {
       {/* /canasta tiene su propia barra fija de total y su propio micrófono:
           los botones flotantes la tapaban. */}
       {/* Lista por voz: solo donde se elige qué comprar, para no tapar botones en ficha, cuenta o pago. */}
-      {['/', '/catalogo', '/categorias', '/ofertas'].includes(location.pathname) && <VoiceShoppingListButton />}
+      {VOICE_LIST_ROUTES.includes(location.pathname) && <VoiceShoppingListButton />}
       {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/canasta') && <WhatsAppFAB />}
     </div>
   )

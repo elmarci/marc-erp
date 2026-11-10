@@ -14,11 +14,15 @@ const H2 = 'text-lg font-extrabold text-paper-ink'
 
 function CardSkeleton() {
   return (
-    <div className="bg-white rounded-[18px] p-2.5 shadow-card flex flex-col gap-2" aria-hidden="true">
-      <div className="aspect-square rounded-xl bg-paper-surface animate-pulse" />
-      <div className="h-4 rounded bg-paper-surface animate-pulse" />
-      <div className="h-4 w-2/3 rounded bg-paper-surface animate-pulse" />
-      <div className="h-11 rounded-xl bg-paper-surface animate-pulse" />
+    <div className="bg-white rounded-[18px] p-3 shadow-card flex flex-col gap-3" aria-hidden="true">
+      <div className="flex items-center gap-3 sm:flex-col sm:items-stretch">
+        <div className="h-24 w-24 shrink-0 sm:h-auto sm:w-full sm:aspect-square rounded-xl bg-paper-surface animate-pulse" />
+        <div className="flex-1 flex flex-col gap-2">
+          <div className="h-4 rounded bg-paper-surface animate-pulse" />
+          <div className="h-5 w-1/2 rounded bg-paper-surface animate-pulse" />
+        </div>
+      </div>
+      <div className="h-12 rounded-xl bg-paper-surface animate-pulse" />
     </div>
   )
 }
@@ -122,7 +126,7 @@ export function HomePage() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
             {featuredQuery.isLoading
               ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
               : featured.map(product => <ProductCard key={product.id} product={product} />)}

@@ -12,6 +12,10 @@ export function WhatsAppIcon({ className = '' }: { className?: string }) {
 // Barra fija sobre la navegación inferior (solo celular): el carrito con su
 // total siempre a la vista y WhatsApp al lado como segunda vía para pedir.
 // Con el carrito vacío queda solo el botón de WhatsApp.
+// Pantallas donde aparece el botón de lista por voz. En celular va en esta
+// misma fila, entre "Ver carrito" y WhatsApp, para no tapar la lista.
+export const VOICE_LIST_ROUTES = ['/', '/catalogo', '/categorias', '/ofertas']
+
 export function CartBar() {
   const items = useCartStore(s => s.items)
   const openCart = useCartStore(s => s.openCart)
@@ -19,6 +23,9 @@ export function CartBar() {
   const total = cartTotal(items)
   const units = Math.round(count * 100) / 100
 
+  // En la ficha, con el carrito vacío, el WhatsApp suelto taparía el botón
+  // "Agregar"; vuelve junto a "Ver carrito" apenas se agrega algo.
+  if (count === 0 && window.location.pathname.startsWith('/producto')) return null
   return (
     <div className="md:hidden fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 px-4 pb-3 flex justify-end gap-2.5 pointer-events-none">
       {count > 0 && (
@@ -28,6 +35,7 @@ export function CartBar() {
           <span className="tabular-nums">{money(total)}</span>
         </button>
       )}
+      {VOICE_LIST_ROUTES.includes(window.location.pathname) && <span className="w-[52px] shrink-0" aria-hidden="true" />}
       <a href={whatsappLink(`Hola ${BRAND_NAME}, quiero hacer un pedido.`)} target="_blank" rel="noopener noreferrer"
         aria-label="Pedir por WhatsApp"
         className="pointer-events-auto h-[52px] w-[52px] shrink-0 rounded-2xl bg-[#25D366] text-[#0B3B1E] shadow-lg shadow-black/15 flex items-center justify-center">
