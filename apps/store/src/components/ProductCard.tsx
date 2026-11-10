@@ -187,12 +187,10 @@ export function ProductCard({ product, layout = 'row' }: { product: Product; lay
   const cartItem = items.find(i => i.product.id === product.id)
   const qty = cartItem?.quantity ?? 0
   const outOfStock = product.currentStock <= 0
-  const lowStock = !outOfStock && product.currentStock <= 5
   const unit = product.bulkUnit ?? 'kg'
 
   const badge = outOfStock ? { text: 'Agotado', cls: 'bg-paper-ink text-white' }
     : product.isBulk ? { text: `Por ${unit}`, cls: 'bg-white text-paper-ink shadow-card' }
-    : lowStock ? { text: product.currentStock === 1 ? 'Última unidad' : `Últimas ${product.currentStock}`, cls: 'bg-brand-sun-400 text-brand-sun-900' }
     : null
 
   const handleAdd = () => {
@@ -228,9 +226,6 @@ export function ProductCard({ product, layout = 'row' }: { product: Product; lay
               S/ {Number(product.salePrice).toFixed(2)}
               {product.isBulk && <span className="text-sm font-semibold text-paper-ink-soft"> /{unit}</span>}
             </p>
-            {badge && row && !product.isBulk && (
-              <span className={`sm:hidden self-start text-[11px] font-bold px-1.5 py-0.5 rounded-md ${badge.cls}`}>{badge.text}</span>
-            )}
           </div>
         </Link>
 
