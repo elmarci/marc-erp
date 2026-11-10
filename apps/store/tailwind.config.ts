@@ -8,8 +8,16 @@ export default {
       // amarillo para ofertas. Todos los pares texto/fondo pasan AA.
       // Fuente de verdad: .claude/skills/marc-brand/SKILL.md.
       fontFamily: {
-        sans: ['Figtree', 'system-ui', 'sans-serif'],
-        display: ['Figtree', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      // Versión sobria (2026-11-10, pedido del dueño): esquinas casi rectas,
+      // un solo peso fuerte (700) y bordes de 1 px en vez de sombras.
+      borderRadius: { md: '4px', lg: '4px', xl: '6px', '2xl': '8px', '3xl': '8px' },
+      fontWeight: { extrabold: '700', black: '700' },
+      letterSpacing: { tight: '-0.01em' },
+      fontSize: {
+        xl: ['1.1875rem', '1.6rem'], '2xl': ['1.375rem', '1.8rem'], '3xl': ['1.625rem', '2rem'],
       },
       colors: {
         brand: {
@@ -52,8 +60,8 @@ export default {
         process: { yellow: '#ffd84d' },
       },
       boxShadow: {
-        card: '0 1px 3px rgba(20,33,61,.08)',
-        float: '0 6px 16px rgba(20,80,180,.30)',
+        card: '0 0 0 1px #d9dfeb',
+        float: '0 2px 8px rgba(20,33,61,.18)',
       },
       keyframes: {
         slideInLeft: { from: { transform: 'translateX(-100%)' }, to: { transform: 'translateX(0)' } },

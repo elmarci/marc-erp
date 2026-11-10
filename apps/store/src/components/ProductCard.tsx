@@ -198,7 +198,7 @@ export function ProductCard({ product }: { product: Product }) {
 
   return (
     <>
-      <article className={`h-full bg-white rounded-[18px] p-2.5 shadow-card flex flex-col gap-2 ${outOfStock ? 'opacity-70' : ''}`}>
+      <article className={`h-full bg-white rounded-2xl p-3 shadow-card flex flex-col gap-2 ${outOfStock ? 'opacity-70' : ''}`}>
         <Link to={`/producto/${product.id}`} className="flex flex-col gap-2 flex-1">
           <div className="relative aspect-square rounded-xl overflow-hidden bg-paper-surface">
             {product.imageUrl
@@ -218,7 +218,7 @@ export function ProductCard({ product }: { product: Product }) {
               <span className="absolute inset-x-2 bottom-2 bg-paper-ink text-white text-xs font-bold py-1 rounded-lg text-center">Agotado</span>
             )}
           </div>
-          <p className="text-[15px] font-semibold text-paper-ink leading-tight line-clamp-2 min-h-[2.5em]">{product.name}</p>
+          <p className="text-sm font-medium text-paper-ink leading-snug line-clamp-2 min-h-[2.75em]">{product.name}</p>
           <p className="text-xl font-extrabold text-paper-ink tabular-nums leading-none">
             S/ {Number(product.salePrice).toFixed(2)}
             {product.isBulk && <span className="text-sm font-semibold text-paper-ink-soft"> /{unit}</span>}
