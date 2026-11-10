@@ -120,7 +120,7 @@ export function ProductPage() {
       </Link>
 
       <div className="grid md:grid-cols-2 gap-4 md:gap-10">
-        <div className="relative aspect-square bg-white rounded-2xl shadow-card overflow-hidden">
+        <div className="relative aspect-square bg-white rounded-[20px] shadow-card overflow-hidden">
           {product.imageUrl
             ? <img ref={imgRef} src={product.imageUrl} alt={product.name} width={600} height={600} className="w-full h-full object-contain p-4" />
             : <div className="w-full h-full flex items-center justify-center bg-paper-surface"><ShoppingBag className="h-16 w-16 text-paper-ink-ghost" aria-hidden="true" /></div>

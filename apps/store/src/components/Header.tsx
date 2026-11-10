@@ -64,13 +64,13 @@ export function Header() {
           <CategoryMegaMenu />
 
           <form onSubmit={handleSearch} className="hidden md:block flex-1 max-w-xl">
-            {searchField('Buscar productos')}
+            {searchField('Busca leche, arroz, gaseosa…')}
           </form>
 
           <div className="flex-1 md:hidden" />
 
           <div className="flex items-center gap-1 shrink-0">
-            <Link to="/ofertas" className="relative hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-xl px-3 h-11 transition-colors">
+            <Link to="/ofertas" className="relative hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-full px-3 h-11 transition-colors">
               <Tag className="h-4 w-4" />Ofertas
               {offersCount > 0 && <span className="h-5 min-w-5 px-1 bg-brand-sun-400 text-brand-sun-900 text-xs font-extrabold rounded-full flex items-center justify-center">{offersCount}</span>}
             </Link>
@@ -78,7 +78,7 @@ export function Header() {
             {customer ? (
               <div className="relative hidden md:block">
                 <button onClick={() => setShowMenu(!showMenu)}
-                  className="flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-xl px-3 h-11 transition-colors">
+                  className="flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-full px-3 h-11 transition-colors">
                   <span className="h-7 w-7 bg-white text-brand-blue-600 rounded-full flex items-center justify-center text-xs font-extrabold">
                     {customer.name[0].toUpperCase()}
                   </span>
@@ -103,7 +103,7 @@ export function Header() {
                 )}
               </div>
             ) : (
-              <Link to="/ingresar" className="hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-xl px-3 h-11 transition-colors">
+              <Link to="/ingresar" className="hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-full px-3 h-11 transition-colors">
                 <User className="h-4 w-4" />Ingresar
               </Link>
             )}
@@ -111,14 +111,14 @@ export function Header() {
             {/* En celular el carrito vive en la barra fija de abajo; acá va
                 el acceso a la cuenta. */}
             <Link to={customer ? '/mis-pedidos' : '/ingresar'} aria-label={customer ? 'Mi cuenta' : 'Ingresar'}
-              className="md:hidden flex items-center justify-center h-11 w-11 rounded-xl bg-brand-blue-700">
+              className="md:hidden flex items-center justify-center h-11 w-11 rounded-full bg-brand-blue-700">
               {customer
                 ? <span className="text-sm font-extrabold">{customer.name[0].toUpperCase()}</span>
                 : <User className="h-5 w-5" />}
             </Link>
 
             <button data-cart-target onClick={openCart}
-              className="hidden md:flex relative items-center gap-2 bg-white text-brand-blue-600 font-bold rounded-xl px-4 h-11 text-sm">
+              className="hidden md:flex relative items-center gap-2 bg-white text-brand-blue-600 font-bold rounded-full px-4 h-11 text-sm">
               <ShoppingCart className="h-4 w-4" />Carrito
               {count > 0 && (
                 <span className="h-5 min-w-5 px-1 bg-brand-green-600 text-white text-xs font-extrabold rounded-full flex items-center justify-center">{count}</span>
@@ -129,7 +129,7 @@ export function Header() {
       </header>
 
       <form onSubmit={handleSearch} className="md:hidden sticky top-0 z-40 h-16 bg-brand-blue-600 px-4 pt-1 pb-3">
-        {searchField('Buscar productos')}
+        {searchField('Busca leche, arroz, gaseosa…')}
       </form>
 
       <SideMenu open={showSideMenu} onClose={() => setShowSideMenu(false)} />

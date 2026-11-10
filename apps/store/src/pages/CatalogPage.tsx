@@ -375,7 +375,7 @@ export function CatalogPage() {
             chainLoading && sections.length === 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                 {Array.from({ length: 12 }).map((_, i) => (
-                  <div key={i} className="bg-white rounded-2xl shadow-card h-64 animate-pulse" />
+                  <div key={i} className="bg-white rounded-[18px] shadow-card h-64 animate-pulse" />
                 ))}
               </div>
             ) : sections.length === 0 ? (
@@ -418,7 +418,7 @@ export function CatalogPage() {
           ) : isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-2xl shadow-card h-64 animate-pulse" />
+                <div key={i} className="bg-white rounded-[18px] shadow-card h-64 animate-pulse" />
               ))}
             </div>
           ) : flatProducts.length === 0 ? (

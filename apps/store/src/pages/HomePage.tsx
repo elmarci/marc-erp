@@ -10,14 +10,11 @@ import { BRAND_NAME, DELIVERY, deliveryStatus, money, whatsappLink } from '../li
 
 const STORE_ADDRESS = 'Mz F10 Lt2A - C.27 Av. Manchay, Pachacamac'
 const WRAP = 'max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8'
-const H2 = 'text-[17px] font-bold text-paper-ink'
-// Todas las secciones usan la misma separación (24 px) y la misma fila de
-// título (44 px), para que la página se lea como una cuadrícula.
-const HEAD = 'h-11 flex items-center justify-between mb-1'
+const H2 = 'text-lg font-extrabold text-paper-ink'
 
 function CardSkeleton() {
   return (
-    <div className="bg-white rounded-2xl p-2.5 shadow-card flex flex-col gap-2" aria-hidden="true">
+    <div className="bg-white rounded-[18px] p-2.5 shadow-card flex flex-col gap-2" aria-hidden="true">
       <div className="aspect-square rounded-xl bg-paper-surface animate-pulse" />
       <div className="h-4 rounded bg-paper-surface animate-pulse" />
       <div className="h-4 w-2/3 rounded bg-paper-surface animate-pulse" />
@@ -53,8 +50,8 @@ export function HomePage() {
     <main className="pb-6">
       {/* Reparto: lo primero que un vecino nuevo necesita saber antes de
           llenar el carrito — si llegamos a su zona, cuándo y cuánto cuesta. */}
-      <section className={`${WRAP} pt-4`} aria-label="Reparto">
-        <div className="bg-white rounded-2xl shadow-card p-4 flex items-center gap-3">
+      <section className={`${WRAP} pt-3.5`} aria-label="Reparto">
+        <div className="bg-white rounded-2xl shadow-card px-3.5 py-3 flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-brand-green-100 flex items-center justify-center shrink-0">
             <Truck className="h-5 w-5 text-brand-green-600" aria-hidden="true" />
           </div>
@@ -68,31 +65,27 @@ export function HomePage() {
       </section>
 
       {topCategories.length > 0 && (
-        <section className={`${WRAP} pt-6`}>
-          <div className={HEAD}>
-            <h2 className={H2}>Categorías</h2>
-            <Link to="/categorias" className="text-sm font-semibold text-brand-blue-600 h-11 flex items-center">Ver todas</Link>
-          </div>
-          {/* Cuadrícula de celdas iguales separadas por líneas de 1 px. */}
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-px bg-paper-line border border-paper-line rounded-2xl overflow-hidden">
+        <section className={`${WRAP} pt-5`}>
+          <h2 className={`${H2} mb-3`}>Categorías</h2>
+          <div className="grid grid-cols-4 sm:grid-cols-8 gap-x-2.5 gap-y-3.5">
             {topCategories.map(cat => {
               const Icon = getCategoryIcon(cat.name)
               return (
-                <Link key={cat.id} to={`/catalogo?categoryId=${cat.id}`} className="bg-white h-24 px-1 flex flex-col items-center justify-center gap-2 text-center">
-                  <span className="h-10 w-10 rounded-lg overflow-hidden flex items-center justify-center shrink-0">
+                <Link key={cat.id} to={`/catalogo?categoryId=${cat.id}`} className="flex flex-col items-center gap-1.5 text-center">
+                  <span className="h-16 w-16 rounded-[18px] bg-white shadow-card overflow-hidden flex items-center justify-center">
                     {cat.imageUrl
-                      ? <img src={cat.imageUrl} alt="" loading="lazy" decoding="async" width={40} height={40} className="h-full w-full object-cover" />
+                      ? <img src={cat.imageUrl} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-cover" />
                       : <Icon className="h-7 w-7 text-brand-blue-600" />}
                   </span>
-                  <span className="text-xs font-medium text-paper-ink leading-tight line-clamp-2">{cat.name}</span>
+                  <span className="text-[13px] font-semibold text-paper-ink leading-tight line-clamp-2">{cat.name}</span>
                 </Link>
               )
             })}
-            <Link to="/categorias" className="bg-white h-24 px-1 flex flex-col items-center justify-center gap-2 text-center">
-              <span className="h-10 w-10 flex items-center justify-center shrink-0">
-                <LayoutGrid className="h-7 w-7 text-brand-blue-600" aria-hidden="true" />
+            <Link to="/categorias" className="flex flex-col items-center gap-1.5 text-center">
+              <span className="h-16 w-16 rounded-[18px] bg-brand-blue-600 flex items-center justify-center">
+                <LayoutGrid className="h-7 w-7 text-white" aria-hidden="true" />
               </span>
-              <span className="text-xs font-semibold text-brand-blue-600 leading-tight">Ver todo</span>
+              <span className="text-[13px] font-semibold text-paper-ink leading-tight">Ver todo</span>
             </Link>
           </div>
         </section>
@@ -100,18 +93,18 @@ export function HomePage() {
 
       {offers.length > 0 && (
         <>
-          <div className={`${WRAP} pt-6`}><div className={HEAD}>
+          <div className={`${WRAP} pt-4 flex items-center justify-between`}>
             <h2 className={H2}>Ofertas de la semana</h2>
-            <Link to="/ofertas" className="text-sm font-semibold text-brand-blue-600 h-11 flex items-center">Ver todas</Link>
-          </div></div>
+            <Link to="/ofertas" className="text-sm font-bold text-brand-blue-600 h-11 flex items-center">Ver todas</Link>
+          </div>
           <PromoCarousel offers={offers} />
         </>
       )}
 
-      <section className={`${WRAP} pt-6`}>
-        <div className={HEAD}>
-          <h2 className={H2}>Más vendidos</h2>
-          <Link to="/catalogo" className="text-sm font-semibold text-brand-blue-600 h-11 flex items-center">Ver todo</Link>
+      <section className={`${WRAP} pt-4`}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className={H2}>Lo que más se lleva</h2>
+          <Link to="/catalogo" className="text-sm font-bold text-brand-blue-600 h-11 flex items-center">Ver todo</Link>
         </div>
 
         {featuredQuery.isError ? (
@@ -152,7 +145,7 @@ export function HomePage() {
           </span>
           <span className="flex-1 min-w-0">
             <span className="block font-bold text-paper-ink">Arma tu canasta</span>
-            <span className="block text-sm text-paper-ink-soft leading-snug">Indica tu presupuesto y el número de personas.</span>
+            <span className="block text-sm text-paper-ink-soft leading-snug">Dinos cuánto tienes y para cuántos. Te armamos la compra.</span>
           </span>
           <ChevronRight className="h-5 w-5 text-paper-ink-soft shrink-0" aria-hidden="true" />
         </Link>
@@ -161,19 +154,19 @@ export function HomePage() {
       {/* Cómo funciona el reparto y el pago: datos reales, a la vista, sin
           tener que llegar al checkout para enterarse. */}
       <section className={`${WRAP} pt-6`}>
-        <div className={HEAD}><h2 className={H2}>Reparto y pagos</h2></div>
+        <h2 className={`${H2} mb-3`}>Cómo te llega tu pedido</h2>
         <div className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
           <div className="flex gap-3 p-4">
             <MapPin className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
             <div>
-              <p className="font-bold text-paper-ink">Zona de reparto: {DELIVERY.zoneName}</p>
+              <p className="font-bold text-paper-ink">Repartimos en {DELIVERY.zoneName}</p>
               <p className="text-sm text-paper-ink-soft leading-relaxed">{DELIVERY.zones.join(', ')}.</p>
             </div>
           </div>
           <div className="flex gap-3 p-4">
             <Clock className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
             <div>
-              <p className="font-bold text-paper-ink">Horarios de reparto</p>
+              <p className="font-bold text-paper-ink">Dos repartos al día</p>
               <p className="text-sm text-paper-ink-soft leading-relaxed">Mañana de 6 a 9 am y tarde de 5 a 9 pm. Viernes y sábado, hasta la 1 am.</p>
             </div>
           </div>
@@ -187,10 +180,10 @@ export function HomePage() {
           <div className="flex gap-3 p-4">
             <Wallet className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
             <div>
-              <p className="font-bold text-paper-ink">Medios de pago</p>
+              <p className="font-bold text-paper-ink">Pagas como prefieras</p>
               <div className="flex flex-wrap gap-2 mt-1.5">
                 {DELIVERY.payments.map(p => (
-                  <span key={p} className="border border-paper-line rounded-lg px-3 py-1 text-sm font-medium text-paper-ink">{p}</span>
+                  <span key={p} className="bg-paper-surface rounded-full px-3 py-1 text-sm font-semibold text-paper-ink">{p}</span>
                 ))}
               </div>
             </div>
@@ -198,7 +191,7 @@ export function HomePage() {
         </div>
       </section>
 
-      <footer className={`${WRAP} pt-6 pb-4 text-sm text-paper-ink-soft`}>
+      <footer className={`${WRAP} pt-8 pb-4 text-sm text-paper-ink-soft`}>
         <p className="font-bold text-paper-ink">{BRAND_NAME}</p>
         <p className="mt-1">{STORE_ADDRESS}</p>
         <p>Tienda abierta de lunes a domingo, de 7 am a 10 pm.</p>
