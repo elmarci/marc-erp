@@ -1,11 +1,12 @@
-import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck, Sparkles } from 'lucide-react'
+import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useCartStore, cartTotal, type CartItem } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { useNavigate } from 'react-router-dom'
 import { storeApi } from '../api'
 
-const WHATSAPP_NUMBER = '51930555831'
+import { WhatsAppIcon } from './CartBar'
+import { BRAND_NAME, DELIVERY, money, whatsappLink } from '../lib/storeInfo'
 
 export function CartDrawer() {
   const items = useCartStore(s => s.items)
@@ -52,15 +53,16 @@ export function CartDrawer() {
   // completo en un mensaje estructurado y lo manda directo a WhatsApp.
   const handleWhatsApp = () => {
     const lines = items.map(i => `• ${i.product.name} ×${i.quantity} — S/ ${(Number(i.product.salePrice) * i.quantity).toFixed(2)}`)
-    const greeting = customer ? `Hola TIENDA MARC! Soy ${customer.name} 👋` : 'Hola TIENDA MARC! 👋'
+    const greeting = customer ? `Hola ${BRAND_NAME}, soy ${customer.name}.` : `Hola ${BRAND_NAME}.`
     const msg = [
       greeting, '',
       'Quiero hacer este pedido:', '',
       ...lines, '',
       `*TOTAL: S/ ${total.toFixed(2)}*`, '',
-      customer ? `Mi teléfono: ${customer.phone}` : '(Te paso mi dirección y forma de pago por acá)',
+      'Mi dirección: ',
+      'Pago con (Yape o efectivo): ',
     ].join('\n')
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank')
+    window.open(whatsappLink(msg), '_blank')
   }
 
   const handleCheckout = () => {
@@ -76,112 +78,101 @@ export function CartDrawer() {
 
   return (
     <>
-      {/* Overlay */}
-      <div className="fixed inset-0 z-50 bg-paper-ink/50 backdrop-blur-sm" onClick={closeCart} />
+      <div className="fixed inset-0 z-50 bg-paper-ink/50" onClick={closeCart} />
 
-      {/* Drawer — estilo ticket de papel */}
-      <div className="fixed right-0 top-0 z-50 h-full w-full max-w-md bg-paper-bg border-l border-paper-line flex flex-col">
-        {/* Franja perforada */}
-        <div className="h-2 shrink-0" style={{ backgroundImage: 'radial-gradient(circle, rgba(32,30,29,.18) 1.5px, transparent 1.5px)', backgroundSize: '10px 10px', backgroundPosition: 'center' }} />
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-dashed border-paper-line">
-          {/* "Carrito", no "Ticket" — el ticket/recibo es la pantalla de
-              después de confirmar (OrderConfirmPage), esto todavía se puede
-              editar. Antes decía "Ticket · Tu pedido", mezclando los dos
-              momentos. */}
-          <h2 className="text-sm font-bold tracking-[.08em] uppercase flex items-center gap-2 text-paper-ink font-display normal-case text-base">
-            <ShoppingBag className="h-4 w-4 text-brand-green-600" />
+      <div role="dialog" aria-modal="true" aria-label="Tu carrito"
+        className="fixed right-0 top-0 z-50 h-full w-full max-w-md bg-paper-bg flex flex-col">
+        <div className="flex items-center justify-between pl-4 pr-2 h-16 bg-white border-b border-paper-line shrink-0">
+          <h2 className="text-lg font-extrabold text-paper-ink">
             Tu carrito
-            {items.length > 0 && <span className="text-xs font-normal normal-case text-paper-ink-ghost font-sans">({items.length})</span>}
+            {items.length > 0 && <span className="ml-2 text-sm font-semibold text-paper-ink-soft">{items.length} {items.length === 1 ? 'producto' : 'productos'}</span>}
           </h2>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center">
             {items.length > 0 && (
-              <button onClick={handleClearCart} aria-label="Vaciar carrito"
-                className="p-2 hover:bg-brand-magenta-50 rounded-full transition-colors group">
-                <Trash2 className="h-4.5 w-4.5 text-paper-ink-ghost group-hover:text-brand-magenta-600" />
-              </button>
+              <button onClick={handleClearCart} className="h-11 px-3 text-sm font-bold text-paper-ink-soft">Vaciar</button>
             )}
-            <button onClick={closeCart} className="p-2 hover:bg-paper-surface rounded-full transition-colors">
-              <X className="h-5 w-5 text-paper-ink-soft" />
+            <button onClick={closeCart} aria-label="Cerrar carrito" className="h-11 w-11 flex items-center justify-center rounded-full">
+              <X className="h-6 w-6 text-paper-ink" />
             </button>
           </div>
         </div>
 
-        {/* Items */}
         <div className="flex-1 overflow-y-auto p-4">
           {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-paper-ink-ghost">
-              <ShoppingBag className="h-16 w-16" />
-              <p className="text-lg text-paper-ink-faint">Tu carrito está vacío</p>
-              <button onClick={closeCart} className="text-brand-green-600 hover:text-brand-green-700 text-sm transition-colors">
-                Explorar productos →
+            <div className="flex flex-col items-center justify-center h-full text-center px-6">
+              <ShoppingBag className="h-14 w-14 text-paper-ink-soft mb-4" aria-hidden="true" />
+              <p className="text-lg font-bold text-paper-ink">Aún no tienes productos</p>
+              <p className="text-sm text-paper-ink-soft mt-1 mb-5">Busca lo que necesitas o mira las ofertas de la semana.</p>
+              <button onClick={() => { closeCart(); navigate('/catalogo') }}
+                className="w-full h-12 rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold">
+                Ver productos
               </button>
             </div>
           ) : (
-            rows.map((row, idx) => row.el === 'bundle' && row.group ? (
-              <BundleRow key={row.key} group={row.group} isFirst={idx === 0} onRemove={() => removeBundle(row.key)} />
-            ) : row.item ? (
-              <div key={row.key} className={`flex gap-3 py-3 ${idx > 0 ? 'border-t border-dashed border-paper-line' : ''}`}>
-                {row.item.product.imageUrl ? (
-                  <img src={row.item.product.imageUrl} alt={row.item.product.name}
-                    className="h-16 w-16 rounded-xl object-cover shrink-0" />
-                ) : (
-                  <div className="h-16 w-16 rounded-xl bg-paper-surface shrink-0 flex items-center justify-center">
-                    <ShoppingBag className="h-6 w-6 text-paper-ink-ghost" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-paper-ink line-clamp-2 leading-tight">{row.item.product.name}</p>
-                  <p className="text-paper-ink-ghost text-xs mt-0.5">
-                    {row.item.product.description
-                      ? <span className="text-brand-green-600">{row.item.product.description}</span>
-                      : `S/ ${Number(row.item.product.salePrice).toFixed(2)} c/u`}
-                  </p>
-                  <div className="flex items-center justify-between mt-2">
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => updateQuantity(row.item!.product.id, row.item!.quantity - 1)}
-                        className="h-6 w-6 rounded-full bg-paper-surface hover:bg-paper-line flex items-center justify-center transition-colors">
-                        <Minus className="h-2.5 w-2.5 text-paper-ink-soft" />
-                      </button>
-                      <span className="w-6 text-center text-sm font-bold text-paper-ink">{row.item.quantity}</span>
-                      <button onClick={() => updateQuantity(row.item!.product.id, row.item!.quantity + 1)}
-                        className="h-6 w-6 rounded-full bg-paper-surface hover:bg-paper-line flex items-center justify-center transition-colors">
-                        <Plus className="h-2.5 w-2.5 text-paper-ink-soft" />
-                      </button>
+            <div className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
+              {rows.map(row => row.el === 'bundle' && row.group ? (
+                <BundleRow key={row.key} group={row.group} onRemove={() => removeBundle(row.key)} />
+              ) : row.item ? (
+                <div key={row.key} className="flex gap-3 p-3">
+                  {row.item.product.imageUrl ? (
+                    <img src={row.item.product.imageUrl} alt="" loading="lazy" width={64} height={64}
+                      className="h-16 w-16 rounded-xl object-cover shrink-0" />
+                  ) : (
+                    <div className="h-16 w-16 rounded-xl bg-paper-surface shrink-0 flex items-center justify-center">
+                      <ShoppingBag className="h-6 w-6 text-paper-ink-ghost" aria-hidden="true" />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-paper-ink font-bold text-sm tabular-nums">
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-[15px] text-paper-ink line-clamp-2 leading-tight">{row.item.product.name}</p>
+                      <span className="text-paper-ink font-extrabold text-base tabular-nums shrink-0">
                         S/ {(Number(row.item.product.salePrice) * row.item.quantity).toFixed(2)}
                       </span>
-                      <button onClick={() => removeItem(row.item!.product.id)}
-                        className="text-brand-magenta-400 hover:text-brand-magenta-600 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />
+                    </div>
+                    <p className="text-paper-ink-soft text-sm mt-0.5">S/ {Number(row.item.product.salePrice).toFixed(2)} {row.item.product.isBulk ? `por ${row.item.product.bulkUnit ?? 'kg'}` : 'c/u'}</p>
+                    <div className="flex items-center justify-between mt-1.5">
+                      {row.item.product.isBulk ? (
+                        <span className="text-sm font-bold text-paper-ink">{row.item.quantity} {row.item.product.bulkUnit ?? 'kg'}</span>
+                      ) : (
+                        <div className="flex items-center bg-paper-surface rounded-xl h-11">
+                          <button onClick={() => updateQuantity(row.item!.product.id, row.item!.quantity - 1)} aria-label={`Quitar uno de ${row.item.product.name}`}
+                            className="h-11 w-11 flex items-center justify-center">
+                            <Minus className="h-4 w-4 text-paper-ink" />
+                          </button>
+                          <span className="w-7 text-center text-base font-extrabold text-paper-ink tabular-nums">{row.item.quantity}</span>
+                          <button onClick={() => updateQuantity(row.item!.product.id, row.item!.quantity + 1)} aria-label={`Agregar uno más de ${row.item.product.name}`}
+                            className="h-11 w-11 flex items-center justify-center">
+                            <Plus className="h-4 w-4 text-paper-ink" />
+                          </button>
+                        </div>
+                      )}
+                      <button onClick={() => removeItem(row.item!.product.id)} aria-label={`Quitar ${row.item.product.name} del carrito`}
+                        className="h-11 w-11 flex items-center justify-center text-paper-ink-soft">
+                        <Trash2 className="h-5 w-5" />
                       </button>
                     </div>
                   </div>
                 </div>
-              </div>
-            ) : null)
+              ) : null)}
+            </div>
           )}
+
           {upsellProducts.length > 0 && (
-            <div className="mt-2 pt-4 border-t border-dashed border-paper-line">
-              <p className="font-display font-semibold text-sm text-paper-ink flex items-center gap-1.5 mb-3">
-                <Sparkles className="h-3.5 w-3.5 text-brand-achiote-600" />¿Se te olvidó algo?
-              </p>
-              <div className="flex gap-2.5 overflow-x-auto no-scrollbar -mx-1 px-1">
+            <div className="mt-5">
+              <p className="font-extrabold text-base text-paper-ink mb-2.5">¿Se te olvidó algo?</p>
+              <div className="flex gap-2.5 overflow-x-auto no-scrollbar -mx-4 px-4">
                 {upsellProducts.map(p => (
-                  <button key={p.id} onClick={() => addItem(p)}
-                    className="shrink-0 w-24 bg-brand-achiote-50 border border-brand-achiote-200 rounded-xl p-2 text-left hover:border-brand-achiote-400 transition-colors">
-                    <div className="h-12 w-12 rounded-lg bg-white overflow-hidden mb-1.5 flex items-center justify-center mx-auto">
+                  <button key={p.id} onClick={() => addItem(p)} aria-label={`Agregar ${p.name}`}
+                    className="shrink-0 w-28 bg-white rounded-2xl shadow-card p-2 text-left">
+                    <div className="h-16 rounded-xl bg-paper-surface overflow-hidden mb-1.5 flex items-center justify-center">
                       {p.imageUrl
-                        ? <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />
-                        : <ShoppingBag className="h-4 w-4 text-paper-ink-ghost" />}
+                        ? <img src={p.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+                        : <ShoppingBag className="h-5 w-5 text-paper-ink-ghost" aria-hidden="true" />}
                     </div>
-                    <p className="text-[10.5px] font-semibold text-paper-ink line-clamp-2 leading-tight text-center">{p.name}</p>
-                    <div className="flex items-center justify-center gap-1 mt-1">
-                      <span className="text-[10px] font-mono text-paper-ink-soft">S/ {Number(p.salePrice).toFixed(2)}</span>
-                      <span className="h-3.5 w-3.5 rounded-full bg-brand-achiote-500 text-white flex items-center justify-center text-[9px] font-bold leading-none">+</span>
+                    <p className="text-[13px] font-semibold text-paper-ink line-clamp-2 leading-tight min-h-[2.4em]">{p.name}</p>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-sm font-extrabold text-paper-ink tabular-nums">S/ {Number(p.salePrice).toFixed(2)}</span>
+                      <span className="h-7 w-7 rounded-lg bg-brand-green-600 text-white flex items-center justify-center"><Plus className="h-4 w-4" /></span>
                     </div>
                   </button>
                 ))}
@@ -190,21 +181,20 @@ export function CartDrawer() {
           )}
         </div>
 
-        {/* Footer */}
         {items.length > 0 && (
-          <div className="p-5 border-t border-dashed border-paper-line space-y-3">
-            <div className="flex justify-between text-lg font-bold text-paper-ink">
-              <span>Total</span>
-              <span className="text-brand-green-700 tabular-nums">S/ {total.toFixed(2)}</span>
+          <div className="bg-white border-t border-paper-line p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2.5 shrink-0">
+            <div className="flex justify-between items-baseline">
+              <span className="text-base font-bold text-paper-ink">Total de productos</span>
+              <span className="text-2xl font-extrabold text-paper-ink tabular-nums">{money(total)}</span>
             </div>
+            <p className="text-sm text-paper-ink-soft">Envío desde {money(DELIVERY.costFrom)} en {DELIVERY.zoneName}. Recoger en tienda no cuesta.</p>
             <button onClick={handleCheckout}
-              className="w-full bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold py-3.5 rounded-xl shadow-md shadow-brand-green-600/25 transition-colors text-sm">
-              Hacer pedido online
+              className="w-full h-[52px] rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold text-base">
+              Hacer pedido
             </button>
             <button onClick={handleWhatsApp}
-              className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold py-3 rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
-              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-              Pedir por WhatsApp
+              className="w-full h-12 rounded-xl bg-[#25D366] text-[#0B3B1E] font-bold text-base flex items-center justify-center gap-2">
+              <WhatsAppIcon className="h-5 w-5" />Pedir por WhatsApp
             </button>
           </div>
         )}
@@ -213,34 +203,32 @@ export function CartDrawer() {
   )
 }
 
-// Una fila por paquete/combo, no por producto — evita el carrito "estirado"
-// de N sabores y, sobre todo, no tiene +/- suelto: el precio por unidad ahí
-// dentro es sólo un promedio del paquete, incrementarlo aparte compraría más
-// unidades al precio rebajado. Para cambiar la mezcla hay que quitar el
-// paquete y volver a elegirlo desde la oferta.
-function BundleRow({ group, isFirst, onRemove }: { group: CartItem[]; isFirst: boolean; onRemove: () => void }) {
+// Una fila por paquete/combo, no por producto, y sin +/- suelto: el precio
+// por unidad ahí dentro es solo un promedio del paquete. Para cambiar la
+// mezcla hay que quitar el paquete y volver a elegirlo desde la oferta.
+function BundleRow({ group, onRemove }: { group: CartItem[]; onRemove: () => void }) {
   const bundle = group[0].bundle!
   const totalQty = group.reduce((s, i) => s + i.quantity, 0)
   const breakdown = group.map(i => `${i.quantity}× ${i.product.name}`).join(' · ')
   return (
-    <div className={`flex gap-3 py-3 ${!isFirst ? 'border-t border-dashed border-paper-line' : ''}`}>
-      <div className="h-16 w-16 rounded-xl bg-brand-green-50 shrink-0 flex items-center justify-center">
-        <PackageCheck className="h-6 w-6 text-brand-green-600" />
+    <div className="flex gap-3 p-3">
+      <div className="h-16 w-16 rounded-xl bg-brand-sun-100 shrink-0 flex items-center justify-center">
+        <PackageCheck className="h-6 w-6 text-brand-sun-900" aria-hidden="true" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-bold text-sm text-paper-ink leading-tight">{bundle.label}</p>
-        <p className="text-paper-ink-ghost text-xs mt-0.5 line-clamp-2">{breakdown}</p>
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-[11px] font-semibold text-brand-green-700 bg-brand-green-50 px-2 py-0.5 rounded-full shrink-0">
-            {totalQty} un. · precio fijo
+        <div className="flex items-start justify-between gap-2">
+          <p className="font-semibold text-[15px] text-paper-ink leading-tight">{bundle.label}</p>
+          <span className="text-paper-ink font-extrabold text-base tabular-nums shrink-0">S/ {bundle.totalPrice.toFixed(2)}</span>
+        </div>
+        <p className="text-paper-ink-soft text-sm mt-0.5 line-clamp-2">{breakdown}</p>
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-xs font-extrabold text-brand-sun-900 bg-brand-sun-400 px-2 py-0.5 rounded-lg">
+            Oferta · {totalQty} unidades
           </span>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-paper-ink font-bold text-sm tabular-nums">S/ {bundle.totalPrice.toFixed(2)}</span>
-            <button onClick={onRemove} aria-label="Quitar paquete"
-              className="text-brand-magenta-400 hover:text-brand-magenta-600 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          <button onClick={onRemove} aria-label={`Quitar ${bundle.label} del carrito`}
+            className="h-11 w-11 flex items-center justify-center text-paper-ink-soft">
+            <Trash2 className="h-5 w-5" />
+          </button>
         </div>
       </div>
     </div>
