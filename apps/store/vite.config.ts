@@ -12,11 +12,11 @@ export default defineConfig({
       devOptions: { enabled: false },
       includeAssets: ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'logo-icon.png'],
       manifest: {
-        name: 'Tienda Marc',
-        short_name: 'Tienda Marc',
+        name: 'Tiendas Marc',
+        short_name: 'Tiendas Marc',
         description: 'Compra online, recibe en tu puerta o recoge en tienda',
-        theme_color: '#2460b4',
-        background_color: '#2460b4',
+        theme_color: '#1450b4',
+        background_color: '#1450b4',
         display: 'standalone',
         start_url: '/',
         icons: [
