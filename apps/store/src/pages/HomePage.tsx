@@ -1,29 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { ChevronRight, Flame, LayoutGrid, ShoppingBasket, Tag } from 'lucide-react'
+import { ChevronRight, Clock, LayoutGrid, MapPin, ShoppingBasket, Truck, Wallet, WifiOff } from 'lucide-react'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { PromoCarousel } from '../components/PromoCarousel'
+import { WhatsAppIcon } from '../components/CartBar'
 import { getCategoryIcon } from '../categoryIcons'
-import { Reveal, StaggerGroup, StaggerItem } from '../components/Reveal'
-
-const MotionLink = motion.create(Link)
+import { BRAND_NAME, DELIVERY, deliveryStatus, money, whatsappLink } from '../lib/storeInfo'
 
 const STORE_ADDRESS = 'Mz F10 Lt2A - C.27 Av. Manchay, Pachacamac'
+const WRAP = 'max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8'
+const H2 = 'text-lg font-extrabold text-paper-ink'
 
-// Paleta fija que se repite en orden para cada categoría — mismo trato
-// visual (tamaño, forma, tipografía) para todas, sólo cambia el acento de
-// color; así ninguna categoría "se ve distinta" a las demás según qué foto
-// le subieron. Antes se usaba la foto del producto (cat.imageUrl) cuando
-// existía, lo que hacía que unas categorías tuvieran una tarjeta con foto y
-// otras un ícono — inconsistente, y la foto casi nunca representaba bien a
-// toda la categoría.
-const TILE_ACCENTS = [
-  { bg: 'bg-brand-green-50 group-hover:bg-brand-green-100', icon: 'text-brand-green-600' },
-  { bg: 'bg-brand-blue-50 group-hover:bg-brand-blue-100', icon: 'text-brand-blue-600' },
-  { bg: 'bg-brand-magenta-50 group-hover:bg-brand-magenta-100', icon: 'text-brand-magenta-600' },
-]
+function CardSkeleton() {
+  return (
+    <div className="bg-white rounded-[18px] p-2.5 shadow-card flex flex-col gap-2" aria-hidden="true">
+      <div className="aspect-square rounded-xl bg-paper-surface animate-pulse" />
+      <div className="h-4 rounded bg-paper-surface animate-pulse" />
+      <div className="h-4 w-2/3 rounded bg-paper-surface animate-pulse" />
+      <div className="h-11 rounded-xl bg-paper-surface animate-pulse" />
+    </div>
+  )
+}
 
 export function HomePage() {
   const { data: categoriesData } = useQuery({
@@ -31,7 +29,7 @@ export function HomePage() {
     queryFn: () => storeApi.getCategories(),
   })
 
-  const { data: featuredData } = useQuery({
+  const featuredQuery = useQuery({
     queryKey: ['store-featured'],
     queryFn: () => storeApi.getFeaturedProducts(10),
   })
@@ -42,169 +40,165 @@ export function HomePage() {
   })
 
   const categories = categoriesData?.data.data ?? []
-  const allFeatured = featuredData?.data.data ?? []
+  const featured = featuredQuery.data?.data.data ?? []
   const offers = offersData?.data.data ?? []
-
-  // "Llegó fresco hoy" toma sus 3 primeros de los mismos destacados que ya
-  // se cargan para "Los más vendidos" (sin pedir nada nuevo al backend) — el
-  // resto de la fila de abajo excluye esos 3 para no repetir producto.
-  const freshPicks = allFeatured.slice(0, 3)
-  const featured = allFeatured.slice(3)
+  const status = deliveryStatus()
+  // 7 categorías + "Ver todo" llenan dos filas exactas de 4 en celular.
+  const topCategories = categories.slice(0, 7)
 
   return (
-    <main>
-      {/* Promociones — lo primero que se ve al abrir la app, no una portada
-          de "landing page" con copy publicitario que ya no aporta nada a
-          alguien que abre esto como una app hecha para volver seguido.
-          Título explícito porque sin él no se entendía que esa fila de
-          tarjetas eran ofertas y no, por ejemplo, productos destacados. */}
-      {offers.length > 0 && (
-        <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-4">
-          <Reveal><h2 className="text-lg font-display font-semibold text-paper-ink flex items-center gap-2">
-            <Tag className="h-4.5 w-4.5 text-brand-magenta-600" />Ofertas
-          </h2></Reveal>
+    <main className="pb-6">
+      {/* Reparto: lo primero que un vecino nuevo necesita saber antes de
+          llenar el carrito — si llegamos a su zona, cuándo y cuánto cuesta. */}
+      <section className={`${WRAP} pt-3.5`} aria-label="Reparto">
+        <div className="bg-white rounded-2xl shadow-card px-3.5 py-3 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-brand-green-100 flex items-center justify-center shrink-0">
+            <Truck className="h-5 w-5 text-brand-green-600" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[15px] font-bold text-paper-ink leading-snug">{status.title}</p>
+            <p className="text-[13px] text-paper-ink-soft leading-snug">
+              Envío desde {money(DELIVERY.costFrom)} · Express desde {money(DELIVERY.expressFrom)}
+            </p>
+          </div>
         </div>
-      )}
-      <PromoCarousel offers={offers} />
+      </section>
 
-      {/* "Llegó fresco hoy" — algo que ninguna app de delivery agregadora
-          (Rappi, PedidosYa) podría poner con la misma honestidad, porque es
-          específico de tener una bodega real. Usa los mismos productos
-          destacados que ya se cargan abajo, sin pedir nada nuevo.
-          Misma ProductCard que el resto de la tienda (antes era una tarjeta
-          propia, chica y de un color durazno que no combinaba con nada más
-          de la app) — la sección se distingue sólo por el título con el
-          punto de acento, no por un tratamiento visual aparte. */}
-      {freshPicks.length > 0 && (
-        <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-5">
-          <Reveal><h2 className="text-lg font-display font-semibold text-paper-ink flex items-center gap-2 mb-4">
-            <span className="h-2 w-2 rounded-full bg-brand-achiote-500 shrink-0" />Llegó fresco hoy
-          </h2></Reveal>
-          <StaggerGroup className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0">
-            {freshPicks.map(p => (
-              <StaggerItem key={p.id} className="shrink-0 w-40 snap-start">
-                <ProductCard product={p} />
-              </StaggerItem>
-            ))}
-          </StaggerGroup>
-        </div>
-      )}
-
-      {/* Arma tu canasta — el cliente dice cuánto tiene y para qué comida, y
-          se le arma la compra con lo que hay en stock (ver BasketPage). */}
-      <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pt-5">
-        <Reveal>
-          <MotionLink to="/canasta" whileTap={{ scale: 0.98 }}
-            className="group flex items-center gap-4 bg-white rounded-3xl shadow-md hover:shadow-lg transition-shadow p-4 sm:p-5">
-            <div className="h-12 w-12 rounded-2xl bg-brand-blue-50 flex items-center justify-center shrink-0">
-              <ShoppingBasket className="h-6 w-6 text-brand-blue-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-display font-bold text-paper-ink">Arma tu canasta</p>
-              <p className="text-sm text-paper-ink-soft leading-snug">“Tengo S/ 20 para un desayuno de 4” y te armamos la compra.</p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-paper-ink-ghost shrink-0 transition-transform group-hover:translate-x-0.5" />
-          </MotionLink>
-        </Reveal>
-      </div>
-
-      {/* Categorías — acceso rápido tipo app. Antes era sólo un ícono
-          uniforme (se veía "pobre" — feedback real de testeo); ahora usa la
-          foto real de la categoría cuando existe (el backend ya la resuelve
-          sola desde un producto representativo si nadie subió una propia),
-          y sólo cae al ícono de color cuando de verdad no hay ninguna foto
-          disponible todavía. */}
-      {categories.length > 0 && (
-        <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <Reveal><h2 className="text-lg font-display font-semibold mb-4 text-paper-ink">Categorías</h2></Reveal>
-          <StaggerGroup className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-10">
-            <StaggerItem className="shrink-0 w-16 snap-start sm:w-auto">
-              <MotionLink to="/catalogo" whileTap={{ scale: 0.94 }}
-                className="group flex flex-col items-center gap-2 text-center">
-                <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl bg-brand-green-600 group-hover:bg-brand-green-700 flex items-center justify-center transition-colors shadow-sm">
-                  <LayoutGrid className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
-                </div>
-                <span className="text-xs font-bold text-paper-ink leading-tight">Todo</span>
-              </MotionLink>
-            </StaggerItem>
-            {categories.map((cat, i) => {
+      {topCategories.length > 0 && (
+        <section className={`${WRAP} pt-5`}>
+          <h2 className={`${H2} mb-3`}>Categorías</h2>
+          <div className="grid grid-cols-4 sm:grid-cols-8 gap-x-2.5 gap-y-3.5">
+            {topCategories.map(cat => {
               const Icon = getCategoryIcon(cat.name)
-              const accent = TILE_ACCENTS[i % TILE_ACCENTS.length]
               return (
-                <StaggerItem key={cat.id} className="shrink-0 w-16 snap-start sm:w-auto">
-                  <MotionLink to={`/catalogo?categoryId=${cat.id}`} whileTap={{ scale: 0.94 }}
-                    className="group flex flex-col items-center gap-2 text-center">
-                    <div className={`h-14 w-14 sm:h-16 sm:w-16 rounded-2xl overflow-hidden flex items-center justify-center transition-colors ${cat.imageUrl ? 'bg-paper-surface' : accent.bg}`}>
-                      {cat.imageUrl
-                        ? <img src={cat.imageUrl} alt="" className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                        : <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${accent.icon}`} />}
-                    </div>
-                    <span className="text-xs font-medium text-paper-ink-soft leading-tight line-clamp-2">{cat.name}</span>
-                  </MotionLink>
-                </StaggerItem>
+                <Link key={cat.id} to={`/catalogo?categoryId=${cat.id}`} className="flex flex-col items-center gap-1.5 text-center">
+                  <span className="h-16 w-16 rounded-[18px] bg-white shadow-card overflow-hidden flex items-center justify-center">
+                    {cat.imageUrl
+                      ? <img src={cat.imageUrl} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-cover" />
+                      : <Icon className="h-7 w-7 text-brand-blue-600" />}
+                  </span>
+                  <span className="text-[13px] font-semibold text-paper-ink leading-tight line-clamp-2">{cat.name}</span>
+                </Link>
               )
             })}
-          </StaggerGroup>
+            <Link to="/categorias" className="flex flex-col items-center gap-1.5 text-center">
+              <span className="h-16 w-16 rounded-[18px] bg-brand-blue-600 flex items-center justify-center">
+                <LayoutGrid className="h-7 w-7 text-white" aria-hidden="true" />
+              </span>
+              <span className="text-[13px] font-semibold text-paper-ink leading-tight">Ver todo</span>
+            </Link>
+          </div>
         </section>
       )}
 
-      {/* Featured products — más vendidos reales, no un listado alfabético */}
-      <section className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-16">
-        <Reveal className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-display font-semibold text-paper-ink flex items-center gap-2">
-            <Flame className="h-5 w-5 text-amber-500" />Los más vendidos
-          </h2>
-          <Link to="/catalogo" className="text-brand-blue-600 hover:text-brand-blue-700 text-sm flex items-center gap-1 transition-colors group">
-            Ver todos <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        </Reveal>
-        <StaggerGroup className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 sm:gap-4">
-          {featured.map(product => (
-            <StaggerItem key={product.id} className="shrink-0 w-40 snap-start sm:w-auto">
-              <ProductCard product={product} />
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
-        {allFeatured.length === 0 && (
-          <div className="text-center py-16 text-paper-ink-ghost">
-            <p>Cargando productos...</p>
+      {offers.length > 0 && (
+        <>
+          <div className={`${WRAP} pt-4 flex items-center justify-between`}>
+            <h2 className={H2}>Ofertas de la semana</h2>
+            <Link to="/ofertas" className="text-sm font-bold text-brand-blue-600 h-11 flex items-center">Ver todas</Link>
+          </div>
+          <PromoCarousel offers={offers} />
+        </>
+      )}
+
+      <section className={`${WRAP} pt-4`}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className={H2}>Lo que más se lleva</h2>
+          <Link to="/catalogo" className="text-sm font-bold text-brand-blue-600 h-11 flex items-center">Ver todo</Link>
+        </div>
+
+        {featuredQuery.isError ? (
+          <div className="bg-white rounded-2xl shadow-card p-6 text-center">
+            <WifiOff className="h-8 w-8 mx-auto mb-3 text-paper-ink-soft" aria-hidden="true" />
+            <p className="font-bold text-paper-ink">No pudimos cargar los productos</p>
+            <p className="text-sm text-paper-ink-soft mt-1 mb-4">Revisa tu conexión y vuelve a intentar. También puedes pedir por WhatsApp.</p>
+            <div className="flex flex-col gap-2.5">
+              <button onClick={() => featuredQuery.refetch()}
+                className="h-12 rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold">Reintentar</button>
+              <a href={whatsappLink(`Hola ${BRAND_NAME}, quiero hacer un pedido.`)} target="_blank" rel="noopener noreferrer"
+                className="h-12 rounded-xl bg-[#25D366] text-[#0B3B1E] font-bold flex items-center justify-center gap-2">
+                <WhatsAppIcon className="h-5 w-5" />Pedir por WhatsApp
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+            {featuredQuery.isLoading
+              ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
+              : featured.map(product => <ProductCard key={product.id} product={product} />)}
+          </div>
+        )}
+
+        {!featuredQuery.isLoading && !featuredQuery.isError && featured.length === 0 && (
+          <div className="bg-white rounded-2xl shadow-card p-6 text-center">
+            <p className="font-bold text-paper-ink">Estamos actualizando el catálogo</p>
+            <p className="text-sm text-paper-ink-soft mt-1">Mientras tanto, mira todas las categorías.</p>
+            <Link to="/categorias" className="mt-4 h-12 rounded-xl bg-brand-blue-600 text-white font-bold flex items-center justify-center">Ver categorías</Link>
           </div>
         )}
       </section>
 
-      {/* Footer — info de referencia (ubicación, horario, pagos), no una
-          sección más de venta. */}
-      <footer className="border-t border-paper-line bg-white">
-        <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-8 text-sm text-paper-ink-soft">
-          <div>
-            <img src="/logo.png" alt="Minimarket Marc" className="h-8 w-auto mb-3" />
-            <p>Tu minimarket de confianza en Pachacamac.</p>
+      <section className={`${WRAP} pt-6`}>
+        <Link to="/canasta" className="bg-white rounded-2xl shadow-card p-4 flex items-center gap-3.5">
+          <span className="h-12 w-12 rounded-xl bg-brand-blue-50 flex items-center justify-center shrink-0">
+            <ShoppingBasket className="h-6 w-6 text-brand-blue-600" aria-hidden="true" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-bold text-paper-ink">Arma tu canasta</span>
+            <span className="block text-sm text-paper-ink-soft leading-snug">Dinos cuánto tienes y para cuántos. Te armamos la compra.</span>
+          </span>
+          <ChevronRight className="h-5 w-5 text-paper-ink-soft shrink-0" aria-hidden="true" />
+        </Link>
+      </section>
+
+      {/* Cómo funciona el reparto y el pago: datos reales, a la vista, sin
+          tener que llegar al checkout para enterarse. */}
+      <section className={`${WRAP} pt-6`}>
+        <h2 className={`${H2} mb-3`}>Cómo te llega tu pedido</h2>
+        <div className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
+          <div className="flex gap-3 p-4">
+            <MapPin className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <p className="font-bold text-paper-ink">Repartimos en {DELIVERY.zoneName}</p>
+              <p className="text-sm text-paper-ink-soft leading-relaxed">{DELIVERY.zones.join(', ')}.</p>
+            </div>
           </div>
-          <div>
-            <p className="text-paper-ink font-medium mb-3">Ubicación</p>
-            <p>{STORE_ADDRESS}</p>
-            <p className="mt-1">Lun–Dom: 7:00 AM – 10:00 PM</p>
+          <div className="flex gap-3 p-4">
+            <Clock className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <p className="font-bold text-paper-ink">Dos repartos al día</p>
+              <p className="text-sm text-paper-ink-soft leading-relaxed">Mañana de 6 a 9 am y tarde de 5 a 9 pm. Viernes y sábado, hasta la 1 am.</p>
+            </div>
           </div>
-          <div>
-            <p className="text-paper-ink font-medium mb-3">Navegación</p>
-            <ul className="space-y-1.5">
-              <li><Link to="/catalogo" className="hover:text-brand-green-600 transition-colors">Catálogo</Link></li>
-              <li><Link to="/ofertas" className="hover:text-brand-green-600 transition-colors">Ofertas</Link></li>
-              <li><Link to="/mis-pedidos" className="hover:text-brand-green-600 transition-colors">Mi cuenta / Mis pedidos</Link></li>
-            </ul>
+          <div className="flex gap-3 p-4">
+            <Truck className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <p className="font-bold text-paper-ink">Envío desde {money(DELIVERY.costFrom)}</p>
+              <p className="text-sm text-paper-ink-soft leading-relaxed">Express desde {money(DELIVERY.expressFrom)}. Recoger en tienda no cuesta.</p>
+            </div>
           </div>
-          <div>
-            <p className="text-paper-ink font-medium mb-3">Contacto y pagos</p>
-            <p>WhatsApp: 930 555 831</p>
-            <div className="flex items-center gap-2 mt-3">
-              <span className="bg-paper-surface rounded-full px-2.5 py-1 text-xs font-medium text-paper-ink-soft">Yape</span>
-              <span className="bg-paper-surface rounded-full px-2.5 py-1 text-xs font-medium text-paper-ink-soft">Efectivo</span>
+          <div className="flex gap-3 p-4">
+            <Wallet className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <p className="font-bold text-paper-ink">Pagas como prefieras</p>
+              <div className="flex flex-wrap gap-2 mt-1.5">
+                {DELIVERY.payments.map(p => (
+                  <span key={p} className="bg-paper-surface rounded-full px-3 py-1 text-sm font-semibold text-paper-ink">{p}</span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-        <div className="border-t border-paper-line px-4 py-4 text-center text-xs text-paper-ink-ghost">
-          © 2026 TIENDA MARC — Todos los derechos reservados
-        </div>
+      </section>
+
+      <footer className={`${WRAP} pt-8 pb-4 text-sm text-paper-ink-soft`}>
+        <p className="font-bold text-paper-ink">{BRAND_NAME}</p>
+        <p className="mt-1">{STORE_ADDRESS}</p>
+        <p>Tienda abierta de lunes a domingo, de 7 am a 10 pm.</p>
+        <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+          <Link to="/terminos" className="underline py-3">Términos y condiciones</Link>
+          <Link to="/privacidad" className="underline py-3">Política de privacidad</Link>
+        </p>
       </footer>
     </main>
   )

@@ -13,12 +13,11 @@ import { getCategoryIcon } from '../categoryIcons'
 // categorías en vez de un gris genérico. Padre e hija comparten acento
 // (se busca el índice de la categoría de nivel superior) para que cambiar
 // entre subcategorías de un mismo padre no cambie el color de golpe.
-const BANNER_ACCENTS = [
-  'bg-gradient-to-r from-brand-green-600 to-brand-green-700',
-  'bg-gradient-to-r from-brand-blue-600 to-brand-blue-700',
-  'bg-gradient-to-r from-brand-magenta-600 to-brand-magenta-700',
-]
-const DEFAULT_BANNER_ACCENT = 'bg-gradient-to-r from-paper-ink to-brand-blue-800'
+// Rediseño 2026-11: la barra "estás acá" es blanca para todas las categorías
+// (el azul queda para la cabecera); se conserva el arreglo por si se vuelve
+// a diferenciar por categoría.
+const BANNER_ACCENTS = ['bg-white border-b border-paper-line']
+const DEFAULT_BANNER_ACCENT = 'bg-white border-b border-paper-line'
 
 // Una "unidad" es lo mínimo navegable con productos propios: una
 // subcategoría (si la categoría de nivel superior tiene hijas) o la propia
@@ -247,7 +246,7 @@ export function CatalogPage() {
   }
 
   return (
-    <main className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 pb-8 lg:pt-8">
       <div className="hidden lg:block sticky top-20 z-30 bg-paper-bg/95 backdrop-blur py-2 mb-4">
         <h1 className="text-2xl font-bold text-paper-ink">{bannerLabel}</h1>
         {bannerParentLabel && <p className="text-sm font-medium text-paper-ink-ghost">{bannerParentLabel}</p>}
@@ -259,12 +258,12 @@ export function CatalogPage() {
           Tocarla despliega la navegación de subcategorías (o categorías,
           según el contexto) ahí mismo — reemplaza a la fila de pills fija
           que había antes, que siempre ocupaba espacio aunque no se usara. */}
-      <div className="lg:hidden sticky top-16 z-30">
+      <div className="lg:hidden sticky top-16 z-30 -mx-4 sm:-mx-6 mb-4">
         <button onClick={() => setDropdownOpen(o => !o)}
-          className={`w-full flex items-center gap-2 px-4 py-2.5 shadow-md text-left transition-colors ${bannerAccent}`}>
-          {bannerParentLabel && <span className="text-[11px] font-bold text-white/70 uppercase tracking-wide shrink-0">{bannerParentLabel} ›</span>}
-          <span className="flex-1 text-sm font-black text-white truncate">{bannerLabel}</span>
-          <ChevronDown className={`h-4.5 w-4.5 text-white/90 shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+          className={`w-full h-12 flex items-center gap-2 px-4 shadow-card text-left ${bannerAccent}`}>
+          {bannerParentLabel && <span className="text-xs font-bold text-paper-ink-soft uppercase tracking-wide shrink-0">{bannerParentLabel} ›</span>}
+          <span className="flex-1 text-base font-extrabold text-paper-ink truncate">{bannerLabel}</span>
+          <ChevronDown className={`h-5 w-5 text-brand-blue-600 shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
         </button>
 
         {dropdownOpen && (
@@ -272,12 +271,12 @@ export function CatalogPage() {
             {subcategoryParent && subcategories.length > 0 ? (
               <>
                 <button onClick={() => { handleCategory(subcategoryParent.id); setDropdownOpen(false) }}
-                  className={`w-full flex items-center justify-between px-4 py-3 text-sm font-bold border-b border-paper-line transition-colors ${categoryId === subcategoryParent.id ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
+                  className={`w-full flex items-center justify-between px-4 py-3.5 text-[15px] font-bold border-b border-paper-line transition-colors ${categoryId === subcategoryParent.id ? 'bg-brand-blue-50 text-brand-blue-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
                   Todo en {subcategoryParent.name}
                 </button>
                 {subcategories.map(child => (
                   <button key={child.id} onClick={() => { handleCategory(child.id); setDropdownOpen(false) }}
-                    className={`w-full flex items-center justify-between px-4 py-3 text-sm font-semibold border-b border-paper-line transition-colors ${categoryId === child.id ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
+                    className={`w-full flex items-center justify-between px-4 py-3.5 text-[15px] font-semibold border-b border-paper-line transition-colors ${categoryId === child.id ? 'bg-brand-blue-50 text-brand-blue-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
                     {child.name}
                     <span className="text-xs text-paper-ink-ghost font-medium">{child._count.products}</span>
                   </button>
@@ -286,12 +285,12 @@ export function CatalogPage() {
             ) : (
               <>
                 <button onClick={() => { handleCategory(''); setDropdownOpen(false) }}
-                  className={`w-full flex items-center justify-between px-4 py-3 text-sm font-bold border-b border-paper-line transition-colors ${!categoryId ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
+                  className={`w-full flex items-center justify-between px-4 py-3.5 text-[15px] font-bold border-b border-paper-line transition-colors ${!categoryId ? 'bg-brand-blue-50 text-brand-blue-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
                   Todos los productos
                 </button>
                 {categories.map(cat => (
                   <button key={cat.id} onClick={() => { handleCategory(cat.id); setDropdownOpen(false) }}
-                    className={`w-full flex items-center justify-between px-4 py-3 text-sm font-semibold border-b border-paper-line transition-colors ${categoryId === cat.id ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
+                    className={`w-full flex items-center justify-between px-4 py-3.5 text-[15px] font-semibold border-b border-paper-line transition-colors ${categoryId === cat.id ? 'bg-brand-blue-50 text-brand-blue-700' : 'text-paper-ink hover:bg-paper-surface'}`}>
                     {cat.name}
                     <span className="text-xs text-paper-ink-ghost font-medium">{cat._count.products}</span>
                   </button>
@@ -299,7 +298,7 @@ export function CatalogPage() {
               </>
             )}
             <Link to="/categorias" onClick={() => setDropdownOpen(false)}
-              className="block w-full px-4 py-3 text-sm font-bold text-brand-blue-600 hover:bg-brand-blue-50 transition-colors">
+              className="block w-full px-4 py-3.5 text-[15px] font-bold text-brand-blue-600 hover:bg-brand-blue-50 transition-colors">
               Ver todas las categorías
             </Link>
           </div>
@@ -351,7 +350,8 @@ export function CatalogPage() {
               si hay texto), ya no como botón aparte "Limpiar filtros" que
               quedaba ahí siempre estorbando aunque no hubiera nada que
               limpiar. Para quitar la categoría ya está el banner/pills. */}
-          <div className="mb-5">
+          {/* En celular el buscador ya está fijo en la cabecera. */}
+          <div className="mb-5 hidden md:block">
             <form onSubmit={handleSearch}>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-ink-ghost" />
@@ -375,7 +375,7 @@ export function CatalogPage() {
             chainLoading && sections.length === 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                 {Array.from({ length: 12 }).map((_, i) => (
-                  <div key={i} className="bg-paper-surface rounded-2xl aspect-square animate-pulse" />
+                  <div key={i} className="bg-white rounded-[18px] shadow-card h-64 animate-pulse" />
                 ))}
               </div>
             ) : sections.length === 0 ? (
@@ -391,7 +391,7 @@ export function CatalogPage() {
                     data-unit-id={sec.unit.id}
                     className="mb-8 scroll-mt-32">
                     <div className="flex items-baseline gap-2 mb-3">
-                      <h2 className="text-lg font-black text-paper-ink">{sec.unit.name}</h2>
+                      <h2 className="text-lg font-extrabold text-paper-ink">{sec.unit.name}</h2>
                       <span className="text-xs text-paper-ink-ghost font-semibold">{sec.total} producto{sec.total === 1 ? '' : 's'}</span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
@@ -407,7 +407,7 @@ export function CatalogPage() {
                     usuario tenga que volver a elegir nada. */}
                 {hasMoreChained && (
                   <div ref={loadMoreRef} className="flex justify-center py-10">
-                    <Loader2 className="h-6 w-6 text-brand-green-600 animate-spin" />
+                    <Loader2 className="h-6 w-6 text-brand-blue-600 animate-spin" />
                   </div>
                 )}
                 {!hasMoreChained && (
@@ -418,7 +418,7 @@ export function CatalogPage() {
           ) : isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="bg-paper-surface rounded-2xl aspect-square animate-pulse" />
+                <div key={i} className="bg-white rounded-[18px] shadow-card h-64 animate-pulse" />
               ))}
             </div>
           ) : flatProducts.length === 0 ? (
@@ -443,7 +443,7 @@ export function CatalogPage() {
                   siguiente página sola, sin botón "Siguiente". */}
               {hasNextPage && (
                 <div ref={loadMoreRef} className="flex justify-center py-10">
-                  <Loader2 className="h-6 w-6 text-brand-green-600 animate-spin" />
+                  <Loader2 className="h-6 w-6 text-brand-blue-600 animate-spin" />
                 </div>
               )}
               {!hasNextPage && flatProducts.length > 0 && (
