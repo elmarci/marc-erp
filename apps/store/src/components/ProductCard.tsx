@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ShoppingCart, ShoppingBag, Plus, Minus, Scale, X } from 'lucide-react'
 import { useCartStore } from '../cartStore'
@@ -172,120 +172,80 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
 }
 
 /* ── ProductCard ─────────────────────────────────────────────────── */
+// Tarjeta del sistema "Azul de confianza": blanca, radio 18, sombra suave.
+// Foto → nombre (2 líneas) → precio en tinta → botón verde de 44 px. El
+// verde se reserva para este botón en toda la tienda.
 export function ProductCard({ product }: { product: Product }) {
-  const { addItem, updateQuantity, items, openCart } = useCartStore()
+  const { addItem, updateQuantity, items } = useCartStore()
   const [showBulk, setShowBulk] = useState(false)
-  const navigate = useNavigate()
   const imgRef = useRef<HTMLImageElement>(null)
   const cartItem = items.find(i => i.product.id === product.id)
   const qty = cartItem?.quantity ?? 0
   const outOfStock = product.currentStock <= 0
   const lowStock = !outOfStock && product.currentStock <= 5
+  const unit = product.bulkUnit ?? 'kg'
 
-  const goToProduct = () => navigate(`/producto/${product.id}`)
-
-  const handleAdd = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleAdd = () => {
     if (outOfStock) return
     if (product.isBulk) { setShowBulk(true); return }
     const result = addItem(product)
     if (result.addedQuantity <= 0) {
-      toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito (${product.currentStock}).`)
+      toast.error(`Ya tienes en el carrito todo el stock de "${product.name}" (${product.currentStock}).`)
       return
     }
     flyToCart(imgRef.current)
-    toast.success(`${product.name} agregado`, {
-      duration: 1500, action: { label: 'Ver carrito', onClick: openCart }
-    })
   }
 
   return (
     <>
-      <motion.div
-        whileHover={outOfStock ? undefined : { y: -6 }}
-        whileTap={outOfStock ? undefined : { scale: 0.98 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 24 }}
-        className={`group relative bg-white border rounded-2xl overflow-hidden select-none shadow-sm
-          ${outOfStock ? 'opacity-60 border-paper-line' : 'border-paper-line hover:border-brand-blue-200 hover:shadow-lg'}`}>
+      <article className={`h-full bg-white rounded-[18px] p-2.5 shadow-card flex flex-col gap-2 ${outOfStock ? 'opacity-70' : ''}`}>
+        <Link to={`/producto/${product.id}`} className="flex flex-col gap-2 flex-1">
+          <div className="relative aspect-square rounded-xl overflow-hidden bg-paper-surface">
+            {product.imageUrl
+              ? <img ref={imgRef} src={product.imageUrl} alt="" loading="lazy" decoding="async" width={300} height={300}
+                  className="w-full h-full object-cover" />
+              : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-10 w-10 text-paper-ink-ghost" aria-hidden="true" /></div>}
 
-        {/* Imagen — toca para ver el detalle del producto */}
-        <div onClick={goToProduct} className="relative aspect-square overflow-hidden bg-paper-surface cursor-pointer">
-          {product.imageUrl
-            ? <img ref={imgRef} src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-            : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-10 w-10 text-paper-ink-ghost" /></div>
-          }
-
-          {/* Badges */}
-          {product.isBulk && (
-            // Sin ícono — la etiqueta "por kg" ya se explica sola, y el
-            // ícono de balanza genérico (el mismo que usa cualquier
-            // e-commerce) no aportaba nada. Mono, en mayúscula, como en el
-            // ticket real.
-            <div className="absolute top-2 left-2 bg-white/90 border border-paper-line rounded-full px-2.5 py-0.5">
-              <span className="text-[10px] font-mono font-semibold text-paper-ink-soft tracking-wide">POR {(product.bulkUnit ?? 'kg').toUpperCase()}</span>
-            </div>
-          )}
-          {lowStock && !product.isBulk && (
-            <span className="absolute top-2 left-2 bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
-              Últimas {product.currentStock}
-            </span>
-          )}
-          {outOfStock && (
-            <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
-              <span className="bg-paper-ink/80 text-white text-sm font-bold px-3 py-1.5 rounded-full">Agotado</span>
-            </div>
-          )}
-          <AnimatePresence>
-            {qty > 0 && (
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 22 }}
-                className="absolute top-2 right-2 h-6 w-6 bg-brand-green-600 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg">
-                {qty}
-              </motion.div>
+            {product.isBulk && !outOfStock && (
+              <span className="absolute top-2 left-2 bg-white text-paper-ink text-xs font-bold px-2 py-0.5 rounded-lg shadow-card">Por {unit}</span>
             )}
-          </AnimatePresence>
-        </div>
-
-        {/* Info — toca el nombre/precio para ver el detalle del producto;
-            agregar al carrito es sólo la barra de abajo, para no competir
-            con el botón +/− de ancho completo (antes toda la zona agregaba,
-            lo que hacía fácil sumar sin querer al tocar cerca del precio). */}
-        <div onClick={goToProduct} className="p-3 pb-0 cursor-pointer">
-          <p className="text-xs text-paper-ink-ghost mb-0.5">{product.category.name}</p>
-          <p className="font-semibold text-sm text-paper-ink line-clamp-2 leading-tight mb-2 min-h-[2.5em]">{product.name}</p>
-          <div>
-            <span className="text-paper-ink font-extrabold text-lg tabular-nums">S/ {Number(product.salePrice).toFixed(2)}</span>
-            {product.isBulk && <span className="text-paper-ink-ghost text-xs ml-1">/{product.bulkUnit ?? 'kg'}</span>}
+            {lowStock && !product.isBulk && (
+              <span className="absolute top-2 left-2 bg-brand-sun-400 text-brand-sun-900 text-xs font-extrabold px-2 py-0.5 rounded-lg">
+                {product.currentStock === 1 ? 'Última unidad' : `Últimas ${product.currentStock}`}
+              </span>
+            )}
+            {outOfStock && (
+              <span className="absolute inset-x-2 bottom-2 bg-paper-ink text-white text-xs font-bold py-1 rounded-lg text-center">Agotado</span>
+            )}
           </div>
-        </div>
+          <p className="text-[15px] font-semibold text-paper-ink leading-tight line-clamp-2 min-h-[2.5em]">{product.name}</p>
+          <p className="text-xl font-extrabold text-paper-ink tabular-nums leading-none">
+            S/ {Number(product.salePrice).toFixed(2)}
+            {product.isBulk && <span className="text-sm font-semibold text-paper-ink-soft"> /{unit}</span>}
+          </p>
+        </Link>
 
-        {/* Barra de agregar — ancho completo, pegada abajo del card (estilo
-            Rappi/PedidosYa): un solo "+" grande cuando no hay nada en el
-            carrito, y un stepper −/cantidad/+ de ancho completo cuando ya
-            se agregó, en vez del botón circular chico de antes. */}
-        <div className="p-3 pt-2">
-          {qty > 0 && !product.isBulk ? (
-            <div className="flex items-center justify-between bg-brand-green-600 rounded-xl overflow-hidden h-9">
-              <button onClick={() => updateQuantity(product.id, qty - 1)} aria-label="Quitar uno"
-                className="h-full w-11 flex items-center justify-center text-white hover:bg-brand-green-700 transition-colors">
-                <Minus className="h-4 w-4" />
-              </button>
-              <span className="flex-1 text-center text-sm font-bold text-white tabular-nums">{qty}</span>
-              <button onClick={() => { addItem(product); flyToCart(imgRef.current) }} disabled={qty >= product.currentStock} aria-label="Agregar uno más"
-                className="h-full w-11 flex items-center justify-center text-white hover:bg-brand-green-700 disabled:opacity-40 transition-colors">
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <button onClick={outOfStock ? undefined : handleAdd} disabled={outOfStock} aria-label={product.isBulk ? 'Elegir cantidad' : 'Agregar al carrito'}
-              className={`w-full h-9 rounded-xl flex items-center justify-center gap-1.5 font-bold text-sm text-white transition-colors ${outOfStock ? 'bg-paper-ink-ghost cursor-not-allowed' : 'bg-brand-green-600 hover:bg-brand-green-700'}`}>
-              {product.isBulk ? <Scale className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              {product.isBulk ? 'Elegir cantidad' : 'Agregar'}
+        {qty > 0 && !product.isBulk ? (
+          <div className="flex items-center justify-between bg-brand-green-600 rounded-xl h-11 text-white">
+            <button onClick={() => updateQuantity(product.id, qty - 1)} aria-label={`Quitar uno de ${product.name}`}
+              className="h-11 w-11 flex items-center justify-center rounded-xl active:bg-brand-green-700">
+              <Minus className="h-5 w-5" />
             </button>
-          )}
-        </div>
-      </motion.div>
+            <span className="text-base font-extrabold tabular-nums" aria-live="polite">{qty}</span>
+            <button onClick={() => { addItem(product); flyToCart(imgRef.current) }} disabled={qty >= product.currentStock}
+              aria-label={`Agregar uno más de ${product.name}`}
+              className="h-11 w-11 flex items-center justify-center rounded-xl active:bg-brand-green-700 disabled:opacity-40">
+              <Plus className="h-5 w-5" />
+            </button>
+          </div>
+        ) : (
+          <button onClick={handleAdd} disabled={outOfStock}
+            aria-label={outOfStock ? `${product.name}, agotado` : product.isBulk ? `Elegir cantidad de ${product.name}` : `Agregar ${product.name}`}
+            className={`w-full h-11 rounded-xl flex items-center justify-center gap-1.5 font-bold text-[15px] transition-colors ${outOfStock ? 'bg-paper-surface text-paper-ink-soft cursor-not-allowed' : 'bg-brand-green-600 active:bg-brand-green-700 text-white'}`}>
+            {outOfStock ? 'Agotado' : product.isBulk ? <><Scale className="h-4 w-4" />Elegir cantidad</> : 'Agregar'}
+          </button>
+        )}
+      </article>
 
       <AnimatePresence>
         {showBulk && <BulkModal product={product} onClose={() => setShowBulk(false)} />}

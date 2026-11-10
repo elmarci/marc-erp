@@ -1,5 +1,4 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
 import { ShoppingCart, Search, Package, User, LogOut, Tag, ChevronDown, Menu } from 'lucide-react'
 import { useCartStore, cartCount } from '../cartStore'
 import { useAuthStore } from '../authStore'
@@ -9,12 +8,17 @@ import { storeApi } from '../api'
 import { CategoryMegaMenu } from './CategoryMegaMenu'
 import { VoiceSearchButton } from './VoiceSearchButton'
 import { SideMenu } from './SideMenu'
+import { BRAND_NAME, DELIVERY } from '../lib/storeInfo'
 
+// Cabecera azul de marca. En celular son dos piezas: la fila del logo, que
+// se va con el scroll, y la fila del buscador, que queda fija arriba (mide
+// 64 px, lo mismo que la cabecera de escritorio, para que las barras fijas
+// de cada página — p. ej. "estás acá" del catálogo — sigan usando top-16).
 export function Header() {
   const items = useCartStore(s => s.items)
   const openCart = useCartStore(s => s.openCart)
   const count = cartCount(items)
-  const { customer, logout, exitGuestMode } = useAuthStore()
+  const { customer, logout } = useAuthStore()
   const [search, setSearch] = useState('')
   const [showMenu, setShowMenu] = useState(false)
   const [showSideMenu, setShowSideMenu] = useState(false)
@@ -25,89 +29,73 @@ export function Header() {
   })
   const offersCount = offersData?.data.data.length ?? 0
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (search.trim()) navigate(`/catalogo?search=${encodeURIComponent(search.trim())}`)
+  const goSearch = (q: string) => {
+    if (q.trim()) navigate(`/catalogo?search=${encodeURIComponent(q.trim())}`)
   }
+  const handleSearch = (e: React.FormEvent) => { e.preventDefault(); goSearch(search) }
 
-  const handleVoiceResult = (transcript: string) => {
-    navigate(`/catalogo?search=${encodeURIComponent(transcript.trim())}`)
-  }
+  const searchField = (placeholder: string) => (
+    <div className="relative">
+      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-paper-ink-soft" aria-hidden="true" />
+      <input type="search" enterKeyHint="search" value={search} onChange={e => setSearch(e.target.value)}
+        placeholder={placeholder} aria-label="Buscar productos"
+        className="w-full h-12 bg-white rounded-2xl pl-11 pr-12 text-base text-paper-ink placeholder:text-paper-ink-ghost focus:outline-none focus:ring-2 focus:ring-brand-sun-400" />
+      <VoiceSearchButton onResult={goSearch} className="absolute right-0.5 top-1/2 -translate-y-1/2" />
+    </div>
+  )
 
   return (
     <>
-      {/* Sticky + translúcida (blur real, no un fondo opaco) para que al bajar
-          la lista de productos siga viéndose de fondo y nunca se pierda el
-          buscador — antes, en mobile, el buscador iba apretado en la misma
-          fila que logo/menú/carrito y quedaba reducido a puros íconos sin
-          espacio para escribir. Ahora es su propia fila, ancho completo,
-          debajo del logo — pegada y visible todo el scroll. */}
-      <header className="sticky top-0 z-50 bg-paper-bg/80 backdrop-blur-md border-b border-paper-line">
-        <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-3 sm:gap-4">
-
-          {/* Hamburguesa — solo mobile. Abre el menú lateral real (perfil,
-              navegación completa, puntos, soporte) en vez de duplicar el
-              botón "Categorías" de la barra inferior. */}
+      <header className="md:sticky md:top-0 z-50 bg-brand-blue-600 text-white">
+        <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-3">
           <button onClick={() => setShowSideMenu(true)} aria-label="Abrir menú"
-            className="md:hidden flex items-center justify-center h-9 w-9 shrink-0 rounded-full text-paper-ink-soft hover:bg-paper-surface hover:text-brand-green-600 transition-colors">
-            <Menu className="h-5 w-5" />
+            className="md:hidden -ml-2 flex items-center justify-center h-11 w-11 shrink-0 rounded-full hover:bg-brand-blue-700 transition-colors">
+            <Menu className="h-6 w-6" />
           </button>
 
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2.5 shrink-0">
-            <img src="/logo.png" alt="Minimarket Marc" className="h-8 sm:h-9 w-auto" />
-            <span className="hidden lg:block w-px h-6 bg-paper-line" />
-            <div className="hidden lg:block leading-tight">
-              <div className="text-[9.5px] tracking-[.1em] uppercase text-paper-ink-soft">Pachacamac</div>
-              <div className="text-[9.5px] tracking-[.1em] uppercase text-brand-green-600 font-semibold">Hoy</div>
-            </div>
+          <Link to="/" className="flex items-center gap-2.5 shrink-0 min-w-0">
+            <img src="/logo-icon.png" alt="" width={40} height={40} className="h-10 w-10 rounded-full bg-white object-cover" />
+            <span className="leading-tight min-w-0">
+              <span className="block text-lg font-extrabold truncate">{BRAND_NAME}</span>
+              <span className="block text-xs font-semibold text-brand-blue-100 truncate">Reparto en {DELIVERY.zoneName}</span>
+            </span>
           </Link>
 
-          {/* Categorías — dropdown, reemplaza la barra sólida anterior */}
           <CategoryMegaMenu />
 
-          {/* Search — solo desktop/tablet, con espacio real de sobra.
-              En mobile vive en su propia fila debajo (ver más abajo). */}
           <form onSubmit={handleSearch} className="hidden md:block flex-1 max-w-xl">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-ink-ghost" />
-              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar productos..."
-                className="w-full bg-paper-surface border border-transparent rounded-xl pl-9 pr-9 py-2 text-sm text-paper-ink placeholder-paper-ink-ghost focus:outline-none focus:bg-white focus:border-brand-blue-400 transition-colors" />
-              <VoiceSearchButton onResult={handleVoiceResult} className="absolute right-2 top-1/2 -translate-y-1/2" />
-            </div>
+            {searchField('Busca leche, arroz, gaseosa…')}
           </form>
 
-          <div className="md:hidden flex-1" />
+          <div className="flex-1 md:hidden" />
 
-          {/* Actions */}
           <div className="flex items-center gap-1 shrink-0">
-            <Link to="/ofertas" className="relative hidden sm:flex items-center gap-1.5 text-sm text-paper-ink-soft hover:text-brand-magenta-600 transition-colors px-3 py-2">
+            <Link to="/ofertas" className="relative hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-full px-3 h-11 transition-colors">
               <Tag className="h-4 w-4" />Ofertas
-              {offersCount > 0 && <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-brand-magenta-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{offersCount}</span>}
+              {offersCount > 0 && <span className="h-5 min-w-5 px-1 bg-brand-sun-400 text-brand-sun-900 text-xs font-extrabold rounded-full flex items-center justify-center">{offersCount}</span>}
             </Link>
 
             {customer ? (
-              <div className="relative">
+              <div className="relative hidden md:block">
                 <button onClick={() => setShowMenu(!showMenu)}
-                  className="hidden sm:flex items-center gap-1.5 text-sm text-paper-ink-soft hover:text-brand-green-600 transition-colors px-3 py-2">
-                  <div className="h-6 w-6 bg-brand-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                  className="flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-full px-3 h-11 transition-colors">
+                  <span className="h-7 w-7 bg-white text-brand-blue-600 rounded-full flex items-center justify-center text-xs font-extrabold">
                     {customer.name[0].toUpperCase()}
-                  </div>
-                  <span>{customer.name.split(' ')[0]}</span>
-                  <ChevronDown className="h-3.5 w-3.5" />
+                  </span>
+                  {customer.name.split(' ')[0]}
+                  <ChevronDown className="h-4 w-4" />
                 </button>
                 {showMenu && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-                    <div className="absolute right-0 top-11 z-50 bg-white border border-paper-line rounded-2xl shadow-xl py-1 w-44">
+                    <div className="absolute right-0 top-12 z-50 bg-white text-paper-ink border border-paper-line rounded-2xl shadow-xl py-1 w-48">
                       <Link to="/mis-pedidos" onClick={() => setShowMenu(false)}
-                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-paper-ink hover:bg-paper-surface transition-colors">
-                        <Package className="h-4 w-4 text-paper-ink-ghost" />Mis pedidos
+                        className="flex items-center gap-2.5 px-4 py-3 text-sm hover:bg-paper-surface transition-colors">
+                        <Package className="h-4 w-4 text-paper-ink-soft" />Mis pedidos
                       </Link>
                       <div className="border-t border-paper-line my-1" />
                       <button onClick={() => { logout(); setShowMenu(false) }}
-                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-brand-magenta-600 hover:bg-brand-magenta-50 transition-colors">
+                        className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-brand-magenta-600 hover:bg-brand-magenta-50 transition-colors">
                         <LogOut className="h-4 w-4" />Cerrar sesión
                       </button>
                     </div>
@@ -115,49 +103,34 @@ export function Header() {
                 )}
               </div>
             ) : (
-              <button onClick={exitGuestMode}
-                className="hidden sm:flex items-center gap-1.5 text-sm text-paper-ink-soft hover:text-brand-green-600 transition-colors px-3 py-2">
+              <Link to="/ingresar" className="hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-full px-3 h-11 transition-colors">
                 <User className="h-4 w-4" />Ingresar
-              </button>
+              </Link>
             )}
 
-            <Link to="/mis-pedidos" className="sm:hidden flex items-center px-2 py-2 text-paper-ink-soft hover:text-brand-green-600">
-              <Package className="h-5 w-5" />
+            {/* En celular el carrito vive en la barra fija de abajo; acá va
+                el acceso a la cuenta. */}
+            <Link to={customer ? '/mis-pedidos' : '/ingresar'} aria-label={customer ? 'Mi cuenta' : 'Ingresar'}
+              className="md:hidden flex items-center justify-center h-11 w-11 rounded-full bg-brand-blue-700">
+              {customer
+                ? <span className="text-sm font-extrabold">{customer.name[0].toUpperCase()}</span>
+                : <User className="h-5 w-5" />}
             </Link>
 
-            <motion.button id="cart-icon-target" onClick={openCart} whileTap={{ scale: 0.94 }}
-              className="relative flex items-center gap-2 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold rounded-full px-4 py-2 text-sm shadow-md shadow-brand-green-600/25 transition-colors">
-              <ShoppingCart className="h-4 w-4" />
-              <span className="hidden sm:inline">Carrito</span>
-              <AnimatePresence>
-                {count > 0 && (
-                  <motion.span
-                    key={count}
-                    initial={{ scale: 0.4, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.4, opacity: 0 }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 20 }}
-                    className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-brand-magenta-500 text-white text-xs font-bold rounded-full flex items-center justify-center border-2 border-paper-bg">
-                    {count}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </motion.button>
+            <button data-cart-target onClick={openCart}
+              className="hidden md:flex relative items-center gap-2 bg-white text-brand-blue-600 font-bold rounded-full px-4 h-11 text-sm">
+              <ShoppingCart className="h-4 w-4" />Carrito
+              {count > 0 && (
+                <span className="h-5 min-w-5 px-1 bg-brand-green-600 text-white text-xs font-extrabold rounded-full flex items-center justify-center">{count}</span>
+              )}
+            </button>
           </div>
         </div>
-
-        {/* Fila de búsqueda — solo mobile, ancho completo, siempre visible
-            (misma cabecera sticky, así que baja con el resto). */}
-        <form onSubmit={handleSearch} className="md:hidden px-4 pb-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-paper-ink-ghost" />
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar en tu bodega..."
-              className="w-full bg-paper-surface border border-transparent rounded-xl pl-9 pr-9 py-2.5 text-sm text-paper-ink placeholder-paper-ink-ghost focus:outline-none focus:bg-white focus:border-brand-blue-400 transition-colors" />
-            <VoiceSearchButton onResult={handleVoiceResult} className="absolute right-2 top-1/2 -translate-y-1/2" />
-          </div>
-        </form>
       </header>
+
+      <form onSubmit={handleSearch} className="md:hidden sticky top-0 z-40 h-16 bg-brand-blue-600 px-4 pt-1 pb-3">
+        {searchField('Busca leche, arroz, gaseosa…')}
+      </form>
 
       <SideMenu open={showSideMenu} onClose={() => setShowSideMenu(false)} />
     </>

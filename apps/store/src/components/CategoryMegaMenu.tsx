@@ -30,7 +30,7 @@ export function CategoryMegaMenu() {
   return (
     <div className="relative hidden md:block" onMouseLeave={close}>
       <button onClick={() => setOpen(o => !o)} onMouseEnter={() => setOpen(true)}
-        className={`flex items-center gap-2 h-10 px-4 rounded-full text-sm font-semibold transition-colors ${open ? 'bg-brand-green-50 text-brand-green-700' : 'text-paper-ink-soft hover:bg-paper-surface'}`}>
+        className={`flex items-center gap-2 h-10 px-4 rounded-full text-sm font-semibold transition-colors ${open ? 'bg-white text-brand-blue-600' : 'text-white hover:bg-brand-blue-700'}`}>
         <LayoutGrid className="h-4 w-4" />Categorías
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>

@@ -10,9 +10,9 @@ import { useCartStore } from '../cartStore'
 // Fallback cuando la oferta no tiene foto/video de fondo subido desde el ERP —
 // para que igual se vea bien mientras el usuario sube las imágenes reales.
 const GRADIENTS = [
-  'from-brand-green-600 to-brand-green-900',
-  'from-brand-blue-600 to-brand-blue-900',
-  'from-paper-ink to-brand-blue-800',
+  'bg-brand-blue-600',
+  'bg-brand-green-700',
+  'bg-paper-ink',
 ]
 
 function getOfferBadgeText(offer: Offer) {
@@ -86,8 +86,8 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
               <Link
                 key={offer.id}
                 to="/ofertas"
-                className={`relative shrink-0 w-[86%] sm:w-[calc(50%-8px)] lg:w-[calc(42%-8px)] snap-start rounded-3xl overflow-hidden shadow-lg aspect-[3/2] flex items-end ${
-                  hasMedia ? '' : `bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]}`
+                className={`relative shrink-0 w-[86%] sm:w-[calc(50%-8px)] lg:w-[calc(42%-8px)] snap-start rounded-[20px] overflow-hidden shadow-card aspect-[3/2] flex items-end ${
+                  hasMedia ? '' : GRADIENTS[i % GRADIENTS.length]
                 }`}
               >
                 {offer.storeVideo ? (
@@ -111,8 +111,6 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                   </>
                 ) : (
                   <>
-                    <div className="absolute -top-10 -right-10 h-48 w-48 rounded-full bg-white/10 blur-2xl animate-float-blob" />
-                    <div className="absolute -bottom-16 right-24 h-56 w-56 rounded-full bg-white/5 blur-3xl animate-float-blob-slow" />
                     <div className="hidden sm:flex absolute right-6 md:right-10 top-1/2 -translate-y-1/2 h-40 md:h-48 w-40 md:w-48 bg-white/95 rounded-2xl items-center justify-center shadow-2xl">
                       {firstProduct?.imageUrl
                         ? <img src={firstProduct.imageUrl} alt={firstProduct.name} className="h-full w-full object-contain p-4" />
@@ -194,7 +192,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                   key={i}
                   onClick={() => scrollToIndex(i)}
                   aria-label={`Ir a promoción ${i + 1}`}
-                  className={`h-1.5 rounded-full transition-all ${i === activeIndex ? 'w-6 bg-brand-green-600' : 'w-1.5 bg-paper-line hover:bg-paper-ink-ghost'}`}
+                  className={`h-1.5 rounded-full transition-all ${i === activeIndex ? 'w-6 bg-brand-blue-600' : 'w-1.5 bg-paper-line hover:bg-paper-ink-ghost'}`}
                 />
               ))}
             </div>

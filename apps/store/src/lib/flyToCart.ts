@@ -50,7 +50,10 @@ function cartImpact(target: HTMLElement) {
 }
 
 export function flyToCart(sourceEl: HTMLElement | null) {
-  const target = document.getElementById('cart-icon-target')
+  // Hay un destino por tamaño de pantalla (barra de carrito en celular,
+  // botón de la cabecera en escritorio): se usa el que esté visible.
+  const target = Array.from(document.querySelectorAll<HTMLElement>('[data-cart-target]'))
+    .find(el => el.offsetParent !== null)
   if (!target) return
 
   const sourceRect = sourceEl?.getBoundingClientRect()
