@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ShoppingCart, ShoppingBag, Plus, Minus, Scale, X } from 'lucide-react'
 import { useCartStore } from '../cartStore'
@@ -172,120 +172,93 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
 }
 
 /* ── ProductCard ─────────────────────────────────────────────────── */
-export function ProductCard({ product }: { product: Product }) {
-  const { addItem, updateQuantity, items, openCart } = useCartStore()
+// Sistema "Azul de confianza". Dos formas:
+//  - 'row' (por defecto): en celular es una fila por producto — foto a la
+//    izquierda, nombre y precio a la derecha, cantidad debajo a todo el
+//    ancho — para recorrer el catálogo de arriba abajo con el pulgar. Desde
+//    640 px vuelve a ser tarjeta vertical en cuadrícula.
+//  - 'card': siempre tarjeta vertical (carruseles).
+// El verde se reserva para el botón de agregar en toda la tienda.
+export function ProductCard({ product, layout = 'row' }: { product: Product; layout?: 'row' | 'card' }) {
+  const row = layout === 'row'
+  const { addItem, updateQuantity, items } = useCartStore()
   const [showBulk, setShowBulk] = useState(false)
-  const navigate = useNavigate()
   const imgRef = useRef<HTMLImageElement>(null)
   const cartItem = items.find(i => i.product.id === product.id)
   const qty = cartItem?.quantity ?? 0
   const outOfStock = product.currentStock <= 0
   const lowStock = !outOfStock && product.currentStock <= 5
+  const unit = product.bulkUnit ?? 'kg'
 
-  const goToProduct = () => navigate(`/producto/${product.id}`)
+  const badge = outOfStock ? { text: 'Agotado', cls: 'bg-paper-ink text-white' }
+    : product.isBulk ? { text: `Por ${unit}`, cls: 'bg-white text-paper-ink shadow-card' }
+    : lowStock ? { text: product.currentStock === 1 ? 'Última unidad' : `Últimas ${product.currentStock}`, cls: 'bg-brand-sun-400 text-brand-sun-900' }
+    : null
 
-  const handleAdd = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleAdd = () => {
     if (outOfStock) return
     if (product.isBulk) { setShowBulk(true); return }
     const result = addItem(product)
     if (result.addedQuantity <= 0) {
-      toast.error(`"${product.name}" ya tiene todo el stock disponible en el carrito (${product.currentStock}).`)
+      toast.error(`Ya tienes en el carrito todo el stock de "${product.name}" (${product.currentStock}).`)
       return
     }
     flyToCart(imgRef.current)
-    toast.success(`${product.name} agregado`, {
-      duration: 1500, action: { label: 'Ver carrito', onClick: openCart }
-    })
   }
 
   return (
     <>
-      <motion.div
-        whileHover={outOfStock ? undefined : { y: -6 }}
-        whileTap={outOfStock ? undefined : { scale: 0.98 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 24 }}
-        className={`group relative bg-white border rounded-2xl overflow-hidden select-none shadow-sm
-          ${outOfStock ? 'opacity-60 border-paper-line' : 'border-paper-line hover:border-brand-blue-200 hover:shadow-lg'}`}>
+      <article className={`h-full bg-white rounded-[18px] shadow-card flex flex-col ${row ? 'p-3 gap-3 sm:p-2.5 sm:gap-2' : 'p-2.5 gap-2'} ${outOfStock ? 'opacity-70' : ''}`}>
+        <Link to={`/producto/${product.id}`} className={`flex flex-1 ${row ? 'flex-row items-center gap-3 sm:flex-col sm:items-stretch sm:gap-2' : 'flex-col gap-2'}`}>
+          <div className={`relative rounded-xl overflow-hidden bg-paper-surface ${row ? 'h-24 w-24 shrink-0 sm:h-auto sm:w-full sm:aspect-square' : 'aspect-square'}`}>
+            {product.imageUrl
+              ? <img ref={imgRef} src={product.imageUrl} alt="" loading="lazy" decoding="async" width={300} height={300}
+                  className="w-full h-full object-cover" />
+              : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-10 w-10 text-paper-ink-ghost" aria-hidden="true" /></div>}
 
-        {/* Imagen — toca para ver el detalle del producto */}
-        <div onClick={goToProduct} className="relative aspect-square overflow-hidden bg-paper-surface cursor-pointer">
-          {product.imageUrl
-            ? <img ref={imgRef} src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-            : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-10 w-10 text-paper-ink-ghost" /></div>
-          }
-
-          {/* Badges */}
-          {product.isBulk && (
-            // Sin ícono — la etiqueta "por kg" ya se explica sola, y el
-            // ícono de balanza genérico (el mismo que usa cualquier
-            // e-commerce) no aportaba nada. Mono, en mayúscula, como en el
-            // ticket real.
-            <div className="absolute top-2 left-2 bg-white/90 border border-paper-line rounded-full px-2.5 py-0.5">
-              <span className="text-[10px] font-mono font-semibold text-paper-ink-soft tracking-wide">POR {(product.bulkUnit ?? 'kg').toUpperCase()}</span>
-            </div>
-          )}
-          {lowStock && !product.isBulk && (
-            <span className="absolute top-2 left-2 bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
-              Últimas {product.currentStock}
-            </span>
-          )}
-          {outOfStock && (
-            <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
-              <span className="bg-paper-ink/80 text-white text-sm font-bold px-3 py-1.5 rounded-full">Agotado</span>
-            </div>
-          )}
-          <AnimatePresence>
-            {qty > 0 && (
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 22 }}
-                className="absolute top-2 right-2 h-6 w-6 bg-brand-green-600 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg">
-                {qty}
-              </motion.div>
+            {badge && (
+              <span className={`absolute top-2 left-2 text-xs font-bold px-2 py-0.5 rounded-lg ${badge.cls} ${row ? 'hidden sm:block' : ''}`}>{badge.text}</span>
             )}
-          </AnimatePresence>
-        </div>
-
-        {/* Info — toca el nombre/precio para ver el detalle del producto;
-            agregar al carrito es sólo la barra de abajo, para no competir
-            con el botón +/− de ancho completo (antes toda la zona agregaba,
-            lo que hacía fácil sumar sin querer al tocar cerca del precio). */}
-        <div onClick={goToProduct} className="p-3 pb-0 cursor-pointer">
-          <p className="text-xs text-paper-ink-ghost mb-0.5">{product.category.name}</p>
-          <p className="font-semibold text-sm text-paper-ink line-clamp-2 leading-tight mb-2 min-h-[2.5em]">{product.name}</p>
-          <div>
-            <span className="text-paper-ink font-extrabold text-lg tabular-nums">S/ {Number(product.salePrice).toFixed(2)}</span>
-            {product.isBulk && <span className="text-paper-ink-ghost text-xs ml-1">/{product.bulkUnit ?? 'kg'}</span>}
           </div>
-        </div>
+          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+            <p className={`font-semibold text-paper-ink leading-tight line-clamp-2 ${row ? 'text-base sm:text-[15px] sm:min-h-[2.5em]' : 'text-[15px] min-h-[2.5em]'}`}>{product.name}</p>
+            <p className={`font-extrabold text-paper-ink tabular-nums leading-none ${row ? 'text-[22px] sm:text-xl' : 'text-xl'}`}>
+              S/ {Number(product.salePrice).toFixed(2)}
+              {product.isBulk && <span className="text-sm font-semibold text-paper-ink-soft"> /{unit}</span>}
+            </p>
+            {badge && row && (
+              <span className={`sm:hidden self-start text-xs font-bold px-2 py-0.5 rounded-lg ${badge.cls}`}>{badge.text}</span>
+            )}
+          </div>
+        </Link>
 
-        {/* Barra de agregar — ancho completo, pegada abajo del card (estilo
-            Rappi/PedidosYa): un solo "+" grande cuando no hay nada en el
-            carrito, y un stepper −/cantidad/+ de ancho completo cuando ya
-            se agregó, en vez del botón circular chico de antes. */}
-        <div className="p-3 pt-2">
-          {qty > 0 && !product.isBulk ? (
-            <div className="flex items-center justify-between bg-brand-green-600 rounded-xl overflow-hidden h-9">
-              <button onClick={() => updateQuantity(product.id, qty - 1)} aria-label="Quitar uno"
-                className="h-full w-11 flex items-center justify-center text-white hover:bg-brand-green-700 transition-colors">
-                <Minus className="h-4 w-4" />
-              </button>
-              <span className="flex-1 text-center text-sm font-bold text-white tabular-nums">{qty}</span>
-              <button onClick={() => { addItem(product); flyToCart(imgRef.current) }} disabled={qty >= product.currentStock} aria-label="Agregar uno más"
-                className="h-full w-11 flex items-center justify-center text-white hover:bg-brand-green-700 disabled:opacity-40 transition-colors">
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <button onClick={outOfStock ? undefined : handleAdd} disabled={outOfStock} aria-label={product.isBulk ? 'Elegir cantidad' : 'Agregar al carrito'}
-              className={`w-full h-9 rounded-xl flex items-center justify-center gap-1.5 font-bold text-sm text-white transition-colors ${outOfStock ? 'bg-paper-ink-ghost cursor-not-allowed' : 'bg-brand-green-600 hover:bg-brand-green-700'}`}>
-              {product.isBulk ? <Scale className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              {product.isBulk ? 'Elegir cantidad' : 'Agregar'}
+        {outOfStock || product.isBulk ? (
+          <button onClick={handleAdd} disabled={outOfStock}
+            aria-label={outOfStock ? `${product.name}, agotado` : `Elegir cantidad de ${product.name}`}
+            className={`w-full rounded-xl flex items-center justify-center gap-1.5 font-bold text-[15px] h-12 ${outOfStock ? 'bg-paper-surface text-paper-ink-soft cursor-not-allowed' : 'bg-brand-green-600 active:bg-brand-green-700 text-white'}`}>
+            {outOfStock ? 'Agotado' : <><Scale className="h-4 w-4" />Elegir cantidad</>}
+          </button>
+        ) : (
+          // Cantidad siempre a la vista en la fila: − · número · botón verde.
+          // Con 0 en tarjeta vertical queda solo el botón "Agregar".
+          <div className={`flex items-stretch rounded-xl overflow-hidden h-12 ${qty > 0 ? 'border border-paper-line' : row ? 'border border-paper-line sm:border-0' : ''}`}>
+            <button onClick={() => updateQuantity(product.id, qty - 1)} disabled={qty === 0}
+              aria-label={`Quitar uno de ${product.name}`}
+              className={`w-12 items-center justify-center text-paper-ink active:bg-paper-surface disabled:text-paper-ink-ghost ${qty > 0 ? 'flex' : row ? 'flex sm:hidden' : 'hidden'}`}>
+              <Minus className="h-5 w-5" />
             </button>
-          )}
-        </div>
-      </motion.div>
+            <span aria-live="polite"
+              className={`flex-1 items-center justify-center text-lg font-extrabold tabular-nums ${qty > 0 ? 'flex text-paper-ink' : row ? 'flex sm:hidden text-paper-ink-soft' : 'hidden'}`}>{qty}</span>
+            <button onClick={qty > 0 ? () => { addItem(product); flyToCart(imgRef.current) } : handleAdd}
+              disabled={qty >= product.currentStock}
+              aria-label={qty > 0 ? `Agregar uno más de ${product.name}` : `Agregar ${product.name}`}
+              className={`flex items-center justify-center gap-1.5 bg-brand-green-600 active:bg-brand-green-700 disabled:opacity-40 text-white font-bold text-[15px] ${qty > 0 ? 'w-12' : row ? 'px-5 sm:flex-1' : 'flex-1'}`}>
+              {qty === 0 && 'Agregar'}
+              <Plus className={qty > 0 ? 'h-5 w-5' : 'h-4 w-4'} />
+            </button>
+          </div>
+        )}
+      </article>
 
       <AnimatePresence>
         {showBulk && <BulkModal product={product} onClose={() => setShowBulk(false)} />}

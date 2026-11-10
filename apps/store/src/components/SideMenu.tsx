@@ -22,7 +22,7 @@ interface SideMenuProps {
 // navegación completa, atajos directos a las secciones del perfil (puntos,
 // consumo, direcciones) y soporte.
 export function SideMenu({ open, onClose }: SideMenuProps) {
-  const { customer, isLoggedIn, logout, exitGuestMode } = useAuthStore()
+  const { customer, isLoggedIn, logout } = useAuthStore()
   const navigate = useNavigate()
 
   const { data: profileData } = useQuery({
@@ -67,7 +67,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
             className="fixed inset-y-0 left-0 z-[61] w-[82%] max-w-[320px] bg-white shadow-2xl flex flex-col overflow-y-auto">
 
             {/* Cabecera — identidad del cliente o CTA de ingreso */}
-            <div className="bg-gradient-to-br from-brand-green-600 to-brand-green-700 text-white p-5 pt-6 shrink-0">
+            <div className="bg-brand-blue-600 text-white p-5 pt-6 shrink-0">
               <button onClick={onClose} aria-label="Cerrar menú"
                 className="absolute top-4 right-4 h-8 w-8 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-colors">
                 <X className="h-4 w-4" />
@@ -89,9 +89,9 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
                   <div className="h-12 w-12 rounded-full border-2 border-white/70 flex items-center justify-center mb-2">
                     <User className="h-5 w-5" />
                   </div>
-                  <p className="font-display font-semibold">Bienvenido a Marc</p>
-                  <button onClick={() => { onClose(); exitGuestMode() }}
-                    className="mt-3 flex items-center gap-1 bg-white text-brand-green-700 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors">
+                  <p className="font-display font-semibold">Bienvenido a Tiendas Marc</p>
+                  <button onClick={() => go('/ingresar')}
+                    className="mt-3 flex items-center gap-1 bg-white text-brand-blue-600 rounded-full px-4 h-11 text-sm font-bold transition-colors">
                     Ingresar / Crear cuenta <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 </>
@@ -112,7 +112,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
               {accountLinks.length > 0 && (
                 <>
                   <div className="border-t border-paper-line my-2 mx-5" />
-                  <p className="px-5 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-paper-ink-ghost">Mi cuenta</p>
+                  <p className="px-5 pt-1 pb-1.5 text-xs font-bold uppercase tracking-wide text-paper-ink-soft">Mi cuenta</p>
                   {accountLinks.map(({ to, icon: Icon, label }) => (
                     <Link key={to} to={to} onClick={onClose}
                       className="flex items-center gap-3 px-5 py-3 text-sm text-paper-ink hover:bg-paper-surface transition-colors">
@@ -124,7 +124,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
               )}
 
               <div className="border-t border-paper-line my-2 mx-5" />
-              <a href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Hola TIENDA MARC! 👋 Tengo una consulta.')}`}
+              <a href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Hola Tiendas Marc, tengo una consulta.')}`}
                 target="_blank" rel="noopener noreferrer" onClick={onClose}
                 className="flex items-center gap-3 px-5 py-3 text-sm text-paper-ink hover:bg-paper-surface transition-colors">
                 <MessageCircle className="h-4.5 w-4.5 text-[#25D366]" />
@@ -139,7 +139,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
               )}
             </nav>
 
-            <p className="px-5 py-4 text-[10px] text-paper-ink-ghost shrink-0">Minimarket Marc · Pachacamac</p>
+            <p className="px-5 py-4 text-xs text-paper-ink-soft shrink-0">Tiendas Marc · Manchay, Pachacamac</p>
           </motion.aside>
         </>
       )}

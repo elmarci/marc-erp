@@ -75,8 +75,8 @@ export function VoiceShoppingListButton() {
           <motion.button
             initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
             onClick={handleOpen}
-            className="fixed right-4 bottom-20 md:bottom-6 z-40 h-14 w-14 rounded-full bg-brand-green-600 hover:bg-brand-green-700 text-white shadow-lg shadow-brand-green-600/30 flex items-center justify-center animate-ring-pulse"
-            title="Arma tu pedido dictando la lista">
+            className="fixed right-[calc(1rem+52px+0.625rem)] bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] md:right-4 md:bottom-6 z-30 h-[52px] w-[52px] rounded-2xl bg-white text-brand-blue-600 shadow-lg shadow-black/15 flex items-center justify-center"
+            title="Arma tu pedido dictando la lista" aria-label="Dictar mi lista de compras">
             <Mic className="h-6 w-6" />
           </motion.button>
         )}

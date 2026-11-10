@@ -18,12 +18,12 @@ export function VoiceSearchButton({ onResult, className = '' }: Props) {
     <button type="button" onClick={toggle}
       title={isListening ? 'Escuchando… toca para cancelar' : 'Buscar por voz'}
       aria-label="Buscar por voz"
-      className={`flex items-center justify-center h-6 w-6 rounded-full transition-colors ${
+      className={`flex items-center justify-center h-11 w-11 rounded-full transition-colors ${
         isListening
           ? 'bg-brand-magenta-500 text-white animate-pulse'
-          : 'text-paper-ink-ghost hover:text-brand-green-600 hover:bg-brand-green-50'
+          : 'text-paper-ink-soft hover:text-brand-blue-600 hover:bg-brand-blue-50'
       } ${className}`}>
-      <Mic className="h-3.5 w-3.5" />
+      <Mic className="h-5 w-5" />
     </button>
   )
 }

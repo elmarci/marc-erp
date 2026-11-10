@@ -1,53 +1,50 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Home, LayoutGrid, ShoppingCart, User } from 'lucide-react'
 import { useCartStore, cartCount } from '../cartStore'
 import { useAuthStore } from '../authStore'
 
+// Barra inferior fija. Cada pestaña mide 64 px de alto y un cuarto del ancho
+// (bien por encima del mínimo táctil de 44 px) y el texto es de 12 px en un
+// gris que pasa contraste AA.
 export function MobileTabBar() {
   const location = useLocation()
-  const navigate = useNavigate()
   const items = useCartStore(s => s.items)
   const openCart = useCartStore(s => s.openCart)
+  const cartOpen = useCartStore(s => s.isOpen)
   const count = cartCount(items)
   const { isLoggedIn } = useAuthStore()
+  const path = location.pathname
 
-  const isHomeActive = location.pathname === '/'
-  const isProfileActive = location.pathname.startsWith('/mis-pedidos')
-  // "Categorías" abre una pantalla completa propia (/categorias) con
-  // categorías y subcategorías — antes era un panel lateral angosto, más
-  // difícil de recorrer con subcategorías incluidas.
-  const isCategoriesActive = location.pathname.startsWith('/categorias') || location.pathname.startsWith('/catalogo') || location.pathname.startsWith('/producto')
+  const tab = (active: boolean) =>
+    `flex-1 flex flex-col items-center justify-center gap-0.5 text-xs ${active ? 'text-brand-blue-600 font-bold' : 'text-paper-ink-soft font-semibold'}`
+
+  const isHome = path === '/' && !cartOpen
+  const isCategories = !cartOpen && (path.startsWith('/categorias') || path.startsWith('/catalogo') || path.startsWith('/producto'))
+  const isAccount = !cartOpen && (path.startsWith('/mis-pedidos') || path.startsWith('/ingresar'))
 
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-paper-bg/95 backdrop-blur border-t border-paper-line pb-[env(safe-area-inset-bottom)]">
-      <div className="flex items-stretch h-14">
-        <Link to="/" className="flex-1 flex flex-col items-center justify-center gap-0.5">
-          <Home className={`h-5 w-5 ${isHomeActive ? 'text-brand-green-600' : 'text-paper-ink-ghost'}`} strokeWidth={isHomeActive ? 2.5 : 2} />
-          <span className={`text-[10px] ${isHomeActive ? 'text-brand-green-600 font-bold' : 'text-paper-ink-ghost font-normal'}`}>Inicio</span>
+    <nav aria-label="Navegación principal"
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-paper-line pb-[env(safe-area-inset-bottom)]">
+      <div className="flex items-stretch h-16">
+        <Link to="/" className={tab(isHome)} aria-current={isHome ? 'page' : undefined}>
+          <Home className="h-6 w-6" strokeWidth={isHome ? 2.5 : 2} />Inicio
         </Link>
-
-        <button onClick={() => navigate('/categorias')} className="flex-1 flex flex-col items-center justify-center gap-0.5">
-          <LayoutGrid className={`h-5 w-5 ${isCategoriesActive ? 'text-brand-green-600' : 'text-paper-ink-ghost'}`} strokeWidth={isCategoriesActive ? 2.5 : 2} />
-          <span className={`text-[10px] ${isCategoriesActive ? 'text-brand-green-600 font-bold' : 'text-paper-ink-ghost font-normal'}`}>Categorías</span>
-        </button>
-
-        <button onClick={openCart} className="flex-1 flex flex-col items-center justify-center gap-0.5 relative">
+        <Link to="/categorias" className={tab(isCategories)} aria-current={isCategories ? 'page' : undefined}>
+          <LayoutGrid className="h-6 w-6" strokeWidth={isCategories ? 2.5 : 2} />Categorías
+        </Link>
+        <button onClick={openCart} className={tab(cartOpen)}>
           <span className="relative">
-            <ShoppingCart className="h-5 w-5 text-paper-ink-ghost" strokeWidth={2} />
+            <ShoppingCart className="h-6 w-6" strokeWidth={cartOpen ? 2.5 : 2} />
             {count > 0 && (
-              <span className="absolute -top-1.5 -right-2 h-4 w-4 bg-brand-magenta-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+              <span className="absolute -top-1.5 -right-2.5 h-5 min-w-5 px-1 bg-brand-green-600 text-white text-[11px] font-extrabold rounded-full flex items-center justify-center">
                 {count}
               </span>
             )}
           </span>
-          <span className="text-[10px] text-paper-ink-ghost font-normal">Carrito</span>
+          Carrito
         </button>
-
-        <Link to="/mis-pedidos" className="flex-1 flex flex-col items-center justify-center gap-0.5">
-          <User className={`h-5 w-5 ${isProfileActive ? 'text-brand-green-600' : 'text-paper-ink-ghost'}`} strokeWidth={isProfileActive ? 2.5 : 2} />
-          <span className={`text-[10px] ${isProfileActive ? 'text-brand-green-600 font-bold' : 'text-paper-ink-ghost font-normal'}`}>
-            {isLoggedIn ? 'Perfil' : 'Ingresar'}
-          </span>
+        <Link to={isLoggedIn ? '/mis-pedidos' : '/ingresar'} className={tab(isAccount)} aria-current={isAccount ? 'page' : undefined}>
+          <User className="h-6 w-6" strokeWidth={isAccount ? 2.5 : 2} />{isLoggedIn ? 'Cuenta' : 'Ingresar'}
         </Link>
       </div>
     </nav>

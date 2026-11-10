@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { storeApi, type StoreAddress } from '../api'
 import { useAuthStore } from '../authStore'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useCartStore } from '../cartStore'
 import { toast } from 'sonner'
 
@@ -29,7 +29,7 @@ function ConsumptionReport() {
   const items = data?.data.data.items ?? []
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-paper-line p-5">
+    <div className="bg-white rounded-2xl shadow-card border border-paper-line p-5">
       <h3 className="font-display font-semibold text-paper-ink flex items-center gap-2 mb-1">
         <BarChart3 className="h-4 w-4 text-brand-blue-600" />Reporte de consumos
       </h3>
@@ -37,10 +37,10 @@ function ConsumptionReport() {
 
       <div className="flex items-center gap-2 mb-4">
         <input type="date" value={from} onChange={e => setFrom(e.target.value)} max={to}
-          className="flex-1 bg-paper-surface border border-transparent focus:border-brand-blue-400 rounded-xl px-3 py-2 text-xs text-paper-ink outline-none transition-colors" />
+          className="flex-1 bg-paper-surface border border-transparent focus:border-brand-blue-400 rounded-xl px-3 h-11 min-w-0 text-sm text-paper-ink outline-none transition-colors" />
         <span className="text-xs text-paper-ink-ghost">a</span>
         <input type="date" value={to} onChange={e => setTo(e.target.value)} min={from} max={toDateInput(new Date())}
-          className="flex-1 bg-paper-surface border border-transparent focus:border-brand-blue-400 rounded-xl px-3 py-2 text-xs text-paper-ink outline-none transition-colors" />
+          className="flex-1 bg-paper-surface border border-transparent focus:border-brand-blue-400 rounded-xl px-3 h-11 min-w-0 text-sm text-paper-ink outline-none transition-colors" />
       </div>
 
       {isLoading ? (
@@ -77,35 +77,35 @@ function PointsZone({ points }: { points: number }) {
   const worth = points * pointValue
 
   return (
-    <div className="bg-gradient-to-br from-brand-green-600 to-brand-green-700 rounded-2xl shadow-sm p-5 text-white">
+    <div className="bg-brand-blue-600 rounded-2xl shadow-card p-5 text-white">
       <h3 className="font-display font-semibold flex items-center gap-2 mb-1">
         <Gift className="h-4 w-4" />Zona de canje
       </h3>
-      <p className="text-xs text-white/75 mb-4">Tus puntos valen dinero real en tu próxima compra.</p>
+      <p className="text-sm text-brand-blue-100 mb-4">Tus puntos valen dinero real en tu próxima compra.</p>
       <div className="flex items-end justify-between">
         <div>
           <p className="text-3xl font-display font-semibold tabular-nums">{points}</p>
-          <p className="text-xs text-white/75">puntos disponibles</p>
+          <p className="text-sm text-brand-blue-100">puntos disponibles</p>
         </div>
         <div className="text-right">
           <p className="text-xl font-bold tabular-nums">S/ {worth.toFixed(2)}</p>
-          <p className="text-xs text-white/75">valor equivalente</p>
+          <p className="text-sm text-brand-blue-100">valor equivalente</p>
         </div>
       </div>
-      <Link to="/" className="mt-4 flex items-center justify-center gap-1.5 bg-white/15 hover:bg-white/25 rounded-xl py-2.5 text-sm font-semibold transition-colors">
+      <Link to="/" className="mt-4 flex items-center justify-center gap-1.5 bg-white text-brand-blue-600 rounded-xl h-12 font-bold">
         Usarlos en mi próxima compra <ChevronRight className="h-4 w-4" />
       </Link>
-      <p className="text-[10px] text-white/60 mt-2 text-center">Se canjean solos al pagar — eliges cuánto usar en el checkout.</p>
+      <p className="text-sm text-brand-blue-100 mt-2.5 text-center">Tú eliges cuántos usar al confirmar tu pedido.</p>
     </div>
   )
 }
 
 const STATUS: Record<string, { label: string; color: string; emoji: string }> = {
   PENDING:   { label: 'Pendiente',   color: 'text-amber-600',      emoji: '⏳' },
-  CONFIRMED: { label: 'Confirmado',  color: 'text-brand-green-600', emoji: '✅' },
+  CONFIRMED: { label: 'Confirmado',  color: 'text-brand-blue-600', emoji: '✅' },
   PREPARING: { label: 'Preparando',  color: 'text-purple-600',     emoji: '👨‍🍳' },
-  READY:     { label: 'Listo',       color: 'text-brand-green-700', emoji: '🎉' },
-  DELIVERED: { label: 'Entregado',   color: 'text-brand-green-700', emoji: '✅' },
+  READY:     { label: 'Listo',       color: 'text-brand-blue-700', emoji: '🎉' },
+  DELIVERED: { label: 'Entregado',   color: 'text-brand-blue-700', emoji: '✅' },
   CANCELLED: { label: 'Cancelado',   color: 'text-brand-magenta-600', emoji: '❌' },
 }
 const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega' }
@@ -145,10 +145,10 @@ function AddressBook() {
   })
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-paper-line p-5">
+    <div className="bg-white rounded-2xl shadow-card border border-paper-line p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-paper-ink flex items-center gap-2"><MapPin className="h-4 w-4 text-brand-blue-600" />Mis direcciones</h3>
-        <button onClick={() => setShowForm(v => !v)} className="text-brand-green-600 hover:text-brand-green-700 text-sm font-medium flex items-center gap-1 transition-colors">
+        <button onClick={() => setShowForm(v => !v)} className="text-brand-blue-600 text-sm font-bold flex items-center gap-1 h-11 px-2 -mr-2">
           {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
           {showForm ? 'Cancelar' : 'Agregar'}
         </button>
@@ -170,7 +170,7 @@ function AddressBook() {
             className="w-full bg-white border border-paper-line focus:border-brand-blue-400 rounded-xl px-3 py-2 text-sm text-paper-ink outline-none transition-colors" />
           <button onClick={() => { if (form.address.trim().length < 5) { toast.error('Ingresa una dirección válida'); return } addMutation.mutate() }}
             disabled={addMutation.isPending}
-            className="w-full bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold py-2.5 rounded-xl text-sm transition-colors">
+            className="w-full bg-brand-blue-600 hover:bg-brand-blue-700 text-white font-bold py-2.5 rounded-xl text-sm transition-colors">
             Guardar dirección
           </button>
         </div>
@@ -185,19 +185,19 @@ function AddressBook() {
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-paper-ink flex items-center gap-2">
                   {a.label}
-                  {a.isDefault && <span className="text-[10px] bg-brand-blue-100 text-brand-blue-700 font-bold px-2 py-0.5 rounded-full">Principal</span>}
+                  {a.isDefault && <span className="text-xs bg-brand-blue-100 text-brand-blue-700 font-bold px-2 py-0.5 rounded-full">Principal</span>}
                 </p>
                 <p className="text-xs text-paper-ink-soft">{a.address}, {a.district}</p>
                 {a.reference && <p className="text-xs text-paper-ink-ghost">{a.reference}</p>}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {!a.isDefault && (
-                  <button onClick={() => defaultMutation.mutate(a.id)} title="Marcar como principal"
-                    className="text-paper-ink-ghost hover:text-brand-blue-600 transition-colors">
+                  <button onClick={() => defaultMutation.mutate(a.id)} title="Marcar como principal" aria-label="Marcar como principal"
+                    className="h-11 w-11 flex items-center justify-center text-paper-ink-soft">
                     <Check className="h-4 w-4" />
                   </button>
                 )}
-                <button onClick={() => deleteMutation.mutate(a.id)} title="Eliminar" className="text-paper-ink-ghost hover:text-brand-magenta-600 transition-colors">
+                <button onClick={() => deleteMutation.mutate(a.id)} title="Eliminar" aria-label="Eliminar dirección" className="h-11 w-11 -mr-2 flex items-center justify-center text-paper-ink-soft">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -229,8 +229,8 @@ function ProfileEditor({ name, email }: { name: string; email: string | null }) 
 
   if (!editing) {
     return (
-      <button onClick={() => setEditing(true)} className="text-xs text-paper-ink-ghost hover:text-brand-blue-600 flex items-center gap-1 transition-colors">
-        <Pencil className="h-3 w-3" />Editar perfil
+      <button onClick={() => setEditing(true)} className="text-sm font-bold text-brand-blue-600 flex items-center gap-1.5 h-11 px-3">
+        <Pencil className="h-4 w-4" />Editar perfil
       </button>
     )
   }
@@ -242,7 +242,7 @@ function ProfileEditor({ name, email }: { name: string; email: string | null }) 
       <input value={form.email} onChange={e => setForm(v => ({ ...v, email: e.target.value }))} placeholder="Email (opcional)"
         className="bg-white border border-paper-line focus:border-brand-blue-400 rounded-xl px-3 py-1.5 text-sm text-paper-ink outline-none transition-colors" />
       <button onClick={() => mutation.mutate()} disabled={mutation.isPending}
-        className="bg-brand-green-600 hover:bg-brand-green-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors">
+        className="bg-brand-blue-600 hover:bg-brand-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors">
         Guardar
       </button>
       <button onClick={() => setEditing(false)} className="text-xs text-paper-ink-ghost hover:text-paper-ink-soft px-2 transition-colors">Cancelar</button>
@@ -251,7 +251,8 @@ function ProfileEditor({ name, email }: { name: string; email: string | null }) 
 }
 
 export function TrackOrderPage() {
-  const { customer, logout, exitGuestMode } = useAuthStore()
+  const { customer, logout } = useAuthStore()
+  const navigate = useNavigate()
   const { addItem, openCart } = useCartStore()
   const location = useLocation()
 
@@ -307,10 +308,10 @@ export function TrackOrderPage() {
     return (
       <main className="max-w-md mx-auto px-4 py-20 text-center">
         <Package className="h-12 w-12 mx-auto mb-4 text-brand-blue-600" />
-        <h1 className="text-2xl font-black mb-1 text-paper-ink">Mis pedidos</h1>
+        <h1 className="text-2xl font-extrabold mb-1 text-paper-ink">Mis pedidos</h1>
         <p className="text-paper-ink-soft text-sm mb-6">Crea tu cuenta o inicia sesión para ver tu historial, puntos y direcciones guardadas.</p>
-        <button onClick={exitGuestMode}
-          className="bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold px-6 py-3 rounded-xl transition-colors">
+        <button onClick={() => navigate('/ingresar')}
+          className="bg-brand-blue-600 hover:bg-brand-blue-700 text-white font-bold px-6 h-12 rounded-xl transition-colors">
           Ingresar / Crear cuenta
         </button>
       </main>
@@ -322,7 +323,7 @@ export function TrackOrderPage() {
       {/* Header — mismo sello circular que el ticket, para que se sienta la
           misma identidad de marca en toda la tienda. */}
       <div className="text-center mb-8">
-        <div className="h-16 w-16 rounded-full border-2 border-brand-green-600 flex items-center justify-center text-brand-green-600 text-2xl font-display font-semibold mx-auto mb-3 -rotate-3 bg-white shadow-sm">
+        <div className="h-16 w-16 rounded-full border-2 border-brand-blue-600 flex items-center justify-center text-brand-blue-600 text-2xl font-display font-semibold mx-auto mb-3 bg-white shadow-card">
           {customer!.name[0].toUpperCase()}
         </div>
         <h1 className="text-2xl font-display font-semibold text-paper-ink">{customer!.name}</h1>
@@ -332,22 +333,22 @@ export function TrackOrderPage() {
             <CalendarDays className="h-3 w-3" />Cliente desde {new Date(profile.createdAt).toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}
           </p>
         )}
-        <div className="flex items-center justify-center gap-4 mt-2">
+        <div className="flex items-center justify-center gap-2 mt-1">
           <ProfileEditor name={customer!.name} email={customer!.email ?? null} />
-          <button onClick={logout} className="text-xs text-paper-ink-ghost hover:text-brand-magenta-600 flex items-center gap-1 transition-colors">
-            <LogOut className="h-3 w-3" />Cerrar sesión
+          <button onClick={logout} className="text-sm font-bold text-paper-ink-soft flex items-center gap-1.5 h-11 px-3">
+            <LogOut className="h-4 w-4" />Cerrar sesión
           </button>
         </div>
       </div>
 
       {/* Stats rápidas */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
+        <div className="bg-white rounded-2xl shadow-card p-4 text-center">
           <ShoppingBag className="h-4 w-4 text-brand-blue-600 mx-auto mb-1" />
           <p className="text-lg font-display font-semibold text-paper-ink">{orders.length}</p>
           <p className="text-xs text-paper-ink-ghost">Pedidos</p>
         </div>
-        <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-4 text-center">
+        <div className="bg-white rounded-2xl shadow-card p-4 text-center">
           <span className="text-sm font-bold text-brand-blue-600 block mb-1">S/</span>
           <p className="text-lg font-display font-semibold text-paper-ink">{totalSpent.toFixed(0)}</p>
           <p className="text-xs text-paper-ink-ghost">Comprado</p>
@@ -374,7 +375,7 @@ export function TrackOrderPage() {
       {/* Lista de pedidos */}
       {isLoading && (
         <div className="text-center py-8 text-paper-ink-ghost">
-          <div className="h-8 w-8 border-2 border-brand-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <div className="h-8 w-8 border-2 border-brand-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           Buscando pedidos...
         </div>
       )}
@@ -390,11 +391,11 @@ export function TrackOrderPage() {
         {orders.map(order => {
           const status = STATUS[order.status] ?? STATUS.PENDING
           return (
-            <div key={order.id} className="bg-white rounded-2xl overflow-hidden border border-paper-line shadow-sm hover:shadow-md transition-shadow">
+            <div key={order.id} className="bg-white rounded-2xl overflow-hidden border border-paper-line shadow-card hover:shadow-md transition-shadow">
               <Link to={`/pedido/${order.orderNumber}`} className="block p-4 hover:bg-paper-surface transition-colors">
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="font-black text-lg text-paper-ink">{order.orderNumber}</p>
+                    <p className="font-extrabold text-lg text-paper-ink">{order.orderNumber}</p>
                     <p className="text-xs text-paper-ink-ghost">{new Date(order.createdAt).toLocaleString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -418,8 +419,8 @@ export function TrackOrderPage() {
               {/* Repetir pedido */}
               <div className="px-4 pb-3 border-t border-dashed border-paper-line">
                 <button onClick={() => repeatOrder(order)}
-                  className="w-full flex items-center justify-center gap-2 py-2 text-xs text-paper-ink-ghost hover:text-brand-blue-600 transition-colors">
-                  <RefreshCw className="h-3.5 w-3.5" />Repetir este pedido
+                  className="w-full flex items-center justify-center gap-2 h-12 text-sm font-bold text-brand-blue-600">
+                  <RefreshCw className="h-4 w-4" />Repetir este pedido
                 </button>
               </div>
             </div>
