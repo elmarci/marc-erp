@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, MapPin, CreditCard, User, Check, ShoppingBag, Truck, Store, Plus, LocateFixed, CheckCircle2, Gift } from 'lucide-react'
+import { ArrowLeft, MapPin, Check, ShoppingBag, Truck, Store, Plus, LocateFixed, CheckCircle2, Gift } from 'lucide-react'
 import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
 import { toast } from 'sonner'
+import { DELIVERY, deliveryStatus, money } from '../lib/storeInfo'
 
-type Step = 1 | 2 | 3
-
-const DISTRICTS = ['Pachacamac', 'Villa María del Triunfo', 'San Juan de Miraflores', 'Villa El Salvador', 'Lurín', 'Cieneguilla', 'Otro']
+// Quien compra sin cuenta no vuelve a escribir su nombre y WhatsApp en cada
+// pedido: se recuerdan en este equipo.
+const CONTACT_KEY = 'marc-checkout-contact'
+function savedContact(): { name?: string; phone?: string } {
+  try { return JSON.parse(localStorage.getItem(CONTACT_KEY) ?? '{}') } catch { return {} }
+}
 
 export function CheckoutPage() {
   const items = useCartStore(s => s.items)
@@ -17,7 +21,6 @@ export function CheckoutPage() {
   const { customer, isLoggedIn } = useAuthStore()
   const navigate = useNavigate()
   const total = cartTotal(items)
-  const [step, setStep] = useState<Step>(1)
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
   const [showNewAddressForm, setShowNewAddressForm] = useState(false)
   const [saveNewAddress, setSaveNewAddress] = useState(false)
@@ -49,11 +52,11 @@ export function CheckoutPage() {
   const finalTotal = total - pointsDiscount
 
   const [form, setForm] = useState({
-    customerName: customer?.name ?? '',
-    customerPhone: customer?.phone ?? '',
+    customerName: customer?.name ?? savedContact().name ?? '',
+    customerPhone: customer?.phone ?? savedContact().phone ?? '',
     customerEmail: customer?.email ?? '',
     deliveryType: '' as 'DELIVERY' | 'PICKUP' | '',
-    address: '', district: 'Pachacamac', reference: '',
+    address: '', district: '', reference: '',
     paymentMethod: '' as 'YAPE' | 'CASH' | 'YAPE_CONTRAENTREGA' | '',
     notes: '',
   })
@@ -127,423 +130,284 @@ export function CheckoutPage() {
           reference: form.reference || undefined, isDefault: savedAddresses.length === 0,
         }).catch(() => {})
       }
+      try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ name: form.customerName, phone: form.customerPhone })) } catch { /* sin almacenamiento */ }
       clearCart()
       navigate(`/pedido/${res.data.data.orderNumber}`)
     },
-    onError: () => toast.error('Error al procesar el pedido. Intenta de nuevo.'),
+    onError: (err) => toast.error(
+      (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+        ?? 'No pudimos enviar tu pedido. Revisa tu conexión e intenta de nuevo.'),
   })
 
   if (items.length === 0) {
     return (
-      <div className="max-w-md mx-auto px-4 py-20 text-center">
-        <ShoppingBag className="h-16 w-16 mx-auto mb-4 text-paper-ink-ghost" />
-        <p className="text-paper-ink-soft mb-6">Tu carrito está vacío</p>
-        <Link to="/" className="bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold px-6 py-3 rounded-full text-sm transition-colors">Ir a la tienda</Link>
-      </div>
+      <main className="max-w-md mx-auto px-4 py-16 text-center">
+        <ShoppingBag className="h-14 w-14 mx-auto mb-4 text-paper-ink-soft" aria-hidden="true" />
+        <p className="text-lg font-bold text-paper-ink">Aún no tienes productos</p>
+        <p className="text-sm text-paper-ink-soft mt-1 mb-5">Agrega lo que necesitas y vuelve para hacer tu pedido.</p>
+        <Link to="/" className="h-12 rounded-xl bg-brand-blue-600 text-white font-bold flex items-center justify-center">Ver productos</Link>
+      </main>
     )
   }
 
-  const steps = [
-    { num: 1, icon: User, label: 'Tus datos' },
-    { num: 2, icon: MapPin, label: 'Entrega' },
-    { num: 3, icon: CreditCard, label: 'Pago' },
-  ]
+  const isDelivery = form.deliveryType === 'DELIVERY'
+  const isPickup = form.deliveryType === 'PICKUP'
+  const showAddressForm = !isLoggedIn || savedAddresses.length === 0 || showNewAddressForm
+
+  // Una sola pantalla: se valida todo al confirmar y se avisa del primer
+  // dato que falta, en el orden en que aparece.
+  const confirm = () => {
+    if (!form.deliveryType) { toast.error('Elige si te lo llevamos o lo recoges'); return }
+    if (isDelivery && !form.address.trim()) { toast.error('Escribe tu dirección de entrega'); return }
+    if (isDelivery && !form.district) { toast.error('Elige tu zona'); return }
+    if (!form.paymentMethod) { toast.error('Elige cómo quieres pagar'); return }
+    if (form.customerName.trim().length < 2) { toast.error('Escribe tu nombre'); return }
+    if (form.customerPhone.replace(/\D/g, '').length < 9) { toast.error('Escribe tu WhatsApp de 9 dígitos'); return }
+    mutation.mutate()
+  }
+
+  const card = 'bg-white rounded-2xl shadow-card p-4'
+  const h2 = 'text-lg font-extrabold text-paper-ink mb-3'
+  const label = 'block text-[15px] font-semibold text-paper-ink mb-1.5'
+  const input = 'w-full h-12 bg-white border border-paper-line focus:border-brand-blue-600 rounded-xl px-3.5 text-base text-paper-ink placeholder:text-paper-ink-ghost outline-none'
+  const option = (active: boolean) =>
+    `w-full text-left rounded-xl border-2 p-3.5 flex items-center gap-3 ${active ? 'border-brand-blue-600 bg-brand-blue-50' : 'border-paper-line bg-white'}`
+  const radio = (active: boolean) => (
+    <span className={`h-6 w-6 rounded-full border-2 flex items-center justify-center shrink-0 ${active ? 'border-brand-blue-600 bg-brand-blue-600' : 'border-paper-ink-ghost'}`} aria-hidden="true">
+      {active && <Check className="h-4 w-4 text-white" />}
+    </span>
+  )
+
+  const payments = [
+    { val: 'YAPE', icon: '/yape.png', title: 'Yape ahora', desc: 'Escaneas el QR y nos mandas la captura' },
+    { val: 'YAPE_CONTRAENTREGA', icon: '/yape.png', title: isPickup ? 'Yape al recoger' : 'Yape al recibir', desc: 'Pagas cuando tengas tu pedido' },
+    { val: 'CASH', icon: '/cash.png', title: isPickup ? 'Efectivo en tienda' : 'Efectivo al recibir', desc: 'Pagas cuando tengas tu pedido' },
+  ] as const
 
   return (
-    <main className="min-h-screen bg-paper-bg">
-      {/* Steps bar */}
-      <div className="sticky top-16 z-40 bg-white/95 backdrop-blur border-b border-paper-line">
-        <div className="max-w-3xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            {steps.map((s, i) => (
-              <div key={s.num} className="flex items-center flex-1">
-                <div className="flex flex-col items-center">
-                  <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
-                    step === s.num ? 'bg-brand-green-600 text-white ring-4 ring-brand-green-100' :
-                    step > s.num ? 'bg-brand-green-100 text-brand-green-700 border border-brand-green-300' :
-                    'bg-paper-surface text-paper-ink-ghost border border-paper-line'
-                  }`}>
-                    {step > s.num ? <Check className="h-5 w-5" /> : <s.icon className="h-4 w-4" />}
-                  </div>
-                  <span className={`text-xs mt-1 font-medium ${step === s.num ? 'text-brand-green-700' : step > s.num ? 'text-paper-ink-soft' : 'text-paper-ink-ghost'}`}>
-                    {s.label}
-                  </span>
+    <main className="max-w-2xl mx-auto px-4 pt-2 pb-28 md:pb-10">
+      <Link to="/" className="inline-flex items-center gap-1 h-11 text-sm font-bold text-brand-blue-600">
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />Seguir comprando
+      </Link>
+      <h1 className="text-2xl font-extrabold text-paper-ink mb-4">Tu pedido</h1>
+
+      <div className="space-y-4">
+        {/* 1. Entrega */}
+        <section className={card} aria-labelledby="co-entrega">
+          <h2 id="co-entrega" className={h2}>1. ¿Cómo lo recibes?</h2>
+          <div className="space-y-2.5" role="radiogroup" aria-labelledby="co-entrega">
+            <button type="button" role="radio" aria-checked={isDelivery} className={option(isDelivery)}
+              onClick={() => setForm(v => ({ ...v, deliveryType: 'DELIVERY' }))}>
+              <Truck className="h-6 w-6 text-brand-blue-600 shrink-0" aria-hidden="true" />
+              <span className="flex-1">
+                <span className="block font-bold text-paper-ink">Te lo llevamos</span>
+                <span className="block text-sm text-paper-ink-soft">{DELIVERY.zoneName} · envío desde {money(DELIVERY.costFrom)}</span>
+              </span>
+              {radio(isDelivery)}
+            </button>
+            <button type="button" role="radio" aria-checked={isPickup} className={option(isPickup)}
+              onClick={() => setForm(v => ({ ...v, deliveryType: 'PICKUP' }))}>
+              <Store className="h-6 w-6 text-brand-blue-600 shrink-0" aria-hidden="true" />
+              <span className="flex-1">
+                <span className="block font-bold text-paper-ink">Lo recojo en tienda</span>
+                <span className="block text-sm text-paper-ink-soft">Av. Manchay · sin costo · 7 am a 10 pm</span>
+              </span>
+              {radio(isPickup)}
+            </button>
+          </div>
+
+          {isDelivery && (
+            <div className="mt-4 space-y-3.5">
+              <p className="text-sm text-paper-ink-soft bg-paper-surface rounded-xl px-3.5 py-2.5 leading-snug">
+                <span className="font-bold text-paper-ink">{deliveryStatus().title}.</span>{' '}
+                Te confirmamos el costo exacto del envío por WhatsApp antes de despachar. Express desde {money(DELIVERY.expressFrom)}.
+              </p>
+
+              {!showAddressForm && (
+                <div className="space-y-2.5">
+                  {savedAddresses.map(a => (
+                    <button key={a.id} type="button" onClick={() => pickSavedAddress(a.id)} className={option(selectedAddressId === a.id)}>
+                      <MapPin className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block font-bold text-paper-ink">{a.label}</span>
+                        <span className="block text-sm text-paper-ink-soft">{a.address}, {a.district}</span>
+                      </span>
+                      {radio(selectedAddressId === a.id)}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => { setShowNewAddressForm(true); setSelectedAddressId(null); setForm(v => ({ ...v, address: '', district: '', reference: '' })) }}
+                    className="w-full h-11 flex items-center justify-center gap-1.5 text-[15px] font-bold text-brand-blue-600">
+                    <Plus className="h-4 w-4" />Usar otra dirección
+                  </button>
                 </div>
-                {i < steps.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-3 mb-4 transition-all ${step > s.num ? 'bg-brand-green-300' : 'bg-paper-line'}`} />
-                )}
-              </div>
+              )}
+
+              {showAddressForm && (
+                <>
+                  <div>
+                    <label htmlFor="co-address" className={label}>Dirección</label>
+                    <input id="co-address" value={form.address} onChange={set('address')} autoComplete="street-address"
+                      placeholder="Mz A Lt 5, calle o avenida" className={input} />
+                  </div>
+                  <div>
+                    <label htmlFor="co-zone" className={label}>Zona</label>
+                    <select id="co-zone" value={form.district} onChange={set('district')} className={input}>
+                      <option value="">Elige tu zona</option>
+                      {DELIVERY.zones.map(z => <option key={z} value={z}>{z}</option>)}
+                    </select>
+                    <p className="text-sm text-paper-ink-soft mt-1.5">Solo repartimos en {DELIVERY.zoneName}. ¿No ves tu zona? Recoge en tienda o escríbenos.</p>
+                  </div>
+                  <div>
+                    <label htmlFor="co-ref" className={label}>Referencia <span className="font-normal text-paper-ink-soft">(opcional)</span></label>
+                    <input id="co-ref" value={form.reference} onChange={set('reference')}
+                      placeholder="Frente al parque, portón verde" className={input} />
+                  </div>
+                  {isLoggedIn && (
+                    <label className="flex items-center gap-3 min-h-11 text-[15px] text-paper-ink cursor-pointer">
+                      <input type="checkbox" checked={saveNewAddress} onChange={e => setSaveNewAddress(e.target.checked)}
+                        className="h-5 w-5 rounded border-paper-ink-ghost accent-brand-blue-600" />
+                      Guardar esta dirección en mi cuenta
+                    </label>
+                  )}
+                </>
+              )}
+
+              {coords ? (
+                <p className="flex items-center gap-2 text-[15px] font-semibold text-brand-green-700 bg-brand-green-50 rounded-xl px-3.5 h-12">
+                  <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />Ubicación compartida
+                </p>
+              ) : (
+                <button type="button" onClick={shareLocation} disabled={locating}
+                  className="w-full h-12 flex items-center justify-center gap-2 text-[15px] font-bold text-brand-blue-600 border-2 border-brand-blue-600 rounded-xl disabled:opacity-60">
+                  <LocateFixed className="h-5 w-5" aria-hidden="true" />
+                  {locating ? 'Buscando tu ubicación…' : 'Compartir mi ubicación (opcional)'}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* 2. Pago */}
+        <section className={card} aria-labelledby="co-pago">
+          <h2 id="co-pago" className={h2}>2. ¿Cómo pagas?</h2>
+          <div className="space-y-2.5" role="radiogroup" aria-labelledby="co-pago">
+            {payments.map(opt => (
+              <button key={opt.val} type="button" role="radio" aria-checked={form.paymentMethod === opt.val}
+                onClick={() => setForm(v => ({ ...v, paymentMethod: opt.val }))} className={option(form.paymentMethod === opt.val)}>
+                <img src={opt.icon} alt="" width={36} height={36} className="h-9 w-9 rounded-lg object-contain shrink-0" />
+                <span className="flex-1">
+                  <span className="block font-bold text-paper-ink">{opt.title}</span>
+                  <span className="block text-sm text-paper-ink-soft">{opt.desc}</span>
+                </span>
+                {radio(form.paymentMethod === opt.val)}
+              </button>
             ))}
           </div>
-        </div>
+
+          {form.paymentMethod === 'YAPE' && (
+            <div className="mt-3.5 bg-paper-surface rounded-xl p-4 flex flex-col items-center text-center gap-2.5">
+              <img src="/yape-qr.png" alt="QR de Yape de Tiendas Marc" width={176} height={176} loading="lazy" className="w-44 rounded-xl bg-white" />
+              <p className="text-[15px] text-paper-ink-soft leading-snug">
+                Yapea <strong className="text-paper-ink">{money(finalTotal)}</strong>{isDelivery ? ' más el envío que te confirmemos' : ''} y guarda la captura. Te la pedimos al confirmar.
+              </p>
+            </div>
+          )}
+        </section>
+
+        {/* 3. Datos: lo último que se pide, y solo lo necesario */}
+        <section className={card} aria-labelledby="co-datos">
+          <h2 id="co-datos" className={h2}>3. ¿A nombre de quién?</h2>
+          <div className="space-y-3.5">
+            <div>
+              <label htmlFor="co-name" className={label}>Nombre</label>
+              <input id="co-name" value={form.customerName} onChange={set('customerName')} autoComplete="name"
+                placeholder="María García" className={input} />
+            </div>
+            <div>
+              <label htmlFor="co-phone" className={label}>WhatsApp</label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base text-paper-ink-soft">+51</span>
+                <input id="co-phone" value={form.customerPhone} onChange={set('customerPhone')} type="tel" inputMode="numeric"
+                  autoComplete="tel-national" maxLength={9} placeholder="987 654 321" className={`${input} pl-12`} />
+              </div>
+              <p className="text-sm text-paper-ink-soft mt-1.5">Por aquí te confirmamos el pedido.</p>
+            </div>
+            <div>
+              <label htmlFor="co-notes" className={label}>Nota para la tienda <span className="font-normal text-paper-ink-soft">(opcional)</span></label>
+              <textarea id="co-notes" value={form.notes} onChange={set('notes')} rows={2}
+                placeholder="Tocar el timbre, sin bolsa…"
+                className="w-full bg-white border border-paper-line focus:border-brand-blue-600 rounded-xl px-3.5 py-3 text-base text-paper-ink placeholder:text-paper-ink-ghost outline-none resize-none" />
+            </div>
+            {!isLoggedIn && (
+              <p className="text-sm text-paper-ink-soft">
+                ¿Ya tienes cuenta? <Link to="/ingresar" className="font-bold text-brand-blue-600 underline inline-block py-3 -my-3">Ingresa</Link> para usar tus puntos y direcciones guardadas.
+              </p>
+            )}
+          </div>
+        </section>
+
+        {/* Resumen */}
+        <section className={card} aria-labelledby="co-resumen">
+          <h2 id="co-resumen" className={h2}>Resumen</h2>
+          <ul className="divide-y divide-paper-line -mt-1">
+            {items.map(item => (
+              <li key={item.product.id} className="flex items-baseline gap-3 py-2.5 text-[15px]">
+                <span className="font-bold text-paper-ink tabular-nums shrink-0">{item.quantity} ×</span>
+                <span className="flex-1 min-w-0 text-paper-ink line-clamp-2">{item.product.name}</span>
+                <span className="font-bold text-paper-ink tabular-nums shrink-0">{money(item.product.salePrice * item.quantity)}</span>
+              </li>
+            ))}
+          </ul>
+
+          {/* Canje de puntos: saldo real del ERP, el mismo que ve la caja. */}
+          {isLoggedIn && pointsAvailable > 0 && (
+            <label className={`mt-3 flex items-center gap-3 rounded-xl border-2 p-3.5 cursor-pointer ${usePoints ? 'border-brand-blue-600 bg-brand-blue-50' : 'border-paper-line'}`}>
+              <input type="checkbox" checked={usePoints} onChange={e => setUsePoints(e.target.checked)}
+                className="h-5 w-5 rounded accent-brand-blue-600 shrink-0" />
+              <Gift className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
+              <span className="flex-1 text-[15px] text-paper-ink">
+                Usar {pointsToRedeem > 0 ? pointsToRedeem : Math.min(pointsAvailable, pointsNeeded)} de tus <b>{pointsAvailable} puntos</b>
+              </span>
+              <span className="text-[15px] font-bold text-paper-ink shrink-0 tabular-nums">
+                −{money(usePoints ? pointsDiscount : Math.min(pointsAvailable * pointValue, total))}
+              </span>
+            </label>
+          )}
+
+          <dl className="mt-3 pt-3 border-t border-paper-line space-y-1.5 text-[15px]">
+            <div className="flex justify-between text-paper-ink-soft">
+              <dt>Productos</dt><dd className="tabular-nums">{money(total)}</dd>
+            </div>
+            {usePoints && pointsDiscount > 0 && (
+              <div className="flex justify-between text-paper-ink-soft">
+                <dt>Puntos canjeados</dt><dd className="tabular-nums">−{money(pointsDiscount)}</dd>
+              </div>
+            )}
+            {isDelivery && (
+              <div className="flex justify-between text-paper-ink-soft">
+                <dt>Envío</dt><dd>Desde {money(DELIVERY.costFrom)}, por confirmar</dd>
+              </div>
+            )}
+            {isPickup && (
+              <div className="flex justify-between text-paper-ink-soft">
+                <dt>Recojo en tienda</dt><dd>Sin costo</dd>
+              </div>
+            )}
+            <div className="flex justify-between items-baseline pt-1.5 text-paper-ink">
+              <dt className="text-base font-bold">Total{isDelivery ? ' sin envío' : ''}</dt>
+              <dd className="text-2xl font-extrabold tabular-nums">{money(finalTotal)}</dd>
+            </div>
+          </dl>
+        </section>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        <div className="grid md:grid-cols-5 gap-6">
-          {/* Form */}
-          <div className="md:col-span-3">
-            <Link to="/" className="flex items-center gap-2 text-paper-ink-ghost hover:text-paper-ink text-sm mb-6 transition-colors">
-              <ArrowLeft className="h-4 w-4" />Seguir comprando
-            </Link>
-
-            {/* STEP 1: Contact */}
-            {step === 1 && (
-              <div className="space-y-5">
-                <div>
-                  <h2 className="text-xl font-bold mb-1 text-paper-ink">¿Quién realiza el pedido?</h2>
-                  <p className="text-sm text-paper-ink-soft">Usaremos estos datos para contactarte</p>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-paper-ink-soft mb-2">Nombre completo *</label>
-                    <input value={form.customerName} onChange={set('customerName')}
-                      placeholder="Ej: María García"
-                      className="w-full bg-white border border-paper-line hover:border-paper-ink-faint focus:border-brand-blue-400 rounded-xl px-4 py-3.5 text-sm text-paper-ink outline-none transition-colors" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-paper-ink-soft mb-2">
-                      Número de WhatsApp *
-                      <span className="ml-2 text-paper-ink-ghost font-normal">Te enviaremos la confirmación</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-3.5 text-sm text-paper-ink-ghost">+51</span>
-                      <input value={form.customerPhone} onChange={set('customerPhone')}
-                        placeholder="987 654 321" type="tel" maxLength={9}
-                        className="w-full bg-white border border-paper-line hover:border-paper-ink-faint focus:border-brand-blue-400 rounded-xl pl-12 pr-4 py-3.5 text-sm text-paper-ink outline-none transition-colors" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-paper-ink-soft mb-2">
-                      Email <span className="text-paper-ink-ghost font-normal">(opcional)</span>
-                    </label>
-                    <input value={form.customerEmail} onChange={set('customerEmail')}
-                      placeholder="correo@ejemplo.com" type="email"
-                      className="w-full bg-white border border-paper-line hover:border-paper-ink-faint focus:border-brand-blue-400 rounded-xl px-4 py-3.5 text-sm text-paper-ink outline-none transition-colors" />
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (!form.customerName.trim()) { toast.error('Ingresa tu nombre'); return }
-                    if (!form.customerPhone.trim() || form.customerPhone.length < 9) { toast.error('Ingresa un número válido de 9 dígitos'); return }
-                    setStep(2)
-                  }}
-                  className="w-full bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors text-base mt-2">
-                  Siguiente: ¿Cómo recibes tu pedido? <ArrowRight className="h-5 w-5" />
-                </button>
-              </div>
-            )}
-
-            {/* STEP 2: Delivery */}
-            {step === 2 && (
-              <div className="space-y-5">
-                <div>
-                  <h2 className="text-xl font-bold mb-1 text-paper-ink">¿Cómo recibes tu pedido?</h2>
-                  <p className="text-sm text-paper-ink-soft">Elige la opción que más te convenga</p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {([
-                    { val: 'DELIVERY', icon: Truck, title: '🚚 Delivery a domicilio', desc: 'Te llevamos tu pedido', sub: 'Costo a coordinar' },
-                    { val: 'PICKUP', icon: Store, title: '🏪 Recojo en tienda', desc: 'Av. Manchay, Pachacamac', sub: 'Gratis · Horario 7am–10pm' },
-                  ] as const).map(opt => (
-                    <button key={opt.val}
-                      onClick={() => setForm(v => ({ ...v, deliveryType: opt.val }))}
-                      className={`p-5 rounded-2xl border-2 text-left transition-all ${
-                        form.deliveryType === opt.val
-                          ? 'border-brand-green-500 bg-brand-green-50 ring-2 ring-brand-green-100'
-                          : 'border-paper-line bg-white hover:border-paper-ink-faint shadow-sm'
-                      }`}>
-                      <p className="font-bold text-base text-paper-ink mb-1">{opt.title}</p>
-                      <p className="text-sm text-paper-ink-soft">{opt.desc}</p>
-                      <p className="text-xs text-brand-blue-700 mt-2">{opt.sub}</p>
-                    </button>
-                  ))}
-                </div>
-
-                {form.deliveryType === 'DELIVERY' && (
-                  <div className="bg-white border border-paper-line rounded-2xl shadow-sm p-5 space-y-4">
-                    <p className="text-sm font-semibold text-paper-ink-soft">📍 Dirección de entrega</p>
-
-                    {isLoggedIn && savedAddresses.length > 0 && !showNewAddressForm && (
-                      <div className="space-y-2">
-                        {savedAddresses.map(a => (
-                          <button key={a.id} type="button" onClick={() => pickSavedAddress(a.id)}
-                            className={`w-full text-left p-3 rounded-xl border-2 transition-all ${
-                              selectedAddressId === a.id ? 'border-brand-blue-500 bg-brand-blue-50' : 'border-paper-line hover:border-paper-ink-faint'
-                            }`}>
-                            <p className="text-sm font-semibold text-paper-ink">{a.label}</p>
-                            <p className="text-xs text-paper-ink-soft">{a.address}, {a.district}</p>
-                          </button>
-                        ))}
-                        <button type="button" onClick={() => { setShowNewAddressForm(true); setSelectedAddressId(null); setForm(v => ({ ...v, address: '', reference: '' })) }}
-                          className="w-full flex items-center justify-center gap-1.5 text-sm text-brand-blue-600 hover:text-brand-blue-700 py-2 transition-colors">
-                          <Plus className="h-3.5 w-3.5" />Usar otra dirección
-                        </button>
-                      </div>
-                    )}
-
-                    {(!isLoggedIn || savedAddresses.length === 0 || showNewAddressForm) && (
-                      <>
-                        <div>
-                          <label className="block text-sm text-paper-ink-soft mb-2">Dirección completa *</label>
-                          <input value={form.address} onChange={set('address')}
-                            placeholder="Ej: Av. Los Álamos 123, Mz A Lt 5"
-                            className="w-full bg-white border border-paper-line focus:border-brand-blue-400 rounded-xl px-4 py-3 text-sm text-paper-ink outline-none transition-colors" />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-paper-ink-soft mb-2">Distrito</label>
-                          <select value={form.district} onChange={set('district')}
-                            className="w-full bg-white border border-paper-line focus:border-brand-blue-400 rounded-xl px-4 py-3 text-sm text-paper-ink outline-none transition-colors">
-                            {DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-paper-ink-soft mb-2">Referencia <span className="text-paper-ink-ghost">(opcional)</span></label>
-                          <input value={form.reference} onChange={set('reference')}
-                            placeholder="Cerca al parque, frente a la bodega..."
-                            className="w-full bg-white border border-paper-line focus:border-brand-blue-400 rounded-xl px-4 py-3 text-sm text-paper-ink outline-none transition-colors" />
-                        </div>
-                        {isLoggedIn && (
-                          <label className="flex items-center gap-2 text-sm text-paper-ink-soft cursor-pointer">
-                            <input type="checkbox" checked={saveNewAddress} onChange={e => setSaveNewAddress(e.target.checked)}
-                              className="rounded border-paper-line text-brand-blue-600 focus:ring-brand-blue-400" />
-                            Guardar esta dirección en mi cuenta
-                          </label>
-                        )}
-                      </>
-                    )}
-
-                    {/* Ubicación GPS — ayuda a que el repartidor llegue más
-                        rápido y directo, sobre todo en zonas sin numeración
-                        clara. Es un extra: nunca bloquea el pedido. */}
-                    {coords ? (
-                      <div className="flex items-center gap-2 text-sm text-brand-green-700 bg-brand-green-50 border border-brand-green-200 rounded-xl px-3 py-2.5">
-                        <CheckCircle2 className="h-4 w-4 shrink-0" />
-                        Ubicación GPS compartida — llegaremos más directo
-                      </div>
-                    ) : (
-                      <button type="button" onClick={shareLocation} disabled={locating}
-                        className="w-full flex items-center justify-center gap-2 text-sm font-medium text-brand-blue-700 bg-brand-blue-50 hover:bg-brand-blue-100 border border-brand-blue-200 rounded-xl px-3 py-2.5 transition-colors disabled:opacity-60">
-                        {locating ? (
-                          <><div className="h-4 w-4 border-2 border-brand-blue-300 border-t-brand-blue-700 rounded-full animate-spin" />Obteniendo ubicación...</>
-                        ) : (
-                          <><LocateFixed className="h-4 w-4" />Compartir mi ubicación (opcional)</>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm text-paper-ink-soft mb-2">Notas adicionales <span className="text-paper-ink-ghost">(opcional)</span></label>
-                  <textarea value={form.notes} onChange={set('notes')} rows={2}
-                    placeholder="Horario preferido de entrega, instrucciones especiales..."
-                    className="w-full bg-white border border-paper-line focus:border-brand-blue-400 rounded-xl px-4 py-3 text-sm text-paper-ink outline-none transition-colors resize-none" />
-                </div>
-
-                <div className="flex gap-3">
-                  <button onClick={() => setStep(1)}
-                    className="px-6 py-4 bg-white hover:bg-paper-surface border border-paper-line rounded-xl font-medium text-paper-ink-soft transition-colors flex items-center gap-2">
-                    <ArrowLeft className="h-4 w-4" />Atrás
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!form.deliveryType) { toast.error('Elige cómo recibirás tu pedido'); return }
-                      if (form.deliveryType === 'DELIVERY' && !form.address.trim()) { toast.error('Ingresa tu dirección de entrega'); return }
-                      setStep(3)
-                    }}
-                    className="flex-1 bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors">
-                    Siguiente: Elegir pago <ArrowRight className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 3: Payment */}
-            {step === 3 && (
-              <div className="space-y-5">
-                <div>
-                  <h2 className="text-xl font-bold mb-1 text-paper-ink">¿Cómo quieres pagar?</h2>
-                  <p className="text-sm text-paper-ink-soft">Elige tu método de pago preferido</p>
-                </div>
-
-                <div className="space-y-3">
-                  {/* Plin deshabilitado temporalmente — no hay cuenta Plin
-                      activa todavía; se reactiva sumando la opción de vuelta
-                      acá y en el enum de store.routes.ts cuando haya una. */}
-                  {([
-                    { val: 'YAPE', icon: '/yape.png', title: 'Yape', desc: 'Paga con tu app Yape', sub: 'Escanea el QR y listo' },
-                    {
-                      val: 'YAPE_CONTRAENTREGA', icon: '/yape.png',
-                      title: 'Yape contra entrega',
-                      desc: form.deliveryType === 'PICKUP' ? 'Yapeas cuando recojas tu pedido' : 'Yapeas cuando te llegue el pedido',
-                      sub: 'Pagas después, no antes'
-                    },
-                    {
-                      val: 'CASH', icon: '/cash.png',
-                      title: form.deliveryType === 'PICKUP' ? 'Efectivo en tienda' : 'Pago contra entrega',
-                      desc: form.deliveryType === 'PICKUP' ? 'Paga cuando recojas tu pedido' : 'Paga en efectivo al recibir',
-                      sub: 'Sin cobros adicionales'
-                    },
-                  ] as const).map(opt => (
-                    <button key={opt.val}
-                      onClick={() => setForm(v => ({ ...v, paymentMethod: opt.val }))}
-                      className={`w-full p-5 rounded-2xl border-2 text-left transition-all ${
-                        form.paymentMethod === opt.val
-                          ? 'border-brand-green-500 bg-brand-green-50 ring-2 ring-brand-green-100'
-                          : 'border-paper-line bg-white hover:border-paper-ink-faint shadow-sm'
-                      }`}>
-                      <div className="flex items-start gap-4">
-                        <img src={opt.icon} alt={opt.title} className="h-11 w-11 rounded-xl object-contain shrink-0" />
-                        <div className="flex-1">
-                          <p className="font-bold text-base text-paper-ink">{opt.title}</p>
-                          <p className="text-sm text-paper-ink-soft mt-0.5">{opt.desc}</p>
-                          <p className="text-xs text-paper-ink-ghost mt-1">{opt.sub}</p>
-                        </div>
-                        <div className={`h-6 w-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-1 ${
-                          form.paymentMethod === opt.val ? 'border-brand-green-600 bg-brand-green-600' : 'border-paper-line'
-                        }`}>
-                          {form.paymentMethod === opt.val && <Check className="h-4 w-4 text-white" />}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                {form.paymentMethod === 'YAPE' && (
-                  <div className="bg-brand-blue-50 border border-brand-blue-200 rounded-xl p-4 text-sm flex flex-col items-center text-center gap-2">
-                    <p className="font-semibold text-paper-ink">Escanea y paga con Yape</p>
-                    <img src="/yape-qr.png" alt="QR de Yape para pagar" className="w-40 rounded-xl border border-paper-line" />
-                    <p className="text-paper-ink-soft">
-                      Paga <strong className="text-paper-ink">S/ {finalTotal.toFixed(2)}</strong> y guarda tu captura — te la pedimos apenas confirmes el pedido.
-                    </p>
-                  </div>
-                )}
-
-                {form.paymentMethod === 'YAPE_CONTRAENTREGA' && (
-                  <div className="bg-brand-blue-50 border border-brand-blue-200 rounded-xl p-4 text-sm flex flex-col items-center text-center gap-2">
-                    <p className="font-semibold text-paper-ink">Yapeas cuando te llegue el pedido</p>
-                    <p className="text-paper-ink-soft">
-                      No necesitas pagar ahora. {form.deliveryType === 'PICKUP' ? 'Al recoger tu pedido' : 'Cuando el repartidor llegue'} te mostramos el QR o número para que Yapees <strong className="text-paper-ink">S/ {finalTotal.toFixed(2)}</strong>.
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <button onClick={() => setStep(2)}
-                    className="px-6 py-4 bg-white hover:bg-paper-surface border border-paper-line rounded-xl font-medium text-paper-ink-soft transition-colors flex items-center gap-2">
-                    <ArrowLeft className="h-4 w-4" />Atrás
-                  </button>
-                  <button
-                    onClick={() => { if (!form.paymentMethod) { toast.error('Elige un método de pago'); return } mutation.mutate() }}
-                    disabled={mutation.isPending}
-                    className="flex-1 bg-brand-green-600 hover:bg-brand-green-700 disabled:opacity-50 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors text-base">
-                    {mutation.isPending ? (
-                      <><div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Procesando...</>
-                    ) : (
-                      <><Check className="h-5 w-5" />Confirmar pedido · S/ {finalTotal.toFixed(2)}</>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Order summary - sticky, estilo ticket */}
-          <div className="md:col-span-2">
-            <div className="bg-white rounded-2xl border border-paper-line shadow-sm sticky top-36 overflow-hidden">
-              {/* Franja perforada */}
-              <div className="h-2 shrink-0" style={{ backgroundImage: 'radial-gradient(circle, rgba(32,30,29,.18) 1.5px, transparent 1.5px)', backgroundSize: '10px 10px', backgroundPosition: 'center' }} />
-              <div className="p-5">
-              <h3 className="font-bold mb-4 flex items-center gap-2 text-paper-ink">
-                <ShoppingBag className="h-4 w-4 text-brand-blue-600" />
-                Tu pedido
-              </h3>
-              <div className="space-y-0 max-h-48 overflow-y-auto mb-4">
-                {items.map((item, idx) => (
-                  <div key={item.product.id} className={`flex gap-3 py-2.5 ${idx > 0 ? 'border-t border-dashed border-paper-line' : ''}`}>
-                    {item.product.imageUrl ? (
-                      <img src={item.product.imageUrl} alt={item.product.name} className="h-10 w-10 rounded-lg object-cover shrink-0 bg-paper-surface" />
-                    ) : (
-                      <div className="h-10 w-10 rounded-lg bg-paper-surface shrink-0 flex items-center justify-center">
-                        <ShoppingBag className="h-4 w-4 text-paper-ink-ghost" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-paper-ink line-clamp-1">{item.product.name}</p>
-                      <p className="text-xs text-paper-ink-ghost">×{item.quantity} · S/ {item.product.salePrice.toFixed(2)} c/u</p>
-                    </div>
-                    <p className="text-xs font-extrabold text-paper-ink shrink-0">S/ {(item.product.salePrice * item.quantity).toFixed(2)}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Canje de puntos — el saldo es el real del ERP (mismo que ve
-                  un cajero en el POS), no un número aparte de la tienda. */}
-              {isLoggedIn && pointsAvailable > 0 && (
-                <label className={`flex items-center gap-3 rounded-xl border p-3 mb-4 cursor-pointer transition-colors ${
-                  usePoints ? 'border-brand-green-400 bg-brand-green-50' : 'border-paper-line hover:border-paper-ink-faint'
-                }`}>
-                  <input type="checkbox" checked={usePoints} onChange={e => setUsePoints(e.target.checked)}
-                    className="rounded border-paper-line text-brand-green-600 focus:ring-brand-green-400 h-4 w-4 shrink-0" />
-                  <Gift className="h-4 w-4 text-brand-green-600 shrink-0" />
-                  <span className="flex-1 text-xs text-paper-ink-soft">
-                    Tienes <b className="text-paper-ink">{pointsAvailable} pts</b> — canjea {pointsToRedeem > 0 ? pointsToRedeem : Math.min(pointsAvailable, pointsNeeded)} y ahorra
-                  </span>
-                  <span className="text-sm font-bold text-brand-green-700 shrink-0 tabular-nums">
-                    -S/ {(usePoints ? pointsDiscount : Math.min(pointsAvailable * pointValue, total)).toFixed(2)}
-                  </span>
-                </label>
-              )}
-
-              <div className="border-t border-dashed border-paper-line pt-3 space-y-2 text-sm">
-                <div className="flex justify-between text-paper-ink-soft">
-                  <span>Subtotal ({items.reduce((s, i) => s + i.quantity, 0)} items)</span>
-                  <span className="tabular-nums">S/ {total.toFixed(2)}</span>
-                </div>
-                {usePoints && pointsDiscount > 0 && (
-                  <div className="flex justify-between text-brand-green-700">
-                    <span>Puntos canjeados ({pointsToRedeem})</span>
-                    <span className="tabular-nums">-S/ {pointsDiscount.toFixed(2)}</span>
-                  </div>
-                )}
-                {form.deliveryType === 'DELIVERY' && (
-                  <div className="flex justify-between text-paper-ink-soft">
-                    <span>Delivery</span>
-                    <span className="text-amber-600">A coordinar</span>
-                  </div>
-                )}
-                {form.deliveryType === 'PICKUP' && (
-                  <div className="flex justify-between text-paper-ink-soft">
-                    <span>Recojo en tienda</span>
-                    <span className="text-brand-blue-700">Gratis</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-between font-black text-lg border-t border-dashed border-paper-line mt-3 pt-3 text-paper-ink">
-                <span>TOTAL</span>
-                <span className="text-brand-green-700 tabular-nums">S/ {finalTotal.toFixed(2)}</span>
-              </div>
-
-              {/* Summary of selected options */}
-              {(form.deliveryType || form.paymentMethod) && (
-                <div className="mt-4 pt-4 border-t border-dashed border-paper-line space-y-2 text-xs text-paper-ink-soft">
-                  {form.customerName && <p>👤 {form.customerName}</p>}
-                  {form.deliveryType === 'DELIVERY' && form.address && <p>📍 {form.address}, {form.district}</p>}
-                  {form.deliveryType === 'PICKUP' && <p>🏪 Recojo en Av. Manchay, Pachacamac</p>}
-                  {form.paymentMethod === 'YAPE' && <p className="flex items-center gap-1.5"><img src="/yape.png" alt="" className="h-4 w-4 rounded object-contain" />Pago por Yape</p>}
-                  {form.paymentMethod === 'YAPE_CONTRAENTREGA' && <p className="flex items-center gap-1.5"><img src="/yape.png" alt="" className="h-4 w-4 rounded object-contain" />Yape contra entrega</p>}
-                  {form.paymentMethod === 'CASH' && <p className="flex items-center gap-1.5"><img src="/cash.png" alt="" className="h-4 w-4 object-contain" />{form.deliveryType === 'PICKUP' ? 'Efectivo en tienda' : 'Contra entrega'}</p>}
-                  {coords && <p>📍 Ubicación GPS compartida</p>}
-                </div>
-              )}
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Confirmar: fijo sobre la barra inferior en celular. */}
+      <div className="fixed md:static inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 bg-white md:bg-transparent border-t md:border-0 border-paper-line px-4 py-3 md:px-0 md:mt-4">
+        <button onClick={confirm} disabled={mutation.isPending}
+          className="w-full max-w-2xl mx-auto h-[52px] rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 disabled:opacity-60 text-white font-bold text-base flex items-center justify-between px-5">
+          <span>{mutation.isPending ? 'Enviando tu pedido…' : 'Confirmar pedido'}</span>
+          <span className="tabular-nums">{money(finalTotal)}</span>
+        </button>
       </div>
     </main>
   )
