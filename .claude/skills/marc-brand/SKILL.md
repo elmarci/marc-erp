@@ -22,88 +22,101 @@ Rappi / PedidosYa / Bees, **nunca** print/imprenta ni "de caricatura".
 
 ---
 
-## Sistema de diseño
+## Sistema de diseño — "Azul de confianza" (elegido por el dueño, 2026-11-10)
 
-Fuente de verdad: `apps/store/tailwind.config.ts`. Un landing u otra app
-debe copiar estos tokens, no inventar una paleta nueva.
+Aplica a la **tienda online** (`apps/store`) y a todo lo de cara al cliente.
+El ERP (`apps/frontend`) conserva su propia tipografía y paleta.
+
+Fuente de verdad de los tokens: `apps/store/tailwind.config.ts`. Datos de
+negocio que se muestran (nombre, WhatsApp, zonas, horarios, costos):
+`apps/store/src/lib/storeInfo.ts`. No repetirlos sueltos en las pantallas.
+
+Referencia de estilo: apps de market y de pagos que la gente ya usa a diario
+(Rappi, PedidosYa, Bees, Yape). Moderna, ordenada, fácil de navegar con el
+pulgar. **Mobile-first, 375 px**: el 95 % del uso es en celular.
+
+### Marca
+
+- Nombre único: **Tiendas Marc** (oficial "TIENDAS MARC", dominio
+  tiendasmarc.pe). No usar "Tienda Marc", "Minimarket Marc" ni "TIENDA MARC".
+- Logo: mientras el logo completo siga diciendo "MINIMARKET Marc", usar el
+  ícono del carrito (`/logo-icon.png`) + el texto "Tiendas Marc" en Figtree 800.
 
 ### Color
 
-| Token | Base | Uso |
+| Token | Valor | Uso |
 |---|---|---|
-| `brand.blue` | `#2460b4` | Wordmark "Marc", carrito. **Secundario** — estructura, links, acentos fríos. |
-| `brand.green` | `#4ca324` (hover `#3d8a18`) | "MINIMARKET" y el aro del logo. Acción primaria (botones "Agregar", CTA). **Con moderación** — no pintar todo de verde. |
-| `brand.magenta` | `#d6006c` | **Raro**: ofertas, badges, sello de confirmación. |
-| `brand.achiote` | `#c9552a` | "Fresco / oferta real" — la sazón de mercado. El acento que ninguna plantilla de delivery usa. |
-| `paper.bg` | `#ffffff` | **Fondo BLANCO real.** Pedido explícito del dueño — nada de beige / mostaza / "papel". |
-| `paper.surface` | `#f4f4f2` | Gris neutro clarísimo para inputs, chips, tarjetas secundarias. |
-| `paper.line` | `#e5e3dc` | Bordes / divisores. |
-| `paper.ink` | `#26241c` | Texto principal (negro cálido). `ink-soft` `#5b5744`, `ink-faint` `#8a8570`, `ink-ghost` `#b3ad94`. |
-| `process.yellow` | `#edbb00` | Reservado (registro tipo imprenta). |
+| `brand-blue-600` | `#1450B4` (pulsado `700` `#0C3A8A`) | **El color de la marca en pantalla**: cabecera, barra de carrito, botón principal ("Hacer pedido"), enlaces, pestaña activa, íconos. |
+| `brand-green-600` | `#2B7A12` (pulsado `700`) | **Solo el botón "Agregar"** y su contador −/+. No usarlo como relleno decorativo ni en otros botones. |
+| `brand-sun-400` | `#FFD84D` con texto `brand-sun-900` `#3D2F00` | Ofertas, "Últimas N", insignias. |
+| WhatsApp | `#25D366` con texto `#0B3B1E` | Botones de WhatsApp. **Nunca texto blanco** sobre este verde (2:1). |
+| `paper-bg` | `#F4F6FB` | Fondo de página. Las tarjetas van en blanco encima. |
+| `paper-surface` | `#EEF1F7` | Fondo de fotos, chips, campos sobre tarjeta blanca. |
+| `paper-line` | `#E1E6F0` | Bordes y divisores. |
+| `paper-ink` | `#14213D` | Texto principal y **precios** (siempre en tinta, nunca en color). |
+| `paper-ink-soft` | `#4A5568` | Texto secundario (7:1). `ink-faint`/`ink-ghost` existen por compatibilidad y también pasan AA; en código nuevo usar `ink-soft`. |
 
-Escalas completas 50–900 en el config. En un proyecto nuevo, cargar Tailwind
-con este `theme.extend.colors` idéntico.
+Reglas: contraste **AA mínimo** en todo texto (4.5:1), sin degradados, sin
+desenfoques de fondo. Magenta y achiote quedan solo para pantallas aún no
+rediseñadas; no usarlos en código nuevo.
 
 ### Tipografía
 
-Google Fonts:
-`Outfit:wght@500;600;700;800` + `Public Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500`
+**Figtree** (Google Fonts, pesos 400/600/700/800) para todo: `font-sans` y
+`font-display` apuntan a la misma familia.
 
-- **`font-sans` = Public Sans** — cuerpo, transaccional: precios, botones,
-  formularios, todo el checkout.
-- **`font-display` = Outfit** — voz de marca: títulos de sección, precio
-  grande de una oferta, hero. Geométrica, con calidez propia de app de
-  delivery, **sin efecto burbuja redondeada**. Nunca en párrafos largos ni
-  en formularios.
+- Texto base 16 px (15 px en nombres de producto). Mínimo 12 px, y solo en
+  etiquetas de la barra inferior e insignias.
+- Títulos de sección: 18 px, peso 800. Precio en tarjeta: 20 px, peso 800,
+  `tabular-nums`.
+- Los campos de texto usan 16 px (evita el zoom automático de iOS).
 
-Ya se descartaron y **no se vuelve a**: Fredoka (se sintió "de caricatura"),
-Source Serif / cualquier serif (se sintió "de imprenta genérica"), Plus
-Jakarta / Inter como voz de marca (se sintió "segura", la usa cualquier app).
+### Forma
 
-### Forma y movimiento
+- Radios: tarjeta de producto `rounded-[18px]`, paneles `rounded-2xl`,
+  botones y fotos `rounded-xl`, chips `rounded-full`.
+- Sombras: `shadow-card` (tarjetas) y `shadow-float` (barra de carrito). Nada
+  de `shadow-xl` decorativo.
+- **Zonas táctiles de 44 px como mínimo** (botones 44–52 px de alto).
+- Movimiento: solo el que informa (producto que vuela al carrito, contador).
+  Sin animaciones de aparición al hacer scroll ni parpadeos.
 
-- Radios: `rounded-2xl` en tarjetas, `rounded-full` en pills / avatares / FAB
-  / badges. Nada de `rounded-3xl` en todo.
-- Transiciones entre pantallas: **discretas** — fundido + ~8px de
-  desplazamiento vertical, ~0.18s, `easeOut`. Se probó rotación 3D + escala
-  y se sintió "diapositiva de PowerPoint" — no se hace.
-- Micro-interacciones sí (whileTap scale 0.94–0.98, spring), pero que no
-  llamen la atención sobre la animación misma.
-- Keyframes útiles ya definidos: `ring-pulse` (FAB), `stamp-in` (sello de
-  confirmación), `shimmer` (skeletons), `marquee` (ticker de ofertas).
+### Componentes base (apps/store/src/components)
 
-### Íconos
+- `Header`: bloque azul; en celular la fila del buscador queda fija (64 px).
+- `MobileTabBar`: Inicio, Categorías, Carrito, Cuenta. 64 px.
+- `CartBar`: barra fija "Ver carrito · N · total" + botón de WhatsApp.
+- `ProductCard`: foto, nombre (2 líneas), precio, "Agregar" / contador.
+  Imágenes con `loading="lazy"` y ancho/alto declarados.
+- Estados diseñados siempre: esqueleto al cargar, vacío con siguiente paso,
+  error con "Reintentar" y "Pedir por WhatsApp".
 
-- Set propio de íconos de categoría en `apps/store/src/categoryIcons.tsx`:
-  componentes SVG con `stroke="currentColor"`, **formas geométricas simples**
-  (círculos, elipses, rects, paths cortos). Los blobs orgánicos con bézier
-  se ven ilegibles a tamaño ícono — probado y descartado.
-- `lucide-react` para el resto.
-- **Fuera** los íconos genéricos de e-commerce: la balanza de "por kg", etc.
-  Si algo se explica solo con texto (mono, mayúscula), no lleva ícono.
+### Tono
 
-### Qué hace que NO se vea genérico
+Claro y directo, de tú, sin signos de admiración ni emojis en la interfaz.
+Decir el dato concreto: "Envío desde S/ 1.00 en Manchay alto", "Próximo
+reparto: 5 a 9 pm", "Aún no tienes productos. Busca lo que necesitas."
 
-1. **Foto real > ícono > stock.** Fotos de la tienda / productos / barrio
-   (Manchay, Pachacamac) con luz de día. Es el 80% de la diferencia.
-2. **Datos reales, no relleno.** Años operando, N de productos, distritos y
-   tiempos de entrega, la historia en palabras del dueño. Cero "Calidad y
-   confianza".
-3. **Datos en vivo de la API** — productos destacados y ofertas reales con
-   precios (`/api/v1/store/products/featured`, `/api/v1/store/offers`). Una
-   plantilla no puede hacer esto; MARC sí, ya está construido.
-4. **Elementos propios**: mapa estilizado de zonas de reparto en SVG (no un
-   Google Maps incrustado), ticket/sello como recurso gráfico recurrente.
-5. **Un concepto con punto de vista**, no "hero + 3 cards + testimonio +
-   footer".
+### Reglas de experiencia
+
+- **Tienda abierta**: catálogo, carrito y checkout sin cuenta. El ingreso
+  (`/ingresar`) solo se pide para pedidos anteriores, puntos, direcciones
+  guardadas y saldo.
+- WhatsApp es vía principal junto al checkout, visible en todas las pantallas.
+- Señales de confianza a la vista (zona, horarios, costo de envío, pagos),
+  no escondidas en el pie de página.
+- Solo anunciar medios de pago que el checkout acepta.
+
+### Ya descartado (no volver)
+
+Fredoka, serif, estética "papel/imprenta", verde como relleno general,
+degradados, texto gris claro de bajo contraste, muro de login.
 
 ### Proceso
 
-Para cualquier rediseño o pantalla nueva importante: primero **concepto
-visual** (paleta aplicada + tipografía + mockup) para que el dueño lo
-apruebe/ajuste **antes** de construir. Recién después, implementación real.
-
----
+Para cualquier pantalla nueva importante: primero concepto visual para que el
+dueño lo apruebe, luego implementación, y captura a 375 px antes de darla por
+terminada.
 
 ## Arquitectura y entorno
 
