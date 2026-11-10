@@ -237,7 +237,7 @@ export function ProductPage() {
           <div className="flex overflow-x-auto h-scroll no-scrollbar snap-x snap-mandatory gap-3 -mx-4 px-4 pb-1 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {similar.map(p => (
               <div key={p.id} className="shrink-0 w-40 snap-start sm:w-auto">
-                <ProductCard product={p} layout="card" />
+                <ProductCard product={p} />
               </div>
             ))}
           </div>
