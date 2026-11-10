@@ -89,11 +89,13 @@ export default function App() {
           </Routes>
         </motion.div>
       </AnimatePresence>
-      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/canasta') && <CartBar />}
+      {/* En pago, canasta, confirmación y cuenta no va: esas pantallas ya traen su propio botón principal y su WhatsApp. */}
+      {!['/checkout', '/canasta', '/pedido', '/mis-pedidos'].some(p => location.pathname.startsWith(p)) && <CartBar />}
       <MobileTabBar />
       {/* /canasta tiene su propia barra fija de total y su propio micrófono:
           los botones flotantes la tapaban. */}
-      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/pedido') && !location.pathname.startsWith('/canasta') && <VoiceShoppingListButton />}
+      {/* Lista por voz: solo donde se elige qué comprar, para no tapar botones en ficha, cuenta o pago. */}
+      {['/', '/catalogo', '/categorias', '/ofertas'].includes(location.pathname) && <VoiceShoppingListButton />}
       {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/canasta') && <WhatsAppFAB />}
     </div>
   )
