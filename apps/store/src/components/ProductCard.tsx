@@ -172,15 +172,12 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
 }
 
 /* ── ProductCard ─────────────────────────────────────────────────── */
-// Sistema "Azul de confianza". Dos formas:
-//  - 'row' (por defecto): en celular es una fila por producto — foto a la
-//    izquierda, nombre y precio a la derecha, cantidad debajo a todo el
-//    ancho — para recorrer el catálogo de arriba abajo con el pulgar. Desde
-//    640 px vuelve a ser tarjeta vertical en cuadrícula.
-//  - 'card': siempre tarjeta vertical (carruseles).
+// Sistema "Azul de confianza". Tarjeta vertical pensada para ir de a dos
+// por fila en celular: todas miden lo mismo (foto en cuadro fijo, nombre
+// reservado a 2 líneas, precio y control de cantidad a todo el ancho), así
+// la cuadrícula queda pareja aunque cambien fotos y nombres.
 // El verde se reserva para el botón de agregar en toda la tienda.
-export function ProductCard({ product, layout = 'row' }: { product: Product; layout?: 'row' | 'card' }) {
-  const row = layout === 'row'
+export function ProductCard({ product }: { product: Product }) {
   const { addItem, updateQuantity, items } = useCartStore()
   const [showBulk, setShowBulk] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
@@ -188,10 +185,6 @@ export function ProductCard({ product, layout = 'row' }: { product: Product; lay
   const qty = cartItem?.quantity ?? 0
   const outOfStock = product.currentStock <= 0
   const unit = product.bulkUnit ?? 'kg'
-
-  const badge = outOfStock ? { text: 'Agotado', cls: 'bg-paper-ink text-white' }
-    : product.isBulk ? { text: `Por ${unit}`, cls: 'bg-white text-paper-ink shadow-card' }
-    : null
 
   const handleAdd = () => {
     if (outOfStock) return
@@ -206,61 +199,46 @@ export function ProductCard({ product, layout = 'row' }: { product: Product; lay
 
   return (
     <>
-      <article className={`h-full bg-white shadow-card flex flex-col ${row ? 'rounded-2xl p-3 gap-2.5 sm:rounded-[18px] sm:p-2.5 sm:gap-2' : 'rounded-[18px] p-2.5 gap-2'} ${outOfStock ? 'opacity-70' : ''}`}>
-        <Link to={`/producto/${product.id}`} className={`flex flex-1 ${row ? 'flex-row items-start gap-3 sm:flex-col sm:items-stretch sm:gap-2' : 'flex-col gap-2'}`}>
-          {/* La foto va completa (contain) sobre blanco: así todas ocupan el
+      <article className={`h-full bg-white rounded-2xl shadow-card p-2.5 flex flex-col gap-2 ${outOfStock ? 'opacity-70' : ''}`}>
+        <Link to={`/producto/${product.id}`} className="flex flex-col gap-2 flex-1">
+          {/* La foto va completa (contain) sobre blanco: todas ocupan el
               mismo cuadro aunque vengan con tamaños y recortes distintos. */}
-          <div className={`relative overflow-hidden ${product.imageUrl ? 'bg-white' : 'bg-paper-surface'} ${row ? 'h-[72px] w-[72px] shrink-0 rounded-lg sm:h-auto sm:w-full sm:aspect-square sm:rounded-xl' : 'aspect-square rounded-xl'}`}>
+          <div className={`relative aspect-[4/3] sm:aspect-square rounded-xl overflow-hidden ${product.imageUrl ? 'bg-white' : 'bg-paper-surface'}`}>
             {product.imageUrl
               ? <img ref={imgRef} src={product.imageUrl} alt="" loading="lazy" decoding="async" width={300} height={300}
                   className="w-full h-full object-contain" />
-              : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className={`text-paper-ink-ghost ${row ? 'h-7 w-7 sm:h-10 sm:w-10' : 'h-10 w-10'}`} aria-hidden="true" /></div>}
-
-            {badge && (
-              <span className={`absolute top-2 left-2 text-xs font-bold px-2 py-0.5 rounded-lg ${badge.cls} ${row ? 'hidden sm:block' : ''}`}>{badge.text}</span>
-            )}
+              : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-8 w-8 text-paper-ink-ghost" aria-hidden="true" /></div>}
           </div>
-          <div className="flex flex-col gap-1 min-w-0 flex-1">
-            <p className={`text-paper-ink line-clamp-2 ${row ? 'text-[15px] font-medium leading-snug sm:font-semibold sm:leading-tight sm:min-h-[2.5em]' : 'text-[15px] font-semibold leading-tight min-h-[2.5em]'}`}>{product.name}</p>
-            <p className={`font-extrabold text-paper-ink tabular-nums leading-tight ${row ? 'text-lg sm:text-xl' : 'text-xl'}`}>
-              S/ {Number(product.salePrice).toFixed(2)}
-              {product.isBulk && <span className="text-sm font-semibold text-paper-ink-soft"> /{unit}</span>}
-            </p>
-          </div>
+          <p className="text-sm sm:text-[15px] font-medium text-paper-ink leading-snug line-clamp-2 min-h-[2.75em]">{product.name}</p>
+          <p className="text-lg sm:text-xl font-extrabold text-paper-ink tabular-nums leading-none">
+            S/ {Number(product.salePrice).toFixed(2)}
+            {product.isBulk && <span className="text-sm font-semibold text-paper-ink-soft"> /{unit}</span>}
+          </p>
         </Link>
 
-        {/* Control compacto y alineado a la izquierda (176 px en celular): no
-            ocupa todo el ancho y deja libre la esquina de los botones flotantes. */}
-        <div className={`flex items-center justify-between gap-3 ${row ? '' : 'flex-col items-stretch'}`}>
-          {outOfStock || product.isBulk ? (
-            <button onClick={handleAdd} disabled={outOfStock}
-              aria-label={outOfStock ? `${product.name}, agotado` : `Elegir cantidad de ${product.name}`}
-              className={`h-11 rounded-xl flex items-center justify-center gap-1.5 font-bold text-sm ${row ? 'w-44 sm:w-full' : 'w-full'} ${outOfStock ? 'bg-paper-surface text-paper-ink-soft cursor-not-allowed' : 'bg-brand-green-600 active:bg-brand-green-700 text-white'}`}>
-              {outOfStock ? 'Agotado' : <><Scale className="h-4 w-4" />Elegir cantidad</>}
+        {outOfStock || product.isBulk ? (
+          <button onClick={handleAdd} disabled={outOfStock}
+            aria-label={outOfStock ? `${product.name}, agotado` : `Elegir cantidad de ${product.name}`}
+            className={`w-full h-[46px] rounded-xl flex items-center justify-center gap-1.5 font-bold text-sm ${outOfStock ? 'bg-paper-surface text-paper-ink-soft cursor-not-allowed' : 'bg-brand-green-600 active:bg-brand-green-700 text-white'}`}>
+            {outOfStock ? 'Agotado' : <><Scale className="h-4 w-4" />Elegir cantidad</>}
+          </button>
+        ) : (
+          <div className="flex items-stretch h-[46px] rounded-xl overflow-hidden border border-paper-line">
+            <button onClick={() => updateQuantity(product.id, qty - 1)} disabled={qty === 0}
+              aria-label={`Quitar uno de ${product.name}`}
+              className="w-11 flex items-center justify-center text-paper-ink active:bg-paper-surface disabled:text-paper-ink-ghost disabled:opacity-50">
+              <Minus className="h-4 w-4" />
             </button>
-          ) : (
-            <div className={`flex items-stretch h-[46px] rounded-xl overflow-hidden border border-paper-line ${row ? 'w-44 sm:w-full' : 'w-full'}`}>
-              <button onClick={() => updateQuantity(product.id, qty - 1)} disabled={qty === 0}
-                aria-label={`Quitar uno de ${product.name}`}
-                className="w-11 flex items-center justify-center text-paper-ink active:bg-paper-surface disabled:text-paper-ink-ghost disabled:opacity-50">
-                <Minus className="h-4 w-4" />
-              </button>
-              <span aria-live="polite"
-                className={`flex-1 flex items-center justify-center text-base font-bold tabular-nums ${qty > 0 ? 'text-paper-ink' : 'text-paper-ink-soft'}`}>{qty}</span>
-              <button onClick={qty > 0 ? () => { addItem(product); flyToCart(imgRef.current) } : handleAdd}
-                disabled={qty >= product.currentStock}
-                aria-label={qty > 0 ? `Agregar uno más de ${product.name}` : `Agregar ${product.name}`}
-                className="w-11 flex items-center justify-center bg-brand-green-600 active:bg-brand-green-700 disabled:opacity-40 text-white">
-                <Plus className="h-5 w-5" />
-              </button>
-            </div>
-          )}
-          {row && qty > 0 && !product.isBulk && (
-            <span className="sm:hidden text-sm font-semibold text-paper-ink-soft tabular-nums">
-              Subtotal S/ {(qty * Number(product.salePrice)).toFixed(2)}
-            </span>
-          )}
-        </div>
+            <span aria-live="polite"
+              className={`flex-1 flex items-center justify-center text-base font-bold tabular-nums ${qty > 0 ? 'text-paper-ink' : 'text-paper-ink-soft'}`}>{qty}</span>
+            <button onClick={qty > 0 ? () => { addItem(product); flyToCart(imgRef.current) } : handleAdd}
+              disabled={qty >= product.currentStock}
+              aria-label={qty > 0 ? `Agregar uno más de ${product.name}` : `Agregar ${product.name}`}
+              className="w-11 flex items-center justify-center bg-brand-green-600 active:bg-brand-green-700 disabled:opacity-40 text-white">
+              <Plus className="h-5 w-5" />
+            </button>
+          </div>
+        )}
       </article>
 
       <AnimatePresence>

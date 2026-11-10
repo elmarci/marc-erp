@@ -373,9 +373,9 @@ export function CatalogPage() {
           {/* Results */}
           {isChained ? (
             chainLoading && sections.length === 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
                 {Array.from({ length: 12 }).map((_, i) => (
-                  <div key={i} className="bg-white rounded-[18px] shadow-card h-[148px] sm:h-64 animate-pulse" />
+                  <div key={i} className="bg-white rounded-[18px] shadow-card h-60 sm:h-64 animate-pulse" />
                 ))}
               </div>
             ) : sections.length === 0 ? (
@@ -394,7 +394,7 @@ export function CatalogPage() {
                       <h2 className="text-lg font-extrabold text-paper-ink">{sec.unit.name}</h2>
                       <span className="text-xs text-paper-ink-ghost font-semibold">{sec.total} producto{sec.total === 1 ? '' : 's'}</span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
                       {sec.products.map(product => (
                         <ProductCard key={product.id} product={product} />
                       ))}
@@ -416,9 +416,9 @@ export function CatalogPage() {
               </>
             )
           ) : isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-[18px] shadow-card h-[148px] sm:h-64 animate-pulse" />
+                <div key={i} className="bg-white rounded-[18px] shadow-card h-60 sm:h-64 animate-pulse" />
               ))}
             </div>
           ) : flatProducts.length === 0 ? (
@@ -433,7 +433,7 @@ export function CatalogPage() {
                 <span>{flatPagination?.total ?? 0} productos</span>
                 <span>Mostrando {flatProducts.length}</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
                 {flatProducts.map(product => (
                   <ProductCard key={product.id} product={product} />
                 ))}
