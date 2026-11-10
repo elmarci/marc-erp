@@ -208,56 +208,64 @@ export function ProductCard({ product, layout = 'row' }: { product: Product; lay
 
   return (
     <>
-      <article className={`h-full bg-white rounded-[18px] shadow-card flex flex-col ${row ? 'p-3 gap-3 sm:p-2.5 sm:gap-2' : 'p-2.5 gap-2'} ${outOfStock ? 'opacity-70' : ''}`}>
-        <Link to={`/producto/${product.id}`} className={`flex flex-1 ${row ? 'flex-row items-center gap-3 sm:flex-col sm:items-stretch sm:gap-2' : 'flex-col gap-2'}`}>
-          <div className={`relative rounded-xl overflow-hidden bg-paper-surface ${row ? 'h-24 w-24 shrink-0 sm:h-auto sm:w-full sm:aspect-square' : 'aspect-square'}`}>
+      <article className={`h-full bg-white shadow-card flex flex-col ${row ? 'rounded-2xl p-3 gap-2.5 sm:rounded-[18px] sm:p-2.5 sm:gap-2' : 'rounded-[18px] p-2.5 gap-2'} ${outOfStock ? 'opacity-70' : ''}`}>
+        <Link to={`/producto/${product.id}`} className={`flex flex-1 ${row ? 'flex-row items-start gap-3 sm:flex-col sm:items-stretch sm:gap-2' : 'flex-col gap-2'}`}>
+          {/* La foto va completa (contain) sobre blanco: así todas ocupan el
+              mismo cuadro aunque vengan con tamaños y recortes distintos. */}
+          <div className={`relative overflow-hidden ${product.imageUrl ? 'bg-white' : 'bg-paper-surface'} ${row ? 'h-[72px] w-[72px] shrink-0 rounded-lg sm:h-auto sm:w-full sm:aspect-square sm:rounded-xl' : 'aspect-square rounded-xl'}`}>
             {product.imageUrl
               ? <img ref={imgRef} src={product.imageUrl} alt="" loading="lazy" decoding="async" width={300} height={300}
-                  className="w-full h-full object-cover" />
-              : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-10 w-10 text-paper-ink-ghost" aria-hidden="true" /></div>}
+                  className="w-full h-full object-contain" />
+              : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className={`text-paper-ink-ghost ${row ? 'h-7 w-7 sm:h-10 sm:w-10' : 'h-10 w-10'}`} aria-hidden="true" /></div>}
 
             {badge && (
               <span className={`absolute top-2 left-2 text-xs font-bold px-2 py-0.5 rounded-lg ${badge.cls} ${row ? 'hidden sm:block' : ''}`}>{badge.text}</span>
             )}
           </div>
-          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
-            <p className={`font-semibold text-paper-ink leading-tight line-clamp-2 ${row ? 'text-base sm:text-[15px] sm:min-h-[2.5em]' : 'text-[15px] min-h-[2.5em]'}`}>{product.name}</p>
-            <p className={`font-extrabold text-paper-ink tabular-nums leading-none ${row ? 'text-[22px] sm:text-xl' : 'text-xl'}`}>
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
+            <p className={`text-paper-ink line-clamp-2 ${row ? 'text-[15px] font-medium leading-snug sm:font-semibold sm:leading-tight sm:min-h-[2.5em]' : 'text-[15px] font-semibold leading-tight min-h-[2.5em]'}`}>{product.name}</p>
+            <p className={`font-extrabold text-paper-ink tabular-nums leading-tight ${row ? 'text-lg sm:text-xl' : 'text-xl'}`}>
               S/ {Number(product.salePrice).toFixed(2)}
               {product.isBulk && <span className="text-sm font-semibold text-paper-ink-soft"> /{unit}</span>}
             </p>
-            {badge && row && (
-              <span className={`sm:hidden self-start text-xs font-bold px-2 py-0.5 rounded-lg ${badge.cls}`}>{badge.text}</span>
+            {badge && row && !product.isBulk && (
+              <span className={`sm:hidden self-start text-[11px] font-bold px-1.5 py-0.5 rounded-md ${badge.cls}`}>{badge.text}</span>
             )}
           </div>
         </Link>
 
-        {outOfStock || product.isBulk ? (
-          <button onClick={handleAdd} disabled={outOfStock}
-            aria-label={outOfStock ? `${product.name}, agotado` : `Elegir cantidad de ${product.name}`}
-            className={`w-full rounded-xl flex items-center justify-center gap-1.5 font-bold text-[15px] h-12 ${outOfStock ? 'bg-paper-surface text-paper-ink-soft cursor-not-allowed' : 'bg-brand-green-600 active:bg-brand-green-700 text-white'}`}>
-            {outOfStock ? 'Agotado' : <><Scale className="h-4 w-4" />Elegir cantidad</>}
-          </button>
-        ) : (
-          // Cantidad siempre a la vista en la fila: − · número · botón verde.
-          // Con 0 en tarjeta vertical queda solo el botón "Agregar".
-          <div className={`flex items-stretch rounded-xl overflow-hidden h-12 ${qty > 0 ? 'border border-paper-line' : row ? 'border border-paper-line sm:border-0' : ''}`}>
-            <button onClick={() => updateQuantity(product.id, qty - 1)} disabled={qty === 0}
-              aria-label={`Quitar uno de ${product.name}`}
-              className={`w-12 items-center justify-center text-paper-ink active:bg-paper-surface disabled:text-paper-ink-ghost ${qty > 0 ? 'flex' : row ? 'flex sm:hidden' : 'hidden'}`}>
-              <Minus className="h-5 w-5" />
+        {/* Control compacto y alineado a la izquierda (176 px en celular): no
+            ocupa todo el ancho y deja libre la esquina de los botones flotantes. */}
+        <div className={`flex items-center justify-between gap-3 ${row ? '' : 'flex-col items-stretch'}`}>
+          {outOfStock || product.isBulk ? (
+            <button onClick={handleAdd} disabled={outOfStock}
+              aria-label={outOfStock ? `${product.name}, agotado` : `Elegir cantidad de ${product.name}`}
+              className={`h-11 rounded-xl flex items-center justify-center gap-1.5 font-bold text-sm ${row ? 'w-44 sm:w-full' : 'w-full'} ${outOfStock ? 'bg-paper-surface text-paper-ink-soft cursor-not-allowed' : 'bg-brand-green-600 active:bg-brand-green-700 text-white'}`}>
+              {outOfStock ? 'Agotado' : <><Scale className="h-4 w-4" />Elegir cantidad</>}
             </button>
-            <span aria-live="polite"
-              className={`flex-1 items-center justify-center text-lg font-extrabold tabular-nums ${qty > 0 ? 'flex text-paper-ink' : row ? 'flex sm:hidden text-paper-ink-soft' : 'hidden'}`}>{qty}</span>
-            <button onClick={qty > 0 ? () => { addItem(product); flyToCart(imgRef.current) } : handleAdd}
-              disabled={qty >= product.currentStock}
-              aria-label={qty > 0 ? `Agregar uno más de ${product.name}` : `Agregar ${product.name}`}
-              className={`flex items-center justify-center gap-1.5 bg-brand-green-600 active:bg-brand-green-700 disabled:opacity-40 text-white font-bold text-[15px] ${qty > 0 ? 'w-12' : row ? 'px-5 sm:flex-1' : 'flex-1'}`}>
-              {qty === 0 && 'Agregar'}
-              <Plus className={qty > 0 ? 'h-5 w-5' : 'h-4 w-4'} />
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className={`flex items-stretch h-[46px] rounded-xl overflow-hidden border border-paper-line ${row ? 'w-44 sm:w-full' : 'w-full'}`}>
+              <button onClick={() => updateQuantity(product.id, qty - 1)} disabled={qty === 0}
+                aria-label={`Quitar uno de ${product.name}`}
+                className="w-11 flex items-center justify-center text-paper-ink active:bg-paper-surface disabled:text-paper-ink-ghost disabled:opacity-50">
+                <Minus className="h-4 w-4" />
+              </button>
+              <span aria-live="polite"
+                className={`flex-1 flex items-center justify-center text-base font-bold tabular-nums ${qty > 0 ? 'text-paper-ink' : 'text-paper-ink-soft'}`}>{qty}</span>
+              <button onClick={qty > 0 ? () => { addItem(product); flyToCart(imgRef.current) } : handleAdd}
+                disabled={qty >= product.currentStock}
+                aria-label={qty > 0 ? `Agregar uno más de ${product.name}` : `Agregar ${product.name}`}
+                className="w-11 flex items-center justify-center bg-brand-green-600 active:bg-brand-green-700 disabled:opacity-40 text-white">
+                <Plus className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+          {row && qty > 0 && !product.isBulk && (
+            <span className="sm:hidden text-sm font-semibold text-paper-ink-soft tabular-nums">
+              Subtotal S/ {(qty * Number(product.salePrice)).toFixed(2)}
+            </span>
+          )}
+        </div>
       </article>
 
       <AnimatePresence>
