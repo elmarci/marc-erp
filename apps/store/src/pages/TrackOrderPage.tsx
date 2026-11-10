@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { storeApi, type StoreAddress } from '../api'
 import { useAuthStore } from '../authStore'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useCartStore } from '../cartStore'
 import { toast } from 'sonner'
 
@@ -251,7 +251,8 @@ function ProfileEditor({ name, email }: { name: string; email: string | null }) 
 }
 
 export function TrackOrderPage() {
-  const { customer, logout, exitGuestMode } = useAuthStore()
+  const { customer, logout } = useAuthStore()
+  const navigate = useNavigate()
   const { addItem, openCart } = useCartStore()
   const location = useLocation()
 
@@ -309,8 +310,8 @@ export function TrackOrderPage() {
         <Package className="h-12 w-12 mx-auto mb-4 text-brand-blue-600" />
         <h1 className="text-2xl font-black mb-1 text-paper-ink">Mis pedidos</h1>
         <p className="text-paper-ink-soft text-sm mb-6">Crea tu cuenta o inicia sesión para ver tu historial, puntos y direcciones guardadas.</p>
-        <button onClick={exitGuestMode}
-          className="bg-brand-green-600 hover:bg-brand-green-700 text-white font-bold px-6 py-3 rounded-xl transition-colors">
+        <button onClick={() => navigate('/ingresar')}
+          className="bg-brand-blue-600 hover:bg-brand-blue-700 text-white font-bold px-6 h-12 rounded-xl transition-colors">
           Ingresar / Crear cuenta
         </button>
       </main>

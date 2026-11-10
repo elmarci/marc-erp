@@ -1,11 +1,12 @@
 import { useLayoutEffect } from 'react'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Header } from './components/Header'
 import { CartDrawer } from './components/CartDrawer'
 import { InstallAppBanner } from './components/InstallAppBanner'
 import { NotifyOptInBanner } from './components/NotifyOptInBanner'
 import { MobileTabBar } from './components/MobileTabBar'
+import { CartBar } from './components/CartBar'
 import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
 import { WhatsAppFAB } from './components/WhatsAppFAB'
 import { AuthGate } from './pages/AuthGate'
@@ -25,7 +26,6 @@ import { PrivacyPage, TermsPage } from './pages/LegalPage'
 export default function App() {
   const location = useLocation()
   const isLoggedIn = useAuthStore(s => s.isLoggedIn)
-  const guestMode = useAuthStore(s => s.guestMode)
 
   // Sin esto, el navegador conserva el scroll de la pantalla anterior — al
   // entrar a una categoría/subcategoría (o cambiar de una a otra) el feed
@@ -47,10 +47,12 @@ export default function App() {
   if (location.pathname === '/privacidad') return <PrivacyPage />
   if (location.pathname === '/terminos') return <TermsPage />
 
-  // El registro es la vía principal (perfil real, historial, puntos) pero
-  // quien no quiera crear cuenta puede seguir como invitado y pedir por
-  // WhatsApp desde el carrito.
-  if (!isLoggedIn && !guestMode) return <AuthGate />
+  // La tienda es abierta: catálogo, carrito y checkout funcionan sin
+  // cuenta. El ingreso es una pantalla propia a la que se llega solo cuando
+  // hace falta (mis pedidos, puntos, direcciones guardadas).
+  if (location.pathname === '/ingresar') {
+    return isLoggedIn ? <Navigate to="/" replace /> : <AuthGate />
+  }
 
   return (
     <div className="min-h-screen bg-paper-bg">
@@ -72,7 +74,7 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
-          className="pb-16 md:pb-0"
+          className="pb-36 md:pb-0"
         >
           <Routes location={location}>
             <Route path="/" element={<HomePage />} />
@@ -87,6 +89,7 @@ export default function App() {
           </Routes>
         </motion.div>
       </AnimatePresence>
+      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/canasta') && <CartBar />}
       <MobileTabBar />
       {/* /canasta tiene su propia barra fija de total y su propio micrófono:
           los botones flotantes la tapaban. */}

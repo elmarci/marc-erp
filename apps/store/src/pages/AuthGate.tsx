@@ -25,7 +25,7 @@ function errorMessage(err: unknown, fallback: string) {
 export function AuthGate() {
   const [mode, setMode] = useState<Mode>('login')
   const [showPass, setShowPass] = useState(false)
-  const { setAuth, continueAsGuest } = useAuthStore()
+  const { setAuth } = useAuthStore()
   const [form, setForm] = useState({ name: '', phone: '', email: '', password: '' })
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(v => ({ ...v, [k]: e.target.value }))
@@ -74,14 +74,14 @@ export function AuthGate() {
     <div className="min-h-screen bg-paper-bg flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
-          <img src="/logo.png" alt="Minimarket Marc" className="h-14 w-auto mb-3" />
+          <img src="/logo.png" alt="Tiendas Marc" className="h-14 w-auto mb-3" />
           <h1 className="text-xl font-black text-paper-ink text-center">
-            {needsProfile ? 'Un paso más' : mode === 'login' ? 'Bienvenido de vuelta' : 'Crea tu cuenta'}
+            {needsProfile ? 'Un paso más' : mode === 'login' ? 'Ingresa a tu cuenta' : 'Crea tu cuenta'}
           </h1>
           <p className="text-paper-ink-soft text-sm text-center mt-1">
             {needsProfile
               ? 'Cuéntanos cómo te llamas y tu WhatsApp para coordinar tus pedidos'
-              : 'Regístrate para comprar, ver tu historial y tus puntos'}
+              : mode === 'login' ? 'Para ver tus pedidos, tus puntos y tus direcciones' : 'Guarda tus direcciones y suma puntos en cada compra'}
           </p>
         </div>
 
@@ -170,7 +170,7 @@ export function AuthGate() {
                     </div>
                     <div className="flex justify-center">
                       <GoogleLogin onSuccess={handleGoogleSuccess} onError={() => toast.error('No se pudo ingresar con Google.')}
-                        text={mode === 'login' ? 'signin_with' : 'signup_with'} width="336" />
+                        text={mode === 'login' ? 'signin_with' : 'signup_with'} width="300" />
                     </div>
                   </>
                 )}
@@ -180,10 +180,9 @@ export function AuthGate() {
                   {mode === 'login' ? '¿Sin cuenta? Regístrate gratis' : '¿Ya tienes cuenta? Inicia sesión'}
                 </button>
 
-                <button onClick={continueAsGuest}
-                  className="w-full text-xs text-paper-ink-ghost hover:text-paper-ink-soft py-1 transition-colors">
-                  Prefiero pedir por WhatsApp sin registrarme →
-                </button>
+                <Link to="/" className="flex items-center justify-center w-full h-11 text-sm font-bold text-brand-blue-600">
+                  Seguir comprando sin cuenta
+                </Link>
               </>
             )}
           </div>
