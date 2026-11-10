@@ -69,7 +69,6 @@ export function ProductPage() {
   }
 
   const outOfStock = product.currentStock <= 0
-  const lowStock = !outOfStock && product.currentStock <= 5
   const unit = product.bulkUnit ?? 'kg'
   // Sólo tiene sentido "pedir por monto" en unidades que se pesan/miden de
   // verdad (kg, g, L) — quien compra a distancia no tiene forma de saber
@@ -125,11 +124,6 @@ export function ProductPage() {
             ? <img ref={imgRef} src={product.imageUrl} alt={product.name} width={600} height={600} className="w-full h-full object-contain p-4" />
             : <div className="w-full h-full flex items-center justify-center bg-paper-surface"><ShoppingBag className="h-16 w-16 text-paper-ink-ghost" aria-hidden="true" /></div>
           }
-          {lowStock && !product.isBulk && (
-            <span className="absolute top-3 left-3 bg-brand-sun-400 text-brand-sun-900 text-sm font-extrabold px-2.5 py-1 rounded-lg">
-              {product.currentStock === 1 ? 'Última unidad' : `Últimas ${product.currentStock}`}
-            </span>
-          )}
         </div>
 
         <div>
