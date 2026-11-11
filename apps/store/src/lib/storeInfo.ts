@@ -9,7 +9,7 @@ export const DELIVERY = {
   zoneName: 'Manchay alto',
   zones: ['Portada', 'Villa Hermosa', 'Naranjos', 'Unión', 'Tres Marías', 'Huertos', 'UPIS', 'Eucaliptos', 'Paradero 1', 'Santa Rosa'],
   costFrom: 1.0,
-  expressFrom: 2.5,
+  expressFrom: 3.0,
   // Tarjeta (Izipay) se suma cuando el checkout online la acepte.
   payments: ['Yape', 'Efectivo'],
 }
@@ -49,7 +49,10 @@ export function deliveryStatus(date = new Date()): Status {
 // Mismos valores que apps/backend/src/modules/store/deliveryFee.ts: acá solo
 // se MUESTRA el costo; el que vale es el que recalcula el servidor.
 export const STORE_ORIGIN = { lat: -12.102235, lng: -76.874449 }
-export const FEES = { near: 1.0, far: 1.5, expressExtra: 1.5, nearKm: 1, maxGpsKm: 5 }
+export const FEES = {
+  tiers: [{ maxKm: 0.5, fee: 1.0 }, { maxKm: 1, fee: 1.5 }], beyond: 2.0,
+  zoneNear: 1.5, zoneFar: 2.0, expressExtra: 2.0, maxGpsKm: 5, cardPercent: 3.5,
+}
 export const NEAR_ZONES = ['Naranjos', 'Villa Hermosa', 'Unión', 'Paradero 1']
 
 export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
@@ -59,16 +62,20 @@ export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; ln
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
 }
 
-// km = distancia en línea recta a la tienda si el GPS sirve para cobrar
-// (hasta 5 km; más lejos, el cliente no está en el lugar de entrega).
+// Por distancia en línea recta a la tienda: S/ 1.00 hasta 500 m, S/ 1.50
+// hasta 1 km, S/ 2.00 más lejos. Sin GPS útil (no compartido, o a más de
+// 5 km porque el cliente no está en el lugar de entrega) se cobra por zona.
 export function deliveryFee(input: { coords: { lat: number; lng: number } | null; zone: string; express: boolean }) {
   const rawKm = input.coords ? distanceKm(STORE_ORIGIN, input.coords) : null
   const km = rawKm != null && rawKm <= FEES.maxGpsKm ? rawKm : null
   const base = km != null
-    ? (km <= FEES.nearKm ? FEES.near : FEES.far)
-    : (NEAR_ZONES.includes(input.zone) ? FEES.near : FEES.far)
+    ? (FEES.tiers.find(t => km <= t.maxKm)?.fee ?? FEES.beyond)
+    : (NEAR_ZONES.includes(input.zone) ? FEES.zoneNear : FEES.zoneFar)
   return { fee: base + (input.express ? FEES.expressExtra : 0), km, gpsTooFar: rawKm != null && km == null }
 }
+
+// Comisión por pagar con tarjeta, igual que la calcula el servidor.
+export const cardFee = (amount: number) => Math.round(amount * FEES.cardPercent) / 100
 
 /* ── Fechas y turnos de entrega ──────────────────────────────────────── */
 const DAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
