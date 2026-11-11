@@ -8,8 +8,8 @@ import { io } from 'socket.io-client'
 const WHATSAPP_NUMBER = '51930555831'
 const API_BASE = import.meta.env['VITE_API_URL']?.replace('/api/v1', '') ?? 'http://localhost:3001'
 
-const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega' }
-const PAYMENT_ICONS: Record<string, string> = { YAPE: '/yape.png', PLIN: '/plin.png', CASH: '/cash.png', YAPE_CONTRAENTREGA: '/yape.png' }
+const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega', CARD_CONTRAENTREGA: 'Tarjeta al recibir' }
+const PAYMENT_ICONS: Record<string, string> = { YAPE: '/yape.png', PLIN: '/plin.png', CASH: '/cash.png', YAPE_CONTRAENTREGA: '/yape.png', CARD_CONTRAENTREGA: '/card.svg' }
 // Métodos que se cobran ANTES de entregar y por eso necesitan verificación de
 // comprobante — CASH y YAPE_CONTRAENTREGA se cobran recién al entregar, así
 // que nunca quedan "pendientes de pago" en este sentido.
@@ -66,6 +66,10 @@ export function OrderConfirmPage() {
   const currentStep = isCancelled ? -1 : STATUS_FLOW.findIndex(s => s.key === order.status)
   const needsPayment = PAYS_UPFRONT.has(order.paymentMethod) && order.paymentStatus === 'PENDING'
   const whatsappMsg = `Hola! Mi pedido es *${order.orderNumber}* — quiero enviar el comprobante de pago por ${PAYMENT_LABELS[order.paymentMethod]}.`
+
+  // La comisión de tarjeta no viene en un campo propio: es lo que queda del
+  // total al quitar productos y envío (y sumar lo canjeado con puntos).
+  const cardCommission = Math.max(0, Math.round((Number(order.total) - Number(order.subtotal) - Number(order.deliveryCost) + Number(order.pointsDiscountAmount ?? 0)) * 100) / 100)
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-10">
@@ -219,6 +223,16 @@ export function OrderConfirmPage() {
           <div className="flex justify-between text-paper-ink-soft">
             <span>Subtotal</span><span className="tabular-nums">S/ {Number(order.subtotal).toFixed(2)}</span>
           </div>
+          {Number(order.deliveryCost) > 0 && (
+            <div className="flex justify-between text-sm text-paper-ink-soft mt-1">
+              <span>Envío</span><span className="tabular-nums">S/ {Number(order.deliveryCost).toFixed(2)}</span>
+            </div>
+          )}
+          {order.paymentMethod === 'CARD_CONTRAENTREGA' && cardCommission > 0 && (
+            <div className="flex justify-between text-sm text-paper-ink-soft mt-1">
+              <span>Comisión por tarjeta</span><span className="tabular-nums">S/ {cardCommission.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between font-display font-semibold text-base text-paper-ink">
             <span>TOTAL</span>
             <span className="text-brand-blue-700 tabular-nums">S/ {Number(order.total).toFixed(2)}</span>

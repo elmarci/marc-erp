@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useBackClose } from '../lib/useBackClose'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Mic, X, Check, ShoppingBag, Loader2, ListChecks } from 'lucide-react'
 import { useVoiceListDictation } from '../hooks/useVoiceListDictation'
@@ -19,6 +20,7 @@ interface ResultRow {
 // al final qué entró y qué no se encontró para que el cliente lo revise.
 export function VoiceShoppingListButton() {
   const [open, setOpen] = useState(false)
+  useBackClose(open, () => setOpen(false))
   const cartOpen = useCartStore(s => s.isOpen)
   const { isListening, chunks, start, stop, reset, isSupported } = useVoiceListDictation()
   const [screen, setScreen] = useState<Screen>('listening')

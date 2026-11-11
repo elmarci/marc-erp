@@ -5,6 +5,7 @@ import { redis } from '../../config/redis';
 import { getSettingValues } from '../../utils/settings';
 import { nowInLima } from '../../utils/timezone';
 import { deliveryService } from '../delivery/delivery.service';
+import { storeDeliveryFee, cardFee, CARD_FEE_PERCENT } from './deliveryFee';
 
 export class StoreService {
 
@@ -255,7 +256,8 @@ export class StoreService {
     customerName: string; customerPhone: string; customerEmail?: string;
     deliveryType: 'DELIVERY' | 'PICKUP';
     address?: string; district?: string; reference?: string; notes?: string;
-    paymentMethod: 'YAPE' | 'PLIN' | 'CASH' | 'YAPE_CONTRAENTREGA';
+    paymentMethod: 'YAPE' | 'PLIN' | 'CASH' | 'YAPE_CONTRAENTREGA' | 'CARD_CONTRAENTREGA';
+    express?: boolean;
     latitude?: number; longitude?: number;
     storeCustomerId?: string;
     pointsToRedeem?: number;
@@ -327,7 +329,11 @@ export class StoreService {
       };
     });
 
-    const deliveryCost = data.deliveryType === 'DELIVERY' ? 0 : 0; // free for now
+    // Envío: gratis al recoger; en delivery, por distancia a la tienda (GPS)
+    // o por zona si no hay GPS útil. Ver deliveryFee.ts.
+    const deliveryCost = data.deliveryType === 'DELIVERY'
+      ? storeDeliveryFee({ latitude: data.latitude, longitude: data.longitude, district: data.district, express: data.express })
+      : 0;
 
     // Canje de puntos — mismo valor por punto que el POS (loyalty_point_value).
     // Solo se VALIDA acá (saldo suficiente ahora); el descuento real de
@@ -352,7 +358,16 @@ export class StoreService {
       pointsDiscountAmount = Math.min(pointsToRedeem * pointValue, subtotal + deliveryCost);
     }
 
-    const total = subtotal + deliveryCost - pointsDiscountAmount;
+    // Comisión por tarjeta: 3.5 % sobre lo que se va a cobrar. No tiene
+    // columna propia en el pedido: entra en `total` y se puede recuperar
+    // como total − subtotal − envío + descuento por puntos (así la lee
+    // confirmOrder). También queda escrita en la nota para la tienda.
+    const beforeCard = subtotal + deliveryCost - pointsDiscountAmount;
+    const cardCommission = data.paymentMethod === 'CARD_CONTRAENTREGA' ? cardFee(beforeCard) : 0;
+    const total = beforeCard + cardCommission;
+    const notes = cardCommission > 0
+      ? [`COMISIÓN TARJETA ${CARD_FEE_PERCENT}%: S/ ${cardCommission.toFixed(2)}`, data.notes].filter(Boolean).join(' | ')
+      : data.notes;
 
     // Generate order number
     const count = await prisma.storeOrder.count();
@@ -368,7 +383,7 @@ export class StoreService {
         address: data.address,
         district: data.district,
         reference: data.reference,
-        notes: data.notes,
+        notes,
         paymentMethod: data.paymentMethod,
         storeCustomerId: data.storeCustomerId,
         latitude: data.latitude,
@@ -448,6 +463,9 @@ export class StoreService {
     // entregar), así que cae en el mismo enum PaymentMethod.YAPE de la venta.
     const paymentMethodMap: Record<string, string> = {
       YAPE: 'YAPE', PLIN: 'PLIN', CASH: 'CASH', YAPE_CONTRAENTREGA: 'YAPE',
+      // El pedido no sabe si será débito o crédito; se registra como débito
+      // y caja puede corregirlo en la venta si hace falta.
+      CARD_CONTRAENTREGA: 'DEBIT_CARD',
     };
     const paymentMethod = paymentMethodMap[order.paymentMethod] ?? 'CASH';
 
@@ -513,6 +531,11 @@ export class StoreService {
       // cualquier otro descuento de una venta hecha en el POS.
       const pointsDiscountAmount = Number(order.pointsDiscountAmount);
       const discountedSubtotal = subtotal - pointsDiscountAmount;
+      // Comisión de tarjeta cobrada en el pedido web: se guarda aparte del
+      // total de la venta, igual que hace el POS (no infla ventas ni NRUS).
+      const cardCommission = order.paymentMethod === 'CARD_CONTRAENTREGA'
+        ? Math.max(0, Math.round((Number(order.total) - Number(order.subtotal) - Number(order.deliveryCost) + pointsDiscountAmount) * 100) / 100)
+        : 0;
 
       const taxRate = 0.18;
       const netAmount = discountedSubtotal / (1 + taxRate);
@@ -537,6 +560,8 @@ export class StoreService {
           taxAmount,
           totalAmount: discountedSubtotal,
           discountAmount: pointsDiscountAmount,
+          commissionAmount: cardCommission,
+          commissionPercent: cardCommission > 0 ? CARD_FEE_PERCENT : 0,
           status: 'COMPLETED',
           pointsEarned,
           notes: `Pedido web ${order.orderNumber} — ${order.deliveryType === 'DELIVERY' ? 'Delivery' : 'Recojo en tienda'}`
@@ -548,6 +573,7 @@ export class StoreService {
             create: [{
               method: paymentMethod as never,
               amount: discountedSubtotal,
+              commissionAmount: cardCommission,
             }],
           },
         },

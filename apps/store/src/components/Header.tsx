@@ -11,7 +11,7 @@ import { SideMenu } from './SideMenu'
 import { BRAND_NAME, DELIVERY } from '../lib/storeInfo'
 
 // Cabecera azul de marca. En celular son dos piezas: la fila del logo, que
-// se va con el scroll, y la fila del buscador, que queda fija arriba (mide
+// se va con el scroll, y la fila del menú + buscador, que queda fija arriba (mide
 // 64 px, lo mismo que la cabecera de escritorio, para que las barras fijas
 // de cada página — p. ej. "estás acá" del catálogo — sigan usando top-16).
 export function Header() {
@@ -48,11 +48,6 @@ export function Header() {
     <>
       <header className="md:sticky md:top-0 z-50 bg-brand-blue-600 text-white">
         <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-3">
-          <button onClick={() => setShowSideMenu(true)} aria-label="Abrir menú"
-            className="md:hidden -ml-2 flex items-center justify-center h-11 w-11 shrink-0 rounded-full hover:bg-brand-blue-700 transition-colors">
-            <Menu className="h-6 w-6" />
-          </button>
-
           <Link to="/" className="flex items-center gap-2.5 shrink-0 min-w-0">
             <img src="/logo-icon.png" alt="" width={40} height={40} className="h-10 w-10 rounded-full bg-white object-cover" />
             <span className="leading-tight min-w-0">
@@ -128,9 +123,17 @@ export function Header() {
         </div>
       </header>
 
-      <form onSubmit={handleSearch} className="md:hidden sticky top-0 z-40 h-16 bg-brand-blue-600 px-4 pt-1 pb-3">
-        {searchField('Busca leche, arroz, gaseosa…')}
-      </form>
+      {/* El menú va en la fila fija, junto al buscador, para tenerlo a mano
+          en cualquier punto de la página y no solo arriba del todo. */}
+      <div className="md:hidden sticky top-0 z-40 h-16 bg-brand-blue-600 pl-2 pr-4 pt-1 pb-3 flex items-center gap-1 text-white">
+        <button type="button" onClick={() => setShowSideMenu(true)} aria-label="Abrir menú"
+          className="flex items-center justify-center h-12 w-11 shrink-0 rounded-xl active:bg-brand-blue-700 transition-colors">
+          <Menu className="h-6 w-6" />
+        </button>
+        <form onSubmit={handleSearch} className="flex-1 min-w-0">
+          {searchField('Busca leche, arroz, gaseosa…')}
+        </form>
+      </div>
 
       <SideMenu open={showSideMenu} onClose={() => setShowSideMenu(false)} />
     </>

@@ -91,7 +91,12 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
       // CheckoutPage.tsx cuando haya una.
       // YAPE_CONTRAENTREGA = paga por Yape recién cuando le llega el pedido
       // (no antes) — mismo espíritu que CASH pero por Yape en vez de billetes.
-      paymentMethod: z.enum(['YAPE', 'CASH', 'YAPE_CONTRAENTREGA']),
+      // CARD_CONTRAENTREGA = tarjeta débito/crédito al recibir: el repartidor
+      // lleva el POS (o se pasa en caja si recoge en tienda).
+      paymentMethod: z.enum(['YAPE', 'CASH', 'YAPE_CONTRAENTREGA', 'CARD_CONTRAENTREGA']),
+      // Entrega express (lo antes posible): suma un recargo a la tarifa de
+      // envío. La fecha, turno y hora elegidos viajan dentro de `notes`.
+      express: z.boolean().optional(),
       // Ubicación GPS opcional que el cliente comparte desde el navegador —
       // nunca se confía en ella para nada crítico, sólo ayuda a la entrega.
       latitude: z.coerce.number().min(-90).max(90).optional(),

@@ -14,7 +14,7 @@ export function WhatsAppIcon({ className = '' }: { className?: string }) {
 // Con el carrito vacío queda solo el botón de WhatsApp.
 // Pantallas donde aparece el botón de lista por voz. En celular va en esta
 // misma fila, entre "Ver carrito" y WhatsApp, para no tapar la lista.
-export const VOICE_LIST_ROUTES = ['/', '/catalogo', '/categorias', '/ofertas']
+export const VOICE_LIST_ROUTES = ['/', '/catalogo', '/categorias']
 
 export function CartBar() {
   const items = useCartStore(s => s.items)
@@ -23,9 +23,10 @@ export function CartBar() {
   const total = cartTotal(items)
   const units = Math.round(count * 100) / 100
 
-  // En la ficha, con el carrito vacío, el WhatsApp suelto taparía el botón
-  // "Agregar"; vuelve junto a "Ver carrito" apenas se agrega algo.
-  if (count === 0 && window.location.pathname.startsWith('/producto')) return null
+  // En la ficha y en ofertas, con el carrito vacío, el WhatsApp suelto
+  // taparía los botones de agregar; vuelve junto a "Ver carrito" apenas
+  // se agrega algo.
+  if (count === 0 && ['/producto', '/ofertas'].some(p => window.location.pathname.startsWith(p))) return null
   return (
     <div className="md:hidden fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 px-4 pb-3 flex justify-end gap-2.5 pointer-events-none">
       {count > 0 && (

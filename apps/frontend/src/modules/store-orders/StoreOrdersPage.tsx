@@ -82,11 +82,11 @@ const NEXT_STATUS: Record<string, string> = {
   CONFIRMED: 'PREPARING', PREPARING: 'READY', READY: 'DELIVERED',
 }
 
-const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega' }
-const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵', YAPE_CONTRAENTREGA: '💜' }
+const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega', CARD_CONTRAENTREGA: 'Tarjeta contra entrega (POS)' }
+const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵', YAPE_CONTRAENTREGA: '💜', CARD_CONTRAENTREGA: '💳' }
 // Se cobran recién al entregar — nunca quedan "pago pendiente de verificar"
 // como sí pasa con un Yape/Plin pagado por adelantado.
-const PAYS_ON_DELIVERY = new Set(['CASH', 'YAPE_CONTRAENTREGA'])
+const PAYS_ON_DELIVERY = new Set(['CASH', 'YAPE_CONTRAENTREGA', 'CARD_CONTRAENTREGA'])
 
 // Notification system - requires explicit user activation
 let audioUnlocked = false
