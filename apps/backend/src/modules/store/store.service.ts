@@ -5,6 +5,7 @@ import { redis } from '../../config/redis';
 import { getSettingValues } from '../../utils/settings';
 import { nowInLima } from '../../utils/timezone';
 import { deliveryService } from '../delivery/delivery.service';
+import { storeDeliveryFee } from './deliveryFee';
 
 export class StoreService {
 
@@ -255,7 +256,8 @@ export class StoreService {
     customerName: string; customerPhone: string; customerEmail?: string;
     deliveryType: 'DELIVERY' | 'PICKUP';
     address?: string; district?: string; reference?: string; notes?: string;
-    paymentMethod: 'YAPE' | 'PLIN' | 'CASH' | 'YAPE_CONTRAENTREGA';
+    paymentMethod: 'YAPE' | 'PLIN' | 'CASH' | 'YAPE_CONTRAENTREGA' | 'CARD_CONTRAENTREGA';
+    express?: boolean;
     latitude?: number; longitude?: number;
     storeCustomerId?: string;
     pointsToRedeem?: number;
@@ -327,7 +329,11 @@ export class StoreService {
       };
     });
 
-    const deliveryCost = data.deliveryType === 'DELIVERY' ? 0 : 0; // free for now
+    // Envío: gratis al recoger; en delivery, por distancia a la tienda (GPS)
+    // o por zona si no hay GPS útil. Ver deliveryFee.ts.
+    const deliveryCost = data.deliveryType === 'DELIVERY'
+      ? storeDeliveryFee({ latitude: data.latitude, longitude: data.longitude, district: data.district, express: data.express })
+      : 0;
 
     // Canje de puntos — mismo valor por punto que el POS (loyalty_point_value).
     // Solo se VALIDA acá (saldo suficiente ahora); el descuento real de
@@ -448,6 +454,9 @@ export class StoreService {
     // entregar), así que cae en el mismo enum PaymentMethod.YAPE de la venta.
     const paymentMethodMap: Record<string, string> = {
       YAPE: 'YAPE', PLIN: 'PLIN', CASH: 'CASH', YAPE_CONTRAENTREGA: 'YAPE',
+      // El pedido no sabe si será débito o crédito; se registra como débito
+      // y caja puede corregirlo en la venta si hace falta.
+      CARD_CONTRAENTREGA: 'DEBIT_CARD',
     };
     const paymentMethod = paymentMethodMap[order.paymentMethod] ?? 'CASH';
 
