@@ -174,7 +174,7 @@ export function CheckoutPage() {
       }
       try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ name: form.customerName, phone: form.customerPhone })) } catch { /* sin almacenamiento */ }
       clearCart()
-      navigate(`/pedido/${res.data.data.orderNumber}`)
+      navigate(`/pedido/${res.data.data.orderNumber}`, { replace: true })
     },
     onError: (err) => toast.error(
       (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message

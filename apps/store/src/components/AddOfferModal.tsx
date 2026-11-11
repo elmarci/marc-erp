@@ -4,6 +4,7 @@ import { Minus, Plus, X, ShoppingBag, PackageCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Offer } from '../api'
 import { useCartStore } from '../cartStore'
+import { useBackClose } from '../lib/useBackClose'
 
 type PackInfo = { totalQty: number; totalPrice: number; hint: string }
 
@@ -79,6 +80,7 @@ export function autoAddPack(offer: Offer, addBundle: ReturnType<typeof useCartSt
 
 export function AddOfferModal({ offer, onClose }: { offer: Offer; onClose: () => void }) {
   const { addItem, addBundle, openCart } = useCartStore()
+  useBackClose(true, onClose)
   const pack = getPackInfo(offer)
   // HAPPY_HOUR también es % de descuento (con ventana horaria aparte que ya
   // filtra el backend) — se trata igual que un descuento simple para que el

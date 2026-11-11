@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useBackClose } from '../lib/useBackClose'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ShoppingCart, ShoppingBag, Plus, Minus, Scale, X } from 'lucide-react'
@@ -13,6 +14,7 @@ const BULK_WEIGHT_STEP = 0.001
 
 /* ── Modal para productos a granel ─────────────────────────────────── */
 function BulkModal({ product, onClose }: { product: Product; onClose: () => void }) {
+  useBackClose(true, onClose)
   const { addItem, renameItem, openCart } = useCartStore()
   // Sólo tiene sentido "pedir por monto" en unidades que se pesan/miden de
   // verdad (kg, g, L) — para "unidad" (ej. a granel por pieza suelta) el

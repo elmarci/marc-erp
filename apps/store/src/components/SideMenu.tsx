@@ -7,6 +7,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
 import { useAuthStore } from '../authStore'
+import { useBackClose, overlayNav } from '../lib/useBackClose'
 
 const WHATSAPP_NUMBER = '51930555831'
 
@@ -37,7 +38,9 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
   })
   const offersCount = offersData?.data.data.length ?? 0
 
-  const go = (to: string) => { onClose(); navigate(to) }
+  useBackClose(open, onClose)
+
+  const go = (to: string) => { onClose(); navigate(to, overlayNav()) }
 
   const links = [
     { to: '/', icon: Home, label: 'Inicio' },

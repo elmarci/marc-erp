@@ -1,4 +1,5 @@
 import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck } from 'lucide-react'
+import { useBackClose, overlayNav } from '../lib/useBackClose'
 import { useQuery } from '@tanstack/react-query'
 import { useCartStore, cartTotal, type CartItem } from '../cartStore'
 import { useAuthStore } from '../authStore'
@@ -67,12 +68,14 @@ export function CartDrawer() {
 
   const handleCheckout = () => {
     closeCart()
-    navigate('/checkout')
+    navigate('/checkout', overlayNav())
   }
 
   const handleClearCart = () => {
     if (window.confirm('¿Vaciar todo el carrito? Se quitarán todos los productos.')) clearCart()
   }
+
+  useBackClose(isOpen, closeCart)
 
   if (!isOpen) return null
 
@@ -103,7 +106,7 @@ export function CartDrawer() {
               <ShoppingBag className="h-14 w-14 text-paper-ink-soft mb-4" aria-hidden="true" />
               <p className="text-lg font-bold text-paper-ink">Aún no tienes productos</p>
               <p className="text-sm text-paper-ink-soft mt-1 mb-5">Busca lo que necesitas o mira las ofertas de la semana.</p>
-              <button onClick={() => { closeCart(); navigate('/catalogo') }}
+              <button onClick={() => { closeCart(); navigate('/catalogo', overlayNav()) }}
                 className="w-full h-12 rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold">
                 Ver productos
               </button>
