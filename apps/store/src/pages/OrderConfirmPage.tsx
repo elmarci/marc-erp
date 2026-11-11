@@ -67,6 +67,10 @@ export function OrderConfirmPage() {
   const needsPayment = PAYS_UPFRONT.has(order.paymentMethod) && order.paymentStatus === 'PENDING'
   const whatsappMsg = `Hola! Mi pedido es *${order.orderNumber}* — quiero enviar el comprobante de pago por ${PAYMENT_LABELS[order.paymentMethod]}.`
 
+  // La comisión de tarjeta no viene en un campo propio: es lo que queda del
+  // total al quitar productos y envío (y sumar lo canjeado con puntos).
+  const cardCommission = Math.max(0, Math.round((Number(order.total) - Number(order.subtotal) - Number(order.deliveryCost) + Number(order.pointsDiscountAmount ?? 0)) * 100) / 100)
+
   return (
     <main className="max-w-2xl mx-auto px-4 py-10">
       {/* Header */}
@@ -222,6 +226,11 @@ export function OrderConfirmPage() {
           {Number(order.deliveryCost) > 0 && (
             <div className="flex justify-between text-sm text-paper-ink-soft mt-1">
               <span>Envío</span><span className="tabular-nums">S/ {Number(order.deliveryCost).toFixed(2)}</span>
+            </div>
+          )}
+          {order.paymentMethod === 'CARD_CONTRAENTREGA' && cardCommission > 0 && (
+            <div className="flex justify-between text-sm text-paper-ink-soft mt-1">
+              <span>Comisión por tarjeta</span><span className="tabular-nums">S/ {cardCommission.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between font-display font-semibold text-base text-paper-ink">

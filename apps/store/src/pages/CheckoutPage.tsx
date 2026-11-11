@@ -6,7 +6,7 @@ import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
 import { toast } from 'sonner'
-import { DELIVERY, FEES, deliveryDays, deliveryFee, deliveryStatus, money } from '../lib/storeInfo'
+import { DELIVERY, FEES, cardFee, deliveryDays, deliveryFee, deliveryStatus, money } from '../lib/storeInfo'
 
 // Quien compra sin cuenta no vuelve a escribir su nombre y WhatsApp en cada
 // pedido: se recuerdan en este equipo.
@@ -83,7 +83,8 @@ export function CheckoutPage() {
   const pointsNeeded = pointValue > 0 ? Math.ceil((total + fee) / pointValue) : 0
   const pointsToRedeem = usePoints ? Math.min(pointsAvailable, pointsNeeded) : 0
   const pointsDiscount = Math.min(pointsToRedeem * pointValue, total + fee)
-  const finalTotal = total + fee - pointsDiscount
+  const cardCommission = form.paymentMethod === 'CARD_CONTRAENTREGA' ? cardFee(total + fee - pointsDiscount) : 0
+  const finalTotal = total + fee - pointsDiscount + cardCommission
 
   // Fecha, turno, hora y quién recibe viajan al inicio de la nota del
   // pedido: así la tienda y el repartidor los ven sin cambiar la base de datos.
@@ -239,7 +240,7 @@ export function CheckoutPage() {
     { val: 'YAPE', icon: '/yape.png', title: 'Yape ahora', desc: 'Escaneas el QR y nos mandas la captura' },
     { val: 'YAPE_CONTRAENTREGA', icon: '/yape.png', title: isPickup ? 'Yape al recoger' : 'Yape al recibir', desc: 'Pagas cuando tengas tu pedido' },
     { val: 'CASH', icon: '/cash.png', title: isPickup ? 'Efectivo en tienda' : 'Efectivo al recibir', desc: 'Pagas cuando tengas tu pedido' },
-    { val: 'CARD_CONTRAENTREGA', icon: '/card.svg', title: isPickup ? 'Tarjeta en tienda' : 'Tarjeta al recibir', desc: isPickup ? 'Débito o crédito, en caja' : 'Débito o crédito. El repartidor lleva el POS' },
+    { val: 'CARD_CONTRAENTREGA', icon: '/card.svg', title: isPickup ? 'Tarjeta en tienda' : 'Tarjeta al recibir', desc: `${isPickup ? 'Débito o crédito, en caja' : 'Débito o crédito. El repartidor lleva el POS'}. Comisión de ${FEES.cardPercent} %` },
   ] as const
 
   return (
@@ -255,7 +256,7 @@ export function CheckoutPage() {
           {step(1, 'co-entrega', '¿Cómo lo recibes?')}
           <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-labelledby="co-entrega">
             {([
-              { val: 'DELIVERY', Icon: Truck, title: 'Delivery', desc: `Desde ${money(FEES.near)}` },
+              { val: 'DELIVERY', Icon: Truck, title: 'Delivery', desc: `Desde ${money(DELIVERY.costFrom)}` },
               { val: 'PICKUP', Icon: Store, title: 'Recojo en tienda', desc: 'Sin costo' },
             ] as const).map(o => {
               const active = form.deliveryType === o.val
@@ -552,6 +553,11 @@ export function CheckoutPage() {
             {isPickup && (
               <div className="flex justify-between text-paper-ink-soft">
                 <dt>Recojo en tienda</dt><dd>Sin costo</dd>
+              </div>
+            )}
+            {cardCommission > 0 && (
+              <div className="flex justify-between text-paper-ink-soft">
+                <dt>Comisión por tarjeta ({FEES.cardPercent} %)</dt><dd className="tabular-nums">{money(cardCommission)}</dd>
               </div>
             )}
             <div className="flex justify-between items-baseline pt-1.5 text-paper-ink">
