@@ -200,7 +200,7 @@ export const storeApi = {
   createOrder: (data: {
     customerName: string; customerPhone: string; customerEmail?: string;
     deliveryType: string; address?: string; district?: string;
-    reference?: string; notes?: string; paymentMethod: string;
+    reference?: string; notes?: string; paymentMethod: string; express?: boolean;
     latitude?: number; longitude?: number; pointsToRedeem?: number;
     items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
   }) =>

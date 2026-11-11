@@ -44,3 +44,70 @@ export function deliveryStatus(date = new Date()): Status {
   if (minutes < h(17)) return { now: false, title: lateTonight ? 'Próximo reparto: 5 pm a 1 am' : 'Próximo reparto: 5 a 9 pm' }
   return { now: false, title: 'Próximo reparto: mañana, 6 a 9 am' }
 }
+
+/* ── Tarifa de envío ─────────────────────────────────────────────────── */
+// Mismos valores que apps/backend/src/modules/store/deliveryFee.ts: acá solo
+// se MUESTRA el costo; el que vale es el que recalcula el servidor.
+export const STORE_ORIGIN = { lat: -12.102235, lng: -76.874449 }
+export const FEES = { near: 1.0, far: 1.5, expressExtra: 1.5, nearKm: 1, maxGpsKm: 5 }
+export const NEAR_ZONES = ['Naranjos', 'Villa Hermosa', 'Unión', 'Paradero 1']
+
+export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371, rad = Math.PI / 180
+  const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+}
+
+// km = distancia en línea recta a la tienda si el GPS sirve para cobrar
+// (hasta 5 km; más lejos, el cliente no está en el lugar de entrega).
+export function deliveryFee(input: { coords: { lat: number; lng: number } | null; zone: string; express: boolean }) {
+  const rawKm = input.coords ? distanceKm(STORE_ORIGIN, input.coords) : null
+  const km = rawKm != null && rawKm <= FEES.maxGpsKm ? rawKm : null
+  const base = km != null
+    ? (km <= FEES.nearKm ? FEES.near : FEES.far)
+    : (NEAR_ZONES.includes(input.zone) ? FEES.near : FEES.far)
+  return { fee: base + (input.express ? FEES.expressExtra : 0), km, gpsTooFar: rawKm != null && km == null }
+}
+
+/* ── Fechas y turnos de entrega ──────────────────────────────────────── */
+const DAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
+const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+const clock = (min: number) => {
+  const m = min % (24 * 60), h24 = Math.floor(m / 60), mm = m % 60
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+  return `${h12}:${String(mm).padStart(2, '0')} ${h24 < 12 ? 'am' : 'pm'}`
+}
+
+export type DeliveryTurn = { key: 'M' | 'T'; name: string; range: string; times: string[] }
+export type DeliveryDay = { offset: number; label: string; date: string; turns: DeliveryTurn[] }
+
+// Hoy, mañana y pasado mañana (hora de Lima) con sus turnos y horas cada 30
+// minutos. Para hoy solo quedan las horas que todavía se pueden cumplir
+// (desde 45 minutos más adelante); si no queda ninguna, el día sale sin turnos.
+export function deliveryDays(now = new Date()): DeliveryDay[] {
+  const lima = new Date(now.getTime() - 5 * 60 * 60 * 1000)
+  const nowMin = lima.getUTCHours() * 60 + lima.getUTCMinutes()
+  return [0, 1, 2].map(offset => {
+    const d = new Date(lima.getTime() + offset * 24 * 60 * 60 * 1000)
+    const dow = d.getUTCDay()
+    const late = dow === 5 || dow === 6
+    const earliest = offset === 0 ? nowMin + 45 : 0
+    const slots = (from: number, to: number) => {
+      const out: string[] = []
+      for (let t = from; t <= to - 30; t += 30) if (t >= earliest) out.push(clock(t))
+      return out
+    }
+    const turns: DeliveryTurn[] = [
+      { key: 'M' as const, name: 'Mañana', range: '6 a 9 am', times: slots(6 * 60, 9 * 60) },
+      { key: 'T' as const, name: late ? 'Tarde y noche' : 'Tarde', range: late ? '5 pm a 1 am' : '5 a 9 pm', times: slots(17 * 60, late ? 25 * 60 : 21 * 60) },
+    ].filter(t => t.times.length > 0)
+    return {
+      offset,
+      label: offset === 0 ? 'Hoy' : offset === 1 ? 'Mañana' : 'Pasado mañana',
+      date: `${DAYS[dow]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`,
+      turns,
+    }
+  })
+}
