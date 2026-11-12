@@ -7,6 +7,7 @@ import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
 import { toast } from 'sonner'
 import { DELIVERY, FEES, cardFee, deliveryDays, deliveryFee, deliveryStatus, money } from '../lib/storeInfo'
+import { rememberActiveOrder } from '../components/ActiveOrderBanner'
 
 // Quien compra sin cuenta no vuelve a escribir su nombre y WhatsApp en cada
 // pedido: se recuerdan en este equipo.
@@ -173,6 +174,7 @@ export function CheckoutPage() {
         }).catch(() => {})
       }
       try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ name: form.customerName, phone: form.customerPhone })) } catch { /* sin almacenamiento */ }
+      rememberActiveOrder(res.data.data.orderNumber)
       clearCart()
       navigate(`/pedido/${res.data.data.orderNumber}`, { replace: true })
     },

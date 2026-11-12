@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { ActiveOrderBanner } from '../components/ActiveOrderBanner'
 import { Link } from 'react-router-dom'
 import { ChevronRight, Clock, LayoutGrid, MapPin, ShoppingBasket, Truck, Wallet, WifiOff } from 'lucide-react'
 import { storeApi } from '../api'
@@ -48,6 +49,9 @@ export function HomePage() {
 
   return (
     <main className="pb-6">
+      {/* Pedido en curso hecho desde este celular: lo más importante si existe. */}
+      <ActiveOrderBanner className={`${WRAP} pt-3.5`} />
+
       {/* Reparto: lo primero que un vecino nuevo necesita saber antes de
           llenar el carrito — si llegamos a su zona, cuándo y cuánto cuesta. */}
       <section className={`${WRAP} pt-3.5`} aria-label="Reparto">

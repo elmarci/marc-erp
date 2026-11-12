@@ -389,7 +389,8 @@ export function TrackOrderPage() {
 
       <div className="space-y-4">
         {orders.map(order => {
-          const status = STATUS[order.status] ?? STATUS.PENDING
+          const onTheWay = order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && (order.deliveryStatus === 'EN_CAMINO' || order.deliveryStatus === 'RECOGIDO')
+          const status = onTheWay ? { label: 'En camino', color: 'text-brand-blue-700', emoji: '🛵' } : STATUS[order.status] ?? STATUS.PENDING
           return (
             <div key={order.id} className="bg-white rounded-2xl overflow-hidden border border-paper-line shadow-card hover:shadow-md transition-shadow">
               <Link to={`/pedido/${order.orderNumber}`} className="block p-4 hover:bg-paper-surface transition-colors">
