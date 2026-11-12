@@ -1,11 +1,18 @@
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, Clock, Package, Truck, XCircle, ChevronRight, MessageCircle } from 'lucide-react'
-import { storeApi } from '../api'
-import { useEffect } from 'react'
+import {
+  Clock, CheckCircle2, Package, PackageCheck, Bike, Home, XCircle, ChevronRight, ChevronDown,
+  MessageCircle, MapPin, CalendarClock, User, Star, Zap,
+} from 'lucide-react'
+import { storeApi, type OrderTracking, type StoreOrder, type TrackingStage } from '../api'
 import { io } from 'socket.io-client'
+import { whatsappLink } from '../lib/storeInfo'
 
-const WHATSAPP_NUMBER = '51930555831'
+// El mapa (Leaflet) pesa ~45 KB: solo se descarga cuando el pedido ya va en
+// camino, nunca en el resto de la tienda.
+const TrackingMap = lazy(() => import('../components/tracking/TrackingMap'))
+
 const API_BASE = import.meta.env['VITE_API_URL']?.replace('/api/v1', '') ?? 'http://localhost:3001'
 
 const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega', CARD_CONTRAENTREGA: 'Tarjeta al recibir' }
@@ -15,26 +22,76 @@ const PAYMENT_ICONS: Record<string, string> = { YAPE: '/yape.png', PLIN: '/plin.
 // que nunca quedan "pendientes de pago" en este sentido.
 const PAYS_UPFRONT = new Set(['YAPE', 'PLIN'])
 
-const STATUS_FLOW = [
-  { key: 'PENDING', icon: Clock, label: 'Recibido', desc: 'Tu pedido fue recibido y está esperando confirmación' },
-  { key: 'CONFIRMED', icon: CheckCircle, label: 'Confirmado', desc: 'Tu pedido fue confirmado y lo estamos preparando' },
-  { key: 'PREPARING', icon: Package, label: 'Preparando', desc: 'Estamos preparando tu pedido' },
-  { key: 'READY', icon: CheckCircle, label: 'Listo', desc: 'Tu pedido está listo para entrega o recojo' },
-  { key: 'DELIVERED', icon: Truck, label: 'Entregado', desc: '¡Tu pedido fue entregado!' },
-]
+const ORDER: TrackingStage[] = ['RECIBIDO', 'CONFIRMADO', 'PREPARANDO', 'LISTO', 'EN_CAMINO', 'ENTREGADO']
+const rank = (s: TrackingStage) => ORDER.indexOf(s)
+
+const hhmm = (iso: string | null | undefined) => iso
+  ? new Date(iso).toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Lima' }).replace(/\s?([ap])\.?\s?m\.?/i, ' $1m')
+  : null
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+// Respaldo para un backend que todavía no manda `tracking` (pedido viejo en
+// caché o API sin actualizar): se arma lo mínimo desde el estado.
+function fallbackTracking(o: StoreOrder): OrderTracking {
+  const map: Record<string, TrackingStage> = { PENDING: 'RECIBIDO', CONFIRMED: 'CONFIRMADO', PREPARING: 'PREPARANDO', READY: 'LISTO', DELIVERED: 'ENTREGADO', CANCELLED: 'CANCELADO' }
+  return {
+    stage: map[o.status] ?? 'RECIBIDO', express: false, schedule: null, receiver: null, etaMinutes: null, kmLeft: null,
+    store: { lat: -12.102235, lng: -76.874449 }, destination: null, riderLocation: null, rider: null,
+    times: { recibido: o.createdAt, asignado: null, recogido: null, enCamino: null, entregado: null },
+  }
+}
+
+type Hero = { Icon: typeof Clock; title: string; sub: string; tone: 'blue' | 'green' | 'red' }
+
+function heroFor(t: OrderTracking, o: StoreOrder, isDelivery: boolean, needsPayment: boolean): Hero {
+  const rider = t.rider?.nombre
+  switch (t.stage) {
+    case 'CANCELADO': return { Icon: XCircle, title: 'Pedido cancelado', sub: 'Si tienes dudas, escríbenos por WhatsApp.', tone: 'red' }
+    case 'ENTREGADO': return { Icon: Home, title: isDelivery ? '¡Pedido entregado!' : '¡Pedido recogido!', sub: `Gracias por comprar en Tiendas Marc${t.times.entregado ? ` · ${hhmm(t.times.entregado)}` : ''}.`, tone: 'green' }
+    case 'EN_CAMINO': return o.deliveryStatus === 'RECOGIDO'
+      ? { Icon: Bike, title: 'Tu pedido salió de la tienda', sub: `${rider ?? 'Tu repartidor'} ya lo tiene y está por salir.`, tone: 'blue' }
+      : { Icon: Bike, title: 'Tu pedido va en camino', sub: `${rider ?? 'Tu repartidor'} se dirige a tu dirección.`, tone: 'blue' }
+    case 'LISTO': return isDelivery
+      ? { Icon: PackageCheck, title: 'Tu pedido está listo', sub: rider ? `${rider} lo recoge en un momento.` : 'Estamos asignando a tu repartidor.', tone: 'blue' }
+      : { Icon: PackageCheck, title: 'Listo para recoger', sub: 'Acércate a la tienda con tu número de pedido.', tone: 'blue' }
+    case 'PREPARANDO': return { Icon: Package, title: 'Estamos preparando tu pedido', sub: 'Elegimos tus productos uno por uno.', tone: 'blue' }
+    case 'CONFIRMADO': return { Icon: CheckCircle2, title: 'Pedido confirmado', sub: 'En breve empezamos a prepararlo.', tone: 'blue' }
+    default: return needsPayment
+      ? { Icon: Clock, title: 'Falta verificar tu pago', sub: 'Envíanos tu comprobante y lo confirmamos.', tone: 'blue' }
+      : { Icon: Clock, title: 'Recibimos tu pedido', sub: 'En unos minutos lo confirmamos.', tone: 'blue' }
+  }
+}
+
+// Cuenta "hace X s" sin volver a pedir datos.
+function useNow(ms: number) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), ms); return () => clearInterval(id) }, [ms])
+  return now
+}
+
+function ago(iso: string, now: number) {
+  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000))
+  return s < 60 ? `hace ${s} s` : `hace ${Math.round(s / 60)} min`
+}
 
 export function OrderConfirmPage() {
   const { orderNumber } = useParams<{ orderNumber: string }>()
   const queryClient = useQueryClient()
+  const now = useNow(5000)
 
   const { data, isLoading } = useQuery({
     queryKey: ['order', orderNumber],
     queryFn: () => storeApi.getOrder(orderNumber!),
     enabled: !!orderNumber,
-    refetchInterval: 5000, // Poll every 5 seconds
+    // En camino se refresca seguido (el repartidor manda su GPS cada 15 s);
+    // terminado ya no hace falta.
+    refetchInterval: (q) => {
+      const st = q.state.data?.data.data.tracking?.stage
+      return st === 'ENTREGADO' || st === 'CANCELADO' ? false : st === 'EN_CAMINO' ? 10000 : 15000
+    },
   })
 
-  // WebSocket for real-time updates
+  // Cambios de estado al instante (el staff o el repartidor avanzan el pedido).
   useEffect(() => {
     if (!orderNumber) return
     const socket = io(API_BASE, { transports: ['websocket', 'polling'] })
@@ -50,53 +107,128 @@ export function OrderConfirmPage() {
     <div className="flex items-center justify-center min-h-[60vh]">
       <div className="text-center space-y-3">
         <div className="h-10 w-10 border-2 border-brand-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-paper-ink-ghost">Cargando tu pedido...</p>
+        <p className="text-paper-ink-soft">Cargando tu pedido…</p>
       </div>
     </div>
   )
 
   if (!order) return (
-    <div className="text-center py-20">
-      <p className="text-paper-ink-ghost mb-4">Pedido no encontrado</p>
-      <Link to="/" className="text-brand-blue-600">Volver a la tienda</Link>
+    <div className="text-center py-20 px-4">
+      <p className="text-paper-ink-soft mb-4">Pedido no encontrado</p>
+      <Link to="/" className="text-brand-blue-600 font-bold">Volver a la tienda</Link>
     </div>
   )
 
-  const isCancelled = order.status === 'CANCELLED'
-  const currentStep = isCancelled ? -1 : STATUS_FLOW.findIndex(s => s.key === order.status)
+  const t = order.tracking ?? fallbackTracking(order)
+  const isDelivery = order.deliveryType === 'DELIVERY'
+  const isCancelled = t.stage === 'CANCELADO'
   const needsPayment = PAYS_UPFRONT.has(order.paymentMethod) && order.paymentStatus === 'PENDING'
   const whatsappMsg = `Hola! Mi pedido es *${order.orderNumber}* — quiero enviar el comprobante de pago por ${PAYMENT_LABELS[order.paymentMethod]}.`
+  const hero = heroFor(t, order, isDelivery, needsPayment)
+  const r = rank(t.stage)
 
   // La comisión de tarjeta no viene en un campo propio: es lo que queda del
   // total al quitar productos y envío (y sumar lo canjeado con puntos).
   const cardCommission = Math.max(0, Math.round((Number(order.total) - Number(order.subtotal) - Number(order.deliveryCost) + Number(order.pointsDiscountAmount ?? 0)) * 100) / 100)
 
+  // Barra de avance: 5 tramos de confirmado a entregado.
+  const BAR: TrackingStage[] = ['CONFIRMADO', 'PREPARANDO', 'LISTO', 'EN_CAMINO', 'ENTREGADO']
+  const barLabels = isDelivery ? ['Confirmado', 'Preparando', 'Listo', 'En camino', 'Entregado'] : ['Confirmado', 'Preparando', 'Listo', 'Recogido']
+  const bar = isDelivery ? BAR : ['CONFIRMADO', 'PREPARANDO', 'LISTO', 'ENTREGADO'] as TrackingStage[]
+
+  // Línea de tiempo: lo que ya pasó con su hora, el paso actual resaltado y lo
+  // que falta en gris.
+  type Step = { key: string; label: string; done: boolean; time: string | null; note?: string }
+  const steps: Step[] = [
+    { key: 'rec', label: 'Pedido recibido', done: true, time: hhmm(t.times.recibido) },
+    { key: 'conf', label: needsPayment && r < 1 ? 'Pago verificado y pedido confirmado' : 'Pedido confirmado', done: r >= 1, time: null },
+    { key: 'prep', label: 'Preparando tu pedido', done: r >= 2, time: null },
+    ...(isDelivery ? [{ key: 'rider', label: t.rider ? `Repartidor asignado: ${t.rider.nombre}` : 'Repartidor asignado', done: !!t.rider, time: hhmm(t.times.asignado) }] : []),
+    { key: 'listo', label: isDelivery ? 'Listo para salir' : 'Listo para recoger', done: r >= 3, time: null },
+    ...(isDelivery ? [{ key: 'camino', label: 'En camino a tu dirección', done: r >= 4 && order.deliveryStatus !== 'RECOGIDO', time: hhmm(t.times.enCamino ?? t.times.recogido) }] : []),
+    { key: 'fin', label: isDelivery ? 'Entregado' : 'Recogido en tienda', done: r >= 5, time: hhmm(t.times.entregado) },
+  ]
+  const current = steps.findIndex(s => !s.done)
+
+  const showMap = isDelivery && t.stage === 'EN_CAMINO' && (t.destination || t.riderLocation)
+  const helpMsg = `Hola, consulto por mi pedido *${order.orderNumber}*${t.rider ? ` (repartidor ${t.rider.nombre})` : ''}.`
+
+  const card = 'bg-white rounded-2xl shadow-card'
+  const section = 'text-[13px] font-bold uppercase tracking-wide text-paper-ink-soft'
+
   return (
-    <main className="max-w-2xl mx-auto px-4 py-10">
-      {/* Header */}
-      <div className="text-center mb-8">
-        {isCancelled ? (
-          <>
-            <div className="inline-flex h-20 w-20 bg-brand-magenta-50 border-2 border-brand-magenta-400 rounded-full items-center justify-center mb-4">
-              <XCircle className="h-10 w-10 text-brand-magenta-600" />
-            </div>
-            <h1 className="text-2xl font-extrabold text-paper-ink">Pedido cancelado</h1>
-          </>
-        ) : (
-          <>
-            <div className="inline-flex h-20 w-20 bg-white border-2 border-brand-blue-600 rounded-full items-center justify-center mb-4 relative animate-stamp-in">
-              <CheckCircle className="h-10 w-10 text-brand-blue-600" />
-            </div>
-            <h1 className="text-2xl font-extrabold mb-1 text-paper-ink">¡Pedido recibido!</h1>
-            <p className="text-paper-ink-soft">Número de pedido</p>
-            <p className="text-3xl font-extrabold text-brand-blue-700 mt-1">{order.orderNumber}</p>
-          </>
-        )}
+    <main className="max-w-xl mx-auto px-4 pt-4 pb-10 space-y-3">
+      <div className="flex items-center justify-between">
+        <Link to="/mis-pedidos" className="text-sm font-bold text-brand-blue-600 h-11 flex items-center">← Mis pedidos</Link>
+        <span className="text-sm font-bold text-paper-ink tabular-nums">{order.orderNumber}</span>
       </div>
 
-      {/* Payment alert - only for Yape/Plin */}
+      {/* Estado principal + tiempo de llegada */}
+      <section className={`${card} p-4`} aria-live="polite">
+        <div className="flex items-start gap-3">
+          <span className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${
+            hero.tone === 'red' ? 'bg-brand-magenta-50 text-brand-magenta-600' : hero.tone === 'green' ? 'bg-brand-green-100 text-brand-green-700' : 'bg-brand-blue-50 text-brand-blue-600'}`}>
+            <hero.Icon className="h-6 w-6" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg font-extrabold text-paper-ink leading-snug">{hero.title}</h1>
+            <p className="text-sm text-paper-ink-soft leading-snug mt-0.5">{hero.sub}</p>
+          </div>
+        </div>
+
+        {!isCancelled && isDelivery && t.stage !== 'ENTREGADO' && (
+          <div className="mt-3.5 rounded-xl bg-paper-surface px-3.5 py-3 flex items-center gap-3">
+            {t.stage === 'EN_CAMINO' && t.etaMinutes != null ? (
+              <>
+                <span className="text-[28px] leading-none font-extrabold text-brand-blue-700 tabular-nums">{t.etaMinutes}<span className="text-base ml-0.5">min</span></span>
+                <span className="text-sm text-paper-ink-soft leading-snug">
+                  Llegada aprox. <b className="text-paper-ink">{hhmm(new Date(Date.now() + t.etaMinutes * 60000).toISOString())}</b>
+                  {t.kmLeft != null && <><br />a {t.kmLeft.toFixed(1)} km de tu casa</>}
+                </span>
+              </>
+            ) : t.express ? (
+              <>
+                <Zap className="h-6 w-6 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <span className="text-sm text-paper-ink-soft leading-snug"><b className="text-paper-ink">Express:</b> sale apenas esté listo. Llega aprox. en 20 a 30 min.</span>
+              </>
+            ) : t.schedule ? (
+              <>
+                <CalendarClock className="h-6 w-6 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <span className="text-sm text-paper-ink-soft leading-snug"><b className="text-paper-ink">Entrega programada:</b> {t.schedule}</span>
+              </>
+            ) : (
+              <>
+                <Clock className="h-6 w-6 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <span className="text-sm text-paper-ink-soft leading-snug">Te mostramos el tiempo de llegada cuando salga de la tienda.</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {!isCancelled && (
+          <div className="mt-4">
+            <div className="flex gap-1" aria-hidden="true">
+              {bar.map(s => {
+                const done = r >= rank(s)
+                const active = r === rank(s) - 1 // el tramo que viene late
+                return (
+                  <span key={s} className={`h-1.5 flex-1 rounded-full ${done ? 'bg-brand-blue-600' : active ? 'bg-brand-blue-200 animate-pulse' : 'bg-paper-line'}`} />
+                )
+              })}
+            </div>
+            <div className="flex mt-1.5">
+              {barLabels.map((l, i) => (
+                <span key={l} className={`flex-1 text-[11px] leading-tight text-center ${r >= rank(bar[i]) ? 'text-paper-ink font-bold' : 'text-paper-ink-soft'}`}>{l}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+
+      {/* Pago pendiente (Yape/Plin): va arriba de todo lo demás */}
       {needsPayment && !isCancelled && (
-        <div className="bg-white rounded-2xl shadow-card p-5 mb-6">
+        <div className="bg-white rounded-2xl shadow-card p-5">
           <h3 className="font-bold text-lg mb-3 text-paper-ink flex items-center gap-2">
             <img src={PAYMENT_ICONS[order.paymentMethod]} alt="" className="h-7 w-7 rounded-lg object-contain" />
             Realiza tu pago por {PAYMENT_LABELS[order.paymentMethod]}
@@ -115,7 +247,7 @@ export function OrderConfirmPage() {
               <p className="text-2xl font-extrabold text-brand-blue-700">930 555 831</p>
             </div>
           )}
-          <a href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(whatsappMsg)}`}
+          <a href={whatsappLink(whatsappMsg)}
             target="_blank" rel="noopener noreferrer"
             className="flex items-center justify-center gap-3 bg-[#25D366] text-[#0B3B1E] font-bold py-4 rounded-xl hover:opacity-90 transition-opacity">
             <MessageCircle className="h-5 w-5" />
@@ -127,51 +259,122 @@ export function OrderConfirmPage() {
         </div>
       )}
 
-      {/* Status timeline */}
-      {!isCancelled && (
-        <div className="bg-white rounded-2xl shadow-card p-5 mb-4 border border-paper-line">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-paper-ink">Estado del pedido</h3>
-            <span className="text-xs text-paper-ink-ghost animate-pulse">• actualizando</span>
+      {/* Mapa en vivo: solo mientras va en camino */}
+      {showMap && (
+        <section className={`${card} overflow-hidden`}>
+          <Suspense fallback={<div className="h-[220px] bg-paper-surface animate-pulse" />}>
+            <TrackingMap store={t.store} destination={t.destination} rider={t.riderLocation} />
+          </Suspense>
+          <div className="px-4 py-2.5 flex items-center gap-2 text-[13px] text-paper-ink-soft">
+            <span className={`h-2 w-2 rounded-full shrink-0 ${t.riderLocation ? 'bg-brand-green-500 animate-pulse' : 'bg-paper-line'}`} />
+            {t.riderLocation
+              ? <>Ubicación del repartidor en vivo · {ago(t.riderLocation.at, now)}</>
+              : <>Ubicación del repartidor no disponible por ahora</>}
           </div>
-          <div className="space-y-0">
-            {STATUS_FLOW.map((s, i) => {
-              const isDone = i < currentStep
-              const isCurrent = i === currentStep
-              const StatusIcon = s.icon
-              return (
-                <div key={s.key} className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className={`h-9 w-9 rounded-full flex items-center justify-center transition-all ${
-                      isDone ? 'bg-brand-blue-500' : isCurrent ? 'bg-brand-blue-600 ring-4 ring-brand-blue-100' : 'bg-paper-surface border border-paper-line'
-                    }`}>
-                      {isDone ? <CheckCircle className="h-5 w-5 text-white" /> :
-                       <StatusIcon className={`h-4 w-4 ${isCurrent ? 'text-white' : 'text-paper-ink-ghost'}`} />}
-                    </div>
-                    {i < STATUS_FLOW.length - 1 && (
-                      <div className={`w-0.5 h-8 transition-all ${isDone ? 'bg-brand-blue-500' : 'bg-paper-line'}`} />
-                    )}
-                  </div>
-                  <div className="pb-6 flex-1">
-                    <p className={`font-semibold text-sm ${isCurrent ? 'text-brand-blue-700' : isDone ? 'text-paper-ink' : 'text-paper-ink-ghost'}`}>
-                      {s.label}
-                      {isCurrent && <span className="ml-2 text-xs bg-paper-surface text-paper-ink-soft px-2 py-0.5 rounded-full">Actual</span>}
-                    </p>
-                    {isCurrent && <p className="text-xs text-paper-ink-ghost mt-0.5">{s.desc}</p>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        </section>
       )}
 
-      {/* Tu ticket — mismo formato de columnas que el ticket físico
-          (Cant./Unid./Producto/P.Unit/Total), con la foto de cada producto.
-          Esta es la pantalla donde el cliente de verdad puede ver/guardar
-          su comprobante — antes solo había un resumen de 2 columnas sin
-          nombre de "ticket" en ningún lado. */}
-      <div className="bg-white rounded-2xl shadow-card mb-4 border border-paper-line overflow-hidden">
+      {/* Repartidor asignado */}
+      {isDelivery && !isCancelled && t.stage !== 'ENTREGADO' && (
+        <section className={`${card} p-4`}>
+          <h2 className={section}>Tu repartidor</h2>
+          {t.rider ? (
+            <div className="mt-2.5 flex items-center gap-3">
+              <span className="h-12 w-12 rounded-full bg-brand-blue-600 text-white font-extrabold flex items-center justify-center shrink-0">{t.rider.iniciales}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-paper-ink leading-tight flex items-center gap-1.5">
+                  {t.rider.nombre}
+                  {t.rider.calificacion != null && (
+                    <span className="inline-flex items-center gap-0.5 text-[13px] font-bold text-paper-ink-soft">
+                      <Star className="h-3.5 w-3.5 fill-brand-sun-400 text-brand-sun-500" aria-hidden="true" />{t.rider.calificacion.toFixed(1)}
+                    </span>
+                  )}
+                </p>
+                <p className="text-[13px] text-paper-ink-soft leading-snug truncate">
+                  {[t.rider.moto ?? 'Moto', t.rider.placa].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+              <a href={whatsappLink(helpMsg)} target="_blank" rel="noopener noreferrer" aria-label="Escribir a la tienda por WhatsApp"
+                className="h-11 w-11 rounded-full bg-[#25D366] text-[#0B3B1E] flex items-center justify-center shrink-0">
+                <MessageCircle className="h-5 w-5" />
+              </a>
+            </div>
+          ) : (
+            <div className="mt-2.5 flex items-center gap-3">
+              <span className="h-12 w-12 rounded-full bg-paper-surface flex items-center justify-center shrink-0">
+                <Bike className="h-5 w-5 text-paper-ink-soft" aria-hidden="true" />
+              </span>
+              <p className="text-sm text-paper-ink-soft leading-snug">Aún no tiene repartidor. Aquí verás quién lo lleva apenas se asigne.</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Seguimiento paso a paso */}
+      {!isCancelled && (
+        <section className={`${card} p-4`}>
+          <h2 className={section}>Seguimiento</h2>
+          <ol className="mt-3">
+            {steps.map((s, i) => {
+              const isCurrent = i === current
+              const last = i === steps.length - 1
+              return (
+                <li key={s.key} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <span className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${
+                      s.done ? 'bg-brand-blue-600' : isCurrent ? 'bg-white border-2 border-brand-blue-600' : 'bg-white border-2 border-paper-line'}`}>
+                      {s.done ? <CheckCircle2 className="h-4 w-4 text-white" aria-hidden="true" />
+                        : isCurrent ? <span className="h-2 w-2 rounded-full bg-brand-blue-600 animate-pulse" /> : null}
+                    </span>
+                    {!last && <span className={`w-0.5 flex-1 min-h-[18px] ${s.done ? 'bg-brand-blue-600' : 'bg-paper-line'}`} />}
+                  </div>
+                  <div className={`flex-1 flex justify-between gap-2 ${last ? '' : 'pb-3.5'}`}>
+                    <p className={`text-sm leading-6 ${s.done ? 'text-paper-ink font-semibold' : isCurrent ? 'text-brand-blue-700 font-bold' : 'text-paper-ink-soft'}`}>
+                      {s.label}
+                      {isCurrent && <span className="sr-only"> (en curso)</span>}
+                    </p>
+                    {s.time && s.done && <span className="text-[13px] text-paper-ink-soft tabular-nums leading-6 shrink-0">{s.time}</span>}
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        </section>
+      )}
+
+      {/* Datos de entrega */}
+      <section className={`${card} p-4 space-y-2.5`}>
+        <h2 className={section}>{isDelivery ? 'Entrega' : 'Recojo'}</h2>
+        <p className="flex gap-2.5 text-sm text-paper-ink leading-snug">
+          <MapPin className="h-[18px] w-[18px] text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>{isDelivery ? <>{order.address}{order.district ? `, ${order.district}` : ''}{order.reference && <span className="block text-paper-ink-soft">{order.reference}</span>}</> : 'Tiendas Marc — Av. Manchay, Pachacamac'}</span>
+        </p>
+        {isDelivery && (t.schedule || t.express) && (
+          <p className="flex gap-2.5 text-sm text-paper-ink leading-snug">
+            <CalendarClock className="h-[18px] w-[18px] text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <span>{t.express ? 'Express, lo antes posible' : cap(t.schedule!)}</span>
+          </p>
+        )}
+        <p className="flex gap-2.5 text-sm text-paper-ink leading-snug">
+          <User className="h-[18px] w-[18px] text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+          <span>Recibe: {t.receiver && t.receiver !== 'el mismo cliente' ? t.receiver : `${order.customerName} · ${order.customerPhone}`}</span>
+        </p>
+        <p className="flex gap-2.5 text-sm text-paper-ink leading-snug items-center">
+          <img src={PAYMENT_ICONS[order.paymentMethod]} alt="" className="h-[18px] w-[18px] rounded object-contain shrink-0" />
+          <span>{PAYMENT_LABELS[order.paymentMethod]} · {order.paymentStatus === 'VERIFIED' ? 'pago verificado' : !PAYS_UPFRONT.has(order.paymentMethod) ? 'pagas al recibir' : 'pendiente de verificación'}</span>
+        </p>
+      </section>
+
+      {/* Detalle / ticket, plegado para no alargar la pantalla */}
+      <details className={`${card} group overflow-hidden`}>
+        <summary className="list-none cursor-pointer px-4 h-14 flex items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="text-sm font-bold text-paper-ink">Detalle del pedido · {order.items.length} producto{order.items.length === 1 ? '' : 's'}</span>
+          <span className="flex items-center gap-1.5 text-sm font-extrabold text-paper-ink tabular-nums">
+            S/ {Number(order.total).toFixed(2)}
+            <ChevronDown className="h-4 w-4 text-paper-ink-soft transition-transform group-open:rotate-180" aria-hidden="true" />
+          </span>
+        </summary>
+      <div className="border-t border-paper-line overflow-hidden">
         <div className="h-2 shrink-0" style={{ backgroundImage: 'radial-gradient(circle, rgba(32,30,29,.18) 1.5px, transparent 1.5px)', backgroundSize: '10px 10px', backgroundPosition: 'center' }} />
         <div className="p-5">
         <div className="flex flex-col items-center text-center mb-4">
@@ -249,25 +452,25 @@ export function OrderConfirmPage() {
         </div>
         </div>
       </div>
+      </details>
 
-      {/* Contact */}
-      <div className="bg-white rounded-2xl shadow-card p-5 mb-6 border border-paper-line flex items-center justify-between">
+      <section className={`${card} p-4 flex items-center justify-between gap-3`}>
         <div>
-          <p className="font-semibold text-sm text-paper-ink">¿Necesitas ayuda?</p>
-          <p className="text-xs text-paper-ink-ghost mt-0.5">Escríbenos por WhatsApp</p>
+          <p className="font-bold text-sm text-paper-ink">¿Necesitas ayuda?</p>
+          <p className="text-[13px] text-paper-ink-soft mt-0.5">Escríbenos con tu número de pedido</p>
         </div>
-        <a href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-2 bg-[#25D366] text-[#0B3B1E] font-bold px-4 h-12 rounded-xl text-sm">
+        <a href={whatsappLink(helpMsg)} target="_blank" rel="noopener noreferrer"
+          className="flex items-center gap-2 bg-[#25D366] text-[#0B3B1E] font-bold px-4 h-11 rounded-xl text-sm shrink-0">
           <MessageCircle className="h-4 w-4" />WhatsApp
         </a>
-      </div>
+      </section>
 
-      <div className="flex gap-3">
-        <Link to="/" className="flex-1 text-center bg-white hover:bg-paper-surface border border-paper-line font-medium py-3.5 rounded-xl transition-colors text-sm flex items-center justify-center gap-2 text-paper-ink-soft">
+      <div className="flex gap-2.5 pt-1">
+        <Link to="/" className="flex-1 bg-white shadow-card font-bold h-12 rounded-xl text-sm flex items-center justify-center text-paper-ink">
           Seguir comprando
         </Link>
-        <Link to="/mis-pedidos" className="flex-1 text-center bg-brand-blue-600 hover:bg-brand-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
-          Ver mis pedidos <ChevronRight className="h-4 w-4" />
+        <Link to="/mis-pedidos" className="flex-1 bg-brand-blue-600 text-white font-bold h-12 rounded-xl text-sm flex items-center justify-center gap-1">
+          Mis pedidos <ChevronRight className="h-4 w-4" />
         </Link>
       </div>
     </main>
