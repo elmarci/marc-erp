@@ -12,6 +12,7 @@ import jwt from 'jsonwebtoken';
 
 import { env } from './config/env';
 import { setIo } from './config/socket';
+import { productThumb } from './config/thumbs';
 import { logger } from './config/logger';
 import { connectDatabase, disconnectDatabase, prisma } from './database/client';
 import { connectRedis, redis } from './config/redis';
@@ -108,7 +109,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', (_req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
-}, express.static(path.join(process.cwd(), 'uploads')));
+}, productThumb, express.static(path.join(process.cwd(), 'uploads'), {
+  // Las fotos de producto llevan nombre único (uuid): si cambian, cambia el
+  // nombre. Se pueden guardar 7 días en el celular sin volver a pedirlas.
+  maxAge: '7d',
+}));
 
 if (env.NODE_ENV !== 'test') {
   app.use(morgan('combined', {
