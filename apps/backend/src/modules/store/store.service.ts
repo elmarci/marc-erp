@@ -10,6 +10,50 @@ import { buildTracking } from './orderTracking';
 import { discountPrices, packInfo, pickPrice } from './storePricing';
 import { orderAccessKey, isValidOrderKey } from './orderAccess';
 
+// Números de pedido ORD-00001, ORD-00002…: los reparte un contador atómico en
+// Redis, así dos pedidos en el mismo instante nunca reciben el mismo número.
+// Antes era count()+1 y en ese caso uno fallaba con "order_number ya existe"
+// (28 de 30 pedidos simultáneos en la prueba de carga del 2026-11-13).
+// Si el contador no existe o quedó atrás (Redis reiniciado), se alinea con el
+// mayor número guardado en la base y se reintenta. Sin Redis, se usa la base.
+const ORDER_SEQ_KEY = 'store:order:seq';
+
+async function maxOrderNumberInDb(): Promise<number> {
+  const rows = await prisma.$queryRaw<{ max: bigint | null }[]>`
+    SELECT max(NULLIF(regexp_replace(order_number, '\\D', '', 'g'), '')::bigint) AS max FROM store_orders`;
+  return Number(rows[0]?.max ?? 0);
+}
+
+async function nextOrderSeq(): Promise<number> {
+  try {
+    return await redis.incr(ORDER_SEQ_KEY);
+  } catch {
+    return (await maxOrderNumberInDb()) + 1;
+  }
+}
+
+async function resyncOrderSeq(): Promise<void> {
+  const max = await maxOrderNumberInDb();
+  // Solo sube el contador, nunca lo baja (otro proceso pudo avanzarlo).
+  await redis.eval(
+    "local c = tonumber(redis.call('GET', KEYS[1]) or '0') if c < tonumber(ARGV[1]) then redis.call('SET', KEYS[1], ARGV[1]) end return 1",
+    1, ORDER_SEQ_KEY, String(max),
+  ).catch(() => {});
+}
+
+async function createWithUniqueNumber<T>(create: (orderNumber: string) => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    const seq = await nextOrderSeq();
+    try {
+      return await create(`ORD-${String(seq).padStart(5, '0')}`);
+    } catch (err) {
+      const isDuplicate = (err as { code?: string }).code === 'P2002';
+      if (!isDuplicate || attempt >= 10) throw err;
+      await resyncOrderSeq();
+    }
+  }
+}
+
 export class StoreService {
 
   // Mismo criterio que storeAuthService.findOrCreateErpCustomer al
@@ -406,11 +450,11 @@ export class StoreService {
       ? [`COMISIÓN TARJETA ${CARD_FEE_PERCENT}%: S/ ${cardCommission.toFixed(2)}`, data.notes].filter(Boolean).join(' | ')
       : data.notes;
 
-    // Generate order number
-    const count = await prisma.storeOrder.count();
-    const orderNumber = `ORD-${String(count + 1).padStart(5, '0')}`;
-
-    const order = await prisma.storeOrder.create({
+    // Número de pedido: el siguiente al último. Antes era count()+1, y dos
+    // pedidos en el mismo instante recibían el mismo número: uno fallaba con
+    // "order_number ya existe" (28 de 30 en la prueba de carga). Ahora, si
+    // choca, se reintenta con el siguiente número.
+    const createWithNumber = (orderNumber: string) => prisma.storeOrder.create({
       data: {
         orderNumber,
         customerName: data.customerName,
@@ -434,6 +478,7 @@ export class StoreService {
       },
       include: { items: true },
     });
+    const order = await createWithUniqueNumber(createWithNumber);
 
     emitEvent('store:new-order', {
       id: order.id, orderNumber: order.orderNumber,

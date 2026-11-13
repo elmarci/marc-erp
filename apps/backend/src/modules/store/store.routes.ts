@@ -4,6 +4,7 @@ import { storeService } from './store.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { storeAuthMiddleware, requireStoreAuth } from './store-auth.routes';
 import { basketService } from '../baskets/basket.service';
+import { cachedCatalog } from '../../config/catalogCache';
 import { publicComplaintsRouter, adminComplaintsRouter } from './complaints';
 
 const router = Router();
@@ -12,7 +13,7 @@ const router = Router();
 
 router.get('/display-settings', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = await storeService.getDisplaySettings();
+    const data = await cachedCatalog('display', 300, () => storeService.getDisplaySettings());
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
@@ -26,7 +27,11 @@ router.get('/products', async (req: Request, res: Response, next: NextFunction) 
       page: z.coerce.number().min(1).default(1),
       limit: z.coerce.number().min(1).max(100).default(24),
     }).parse(req.query);
-    const result = await storeService.getProducts({ search, categoryId, excludeId, page, limit });
+    const result = await cachedCatalog(
+      `products:${categoryId ?? ''}:${excludeId ?? ''}:${page}:${limit}:${(search ?? '').trim().toLowerCase()}`,
+      60,
+      () => storeService.getProducts({ search, categoryId, excludeId, page, limit }),
+    );
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 });
@@ -34,21 +39,21 @@ router.get('/products', async (req: Request, res: Response, next: NextFunction) 
 router.get('/products/featured', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { limit } = z.object({ limit: z.coerce.number().min(1).max(20).default(8) }).parse(req.query);
-    const data = await storeService.getFeaturedProducts(limit);
+    const data = await cachedCatalog(`featured:${limit}`, 600, () => storeService.getFeaturedProducts(limit));
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
 router.get('/products/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = await storeService.getProductById(req.params.id);
+    const data = await cachedCatalog(`product:${req.params.id}`, 300, () => storeService.getProductById(req.params.id));
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
 router.get('/categories', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = await storeService.getCategories();
+    const data = await cachedCatalog('categories', 600, () => storeService.getCategories());
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
@@ -71,7 +76,7 @@ router.post('/basket-suggest', async (req: Request, res: Response, next: NextFun
 
 router.get('/offers', async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = await storeService.getActiveOffers();
+    const data = await cachedCatalog('offers', 60, () => storeService.getActiveOffers());
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });
