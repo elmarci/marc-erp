@@ -129,6 +129,9 @@ export interface Complaint extends ComplaintInput {
   status: 'PENDIENTE' | 'RESPONDIDO'
 }
 
+const isHiddenCategory = (name: string) =>
+  /^(otros|varios)\b/.test(name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim())
+
 export interface StoreOrder {
   id: string
   orderNumber: string
@@ -240,8 +243,14 @@ export const storeApi = {
   getProduct: (id: string) =>
     api.get<{ data: Product }>(`/store/products/${id}`),
 
+  // "Otros / Varios" no se muestra en la tienda (pedido del dueño, 2026-11-13):
+  // sale de las listas de categorías; sus productos siguen apareciendo en la
+  // búsqueda y en "Todo el catálogo".
   getCategories: () =>
-    api.get<{ data: Category[] }>('/store/categories'),
+    api.get<{ data: Category[] }>('/store/categories').then(res => {
+      res.data.data = res.data.data.filter(c => !isHiddenCategory(c.name))
+      return res
+    }),
 
   getOffers: () =>
     api.get<{ data: Offer[] }>('/store/offers'),
