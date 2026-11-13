@@ -4,6 +4,7 @@ import { storeService } from './store.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { storeAuthMiddleware, requireStoreAuth } from './store-auth.routes';
 import { basketService } from '../baskets/basket.service';
+import { publicComplaintsRouter, adminComplaintsRouter } from './complaints';
 
 const router = Router();
 
@@ -190,5 +191,9 @@ router.patch('/admin/orders/:id/paquete', authenticate, authorizeMinRole('CASHIE
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });
+
+// Libro de Reclamaciones (público + ERP)
+router.use(publicComplaintsRouter);
+router.use(adminComplaintsRouter);
 
 export default router;

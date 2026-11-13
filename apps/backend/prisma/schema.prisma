@@ -1909,3 +1909,36 @@ model AttendanceRecord {
   @@index([workDate])
   @@map("attendance_records")
 }
+
+// Libro de Reclamaciones virtual (Código de Protección y Defensa del
+// Consumidor, D.S. 011-2011-PCM). Cada hoja tiene número correlativo, no se
+// borra y se responde en un máximo de 15 días hábiles. Se conserva 2 años.
+model StoreComplaint {
+  id              String    @id @default(uuid())
+  number          Int       @unique @default(autoincrement())
+  kind            String // RECLAMO | QUEJA
+  consumerName    String    @map("consumer_name")
+  docType         String    @map("doc_type") // DNI | CE | PASAPORTE
+  docNumber       String    @map("doc_number")
+  address         String
+  phone           String
+  email           String
+  isMinor         Boolean   @default(false) @map("is_minor")
+  guardianName    String?   @map("guardian_name")
+  itemType        String    @map("item_type") // PRODUCTO | SERVICIO
+  amount          Decimal?  @db.Decimal(10, 2)
+  itemDescription String    @map("item_description")
+  orderNumber     String?   @map("order_number")
+  detail          String
+  request         String
+  status          String    @default("PENDIENTE") // PENDIENTE | RESPONDIDO
+  response        String?
+  respondedAt     DateTime? @map("responded_at")
+  respondedById   String?   @map("responded_by_id")
+  storeCustomerId String?   @map("store_customer_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("store_complaints")
+}
