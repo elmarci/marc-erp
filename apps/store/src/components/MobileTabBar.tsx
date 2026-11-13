@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, LayoutGrid, ShoppingCart, User } from 'lucide-react'
+import { Ico } from './Ico'
 import { useCartStore, cartCount } from '../cartStore'
 import { useAuthStore } from '../authStore'
 
@@ -27,14 +27,14 @@ export function MobileTabBar() {
       className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-paper-line pb-[env(safe-area-inset-bottom)]">
       <div className="flex items-stretch h-16">
         <Link to="/" className={tab(isHome)} aria-current={isHome ? 'page' : undefined}>
-          <Home className="h-6 w-6" strokeWidth={isHome ? 2.5 : 2} />Inicio
+          <Ico name={isHome ? "nav-inicio-relleno" : "nav-inicio-contorno"} className="h-7 w-7" />Inicio
         </Link>
         <Link to="/categorias" className={tab(isCategories)} aria-current={isCategories ? 'page' : undefined}>
-          <LayoutGrid className="h-6 w-6" strokeWidth={isCategories ? 2.5 : 2} />Categorías
+          <Ico name={isCategories ? "nav-categorias-relleno" : "nav-categorias-contorno"} className="h-7 w-7" />Categorías
         </Link>
         <button onClick={openCart} className={tab(cartOpen)}>
           <span className="relative">
-            <ShoppingCart className="h-6 w-6" strokeWidth={cartOpen ? 2.5 : 2} />
+            <Ico name={cartOpen ? "nav-carrito-relleno" : "nav-carrito-contorno"} className="h-7 w-7" />
             {count > 0 && (
               <span className="absolute -top-1.5 -right-2.5 h-5 min-w-5 px-1 bg-brand-green-600 text-white text-[11px] font-extrabold rounded-full flex items-center justify-center">
                 {count}
@@ -44,7 +44,7 @@ export function MobileTabBar() {
           Carrito
         </button>
         <Link to={isLoggedIn ? '/mis-pedidos' : '/ingresar'} className={tab(isAccount)} aria-current={isAccount ? 'page' : undefined}>
-          <User className="h-6 w-6" strokeWidth={isAccount ? 2.5 : 2} />{isLoggedIn ? 'Cuenta' : 'Ingresar'}
+          <Ico name={isAccount ? "nav-cuenta-relleno" : "nav-cuenta-contorno"} className="h-7 w-7" />{isLoggedIn ? 'Cuenta' : 'Ingresar'}
         </Link>
       </div>
     </nav>

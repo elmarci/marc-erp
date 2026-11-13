@@ -6,6 +6,7 @@ import { getSettingValues } from '../../utils/settings';
 import { nowInLima } from '../../utils/timezone';
 import { deliveryService } from '../delivery/delivery.service';
 import { storeDeliveryFee, cardFee, CARD_FEE_PERCENT } from './deliveryFee';
+import { buildTracking } from './orderTracking';
 
 export class StoreService {
 
@@ -418,10 +419,18 @@ export class StoreService {
   async getOrder(orderNumber: string) {
     const order = await prisma.storeOrder.findUnique({
       where: { orderNumber },
-      include: { items: true },
+      include: {
+        items: true,
+        // Solo lo que el cliente puede ver del repartidor (sin teléfono ni PIN).
+        rider: { select: { nombre: true, motoModelo: true, motoPlaca: true, calificacion: true, lastLat: true, lastLng: true, lastLocationAt: true } },
+        deliveryEvents: { select: { type: true, createdAt: true }, orderBy: { createdAt: 'asc' } },
+      },
     });
     if (!order) throw new NotFoundError('Pedido');
-    return order;
+    // Lo que se le paga al biker y su liquidación son internos: no salen
+    // en este endpoint público.
+    const { rider: _rider, deliveryEvents: _events, tarifaReparto: _tarifa, liquidacionId: _liq, ...rest } = order;
+    return { ...rest, tracking: buildTracking(order) };
   }
 
   /* ── Gestión de pedidos (ERP admin) ──────────────────────────────────── */

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useBackClose } from '../lib/useBackClose'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Mic, X, Check, ShoppingBag, Loader2, ListChecks } from 'lucide-react'
+import { Ico } from './Ico'
 import { useVoiceListDictation } from '../hooks/useVoiceListDictation'
 import { parseVoiceList } from '../lib/parseVoiceList'
 import { storeApi, type Product } from '../api'
@@ -79,7 +80,7 @@ export function VoiceShoppingListButton() {
             onClick={handleOpen}
             className="fixed right-[calc(1rem+52px+0.625rem)] bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] md:right-4 md:bottom-6 z-30 h-[52px] w-[52px] rounded-2xl bg-white text-brand-blue-600 shadow-lg shadow-black/15 flex items-center justify-center"
             title="Arma tu pedido dictando la lista" aria-label="Dictar mi lista de compras">
-            <Mic className="h-6 w-6" />
+            <Ico name="aviso-voz" className="h-8 w-8" />
           </motion.button>
         )}
       </AnimatePresence>

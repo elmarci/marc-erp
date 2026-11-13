@@ -86,6 +86,23 @@ export interface StoreProfile {
   addresses: StoreAddress[]
 }
 
+export type TrackingStage = 'RECIBIDO' | 'CONFIRMADO' | 'PREPARANDO' | 'LISTO' | 'EN_CAMINO' | 'ENTREGADO' | 'CANCELADO'
+type LatLng = { lat: number; lng: number }
+
+export interface OrderTracking {
+  stage: TrackingStage
+  express: boolean
+  schedule: string | null
+  receiver: string | null
+  etaMinutes: number | null
+  kmLeft: number | null
+  store: LatLng
+  destination: LatLng | null
+  riderLocation: (LatLng & { at: string }) | null
+  rider: { nombre: string; iniciales: string; moto: string | null; placa: string | null; calificacion: number | null } | null
+  times: { recibido: string; asignado: string | null; recogido: string | null; enCamino: string | null; entregado: string | null }
+}
+
 export interface StoreOrder {
   id: string
   orderNumber: string
@@ -103,6 +120,10 @@ export interface StoreOrder {
   pointsRedeemed: number
   pointsDiscountAmount: number
   createdAt: string
+  reference?: string | null
+  deliveryStatus?: string | null
+  // Solo viene en GET /store/orders/:orderNumber (seguimiento del pedido).
+  tracking?: OrderTracking
   items: Array<{
     id: string
     name: string

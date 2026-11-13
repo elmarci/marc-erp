@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, MapPin, Check, ShoppingBag, Truck, Store, Plus, LocateFixed, CheckCircle2, Gift, Zap } from 'lucide-react'
+import { ArrowLeft, MapPin, Check, ShoppingBag, Plus, CheckCircle2, Gift } from 'lucide-react'
+import { Ico } from '../components/Ico'
 import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
 import { toast } from 'sonner'
 import { DELIVERY, FEES, cardFee, deliveryDays, deliveryFee, deliveryStatus, money } from '../lib/storeInfo'
+import { rememberActiveOrder } from '../components/ActiveOrderBanner'
 
 // Quien compra sin cuenta no vuelve a escribir su nombre y WhatsApp en cada
 // pedido: se recuerdan en este equipo.
@@ -173,6 +175,7 @@ export function CheckoutPage() {
         }).catch(() => {})
       }
       try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ name: form.customerName, phone: form.customerPhone })) } catch { /* sin almacenamiento */ }
+      rememberActiveOrder(res.data.data.orderNumber)
       clearCart()
       navigate(`/pedido/${res.data.data.orderNumber}`, { replace: true })
     },
@@ -239,8 +242,8 @@ export function CheckoutPage() {
   const payments = [
     { val: 'YAPE', icon: '/yape.png', title: 'Yape ahora', desc: 'Escaneas el QR y nos mandas la captura' },
     { val: 'YAPE_CONTRAENTREGA', icon: '/yape.png', title: isPickup ? 'Yape al recoger' : 'Yape al recibir', desc: 'Pagas cuando tengas tu pedido' },
-    { val: 'CASH', icon: '/cash.png', title: isPickup ? 'Efectivo en tienda' : 'Efectivo al recibir', desc: 'Pagas cuando tengas tu pedido' },
-    { val: 'CARD_CONTRAENTREGA', icon: '/card.svg', title: isPickup ? 'Tarjeta en tienda' : 'Tarjeta al recibir', desc: `${isPickup ? 'Débito o crédito, en caja' : 'Débito o crédito. El repartidor lleva el POS'}. Comisión de ${FEES.cardPercent} %` },
+    { val: 'CASH', icon: '/icons/chk-efectivo.svg', title: isPickup ? 'Efectivo en tienda' : 'Efectivo al recibir', desc: 'Pagas cuando tengas tu pedido' },
+    { val: 'CARD_CONTRAENTREGA', icon: '/icons/chk-tarjeta.svg', title: isPickup ? 'Tarjeta en tienda' : 'Tarjeta al recibir', desc: `${isPickup ? 'Débito o crédito, en caja' : 'Débito o crédito. El repartidor lleva el POS'}. Comisión de ${FEES.cardPercent} %` },
   ] as const
 
   return (
@@ -256,15 +259,15 @@ export function CheckoutPage() {
           {step(1, 'co-entrega', '¿Cómo lo recibes?')}
           <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-labelledby="co-entrega">
             {([
-              { val: 'DELIVERY', Icon: Truck, title: 'Delivery', desc: `Desde ${money(DELIVERY.costFrom)}` },
-              { val: 'PICKUP', Icon: Store, title: 'Recojo en tienda', desc: 'Sin costo' },
+              { val: 'DELIVERY', icon: 'chk-delivery', title: 'Delivery', desc: `Desde ${money(DELIVERY.costFrom)}` },
+              { val: 'PICKUP', icon: 'chk-recojo', title: 'Recojo en tienda', desc: 'Sin costo' },
             ] as const).map(o => {
               const active = form.deliveryType === o.val
               return (
                 <button key={o.val} type="button" role="radio" aria-checked={active}
                   onClick={() => setForm(v => ({ ...v, deliveryType: o.val }))}
                   className={`rounded-xl border-2 p-3 flex flex-col items-center gap-1 text-center ${active ? 'border-brand-blue-600 bg-brand-blue-50' : 'border-paper-line bg-white'}`}>
-                  <o.Icon className="h-6 w-6 text-brand-blue-600" aria-hidden="true" />
+                  <Ico name={o.icon} className="h-9 w-9" />
                   <span className="font-bold text-paper-ink text-[15px] leading-tight">{o.title}</span>
                   <span className="text-[13px] text-paper-ink-soft">{o.desc}</span>
                 </button>
@@ -350,7 +353,7 @@ export function CheckoutPage() {
                   <>
                     <button type="button" onClick={shareLocation} disabled={locating}
                       className="w-full h-12 flex items-center justify-center gap-2 text-[15px] font-bold text-white bg-brand-blue-600 active:bg-brand-blue-700 rounded-xl disabled:opacity-60">
-                      <LocateFixed className="h-5 w-5" aria-hidden="true" />
+                      <Ico name="chk-ubicacion" className="h-6 w-6" />
                       {locating ? 'Buscando tu ubicación…' : 'Compartir mi ubicación'}
                     </button>
                     <label className="flex items-center gap-3 min-h-11 mt-1 text-[15px] text-paper-ink cursor-pointer">
@@ -397,7 +400,7 @@ export function CheckoutPage() {
               {dayOffset === 0 && expressAvailable && (
                 <button type="button" role="radio" aria-checked={express}
                   onClick={() => { setTurnKey('X'); setHour('') }} className={`${chip(express)} ${day.turns.length % 2 === 0 ? 'col-span-2' : ''}`}>
-                  <span className="text-[15px] font-bold flex items-center gap-1"><Zap className="h-4 w-4" aria-hidden="true" />Express</span>
+                  <span className="text-[15px] font-bold flex items-center gap-1"><Ico name="chk-express" className="h-5 w-5" />Express</span>
                   <span className="text-xs text-paper-ink-soft">Lo antes posible · +{money(FEES.expressExtra)}</span>
                 </button>
               )}
