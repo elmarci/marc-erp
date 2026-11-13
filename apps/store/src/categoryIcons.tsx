@@ -31,9 +31,9 @@ const CATEGORY_ICONS: Record<string, CategoryIcon> = {
   'otros / varios': IconOtros, 'otros/varios': IconOtros, 'otros': IconOtros,
 }
 
-// Íconos 3D de las categorías padre (entregados por el dueño el 2026-11-13,
-// public/icons/cat3d/*.webp). Cada uno ya trae su propio fondo redondeado
-// menta/durazno, así que se muestran llenando el recuadro. Se reconocen por
+// Íconos de las categorías padre (fotos realistas sobre azul, del dueño, 2026-11-13,
+// public/icons/cat3d/*.webp). Cada uno ya trae su propio fondo azul redondeado
+// así que se muestran llenando el recuadro. Se reconocen por
 // palabra clave para no depender del nombre exacto que tenga en el ERP.
 const TILE_KEYWORDS: Array<[RegExp, string]> = [
   [/farmac|botic|salud|medic/, 'farmacia'],
