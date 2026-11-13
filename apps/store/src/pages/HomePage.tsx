@@ -7,7 +7,7 @@ import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { PromoCarousel } from '../components/PromoCarousel'
 import { WhatsAppIcon } from '../components/CartBar'
-import { getCategoryIcon } from '../categoryIcons'
+import { getCategoryIcon, getCategoryTile } from '../categoryIcons'
 import { BRAND_NAME, DELIVERY, deliveryStatus, money, whatsappLink } from '../lib/storeInfo'
 
 const STORE_ADDRESS = 'Mz F10 Lt2A - C.27 Av. Manchay, Pachacamac'
@@ -73,10 +73,13 @@ export function HomePage() {
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-x-2.5 gap-y-3.5">
             {topCategories.map(cat => {
               const Icon = getCategoryIcon(cat.name)
+              const tileSrc = getCategoryTile(cat.name)
               return (
                 <Link key={cat.id} to={`/catalogo?categoryId=${cat.id}`} className="flex flex-col items-center gap-1.5 text-center">
                   <span className="h-16 w-16 rounded-[18px] bg-white shadow-card overflow-hidden flex items-center justify-center">
-                    {cat.imageUrl
+                    {tileSrc
+                      ? <img src={tileSrc} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-cover" />
+                      : cat.imageUrl
                       ? <img src={cat.imageUrl} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-cover" />
                       : <Icon className="h-10 w-10" />}
                   </span>
