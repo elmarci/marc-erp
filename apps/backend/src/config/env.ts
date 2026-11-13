@@ -14,6 +14,8 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
   RATE_LIMIT_MAX: z.coerce.number().default(100),
+  // Catálogo público de la tienda: peticiones por minuto por IP (ver server.ts).
+  RATE_LIMIT_CATALOG_PER_MIN: z.coerce.number().default(600),
   RATE_LIMIT_LOGIN_MAX: z.coerce.number().default(5),
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_FILE_SIZE_MB: z.coerce.number().default(10),

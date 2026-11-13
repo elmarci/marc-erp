@@ -85,6 +85,41 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// Tope de peticiones por IP. Ojo: en Perú muchos clientes de Claro, Movistar
+// o Bitel salen a internet por la MISMA IP, y el wifi de la tienda también
+// junta a todos los equipos del local. Por eso:
+// - el personal (ERP/POS) y los repartidores con sesión válida no gastan cupo;
+// - el catálogo público y el seguimiento tienen su propio tope por minuto, amplio (sale de la
+//   caché y es barato), para que 20+ clientes detrás de una IP no queden
+//   bloqueados;
+// - el resto (pedidos, cuentas, etc.) sigue con RATE_LIMIT_MAX por ventana.
+// El login conserva su tope estricto aparte (auth.routes.ts).
+const TEAM_SECRETS = [env.JWT_SECRET, `${env.JWT_SECRET}_rider`];
+function hasTeamToken(req: express.Request): boolean {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return false;
+  const token = header.slice(7);
+  return TEAM_SECRETS.some((secret) => {
+    try { jwt.verify(token, secret); return true; } catch { return false; }
+  });
+}
+// Incluye el seguimiento del pedido (la pantalla lo consulta cada 15 s).
+const PUBLIC_CATALOG = /^\/api\/v1\/store\/(products|categories|offers|display-settings|orders\/(mine|ORD-[\w-]+))(\/|\?|$)/;
+const isPublicCatalog = (req: express.Request) => req.method === 'GET' && PUBLIC_CATALOG.test(req.originalUrl);
+const tooMany = {
+  success: false,
+  error: { code: 'RATE_LIMIT', message: 'Demasiadas solicitudes. Intente más tarde.' },
+};
+
+const catalogLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: env.RATE_LIMIT_CATALOG_PER_MIN,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !isPublicCatalog(req) || hasTeamToken(req),
+  message: tooMany,
+});
+
 const globalLimiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   max: env.RATE_LIMIT_MAX,
@@ -92,13 +127,10 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
   // La TV de la tienda consulta /tv/live cada pocos segundos desde la misma IP
   // que el POS y el ERP: no puede gastar el cupo del limitador (que es por IP).
-  skip: (req) => /\/tv\/(live|config)\/?(\?|$)/.test(req.originalUrl),
-  message: {
-    success: false,
-    error: { code: 'RATE_LIMIT', message: 'Demasiadas solicitudes. Intente más tarde.' },
-  },
+  skip: (req) => /\/tv\/(live|config)\/?(\?|$)/.test(req.originalUrl) || isPublicCatalog(req) || hasTeamToken(req),
+  message: tooMany,
 });
-app.use('/api', globalLimiter);
+app.use('/api', catalogLimiter, globalLimiter);
 
 // ─── Middleware general ──────────────────────────────────────────────────────
 app.use(compression());
