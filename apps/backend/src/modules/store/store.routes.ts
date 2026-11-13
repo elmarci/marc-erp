@@ -2,8 +2,9 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { storeService } from './store.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
-import { storeAuthMiddleware } from './store-auth.routes';
+import { storeAuthMiddleware, requireStoreAuth } from './store-auth.routes';
 import { basketService } from '../baskets/basket.service';
+import { publicComplaintsRouter, adminComplaintsRouter } from './complaints';
 
 const router = Router();
 
@@ -122,16 +123,23 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
   } catch (err) { next(err); }
 });
 
-router.get('/orders/track/:phone', async (req: Request, res: Response, next: NextFunction) => {
+// "Mis pedidos": requiere sesión y devuelve solo los pedidos de esa cuenta.
+// El :phone de la ruta ya no se usa (se mantiene para no romper versiones
+// de la app que todavía lo mandan).
+router.get(['/orders/mine', '/orders/track/:phone'], storeAuthMiddleware, requireStoreAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const orders = await storeService.getOrdersByPhone(req.params.phone);
+    const customerId = (req as Request & { customerId: string }).customerId;
+    const orders = await storeService.getOrdersForCustomer(customerId);
     res.json({ success: true, data: orders });
   } catch (err) { next(err); }
 });
 
-router.get('/orders/:orderNumber', async (req: Request, res: Response, next: NextFunction) => {
+// Pedido por número: completo con ?k=<clave> o con la sesión de quien lo
+// hizo; si no, sin datos personales (ver getOrderForViewer).
+router.get('/orders/:orderNumber', storeAuthMiddleware, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const order = await storeService.getOrder(req.params.orderNumber);
+    const customerId = (req as Request & { customerId?: string }).customerId;
+    const order = await storeService.getOrderForViewer(req.params.orderNumber, req.query.k, customerId);
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });
@@ -183,5 +191,9 @@ router.patch('/admin/orders/:id/paquete', authenticate, authorizeMinRole('CASHIE
     res.json({ success: true, data: order });
   } catch (err) { next(err); }
 });
+
+// Libro de Reclamaciones (público + ERP)
+router.use(publicComplaintsRouter);
+router.use(adminComplaintsRouter);
 
 export default router;

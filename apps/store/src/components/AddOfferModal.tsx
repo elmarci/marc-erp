@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import type { Offer } from '../api'
 import { useCartStore } from '../cartStore'
 import { useBackClose } from '../lib/useBackClose'
+import { thumb } from '../lib/thumb'
 
 type PackInfo = { totalQty: number; totalPrice: number; hint: string }
 
@@ -161,7 +162,7 @@ export function AddOfferModal({ offer, onClose }: { offer: Offer; onClose: () =>
             return (
               <div key={product.id} className="flex items-center gap-3 bg-paper-surface rounded-xl p-2.5">
                 {product.imageUrl ? (
-                  <img src={product.imageUrl} alt={product.name} className="h-12 w-12 rounded-lg object-cover shrink-0 bg-white border border-paper-line" />
+                  <img src={thumb(product.imageUrl, 160)} alt={product.name} loading="lazy" decoding="async" className="h-12 w-12 rounded-lg object-cover shrink-0 bg-white border border-paper-line" />
                 ) : (
                   <div className="h-12 w-12 rounded-lg bg-white border border-paper-line shrink-0 flex items-center justify-center">
                     <ShoppingBag className="h-5 w-5 text-paper-ink-ghost" />

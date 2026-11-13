@@ -45,3 +45,9 @@
     overscroll-behavior-x: contain;
   }
 }
+
+/* Libro de Reclamaciones: "Guardar copia" imprime solo la hoja. */
+@media print {
+  header, nav, [data-print-hide] { display: none !important; }
+  body { background: #fff !important; }
+}

@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react'
+import { lazy, Suspense, useLayoutEffect, type ComponentType } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Header } from './components/Header'
@@ -9,19 +9,37 @@ import { MobileTabBar } from './components/MobileTabBar'
 import { CartBar, VOICE_LIST_ROUTES } from './components/CartBar'
 import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
 import { WhatsAppFAB } from './components/WhatsAppFAB'
-import { AuthGate } from './pages/AuthGate'
 import { useAuthStore } from './authStore'
 import { HomePage } from './pages/HomePage'
 import { CatalogPage } from './pages/CatalogPage'
-import { CategoriesPage } from './pages/CategoriesPage'
-import { ProductPage } from './pages/ProductPage'
-import { CheckoutPage } from './pages/CheckoutPage'
-import { OrderConfirmPage } from './pages/OrderConfirmPage'
-import { TrackOrderPage } from './pages/TrackOrderPage'
-import { OffersPage } from './pages/OffersPage'
-import { BasketPage } from './pages/BasketPage'
-import { TvPage } from './pages/TvPage'
-import { PrivacyPage, TermsPage } from './pages/LegalPage'
+
+// Velocidad: el inicio y el catálogo van en el archivo principal; el resto de
+// pantallas se descarga recién cuando el cliente entra a ellas (y el service
+// worker las deja guardadas para la próxima). Así la primera carga baja
+// mucho menos en datos móviles.
+function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy(() => load().then(m => ({ default: m[name] })))
+}
+const AuthGate = page(() => import('./pages/AuthGate'), 'AuthGate')
+const CategoriesPage = page(() => import('./pages/CategoriesPage'), 'CategoriesPage')
+const ProductPage = page(() => import('./pages/ProductPage'), 'ProductPage')
+const CheckoutPage = page(() => import('./pages/CheckoutPage'), 'CheckoutPage')
+const OrderConfirmPage = page(() => import('./pages/OrderConfirmPage'), 'OrderConfirmPage')
+const TrackOrderPage = page(() => import('./pages/TrackOrderPage'), 'TrackOrderPage')
+const OffersPage = page(() => import('./pages/OffersPage'), 'OffersPage')
+const BasketPage = page(() => import('./pages/BasketPage'), 'BasketPage')
+const ComplaintsPage = page(() => import('./pages/ComplaintsPage'), 'ComplaintsPage')
+const TvPage = page(() => import('./pages/TvPage'), 'TvPage')
+const PrivacyPage = page(() => import('./pages/LegalPage'), 'PrivacyPage')
+const TermsPage = page(() => import('./pages/LegalPage'), 'TermsPage')
+
+function PageLoading() {
+  return (
+    <div className="flex items-center justify-center min-h-[50vh]" aria-label="Cargando">
+      <div className="h-9 w-9 border-2 border-brand-blue-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
 
 export default function App() {
   const location = useLocation()
@@ -40,18 +58,18 @@ export default function App() {
 
   // Pantalla de la TV de la tienda: pública, sin login ni cabecera/banners de
   // la app — nadie la maneja, solo muestra ofertas y precios en loop.
-  if (location.pathname === '/tv') return <TvPage />
+  if (location.pathname === '/tv') return <Suspense fallback={null}><TvPage /></Suspense>
 
   // Políticas: públicas y sin login — Google las exige para el inicio de
   // sesión con Google y deben poder leerse antes de registrarse.
-  if (location.pathname === '/privacidad') return <PrivacyPage />
-  if (location.pathname === '/terminos') return <TermsPage />
+  if (location.pathname === '/privacidad') return <Suspense fallback={<PageLoading />}><PrivacyPage /></Suspense>
+  if (location.pathname === '/terminos') return <Suspense fallback={<PageLoading />}><TermsPage /></Suspense>
 
   // La tienda es abierta: catálogo, carrito y checkout funcionan sin
   // cuenta. El ingreso es una pantalla propia a la que se llega solo cuando
   // hace falta (mis pedidos, puntos, direcciones guardadas).
   if (location.pathname === '/ingresar') {
-    return isLoggedIn ? <Navigate to="/" replace /> : <AuthGate />
+    return isLoggedIn ? <Navigate to="/" replace /> : <Suspense fallback={<PageLoading />}><AuthGate /></Suspense>
   }
 
   return (
@@ -76,6 +94,7 @@ export default function App() {
           transition={{ duration: 0.18, ease: 'easeOut' }}
           className="pb-36 md:pb-0"
         >
+          <Suspense fallback={<PageLoading />}>
           <Routes location={location}>
             <Route path="/" element={<HomePage />} />
             <Route path="/catalogo" element={<CatalogPage />} />
@@ -86,17 +105,19 @@ export default function App() {
             <Route path="/mis-pedidos" element={<TrackOrderPage />} />
             <Route path="/ofertas" element={<OffersPage />} />
             <Route path="/canasta" element={<BasketPage />} />
+            <Route path="/libro-de-reclamaciones" element={<ComplaintsPage />} />
           </Routes>
+          </Suspense>
         </motion.div>
       </AnimatePresence>
       {/* En pago, canasta, confirmación y cuenta no va: esas pantallas ya traen su propio botón principal y su WhatsApp. */}
-      {!['/checkout', '/canasta', '/pedido', '/mis-pedidos'].some(p => location.pathname.startsWith(p)) && <CartBar />}
+      {!['/checkout', '/canasta', '/pedido', '/mis-pedidos', '/libro-de-reclamaciones'].some(p => location.pathname.startsWith(p)) && <CartBar />}
       <MobileTabBar />
       {/* /canasta tiene su propia barra fija de total y su propio micrófono:
           los botones flotantes la tapaban. */}
       {/* Lista por voz: solo donde se elige qué comprar, para no tapar botones en ficha, cuenta o pago. */}
       {VOICE_LIST_ROUTES.includes(location.pathname) && <VoiceShoppingListButton />}
-      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/canasta') && <WhatsAppFAB />}
+      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/canasta') && !location.pathname.startsWith('/libro') && <WhatsAppFAB />}
     </div>
   )
 }

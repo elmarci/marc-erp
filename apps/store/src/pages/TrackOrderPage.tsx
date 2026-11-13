@@ -9,6 +9,7 @@ import { useAuthStore } from '../authStore'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useCartStore } from '../cartStore'
 import { toast } from 'sonner'
+import { orderLink } from '../components/ActiveOrderBanner'
 
 // yyyy-mm-dd para <input type="date">, en hora local — evita que un "hoy"
 // en UTC se muestre como "ayer" para quien está en Perú (UTC-5).
@@ -264,8 +265,8 @@ export function TrackOrderPage() {
   const profile = profileData?.data.data
 
   const { data, isLoading } = useQuery({
-    queryKey: ['track-orders', customer?.phone],
-    queryFn: () => storeApi.trackOrders(customer!.phone),
+    queryKey: ['my-orders', customer?.phone],
+    queryFn: () => storeApi.myOrders(),
     enabled: !!customer,
     refetchInterval: 15000,
   })
@@ -285,21 +286,21 @@ export function TrackOrderPage() {
     return () => clearTimeout(timer)
   }, [location.hash, profile])
 
-  const repeatOrder = (order: typeof orders[0]) => {
-    order.items.forEach(item => {
-      addItem({
-        id: item.id, // not product id but ok for display
-        name: item.name,
-        salePrice: Number(item.unitPrice),
-        currentStock: 99,
-        imageUrl: null,
-        barcode: null,
-        description: null,
-        category: { id: '', name: '' },
-      })
-    })
+  // Repite el pedido con los productos y precios de hoy (no los de entonces):
+  // el servidor cobra el precio vigente, así el carrito muestra lo mismo.
+  const repeatOrder = async (order: typeof orders[0]) => {
+    const ids = [...new Set(order.items.map(i => i.productId).filter((id): id is string => !!id))]
+    const found = await Promise.all(ids.map(id => storeApi.getProduct(id).then(r => r.data.data).catch(() => null)))
+    let added = 0
+    for (const product of found) {
+      if (!product || Number(product.currentStock) <= 0) continue
+      const qty = order.items.filter(i => i.productId === product.id).reduce((s, i) => s + Number(i.quantity), 0)
+      addItem(product, product.isBulk ? qty : Math.max(1, Math.round(qty)))
+      added++
+    }
+    if (!added) { toast.error('Esos productos ya no están disponibles'); return }
     openCart()
-    toast.success('Productos del pedido agregados al carrito')
+    toast.success(added < ids.length ? 'Agregamos lo que sigue disponible' : 'Productos del pedido agregados al carrito')
   }
 
   // Invitado sin cuenta — sus pedidos por WhatsApp no quedan asociados a un
@@ -393,7 +394,7 @@ export function TrackOrderPage() {
           const status = onTheWay ? { label: 'En camino', color: 'text-brand-blue-700', emoji: '🛵' } : STATUS[order.status] ?? STATUS.PENDING
           return (
             <div key={order.id} className="bg-white rounded-2xl overflow-hidden border border-paper-line shadow-card hover:shadow-md transition-shadow">
-              <Link to={`/pedido/${order.orderNumber}`} className="block p-4 hover:bg-paper-surface transition-colors">
+              <Link to={orderLink(order.orderNumber, order.accessKey)} className="block p-4 hover:bg-paper-surface transition-colors">
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="font-extrabold text-lg text-paper-ink">{order.orderNumber}</p>

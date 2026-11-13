@@ -1,11 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Clock, CheckCircle2, Package, PackageCheck, Bike, Home, XCircle, ChevronRight, ChevronDown, MessageCircle, Star } from 'lucide-react'
 import { Ico } from '../components/Ico'
 import { storeApi, type OrderTracking, type StoreOrder, type TrackingStage } from '../api'
 import { io } from 'socket.io-client'
 import { whatsappLink } from '../lib/storeInfo'
+import { thumb } from '../lib/thumb'
 
 // El mapa (Leaflet) pesa ~45 KB: solo se descarga cuando el pedido ya va en
 // camino, nunca en el resto de la tienda.
@@ -81,14 +82,17 @@ function ago(iso: string, now: number) {
 
 export function OrderConfirmPage() {
   const { orderNumber } = useParams<{ orderNumber: string }>()
+  // Clave del enlace: sin ella solo se ve el avance, sin datos personales.
+  const [searchParams] = useSearchParams()
+  const accessKey = searchParams.get('k')
   const queryClient = useQueryClient()
   const now = useNow(5000)
   // Ruta por calles que calcula el mapa (OSRM): mejora el tiempo y la distancia.
   const [route, setRoute] = useState<RouteInfo | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['order', orderNumber],
-    queryFn: () => storeApi.getOrder(orderNumber!),
+    queryKey: ['order', orderNumber, accessKey],
+    queryFn: () => storeApi.getOrder(orderNumber!, accessKey),
     enabled: !!orderNumber,
     // En camino se refresca seguido (el repartidor manda su GPS cada 15 s);
     // terminado ya no hace falta.
@@ -181,6 +185,12 @@ export function OrderConfirmPage() {
         <Link to="/mis-pedidos" className="text-sm font-bold text-brand-blue-600 h-11 flex items-center">← Mis pedidos</Link>
         <span className="text-sm font-bold text-paper-ink tabular-nums">{order.orderNumber}</span>
       </div>
+
+      {order.limited && (
+        <p className="bg-brand-blue-50 text-brand-blue-800 text-sm leading-snug rounded-xl px-3.5 py-2.5">
+          Por tu seguridad, aquí solo se ve el avance. Para ver la dirección y la ubicación del repartidor, abre el enlace que recibiste al hacer el pedido o inicia sesión.
+        </p>
+      )}
 
       {/* Mapa en vivo arriba, como en las apps de delivery: solo mientras va en camino */}
       {showMap && (
@@ -377,7 +387,7 @@ export function OrderConfirmPage() {
       )}
 
       {/* Datos de entrega */}
-      <section className={`${card} p-4 space-y-2.5`}>
+      {!order.limited && <section className={`${card} p-4 space-y-2.5`}>
         <h2 className={section}>{isDelivery ? 'Entrega' : 'Recojo'}</h2>
         <p className="flex gap-2.5 text-sm text-paper-ink leading-snug">
           <Ico name="chk-ubicacion" className="h-6 w-6 -mt-0.5" />
@@ -397,7 +407,7 @@ export function OrderConfirmPage() {
           <img src={PAYMENT_ICONS[order.paymentMethod]} alt="" className="h-[18px] w-[18px] rounded object-contain shrink-0" />
           <span>{PAYMENT_LABELS[order.paymentMethod]} · {order.paymentStatus === 'VERIFIED' ? 'pago verificado' : !PAYS_UPFRONT.has(order.paymentMethod) ? 'pagas al recibir' : 'pendiente de verificación'}</span>
         </p>
-      </section>
+      </section>}
 
       {/* Detalle / ticket, plegado para no alargar la pantalla */}
       <details className={`${card} group overflow-hidden`}>
@@ -441,7 +451,7 @@ export function OrderConfirmPage() {
                       <div className="flex items-center gap-2">
                         <div className="h-6 w-6 rounded-md bg-paper-surface shrink-0 overflow-hidden flex items-center justify-center">
                           {item.imageUrl
-                            ? <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+                            ? <img src={thumb(item.imageUrl, 160)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                             : <Package className="h-3 w-3 text-paper-ink-ghost" />}
                         </div>
                         <span className="text-paper-ink font-semibold truncate max-w-[140px]">{item.name}</span>
@@ -477,7 +487,7 @@ export function OrderConfirmPage() {
         </div>
 
         <div className="border-t border-dashed border-paper-line mt-3 pt-3 space-y-1.5 text-sm text-paper-ink-soft">
-          <p>👤 {order.customerName} · {order.customerPhone}</p>
+          {!order.limited && <p>👤 {order.customerName} · {order.customerPhone}</p>}
           <p>{order.deliveryType === 'DELIVERY' ? `🚚 Delivery${order.address ? ` — ${order.address}, ${order.district}` : ''}` : '🏪 Recojo en tienda — Av. Manchay, Pachacamac'}</p>
           <p className="flex items-center gap-1.5">
             <img src={PAYMENT_ICONS[order.paymentMethod]} alt="" className="h-4 w-4 rounded object-contain" />

@@ -7,6 +7,8 @@ import { nowInLima } from '../../utils/timezone';
 import { deliveryService } from '../delivery/delivery.service';
 import { storeDeliveryFee, cardFee, CARD_FEE_PERCENT } from './deliveryFee';
 import { buildTracking } from './orderTracking';
+import { discountPrices, packInfo, pickPrice } from './storePricing';
+import { orderAccessKey, isValidOrderKey } from './orderAccess';
 
 export class StoreService {
 
@@ -271,9 +273,9 @@ export class StoreService {
     const resolvedItems = data.items.map(item => {
       if (item.productId.startsWith('bundle-')) {
         const realProductId = item.productId.slice(44); // extrae el UUID del producto exactamente
-        return { ...item, realProductId };
+        return { ...item, realProductId, offerId: item.productId.slice(7, 43) };
       }
-      return { ...item, realProductId: item.productId };
+      return { ...item, realProductId: item.productId, offerId: undefined as string | undefined };
     });
 
     const realProductIds = [...new Set(resolvedItems.map(i => i.realProductId))];
@@ -312,23 +314,57 @@ export class StoreService {
       }
     }
 
-    // Calculate totals — para bundles se usa el unitPrice enviado por el frontend
+    // Solo los productos a granel se venden por fracción (kg, L).
+    for (const item of resolvedItems) {
+      const product = productMap.get(item.realProductId)!;
+      if (!product.isBulk && !Number.isInteger(item.quantity)) {
+        throw new BusinessError(`La cantidad de "${product.name}" debe ser un número entero.`);
+      }
+    }
+
+    // Precios: los decide el servidor (ver storePricing.ts). Las ofertas son
+    // las mismas que muestra la tienda (getActiveOffers).
+    const promos = (await this.getActiveOffers()).map(p => ({
+      ...p, products: p.products.map(pp => ({ productId: pp.productId, quantity: pp.quantity, product: { salePrice: pp.product.salePrice } })),
+    }));
+    const promoById = new Map(promos.map(p => [p.id, p]));
+    // Unidades pedidas por paquete: solo valen paquetes completos.
+    const bundleUnits = new Map<string, number>();
+    for (const item of resolvedItems) {
+      if (item.offerId) bundleUnits.set(item.offerId, (bundleUnits.get(item.offerId) ?? 0) + item.quantity);
+    }
+
     let subtotal = 0;
     const orderItems = resolvedItems.map(item => {
       const product = productMap.get(item.realProductId)!;
-      // Si viene unitPrice del frontend (bundle con precio especial), usarlo
-      const unitPrice = item.unitPrice !== undefined ? item.unitPrice : Number(product.salePrice);
-      const itemSubtotal = unitPrice * item.quantity;
+      const salePrice = Number(product.salePrice);
+      let unitPrice: number;
+      if (item.offerId) {
+        const promo = promoById.get(item.offerId);
+        const pack = promo && promo.products.some(pp => pp.productId === item.realProductId) ? packInfo(promo) : null;
+        const complete = pack && (bundleUnits.get(item.offerId)! % pack.totalQty === 0);
+        unitPrice = pack && complete ? Math.min(pack.perUnit, salePrice) : salePrice;
+      } else {
+        const candidates = promos
+          .filter(p => p.products.some(pp => pp.productId === item.realProductId))
+          .flatMap(p => discountPrices(salePrice, p));
+        unitPrice = pickPrice(item.unitPrice, candidates, salePrice);
+      }
+      const itemSubtotal = Math.round(unitPrice * item.quantity * 100) / 100;
       subtotal += itemSubtotal;
+      // El nombre puede traer el peso elegido ("Pollo (0.5 kg)"), pero
+      // siempre empieza con el nombre real del producto.
+      const name = item.name && item.name.startsWith(product.name) ? item.name.slice(0, 160) : product.name;
       return {
         productId: item.realProductId,  // siempre guardar el ID real del producto
-        name: item.name ?? product.name, // nombre con badge de oferta si viene del frontend
+        name,
         imageUrl: product.imageUrl,
         quantity: item.quantity,
         unitPrice,
         subtotal: itemSubtotal,
       };
     });
+    subtotal = Math.round(subtotal * 100) / 100;
 
     // Envío: gratis al recoger; en delivery, por distancia a la tienda (GPS)
     // o por zona si no hay GPS útil. Ver deliveryFee.ts.
@@ -405,15 +441,40 @@ export class StoreService {
       paymentMethod: order.paymentMethod, deliveryType: order.deliveryType,
     });
 
-    return order;
+    return { ...order, accessKey: orderAccessKey(order.orderNumber) };
   }
 
-  async getOrdersByPhone(phone: string) {
-    return prisma.storeOrder.findMany({
-      where: { customerPhone: phone },
+  // "Mis pedidos" de una cuenta: solo los pedidos hechos con esa sesión.
+  // Antes se buscaba por teléfono en una ruta pública, así que bastaba saber
+  // el celular de alguien para ver sus pedidos y su dirección.
+  async getOrdersForCustomer(storeCustomerId: string) {
+    const orders = await prisma.storeOrder.findMany({
+      where: { storeCustomerId },
       include: { items: true },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     });
+    return orders.map(({ tarifaReparto: _t, liquidacionId: _l, ...o }) => ({ ...o, accessKey: orderAccessKey(o.orderNumber) }));
+  }
+
+  // Pedido público por número. Completo solo con la clave del enlace o con
+  // la sesión de quien lo hizo; sin eso, una versión sin datos personales
+  // (sirve para enlaces viejos sin clave: el cliente ve el estado, pero un
+  // extraño no ve nombre completo, teléfono, dirección ni la moto).
+  async getOrderForViewer(orderNumber: string, key: unknown, storeCustomerId?: string) {
+    const order = await this.getOrder(orderNumber);
+    if (isValidOrderKey(orderNumber, key) || (storeCustomerId && order.storeCustomerId === storeCustomerId)) {
+      return { ...order, accessKey: orderAccessKey(orderNumber), limited: false };
+    }
+    const { tracking } = order;
+    return {
+      ...order,
+      customerName: order.customerName.split(/\s+/)[0],
+      customerPhone: '', customerEmail: null, address: null, district: null, reference: null, notes: null,
+      latitude: null, longitude: null, paymentProof: null, storeCustomerId: null, riderId: null,
+      tracking: { ...tracking, rider: null, riderLocation: null, destination: null, receiver: null, schedule: null, kmLeft: null },
+      limited: true,
+    };
   }
 
   async getOrder(orderNumber: string) {

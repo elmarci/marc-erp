@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, Gift, LogOut, User, ChevronRight } from 'lucide-react'
+import { X, Gift, LogOut, User, ChevronRight, BookOpen } from 'lucide-react'
 import { Ico } from './Ico'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
@@ -131,11 +131,16 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
                 <Ico name="menu-ayuda" className="h-6 w-6" />
                 <span className="flex-1">Ayuda por WhatsApp</span>
               </a>
+              <Link to="/libro-de-reclamaciones" onClick={onClose}
+                className="flex items-center gap-3 px-5 py-3 text-sm text-paper-ink hover:bg-paper-surface transition-colors">
+                <BookOpen className="h-6 w-6 text-[#5F6B7E]" aria-hidden="true" />
+                <span className="flex-1">Libro de Reclamaciones</span>
+              </Link>
 
               {isLoggedIn && (
                 <button onClick={() => { onClose(); logout() }}
                   className="w-full flex items-center gap-3 px-5 py-3 text-sm text-brand-magenta-600 hover:bg-brand-magenta-50 transition-colors">
-                  <LogOut className="h-4.5 w-4.5" />Cerrar sesión
+                  <LogOut className="h-[18px] w-[18px]" />Cerrar sesión
                 </button>
               )}
             </nav>

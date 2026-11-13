@@ -51,5 +51,18 @@ export default defineConfig({
   // Las TV Samsung de 2018-2021 traen un Chromium 56-76: sin esto el bundle
   // sale con `?.` / `??` (Chrome 80+) y la pantalla /tv queda en blanco sin
   // ningún error visible. es2018 hace que esbuild baje esa sintaxis.
-  build: { target: 'es2018' },
+  build: {
+    target: 'es2018',
+    // Librerías aparte de nuestro código: cambian poco, así que tras cada
+    // despliegue el celular solo vuelve a bajar la parte de la tienda.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          libs: ['@tanstack/react-query', 'axios', 'zustand', 'sonner'],
+          motion: ['framer-motion'],
+        },
+      },
+    },
+  },
 })

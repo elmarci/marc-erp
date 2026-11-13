@@ -8,6 +8,7 @@ import { AddOfferModal, autoAddPack, canAutoAddPack } from './AddOfferModal'
 import { useCartStore } from '../cartStore'
 import { dealText } from '../lib/offers'
 import { flyToCart } from '../lib/flyToCart'
+import { thumb } from '../lib/thumb'
 
 export function PromoCarousel({ offers }: { offers: Offer[] }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -112,7 +113,7 @@ export function PromoCarousel({ offers }: { offers: Offer[] }) {
                     </div>
                     <div className={`h-28 w-28 shrink-0 rounded-xl overflow-hidden flex items-center justify-center ${firstProduct?.imageUrl ? 'bg-white' : 'bg-paper-surface'}`}>
                       {firstProduct?.imageUrl
-                        ? <img src={firstProduct.imageUrl} alt="" loading="lazy" className="h-full w-full object-contain" />
+                        ? <img src={thumb(firstProduct.imageUrl, 320)} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain" />
                         : <ShoppingBag className="h-10 w-10 text-paper-ink-ghost" aria-hidden="true" />}
                     </div>
                   </>

@@ -12,3 +12,10 @@ export function emitEvent(event: string, data?: unknown): void {
     _io?.emit(event, data);
   } catch { /* ignore */ }
 }
+
+/** Emite solo a una sala (p. ej. 'staff': personal del ERP con sesión válida). */
+export function emitToRoom(room: string, event: string, data?: unknown): void {
+  try {
+    _io?.to(room).emit(event, data);
+  } catch { /* ignore */ }
+}

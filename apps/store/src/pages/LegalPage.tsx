@@ -1,21 +1,13 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import { BUSINESS } from '../lib/storeInfo'
 
 // Páginas legales públicas (/privacidad y /terminos). Se muestran sin login
 // ni cabecera de la tienda porque Google las revisa al publicar el inicio de
 // sesión con Google, y cualquiera debe poder leerlas antes de registrarse.
-// Si cambian los datos del negocio, actualizar BUSINESS.
+// Si cambian los datos del negocio, actualizar BUSINESS en lib/storeInfo.ts.
 
-const BUSINESS = {
-  owner: 'María del Rosario Ruiz Chávez',
-  ruc: '10771669471',
-  tradeName: 'Minimarket Marc (Tienda Marc)',
-  address: 'Mz. F10 Lt. 2A, Calle 27, Av. Manchay, Pachacámac, Lima, Perú',
-  email: 'atencion.cliente@tiendasmarc.pe',
-  phones: '930 555 831 / 927 636 433',
-  site: 'www.tiendasmarc.pe',
-}
 
 const UPDATED = '8 de noviembre de 2026'
 

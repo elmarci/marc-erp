@@ -8,9 +8,11 @@ import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import morgan from 'morgan';
+import jwt from 'jsonwebtoken';
 
 import { env } from './config/env';
 import { setIo } from './config/socket';
+import { productThumb } from './config/thumbs';
 import { logger } from './config/logger';
 import { connectDatabase, disconnectDatabase, prisma } from './database/client';
 import { connectRedis, redis } from './config/redis';
@@ -107,7 +109,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', (_req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
-}, express.static(path.join(process.cwd(), 'uploads')));
+}, productThumb, express.static(path.join(process.cwd(), 'uploads'), {
+  // Las fotos de producto llevan nombre único (uuid): si cambian, cambia el
+  // nombre. Se pueden guardar 7 días en el celular sin volver a pedirlas.
+  maxAge: '7d',
+}));
 
 if (env.NODE_ENV !== 'test') {
   app.use(morgan('combined', {
@@ -181,6 +187,16 @@ io.on('connection', (socket) => {
 
   socket.on('leave-register', (registerId: string) => {
     socket.leave(`register:${registerId}`);
+  });
+
+  // Sala del personal: la ubicación en vivo de los repartidores solo se
+  // envía a quien muestra un token válido del ERP (antes iba a todos).
+  socket.on('join-staff', (token: unknown) => {
+    if (typeof token !== 'string') return;
+    try {
+      jwt.verify(token, env.JWT_SECRET);
+      socket.join('staff');
+    } catch { /* token inválido o vencido: no entra */ }
   });
 
   socket.on('disconnect', () => {

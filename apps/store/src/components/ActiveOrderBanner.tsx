@@ -7,11 +7,21 @@ import { storeApi, type TrackingStage } from '../api'
 // mostrar "tu pedido va en camino" en el inicio sin pedir cuenta.
 export const ACTIVE_ORDER_KEY = 'marc-active-order'
 
-export function rememberActiveOrder(orderNumber: string) {
-  try { localStorage.setItem(ACTIVE_ORDER_KEY, orderNumber) } catch { /* sin almacenamiento */ }
+// Se guarda "número|clave"; versiones viejas guardaban solo el número.
+export function rememberActiveOrder(orderNumber: string, accessKey?: string) {
+  try { localStorage.setItem(ACTIVE_ORDER_KEY, accessKey ? `${orderNumber}|${accessKey}` : orderNumber) } catch { /* sin almacenamiento */ }
 }
-function readActiveOrder() {
-  try { return localStorage.getItem(ACTIVE_ORDER_KEY) } catch { return null }
+function readActiveOrder(): { n: string; k: string | null } | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_ORDER_KEY)
+    if (!raw) return null
+    const [n, k] = raw.split('|')
+    return { n, k: k || null }
+  } catch { return null }
+}
+/** Enlace al seguimiento, con la clave si la hay. */
+export function orderLink(orderNumber: string, accessKey?: string | null) {
+  return `/pedido/${orderNumber}${accessKey ? `?k=${encodeURIComponent(accessKey)}` : ''}`
 }
 function forgetActiveOrder() {
   try { localStorage.removeItem(ACTIVE_ORDER_KEY) } catch { /* sin almacenamiento */ }
@@ -26,11 +36,11 @@ const LABEL: Partial<Record<TrackingStage, { text: string; img: string }>> = {
 }
 
 export function ActiveOrderBanner({ className = '' }: { className?: string }) {
-  const orderNumber = readActiveOrder()
+  const saved = readActiveOrder()
   const { data } = useQuery({
-    queryKey: ['order', orderNumber],
-    queryFn: () => storeApi.getOrder(orderNumber!),
-    enabled: !!orderNumber,
+    queryKey: ['order', saved?.n, saved?.k],
+    queryFn: () => storeApi.getOrder(saved!.n, saved!.k),
+    enabled: !!saved,
     refetchInterval: 30000,
     retry: false,
   })
@@ -48,7 +58,7 @@ export function ActiveOrderBanner({ className = '' }: { className?: string }) {
 
   return (
     <section className={className} aria-label="Tu pedido en curso">
-      <Link to={`/pedido/${order.orderNumber}`}
+      <Link to={orderLink(order.orderNumber, saved?.k)}
         className="bg-brand-blue-600 text-white rounded-2xl px-3.5 py-3 flex items-center gap-3 shadow-float">
         <span className="h-11 w-11 rounded-xl bg-white flex items-center justify-center shrink-0">
           <img src={meta.img} alt="" width={36} height={36} className="h-9 w-9 object-contain" />
