@@ -10,6 +10,7 @@ import { whatsappLink } from '../lib/storeInfo'
 // El mapa (Leaflet) pesa ~45 KB: solo se descarga cuando el pedido ya va en
 // camino, nunca en el resto de la tienda.
 const TrackingMap = lazy(() => import('../components/tracking/TrackingMap'))
+type RouteInfo = { km: number; min: number }
 
 const API_BASE = import.meta.env['VITE_API_URL']?.replace('/api/v1', '') ?? 'http://localhost:3001'
 
@@ -82,6 +83,8 @@ export function OrderConfirmPage() {
   const { orderNumber } = useParams<{ orderNumber: string }>()
   const queryClient = useQueryClient()
   const now = useNow(5000)
+  // Ruta por calles que calcula el mapa (OSRM): mejora el tiempo y la distancia.
+  const [route, setRoute] = useState<RouteInfo | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['order', orderNumber],
@@ -135,10 +138,22 @@ export function OrderConfirmPage() {
   // total al quitar productos y envío (y sumar lo canjeado con puntos).
   const cardCommission = Math.max(0, Math.round((Number(order.total) - Number(order.subtotal) - Number(order.deliveryCost) + Number(order.pointsDiscountAmount ?? 0)) * 100) / 100)
 
-  // Barra de avance: 5 tramos de confirmado a entregado.
-  const BAR: TrackingStage[] = ['CONFIRMADO', 'PREPARANDO', 'LISTO', 'EN_CAMINO', 'ENTREGADO']
-  const barLabels = isDelivery ? ['Confirmado', 'Preparando', 'Listo', 'En camino', 'Entregado'] : ['Confirmado', 'Preparando', 'Listo', 'Recogido']
-  const bar = isDelivery ? BAR : ['CONFIRMADO', 'PREPARANDO', 'LISTO', 'ENTREGADO'] as TrackingStage[]
+  // Tiempo de llegada: por calles si el mapa ya trazó la ruta; si no, el
+  // estimado en línea recta que manda el servidor.
+  const eta = route ? Math.max(1, Math.ceil(route.min)) + (order.deliveryStatus === 'RECOGIDO' ? 3 : 0) : t.etaMinutes
+  const kmLeft = route ? Math.round(route.km * 10) / 10 : t.kmLeft
+
+  // Avance por etapas: un ícono por etapa y una sola etiqueta (la actual),
+  // así nada queda desalineado por palabras largas o cortas.
+  const STEPS: { stage: TrackingStage; icon: string; label: string }[] = [
+    { stage: 'CONFIRMADO', icon: 'seg-confirmado', label: 'Confirmado' },
+    { stage: 'PREPARANDO', icon: 'seg-preparando', label: 'Preparando' },
+    { stage: 'LISTO', icon: 'seg-listo', label: isDelivery ? 'Listo para salir' : 'Listo para recoger' },
+    ...(isDelivery ? [{ stage: 'EN_CAMINO' as TrackingStage, icon: 'seg-moto', label: 'En camino' }] : []),
+    { stage: 'ENTREGADO', icon: 'seg-entregado', label: isDelivery ? 'Entregado' : 'Recogido' },
+  ]
+  const curIdx = Math.max(-1, STEPS.findIndex(st => st.stage === t.stage))
+  const nextStep = STEPS[curIdx + 1]
 
   // Línea de tiempo: lo que ya pasó con su hora, el paso actual resaltado y lo
   // que falta en gris.
@@ -167,6 +182,21 @@ export function OrderConfirmPage() {
         <span className="text-sm font-bold text-paper-ink tabular-nums">{order.orderNumber}</span>
       </div>
 
+      {/* Mapa en vivo arriba, como en las apps de delivery: solo mientras va en camino */}
+      {showMap && (
+        <section className={`${card} overflow-hidden`}>
+          <Suspense fallback={<div className="h-[300px] bg-paper-surface animate-pulse" />}>
+            <TrackingMap store={t.store} destination={t.destination} rider={t.riderLocation} onRoute={setRoute} />
+          </Suspense>
+          <div className="px-4 py-2.5 flex items-center gap-2 text-[13px] text-paper-ink-soft">
+            <span className={`h-2 w-2 rounded-full shrink-0 ${t.riderLocation ? 'bg-brand-green-500 animate-pulse' : 'bg-paper-line'}`} />
+            {t.riderLocation
+              ? <>Ubicación del repartidor en vivo · {ago(t.riderLocation.at, now)}</>
+              : <>Ubicación del repartidor no disponible por ahora</>}
+          </div>
+        </section>
+      )}
+
       {/* Estado principal + tiempo de llegada */}
       <section className={`${card} p-4`} aria-live="polite">
         <div className="flex items-start gap-3">
@@ -186,12 +216,12 @@ export function OrderConfirmPage() {
 
         {!isCancelled && isDelivery && t.stage !== 'ENTREGADO' && (
           <div className="mt-3.5 rounded-xl bg-paper-surface px-3.5 py-3 flex items-center gap-3">
-            {t.stage === 'EN_CAMINO' && t.etaMinutes != null ? (
+            {t.stage === 'EN_CAMINO' && eta != null ? (
               <>
-                <span className="text-[28px] leading-none font-extrabold text-brand-blue-700 tabular-nums">{t.etaMinutes}<span className="text-base ml-0.5">min</span></span>
+                <span className="text-[28px] leading-none font-extrabold text-brand-blue-700 tabular-nums">{eta}<span className="text-base ml-0.5">min</span></span>
                 <span className="text-sm text-paper-ink-soft leading-snug">
-                  Llegada aprox. <b className="text-paper-ink">{hhmm(new Date(Date.now() + t.etaMinutes * 60000).toISOString())}</b>
-                  {t.kmLeft != null && <><br />a {t.kmLeft.toFixed(1)} km de tu casa</>}
+                  Llegada aprox. <b className="text-paper-ink">{hhmm(new Date(Date.now() + eta * 60000).toISOString())}</b>
+                  {kmLeft != null && <><br />a {kmLeft.toFixed(1)} km de tu casa</>}
                 </span>
               </>
             ) : t.express ? (
@@ -215,20 +245,30 @@ export function OrderConfirmPage() {
 
         {!isCancelled && (
           <div className="mt-4">
-            <div className="flex gap-1" aria-hidden="true">
-              {bar.map(s => {
-                const done = r >= rank(s)
-                const active = r === rank(s) - 1 // el tramo que viene late
+            <ol className="flex items-center" aria-hidden="true">
+              {STEPS.map((st, i) => {
+                const done = i < curIdx || t.stage === 'ENTREGADO'
+                const isCur = i === curIdx && t.stage !== 'ENTREGADO'
                 return (
-                  <span key={s} className={`h-1.5 flex-1 rounded-full ${done ? 'bg-brand-blue-600' : active ? 'bg-brand-blue-200 animate-pulse' : 'bg-paper-line'}`} />
+                  <li key={st.stage} className={`flex items-center ${i === 0 ? '' : 'flex-1'}`}>
+                    {i > 0 && <span className={`h-[3px] flex-1 mx-1 rounded-full ${i <= curIdx ? 'bg-brand-blue-600' : 'bg-paper-line'}`} />}
+                    <span className={`relative h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
+                      isCur ? 'bg-white ring-2 ring-brand-blue-600' : done ? 'bg-brand-blue-50 ring-1 ring-brand-blue-200' : 'bg-paper-surface'}`}>
+                      {isCur && <span className="absolute inset-0 rounded-full ring-4 ring-brand-blue-200 animate-pulse" />}
+                      <Ico name={st.icon} className={`h-7 w-7 ${done || isCur ? '' : 'opacity-35 grayscale'}`} />
+                    </span>
+                  </li>
                 )
               })}
-            </div>
-            <div className="flex mt-1.5">
-              {barLabels.map((l, i) => (
-                <span key={l} className={`flex-1 text-[11px] leading-tight text-center ${r >= rank(bar[i]) ? 'text-paper-ink font-bold' : 'text-paper-ink-soft'}`}>{l}</span>
-              ))}
-            </div>
+            </ol>
+            <p className="mt-2.5 flex items-center justify-between gap-2 text-[13px]">
+              <span className="text-paper-ink">
+                {t.stage === 'RECIBIDO'
+                  ? <>Por confirmar</>
+                  : <>Paso {Math.min(curIdx + 1, STEPS.length)} de {STEPS.length} · <b>{STEPS[Math.max(0, curIdx)].label}</b></>}
+              </span>
+              {nextStep && t.stage !== 'ENTREGADO' && <span className="text-paper-ink-soft truncate">Sigue: {nextStep.label.toLowerCase()}</span>}
+            </p>
           </div>
         )}
       </section>
@@ -267,20 +307,6 @@ export function OrderConfirmPage() {
         </div>
       )}
 
-      {/* Mapa en vivo: solo mientras va en camino */}
-      {showMap && (
-        <section className={`${card} overflow-hidden`}>
-          <Suspense fallback={<div className="h-[220px] bg-paper-surface animate-pulse" />}>
-            <TrackingMap store={t.store} destination={t.destination} rider={t.riderLocation} />
-          </Suspense>
-          <div className="px-4 py-2.5 flex items-center gap-2 text-[13px] text-paper-ink-soft">
-            <span className={`h-2 w-2 rounded-full shrink-0 ${t.riderLocation ? 'bg-brand-green-500 animate-pulse' : 'bg-paper-line'}`} />
-            {t.riderLocation
-              ? <>Ubicación del repartidor en vivo · {ago(t.riderLocation.at, now)}</>
-              : <>Ubicación del repartidor no disponible por ahora</>}
-          </div>
-        </section>
-      )}
 
       {/* Repartidor asignado */}
       {isDelivery && !isCancelled && t.stage !== 'ENTREGADO' && (
