@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css'
 import { io } from 'socket.io-client'
 import { MapPin } from 'lucide-react'
 import { api } from '@/services/api'
+import { useAuthStore } from '@/stores/authStore'
 import { formatDateTime } from '@/lib/utils'
 
 interface TrackingData {
@@ -49,6 +50,9 @@ export function RiderTrackingPanel({ orderId }: { orderId: string }) {
   useEffect(() => {
     const base = (import.meta.env['VITE_API_URL'] as string | undefined) ?? 'http://localhost:3001/api/v1'
     const socket = io(base.replace('/api/v1', ''), { transports: ['websocket', 'polling'] })
+    // La ubicación en vivo solo llega a la sala del personal (requiere token).
+    const joinStaff = () => socket.emit('join-staff', useAuthStore.getState().accessToken)
+    socket.on('connect', joinStaff)
     socket.on('delivery:rider-location', (payload: { riderId: string; lat: number; lng: number }) => {
       if (data?.rider?.id === payload.riderId) setLivePos({ lat: payload.lat, lng: payload.lng })
     })

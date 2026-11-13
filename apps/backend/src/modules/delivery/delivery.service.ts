@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError, AuthorizationError } from '../../utils/errors';
-import { emitEvent } from '../../config/socket';
+import { emitEvent, emitToRoom } from '../../config/socket';
 import { env } from '../../config/env';
 import { pushService } from '../push/push.service';
 import { haversineKm, STORE_ORIGIN, tarifaParaPedido } from './economics';
@@ -201,7 +201,7 @@ export class DeliveryService {
       where: { id: riderId },
       data: { lastLat: lat, lastLng: lng, lastLocationAt: new Date() },
     });
-    emitEvent('delivery:rider-location', { riderId, lat, lng });
+    emitToRoom('staff', 'delivery:rider-location', { riderId, lat, lng });
   }
 
   /* ── Perfil y estado ──────────────────────────────────────────────────── */

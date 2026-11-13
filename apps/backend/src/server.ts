@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import morgan from 'morgan';
+import jwt from 'jsonwebtoken';
 
 import { env } from './config/env';
 import { setIo } from './config/socket';
@@ -181,6 +182,16 @@ io.on('connection', (socket) => {
 
   socket.on('leave-register', (registerId: string) => {
     socket.leave(`register:${registerId}`);
+  });
+
+  // Sala del personal: la ubicación en vivo de los repartidores solo se
+  // envía a quien muestra un token válido del ERP (antes iba a todos).
+  socket.on('join-staff', (token: unknown) => {
+    if (typeof token !== 'string') return;
+    try {
+      jwt.verify(token, env.JWT_SECRET);
+      socket.join('staff');
+    } catch { /* token inválido o vencido: no entra */ }
   });
 
   socket.on('disconnect', () => {
