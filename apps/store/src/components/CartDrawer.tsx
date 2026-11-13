@@ -8,6 +8,7 @@ import { storeApi } from '../api'
 
 import { WhatsAppIcon } from './CartBar'
 import { BRAND_NAME, DELIVERY, money, whatsappLink } from '../lib/storeInfo'
+import { thumb } from '../lib/thumb'
 
 export function CartDrawer() {
   const items = useCartStore(s => s.items)
@@ -118,7 +119,7 @@ export function CartDrawer() {
               ) : row.item ? (
                 <div key={row.key} className="flex gap-3 p-3">
                   {row.item.product.imageUrl ? (
-                    <img src={row.item.product.imageUrl} alt="" loading="lazy" width={64} height={64}
+                    <img src={thumb(row.item.product.imageUrl, 160)} alt="" loading="lazy" decoding="async" width={64} height={64}
                       className="h-16 w-16 rounded-xl object-cover shrink-0" />
                   ) : (
                     <div className="h-16 w-16 rounded-xl bg-paper-surface shrink-0 flex items-center justify-center">
@@ -169,7 +170,7 @@ export function CartDrawer() {
                     className="shrink-0 w-28 bg-white rounded-2xl shadow-card p-2 text-left">
                     <div className="h-16 rounded-xl bg-paper-surface overflow-hidden mb-1.5 flex items-center justify-center">
                       {p.imageUrl
-                        ? <img src={p.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+                        ? <img src={thumb(p.imageUrl, 160)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                         : <ShoppingBag className="h-5 w-5 text-paper-ink-ghost" aria-hidden="true" />}
                     </div>
                     <p className="text-[13px] font-semibold text-paper-ink line-clamp-2 leading-tight min-h-[2.4em]">{p.name}</p>

@@ -10,6 +10,7 @@ import { AddOfferModal, autoAddPack, canAutoAddPack, getPackInfo } from '../comp
 import { flyToCart } from '../lib/flyToCart'
 import { money } from '../lib/storeInfo'
 import { dealText } from '../lib/offers'
+import { thumb } from '../lib/thumb'
 
 // Ofertas en una sola lista, sin hojas ni pasos intermedios: cada tarjeta
 // dice qué es la promo, cuánto cuesta y se agrega con un toque.
@@ -31,7 +32,7 @@ function Thumb({ src, size }: { src: string | null; size: string }) {
   return (
     <div className={`${size} shrink-0 rounded-lg overflow-hidden flex items-center justify-center ${src ? 'bg-white' : 'bg-paper-surface'}`}>
       {src
-        ? <img src={src} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain" />
+        ? <img src={thumb(src, 160)} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain" />
         : <ShoppingBag className="h-6 w-6 text-paper-ink-ghost" aria-hidden="true" />}
     </div>
   )

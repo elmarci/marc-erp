@@ -7,6 +7,7 @@ import { useCartStore } from '../cartStore'
 import type { Product } from '../api'
 import { toast } from 'sonner'
 import { flyToCart } from '../lib/flyToCart'
+import { thumb } from '../lib/thumb'
 
 // Redondeo a gramo (o su equivalente) al calcular el peso desde un monto —
 // evita arrastrar error de punto flotante (ej. 0.267000000004).
@@ -207,7 +208,7 @@ export function ProductCard({ product }: { product: Product }) {
               mismo cuadro aunque vengan con tamaños y recortes distintos. */}
           <div className={`relative aspect-[4/3] sm:aspect-square rounded-xl overflow-hidden ${product.imageUrl ? 'bg-white' : 'bg-paper-surface'}`}>
             {product.imageUrl
-              ? <img ref={imgRef} src={product.imageUrl} alt="" loading="lazy" decoding="async" width={300} height={300}
+              ? <img ref={imgRef} src={thumb(product.imageUrl, 320)} alt="" loading="lazy" decoding="async" width={300} height={300}
                   className="w-full h-full object-contain" />
               : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-8 w-8 text-paper-ink-ghost" aria-hidden="true" /></div>}
           </div>

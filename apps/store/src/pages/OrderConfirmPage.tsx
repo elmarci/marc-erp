@@ -6,6 +6,7 @@ import { Ico } from '../components/Ico'
 import { storeApi, type OrderTracking, type StoreOrder, type TrackingStage } from '../api'
 import { io } from 'socket.io-client'
 import { whatsappLink } from '../lib/storeInfo'
+import { thumb } from '../lib/thumb'
 
 // El mapa (Leaflet) pesa ~45 KB: solo se descarga cuando el pedido ya va en
 // camino, nunca en el resto de la tienda.
@@ -450,7 +451,7 @@ export function OrderConfirmPage() {
                       <div className="flex items-center gap-2">
                         <div className="h-6 w-6 rounded-md bg-paper-surface shrink-0 overflow-hidden flex items-center justify-center">
                           {item.imageUrl
-                            ? <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+                            ? <img src={thumb(item.imageUrl, 160)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                             : <Package className="h-3 w-3 text-paper-ink-ghost" />}
                         </div>
                         <span className="text-paper-ink font-semibold truncate max-w-[140px]">{item.name}</span>

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { storeApi, type BasketItem, type BasketLine, type BasketProposal, type BasketSuggestResponse } from '../api'
 import { useCartStore } from '../cartStore'
 import { useVoiceSearch } from '../hooks/useVoiceSearch'
+import { thumb } from '../lib/thumb'
 
 // "Arma tu canasta": el cliente dice cuánto tiene, para cuántos y para qué
 // ("tengo S/ 20 para un desayuno de 4") y recibe propuestas armadas con lo
@@ -40,7 +41,7 @@ function ProductThumb({ line }: { line: BasketLine }) {
   return (
     <div className="h-14 w-14 rounded-xl bg-paper-surface overflow-hidden flex items-center justify-center shrink-0">
       {line.product.imageUrl
-        ? <img src={line.product.imageUrl} alt="" className="h-full w-full object-cover" />
+        ? <img src={thumb(line.product.imageUrl, 160)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
         : <Package className="h-6 w-6 text-paper-ink-ghost" />}
     </div>
   )
