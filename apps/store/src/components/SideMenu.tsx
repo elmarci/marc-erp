@@ -1,9 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  X, Home, LayoutGrid, Store, Tag, Package, Gift, BarChart3, MapPin,
-  MessageCircle, LogOut, User, ChevronRight, ShoppingBasket,
-} from 'lucide-react'
+import { X, Gift, LogOut, User, ChevronRight } from 'lucide-react'
+import { Ico } from './Ico'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
 import { useAuthStore } from '../authStore'
@@ -43,18 +41,18 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
   const go = (to: string) => { onClose(); navigate(to, overlayNav()) }
 
   const links = [
-    { to: '/', icon: Home, label: 'Inicio' },
-    { to: '/catalogo', icon: Store, label: 'Catálogo completo' },
-    { to: '/categorias', icon: LayoutGrid, label: 'Categorías' },
-    { to: '/ofertas', icon: Tag, label: 'Ofertas', badge: offersCount },
-    { to: '/canasta', icon: ShoppingBasket, label: 'Arma tu canasta' },
+    { to: '/', icon: 'nav-inicio-relleno', label: 'Inicio' },
+    { to: '/catalogo', icon: 'cat-todo', label: 'Catálogo completo' },
+    { to: '/categorias', icon: 'nav-categorias-relleno', label: 'Categorías' },
+    { to: '/ofertas', icon: 'menu-ofertas', label: 'Ofertas', badge: offersCount },
+    { to: '/canasta', icon: 'menu-canasta', label: 'Arma tu canasta' },
   ]
 
   const accountLinks = isLoggedIn ? [
-    { to: '/mis-pedidos', icon: Package, label: 'Mis pedidos' },
-    { to: '/mis-pedidos#canje', icon: Gift, label: 'Puntos y canje' },
-    { to: '/mis-pedidos#consumo', icon: BarChart3, label: 'Reporte de consumos' },
-    { to: '/mis-pedidos#direcciones', icon: MapPin, label: 'Mis direcciones' },
+    { to: '/mis-pedidos', icon: 'menu-pedidos', label: 'Mis pedidos' },
+    { to: '/mis-pedidos#canje', icon: 'menu-puntos', label: 'Puntos y canje' },
+    { to: '/mis-pedidos#consumo', icon: 'menu-consumos', label: 'Reporte de consumos' },
+    { to: '/mis-pedidos#direcciones', icon: 'menu-direcciones', label: 'Mis direcciones' },
   ] : []
 
   return (
@@ -103,10 +101,10 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
 
             {/* Navegación */}
             <nav className="flex-1 py-2">
-              {links.map(({ to, icon: Icon, label, badge }) => (
+              {links.map(({ to, icon, label, badge }) => (
                 <Link key={to} to={to} onClick={onClose}
                   className="flex items-center gap-3 px-5 py-3 text-sm text-paper-ink hover:bg-paper-surface transition-colors">
-                  <Icon className="h-4.5 w-4.5 text-paper-ink-ghost" />
+                  <Ico name={icon} className="h-6 w-6" />
                   <span className="flex-1">{label}</span>
                   {!!badge && <span className="h-5 min-w-5 px-1 bg-brand-magenta-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{badge}</span>}
                 </Link>
@@ -116,10 +114,10 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
                 <>
                   <div className="border-t border-paper-line my-2 mx-5" />
                   <p className="px-5 pt-1 pb-1.5 text-xs font-bold uppercase tracking-wide text-paper-ink-soft">Mi cuenta</p>
-                  {accountLinks.map(({ to, icon: Icon, label }) => (
+                  {accountLinks.map(({ to, icon, label }) => (
                     <Link key={to} to={to} onClick={onClose}
                       className="flex items-center gap-3 px-5 py-3 text-sm text-paper-ink hover:bg-paper-surface transition-colors">
-                      <Icon className="h-4.5 w-4.5 text-paper-ink-ghost" />
+                      <Ico name={icon} className="h-6 w-6" />
                       <span className="flex-1">{label}</span>
                     </Link>
                   ))}
@@ -130,7 +128,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
               <a href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Hola Tiendas Marc, tengo una consulta.')}`}
                 target="_blank" rel="noopener noreferrer" onClick={onClose}
                 className="flex items-center gap-3 px-5 py-3 text-sm text-paper-ink hover:bg-paper-surface transition-colors">
-                <MessageCircle className="h-4.5 w-4.5 text-[#25D366]" />
+                <Ico name="menu-ayuda" className="h-6 w-6" />
                 <span className="flex-1">Ayuda por WhatsApp</span>
               </a>
 

@@ -42,7 +42,7 @@ export function CategoriesPage() {
               <div className={`aspect-[4/3] rounded-xl overflow-hidden flex items-center justify-center ${cat.imageUrl ? 'bg-white' : 'bg-brand-blue-50'}`}>
                 {cat.imageUrl
                   ? <img src={cat.imageUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                  : <Icon className="h-9 w-9 text-brand-blue-600" aria-hidden="true" />}
+                  : <Icon className="h-14 w-14" />}
               </div>
               <div className="min-w-0">
                 <p className="text-[15px] font-bold text-paper-ink leading-tight truncate">{cat.name}</p>

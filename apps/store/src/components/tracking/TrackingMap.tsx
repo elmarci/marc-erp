@@ -5,24 +5,24 @@ import 'leaflet/dist/leaflet.css'
 
 type LatLng = { lat: number; lng: number }
 
-// Íconos propios (nunca el pin genérico de Leaflet ni un mapa de Google,
-// regla de marca): tienda en azul, casa en blanco con borde, moto en verde
+// Pines del set propio de Tiendas Marc (public/icons/pin-*.svg) dentro de un
+// círculo blanco con borde de color: tienda y casa en azul, la moto en verde
 // con un halo que late para que se note que se mueve.
-const pin = (bg: string, border: string, svg: string, size = 34, pulse = false) => L.divIcon({
+const pin = (name: string, border: string, size = 40, pulse = false) => L.divIcon({
   className: '',
   html: `<div style="position:relative;width:${size}px;height:${size}px">
-    ${pulse ? `<span style="position:absolute;inset:-8px;border-radius:9999px;background:rgba(43,122,18,.25);animation:marc-ping 1.6s ease-out infinite"></span>` : ''}
-    <div style="position:relative;width:${size}px;height:${size}px;border-radius:9999px;background:${bg};border:2.5px solid ${border};display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(20,33,61,.35)">${svg}</div>
+    ${pulse ? '<span style="position:absolute;inset:-8px;border-radius:9999px;background:rgba(43,122,18,.25);animation:marc-ping 1.6s ease-out infinite"></span>' : ''}
+    <div style="position:relative;width:${size}px;height:${size}px;border-radius:9999px;background:#fff;border:2.5px solid ${border};display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(20,33,61,.3)">
+      <img src="/icons/${name}.svg" alt="" style="width:${Math.round(size * 0.72)}px;height:${Math.round(size * 0.72)}px" />
+    </div>
   </div>`,
   iconSize: [size, size],
   iconAnchor: [size / 2, size / 2],
 })
-const svg = (stroke: string, paths: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`
 
-const storeIcon = pin('#1450b4', '#fff', svg('#fff', '<path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/>'))
-const homeIcon = pin('#fff', '#1450b4', svg('#1450b4', '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'))
-const riderIcon = pin('#2b7a12', '#fff', svg('#fff', '<circle cx="5.5" cy="17" r="3"/><circle cx="18.5" cy="17" r="3"/><path d="M5.5 17h4l3-7h4"/><path d="M15 6h2l1.5 11"/>'), 38, true)
+const storeIcon = pin('pin-tienda', '#1450b4')
+const homeIcon = pin('pin-casa', '#1450b4')
+const riderIcon = pin('pin-moto', '#2b7a12', 44, true)
 
 function FitBounds({ points }: { points: LatLng[] }) {
   const map = useMap()

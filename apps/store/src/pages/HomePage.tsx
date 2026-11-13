@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActiveOrderBanner } from '../components/ActiveOrderBanner'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Clock, LayoutGrid, MapPin, ShoppingBasket, Truck, Wallet, WifiOff } from 'lucide-react'
+import { ChevronRight, LayoutGrid, ShoppingBasket, WifiOff } from 'lucide-react'
+import { Ico } from '../components/Ico'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { PromoCarousel } from '../components/PromoCarousel'
@@ -56,9 +57,7 @@ export function HomePage() {
           llenar el carrito — si llegamos a su zona, cuándo y cuánto cuesta. */}
       <section className={`${WRAP} pt-3.5`} aria-label="Reparto">
         <div className="bg-white rounded-2xl shadow-card px-3.5 py-3 flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-brand-green-100 flex items-center justify-center shrink-0">
-            <Truck className="h-5 w-5 text-brand-green-600" aria-hidden="true" />
-          </div>
+          <Ico name="aviso-reparto" className="h-10 w-10" />
           <div className="min-w-0">
             <p className="text-[15px] font-bold text-paper-ink leading-snug">{status.title}</p>
             <p className="text-[13px] text-paper-ink-soft leading-snug">
@@ -79,7 +78,7 @@ export function HomePage() {
                   <span className="h-16 w-16 rounded-[18px] bg-white shadow-card overflow-hidden flex items-center justify-center">
                     {cat.imageUrl
                       ? <img src={cat.imageUrl} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-cover" />
-                      : <Icon className="h-7 w-7 text-brand-blue-600" />}
+                      : <Icon className="h-10 w-10" />}
                   </span>
                   <span className="text-[13px] font-semibold text-paper-ink leading-tight line-clamp-2">{cat.name}</span>
                 </Link>
@@ -161,28 +160,28 @@ export function HomePage() {
         <h2 className={`${H2} mb-3`}>Cómo te llega tu pedido</h2>
         <div className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
           <div className="flex gap-3 p-4">
-            <MapPin className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <Ico name="chk-ubicacion" className="h-7 w-7" />
             <div>
               <p className="font-bold text-paper-ink">Repartimos en {DELIVERY.zoneName}</p>
               <p className="text-sm text-paper-ink-soft leading-relaxed">{DELIVERY.zones.join(', ')}.</p>
             </div>
           </div>
           <div className="flex gap-3 p-4">
-            <Clock className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <Ico name="aviso-horario" className="h-7 w-7" />
             <div>
               <p className="font-bold text-paper-ink">Dos repartos al día</p>
               <p className="text-sm text-paper-ink-soft leading-relaxed">Mañana de 6 a 9 am y tarde de 5 a 9 pm. Viernes y sábado, hasta la 1 am.</p>
             </div>
           </div>
           <div className="flex gap-3 p-4">
-            <Truck className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <Ico name="chk-delivery" className="h-7 w-7" />
             <div>
               <p className="font-bold text-paper-ink">Envío desde {money(DELIVERY.costFrom)}</p>
               <p className="text-sm text-paper-ink-soft leading-relaxed">Express desde {money(DELIVERY.expressFrom)}. Recoger en tienda no cuesta.</p>
             </div>
           </div>
           <div className="flex gap-3 p-4">
-            <Wallet className="h-5 w-5 text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <Ico name="chk-efectivo" className="h-7 w-7" />
             <div>
               <p className="font-bold text-paper-ink">Pagas como prefieras</p>
               <div className="flex flex-wrap gap-2 mt-1.5">

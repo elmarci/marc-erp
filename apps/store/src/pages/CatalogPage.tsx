@@ -323,7 +323,7 @@ export function CatalogPage() {
                   <div key={cat.id}>
                     <button onClick={() => handleCategory(cat.id)}
                       className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-brand-green-600 text-white' : 'text-paper-ink hover:bg-paper-surface'}`}>
-                      <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-brand-blue-500'}`} />
+                      <span className={`h-6 w-6 rounded-md flex items-center justify-center shrink-0 ${isActive ? 'bg-white' : ''}`}><Icon className="h-5 w-5" /></span>
                       <span className="flex-1 text-left truncate">{cat.name}</span>
                       <span className={`text-xs ${isActive ? 'text-white/70' : 'text-paper-ink-ghost'}`}>{cat._count.products}</span>
                     </button>

@@ -46,7 +46,7 @@ export function CategoryMegaMenu() {
                 <button key={cat.id} onMouseEnter={() => setActiveId(cat.id)} onClick={() => setActiveId(cat.id)}
                   className={`w-full flex items-center gap-2.5 pl-3.5 pr-3 py-2.5 text-sm font-medium text-left border-l-2 transition-colors
                     ${isActive ? 'bg-brand-green-50 text-brand-green-700 border-brand-green-600' : 'text-paper-ink hover:bg-paper-surface border-transparent'}`}>
-                  <Icon className="h-4 w-4 shrink-0" />
+                  <Icon className="h-5 w-5 shrink-0" />
                   <span className="flex-1 truncate">{cat.name}</span>
                   <ChevronRight className="h-3.5 w-3.5 text-paper-ink-ghost shrink-0" />
                 </button>

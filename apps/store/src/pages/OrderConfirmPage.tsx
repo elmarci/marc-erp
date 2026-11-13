@@ -1,10 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  Clock, CheckCircle2, Package, PackageCheck, Bike, Home, XCircle, ChevronRight, ChevronDown,
-  MessageCircle, MapPin, CalendarClock, User, Star, Zap,
-} from 'lucide-react'
+import { Clock, CheckCircle2, Package, PackageCheck, Bike, Home, XCircle, ChevronRight, ChevronDown, MessageCircle, Star } from 'lucide-react'
+import { Ico } from '../components/Ico'
 import { storeApi, type OrderTracking, type StoreOrder, type TrackingStage } from '../api'
 import { io } from 'socket.io-client'
 import { whatsappLink } from '../lib/storeInfo'
@@ -45,8 +43,8 @@ type Hero = { Icon: typeof Clock; title: string; sub: string; tone: 'blue' | 'gr
 
 // Íconos propios de Tiendas Marc por etapa (public/icons, hechos por el dueño).
 const STAGE_ICON: Partial<Record<TrackingStage, string>> = {
-  RECIBIDO: '/icons/seg-recibido.png', CONFIRMADO: '/icons/seg-confirmado.png', PREPARANDO: '/icons/seg-preparando.png',
-  LISTO: '/icons/seg-listo.png', EN_CAMINO: '/icons/seg-moto.png', ENTREGADO: '/icons/seg-entregado.png',
+  RECIBIDO: '/icons/seg-recibido.svg', CONFIRMADO: '/icons/seg-confirmado.svg', PREPARANDO: '/icons/seg-preparando.svg',
+  LISTO: '/icons/seg-listo.svg', EN_CAMINO: '/icons/seg-moto.svg', ENTREGADO: '/icons/seg-entregado.svg',
 }
 
 function heroFor(t: OrderTracking, o: StoreOrder, isDelivery: boolean, needsPayment: boolean): Hero {
@@ -198,17 +196,17 @@ export function OrderConfirmPage() {
               </>
             ) : t.express ? (
               <>
-                <Zap className="h-6 w-6 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <Ico name="chk-express" className="h-8 w-8" />
                 <span className="text-sm text-paper-ink-soft leading-snug"><b className="text-paper-ink">Express:</b> sale apenas esté listo. Llega aprox. en 20 a 30 min.</span>
               </>
             ) : t.schedule ? (
               <>
-                <CalendarClock className="h-6 w-6 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <Ico name="aviso-horario" className="h-8 w-8" />
                 <span className="text-sm text-paper-ink-soft leading-snug"><b className="text-paper-ink">Entrega programada:</b> {t.schedule}</span>
               </>
             ) : (
               <>
-                <Clock className="h-6 w-6 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <Ico name="aviso-horario" className="h-8 w-8" />
                 <span className="text-sm text-paper-ink-soft leading-snug">Te mostramos el tiempo de llegada cuando salga de la tienda.</span>
               </>
             )}
@@ -312,7 +310,7 @@ export function OrderConfirmPage() {
           ) : (
             <div className="mt-2.5 flex items-center gap-3">
               <span className="h-12 w-12 rounded-full bg-paper-surface flex items-center justify-center shrink-0">
-                <Bike className="h-5 w-5 text-paper-ink-soft" aria-hidden="true" />
+                <Ico name="pin-moto" className="h-7 w-7 opacity-60" />
               </span>
               <p className="text-sm text-paper-ink-soft leading-snug">Aún no tiene repartidor. Aquí verás quién lo lleva apenas se asigne.</p>
             </div>
@@ -356,17 +354,17 @@ export function OrderConfirmPage() {
       <section className={`${card} p-4 space-y-2.5`}>
         <h2 className={section}>{isDelivery ? 'Entrega' : 'Recojo'}</h2>
         <p className="flex gap-2.5 text-sm text-paper-ink leading-snug">
-          <MapPin className="h-[18px] w-[18px] text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+          <Ico name="chk-ubicacion" className="h-6 w-6 -mt-0.5" />
           <span>{isDelivery ? <>{order.address}{order.district ? `, ${order.district}` : ''}{order.reference && <span className="block text-paper-ink-soft">{order.reference}</span>}</> : 'Tiendas Marc — Av. Manchay, Pachacamac'}</span>
         </p>
         {isDelivery && (t.schedule || t.express) && (
           <p className="flex gap-2.5 text-sm text-paper-ink leading-snug">
-            <CalendarClock className="h-[18px] w-[18px] text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+            <Ico name="aviso-horario" className="h-6 w-6 -mt-0.5" />
             <span>{t.express ? 'Express, lo antes posible' : cap(t.schedule!)}</span>
           </p>
         )}
         <p className="flex gap-2.5 text-sm text-paper-ink leading-snug">
-          <User className="h-[18px] w-[18px] text-brand-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+          <Ico name="nav-cuenta-relleno" className="h-6 w-6 -mt-0.5" />
           <span>Recibe: {t.receiver && t.receiver !== 'el mismo cliente' ? t.receiver : `${order.customerName} · ${order.customerPhone}`}</span>
         </p>
         <p className="flex gap-2.5 text-sm text-paper-ink leading-snug items-center">
