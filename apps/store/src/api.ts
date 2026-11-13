@@ -103,6 +103,32 @@ export interface OrderTracking {
   times: { recibido: string; asignado: string | null; recogido: string | null; enCamino: string | null; entregado: string | null }
 }
 
+export interface ComplaintInput {
+  kind: 'RECLAMO' | 'QUEJA'
+  consumerName: string
+  docType: 'DNI' | 'CE' | 'PASAPORTE'
+  docNumber: string
+  address: string
+  phone: string
+  email: string
+  isMinor: boolean
+  guardianName?: string
+  itemType: 'PRODUCTO' | 'SERVICIO'
+  amount?: number
+  itemDescription: string
+  orderNumber?: string
+  detail: string
+  request: string
+}
+export interface Complaint extends ComplaintInput {
+  id: string
+  number: number
+  code: string
+  createdAt: string
+  dueAt: string
+  status: 'PENDIENTE' | 'RESPONDIDO'
+}
+
 export interface StoreOrder {
   id: string
   orderNumber: string
@@ -237,6 +263,10 @@ export const storeApi = {
   // personales ni ubicación.
   getOrder: (orderNumber: string, k?: string | null) =>
     api.get<{ data: StoreOrder }>(`/store/orders/${orderNumber}`, { params: k ? { k } : undefined }),
+
+  // Libro de Reclamaciones: registra una hoja y devuelve su número.
+  createComplaint: (data: ComplaintInput) =>
+    api.post<{ data: Complaint }>('/store/complaints', data),
 
   // Pedidos de la cuenta con sesión iniciada.
   myOrders: () =>

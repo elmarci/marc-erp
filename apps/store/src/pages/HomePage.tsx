@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActiveOrderBanner } from '../components/ActiveOrderBanner'
 import { Link } from 'react-router-dom'
-import { ChevronRight, LayoutGrid, ShoppingBasket, WifiOff } from 'lucide-react'
+import { BookOpen, ChevronRight, LayoutGrid, ShoppingBasket, WifiOff } from 'lucide-react'
 import { Ico } from '../components/Ico'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
@@ -202,6 +202,10 @@ export function HomePage() {
           <Link to="/terminos" className="underline py-3">Términos y condiciones</Link>
           <Link to="/privacidad" className="underline py-3">Política de privacidad</Link>
         </p>
+        <Link to="/libro-de-reclamaciones"
+          className="mt-2 inline-flex items-center gap-2.5 h-12 px-4 rounded-xl bg-white border border-paper-line text-paper-ink font-bold">
+          <BookOpen className="h-5 w-5 text-brand-blue-600" aria-hidden="true" />Libro de Reclamaciones
+        </Link>
       </footer>
     </main>
   )

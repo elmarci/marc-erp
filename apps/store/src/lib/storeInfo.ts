@@ -3,6 +3,17 @@
 // convivir "TIENDA MARC", "Minimarket Marc" y "Tienda Marc" en pantallas
 // distintas.
 export const BRAND_NAME = 'Tiendas Marc'
+
+// Datos legales del proveedor: páginas legales y Libro de Reclamaciones.
+export const BUSINESS = {
+  owner: 'María del Rosario Ruiz Chávez',
+  ruc: '10771669471',
+  tradeName: 'Minimarket Marc (Tienda Marc)',
+  address: 'Mz. F10 Lt. 2A, Calle 27, Av. Manchay, Pachacámac, Lima, Perú',
+  email: 'atencion.cliente@tiendasmarc.pe',
+  phones: '930 555 831 / 927 636 433',
+  site: 'www.tiendasmarc.pe',
+}
 export const WHATSAPP_NUMBER = '51930555831'
 
 export const DELIVERY = {
