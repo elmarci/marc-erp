@@ -124,8 +124,13 @@ export interface StoreOrder {
   deliveryStatus?: string | null
   // Solo viene en GET /store/orders/:orderNumber (seguimiento del pedido).
   tracking?: OrderTracking
+  // Clave para abrir el seguimiento completo (va en el enlace como ?k=).
+  accessKey?: string
+  // true = vista reducida: se abrió sin la clave y sin ser el dueño.
+  limited?: boolean
   items: Array<{
     id: string
+    productId?: string
     name: string
     imageUrl: string | null
     quantity: number
@@ -227,11 +232,15 @@ export const storeApi = {
   }) =>
     api.post<{ data: StoreOrder }>('/store/orders', data),
 
-  getOrder: (orderNumber: string) =>
-    api.get<{ data: StoreOrder }>(`/store/orders/${orderNumber}`),
+  // k = clave del enlace que se entrega al hacer el pedido. Sin ella (y sin
+  // ser el dueño de la cuenta) el servidor solo devuelve el avance, sin datos
+  // personales ni ubicación.
+  getOrder: (orderNumber: string, k?: string | null) =>
+    api.get<{ data: StoreOrder }>(`/store/orders/${orderNumber}`, { params: k ? { k } : undefined }),
 
-  trackOrders: (phone: string) =>
-    api.get<{ data: StoreOrder[] }>(`/store/orders/track/${phone}`),
+  // Pedidos de la cuenta con sesión iniciada.
+  myOrders: () =>
+    api.get<{ data: StoreOrder[] }>('/store/orders/mine'),
 
   getProfile: () =>
     api.get<{ data: StoreProfile }>('/store/auth/profile'),
