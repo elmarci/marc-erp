@@ -43,6 +43,12 @@ function fallbackTracking(o: StoreOrder): OrderTracking {
 
 type Hero = { Icon: typeof Clock; title: string; sub: string; tone: 'blue' | 'green' | 'red' }
 
+// Íconos propios de Tiendas Marc por etapa (public/icons, hechos por el dueño).
+const STAGE_ICON: Partial<Record<TrackingStage, string>> = {
+  RECIBIDO: '/icons/seg-recibido.png', CONFIRMADO: '/icons/seg-confirmado.png', PREPARANDO: '/icons/seg-preparando.png',
+  LISTO: '/icons/seg-listo.png', EN_CAMINO: '/icons/seg-moto.png', ENTREGADO: '/icons/seg-entregado.png',
+}
+
 function heroFor(t: OrderTracking, o: StoreOrder, isDelivery: boolean, needsPayment: boolean): Hero {
   const rider = t.rider?.nombre
   switch (t.stage) {
@@ -166,10 +172,14 @@ export function OrderConfirmPage() {
       {/* Estado principal + tiempo de llegada */}
       <section className={`${card} p-4`} aria-live="polite">
         <div className="flex items-start gap-3">
-          <span className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${
-            hero.tone === 'red' ? 'bg-brand-magenta-50 text-brand-magenta-600' : hero.tone === 'green' ? 'bg-brand-green-100 text-brand-green-700' : 'bg-brand-blue-50 text-brand-blue-600'}`}>
-            <hero.Icon className="h-6 w-6" aria-hidden="true" />
-          </span>
+          {STAGE_ICON[t.stage] ? (
+            <img src={STAGE_ICON[t.stage]} alt="" width={56} height={56} className="h-14 w-14 shrink-0 object-contain" />
+          ) : (
+            <span className={`h-14 w-14 rounded-2xl flex items-center justify-center shrink-0 ${
+              hero.tone === 'red' ? 'bg-brand-magenta-50 text-brand-magenta-600' : hero.tone === 'green' ? 'bg-brand-green-100 text-brand-green-700' : 'bg-brand-blue-50 text-brand-blue-600'}`}>
+              <hero.Icon className="h-6 w-6" aria-hidden="true" />
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-extrabold text-paper-ink leading-snug">{hero.title}</h1>
             <p className="text-sm text-paper-ink-soft leading-snug mt-0.5">{hero.sub}</p>

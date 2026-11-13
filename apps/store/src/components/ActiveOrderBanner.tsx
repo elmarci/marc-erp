@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bike, ChevronRight, Clock, Package, PackageCheck, CheckCircle2 } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { storeApi, type TrackingStage } from '../api'
 
 // Último pedido hecho desde este celular — lo guarda el checkout. Sirve para
@@ -17,12 +17,12 @@ function forgetActiveOrder() {
   try { localStorage.removeItem(ACTIVE_ORDER_KEY) } catch { /* sin almacenamiento */ }
 }
 
-const LABEL: Partial<Record<TrackingStage, { text: string; Icon: typeof Bike }>> = {
-  RECIBIDO: { text: 'Recibido, por confirmar', Icon: Clock },
-  CONFIRMADO: { text: 'Confirmado', Icon: CheckCircle2 },
-  PREPARANDO: { text: 'Lo estamos preparando', Icon: Package },
-  LISTO: { text: 'Listo para salir', Icon: PackageCheck },
-  EN_CAMINO: { text: 'En camino', Icon: Bike },
+const LABEL: Partial<Record<TrackingStage, { text: string; img: string }>> = {
+  RECIBIDO: { text: 'Recibido, por confirmar', img: '/icons/seg-recibido.png' },
+  CONFIRMADO: { text: 'Confirmado', img: '/icons/seg-confirmado.png' },
+  PREPARANDO: { text: 'Lo estamos preparando', img: '/icons/seg-preparando.png' },
+  LISTO: { text: 'Listo para salir', img: '/icons/seg-listo.png' },
+  EN_CAMINO: { text: 'En camino', img: '/icons/seg-moto.png' },
 }
 
 export function ActiveOrderBanner({ className = '' }: { className?: string }) {
@@ -50,8 +50,8 @@ export function ActiveOrderBanner({ className = '' }: { className?: string }) {
     <section className={className} aria-label="Tu pedido en curso">
       <Link to={`/pedido/${order.orderNumber}`}
         className="bg-brand-blue-600 text-white rounded-2xl px-3.5 py-3 flex items-center gap-3 shadow-float">
-        <span className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-          <meta.Icon className="h-5 w-5" aria-hidden="true" />
+        <span className="h-11 w-11 rounded-xl bg-white flex items-center justify-center shrink-0">
+          <img src={meta.img} alt="" width={36} height={36} className="h-9 w-9 object-contain" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[15px] font-bold leading-snug truncate">Tu pedido · {meta.text}</span>
