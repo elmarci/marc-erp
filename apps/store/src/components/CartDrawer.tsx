@@ -176,7 +176,7 @@ export function CartDrawer() {
                     <p className="text-[13px] font-semibold text-paper-ink line-clamp-2 leading-tight min-h-[2.4em]">{p.name}</p>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-sm font-extrabold text-paper-ink tabular-nums">S/ {Number(p.salePrice).toFixed(2)}</span>
-                      <span className="h-7 w-7 rounded-lg bg-brand-green-600 text-white flex items-center justify-center"><Plus className="h-4 w-4" /></span>
+                      <span className="h-7 w-7 rounded-full bg-brand-green-600 text-white flex items-center justify-center"><Plus className="h-4 w-4" strokeWidth={2.75} /></span>
                     </div>
                   </button>
                 ))}
