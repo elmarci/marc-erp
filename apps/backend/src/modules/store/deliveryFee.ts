@@ -20,7 +20,7 @@ export const FEE_EXPRESS_EXTRA = 2.0;
 export const MAX_GPS_KM = 5;
 // Compra mínima para delivery, en productos sin envío (dueño, 2026-11-15).
 // Igual que DELIVERY.minOrder en apps/store/src/lib/storeInfo.ts.
-export const DELIVERY_MIN_ORDER = 10;
+export const DELIVERY_MIN_ORDER = 8;
 export const NEAR_ZONES = ['Naranjos', 'Villa Hermosa', 'Unión', 'Paradero 1'];
 
 // Comisión por pagar con tarjeta (débito o crédito por igual) en la tienda

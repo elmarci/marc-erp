@@ -25,7 +25,7 @@ export const DELIVERY = {
   costFrom: 1.0,
   // Compra mínima para delivery, en productos (sin envío). Igual que
   // DELIVERY_MIN_ORDER en apps/backend/src/modules/store/deliveryFee.ts.
-  minOrder: 10,
+  minOrder: 8,
   expressFrom: 3.0,
   // Formas de pago que se muestran en el inicio, el carrito y los textos.
   // La tarjeta se cobra al recibir con el POS Izipay del repartidor (o en
