@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { Ilu } from './Ico'
 import { getPushPermission, subscribeToPush } from '../lib/push'
 
 const DISMISS_KEY = 'marc-notify-dismissed-at'
@@ -70,9 +71,7 @@ export function NotifyOptInBanner() {
           className="fixed bottom-40 md:bottom-0 inset-x-0 z-40 px-3 pointer-events-none md:pb-3"
         >
           <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-xl border border-paper-line p-3.5 flex items-center gap-3 pointer-events-auto">
-            <div className="h-11 w-11 shrink-0 rounded-xl bg-brand-green-50 flex items-center justify-center">
-              <Bell className="h-5 w-5 text-brand-green-600" />
-            </div>
+            <Ilu name="ilu-avisos-ofertas" eager className="h-14 w-[75px] -my-1 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-paper-ink">¿Avisos de ofertas?</p>
               <p className="text-xs text-paper-ink-soft truncate">Entérate apenas hay una promo nueva o empieza la hora feliz</p>

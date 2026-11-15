@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ShoppingBag, Plus, Minus, Truck } from 'lucide-react'
+import { ChevronLeft, Plus, Minus, Truck } from 'lucide-react'
+import { Ilu } from '../components/Ico'
 import { storeApi } from '../api'
 import { useCartStore } from '../cartStore'
 import { ProductCard } from '../components/ProductCard'
@@ -58,7 +59,7 @@ export function ProductPage() {
   if (!product) {
     return (
       <main className="max-w-md mx-auto px-4 py-16 text-center">
-        <ShoppingBag className="h-14 w-14 mx-auto mb-4 text-paper-ink-soft" aria-hidden="true" />
+        <Ilu name="ilu-sin-resultados" className="mx-auto h-36 w-48 mb-3" />
         <p className="text-lg font-bold text-paper-ink">Ya no tenemos este producto</p>
         <p className="text-sm text-paper-ink-soft mt-1 mb-5">Puede que se haya retirado del catálogo. Busca otro parecido.</p>
         <Link to="/catalogo" className="h-12 rounded-xl bg-brand-blue-600 text-white font-bold flex items-center justify-center">
@@ -122,7 +123,7 @@ export function ProductPage() {
         <div className="relative aspect-square bg-white rounded-[20px] shadow-card overflow-hidden">
           {product.imageUrl
             ? <img ref={imgRef} src={product.imageUrl} alt={product.name} width={600} height={600} className="w-full h-full object-contain p-4" />
-            : <div className="w-full h-full flex items-center justify-center bg-paper-surface"><ShoppingBag className="h-16 w-16 text-paper-ink-ghost" aria-hidden="true" /></div>
+            : <div className="w-full h-full flex items-center justify-center bg-paper-surface"><img src="/ilustraciones/ilu-producto-sin-foto.webp" alt="" width={640} height={480} className="w-3/4 h-auto object-contain" /></div>
           }
         </div>
 

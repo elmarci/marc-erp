@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
-import { Ico } from './Ico'
+import { Ilu } from './Ico'
 import { useBackClose } from '../lib/useBackClose'
 import { DELIVERY, FEES } from '../lib/storeInfo'
 
@@ -21,17 +21,17 @@ export function welcomeSeenAt(): number | null {
 
 const SLIDES = [
   {
-    icon: 'nav-carrito-relleno',
+    ilu: 'ilu-bienvenida-elegir',
     title: 'Elige tus productos',
     text: 'Busca por nombre, entra a las categorías o mira las ofertas. También puedes dictar tu lista con el micrófono.',
   },
   {
-    icon: 'chk-tarjeta',
+    ilu: 'ilu-bienvenida-pagar',
     title: 'Paga como prefieras',
     text: `Yape, efectivo o tarjeta débito/crédito al recibir (el repartidor lleva el POS, comisión ${FEES.cardPercent} %). No necesitas cuenta para pedir.`,
   },
   {
-    icon: 'seg-moto',
+    ilu: 'ilu-bienvenida-reparto',
     title: 'Te lo llevamos',
     text: `Delivery desde S/ ${DELIVERY.costFrom.toFixed(2)}, tres repartos al día. Sigues a tu repartidor en el mapa hasta tu puerta.`,
   },
@@ -85,14 +85,14 @@ export function WelcomeGuide() {
               <motion.div key={i} className="pt-3 pb-5 text-center"
                 initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }}
                 transition={{ duration: 0.18 }}>
-                <span className="mx-auto h-20 w-20 rounded-3xl bg-brand-blue-50 flex items-center justify-center">
-                  <Ico name={slide.icon} className="h-12 w-12" />
-                </span>
-                <h2 id="welcome-title" className="mt-4 text-xl font-extrabold text-paper-ink">{slide.title}</h2>
+                <Ilu name={slide.ilu} eager className="mx-auto h-44 w-[234px]" />
+                <h2 id="welcome-title" className="mt-2 text-xl font-extrabold text-paper-ink">{slide.title}</h2>
                 <p className="mt-1.5 text-[15px] text-paper-ink-soft leading-relaxed">{slide.text}</p>
               </motion.div>
             </AnimatePresence>
 
+            {/* Precarga las otras ilustraciones para que no aparezcan tarde. */}
+            <div className="hidden">{SLIDES.map(sl => <Ilu key={sl.ilu} name={sl.ilu} eager />)}</div>
             <div className="flex justify-center gap-1.5 mb-4" aria-hidden="true">
               {SLIDES.map((_, n) => (
                 <span key={n} className={`h-1.5 rounded-full transition-all ${n === i ? 'w-5 bg-brand-blue-600' : 'w-1.5 bg-paper-line'}`} />

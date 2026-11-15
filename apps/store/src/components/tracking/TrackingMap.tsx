@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Polyline, ZoomControl, useMap } from 'react-leaflet'
 import { useQuery } from '@tanstack/react-query'
-import { LocateFixed } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { Ico } from '../Ico'
 
 type LatLng = { lat: number; lng: number }
 
@@ -129,7 +129,7 @@ export default function TrackingMap({ store, destination, rider, onRoute, height
       </MapContainer>
       <button type="button" onClick={() => setVersion(v => v + 1)} aria-label="Centrar el mapa en tu pedido"
         className="absolute left-2.5 bottom-2.5 z-[500] h-10 px-3 rounded-xl bg-white shadow-card text-[13px] font-bold text-brand-blue-700 flex items-center gap-1.5">
-        <LocateFixed className="h-4 w-4" aria-hidden="true" />Centrar
+        <Ico name="ico-gps" className="h-5 w-5" />Centrar
       </button>
       <span className="absolute bottom-1 right-2 z-[500] text-[10px] text-paper-ink-soft bg-white/80 px-1 rounded">© OpenStreetMap</span>
     </div>

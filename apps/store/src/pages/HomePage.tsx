@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActiveOrderBanner } from '../components/ActiveOrderBanner'
 import { Link } from 'react-router-dom'
-import { BookOpen, ChevronRight, LayoutGrid, WifiOff } from 'lucide-react'
-import { Ico } from '../components/Ico'
+import { BookOpen, ChevronRight, LayoutGrid } from 'lucide-react'
+import { Ico, Ilu } from '../components/Ico'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { PromoCarousel } from '../components/PromoCarousel'
 import { HomeForNow, HomeForYou } from '../components/HomeForYou'
+import { HomeBanners } from '../components/HomeBanners'
 import { WhatsAppIcon } from '../components/CartBar'
 import { getCategoryIcon, getCategoryTile } from '../categoryIcons'
 import { BRAND_NAME, DELIVERY, deliveryStatus, money, whatsappLink } from '../lib/storeInfo'
@@ -58,7 +59,9 @@ export function HomePage() {
           llenar el carrito — si llegamos a su zona, cuándo y cuánto cuesta. */}
       <section className={`${WRAP} pt-3.5`} aria-label="Reparto">
         <div className="bg-white rounded-2xl shadow-card px-3.5 py-3 flex items-center gap-3">
-          <Ico name="aviso-reparto" className="h-10 w-10" />
+          {status.now
+            ? <Ico name="aviso-reparto" className="h-10 w-10" />
+            : <Ilu name="ilu-fuera-de-horario" eager className="h-14 w-[75px] -my-1 -ml-1 shrink-0" />}
           <div className="min-w-0">
             <p className="text-[15px] font-bold text-paper-ink leading-snug">{status.title}</p>
             <p className="text-[13px] text-paper-ink-soft leading-snug">
@@ -102,6 +105,7 @@ export function HomePage() {
           según la hora del día. */}
       <HomeForYou className={`${WRAP} pt-5`} />
       <HomeForNow categories={categories} wrap={WRAP} />
+      <HomeBanners wrap={WRAP} />
 
       {offers.length > 0 && (
         <>
@@ -121,7 +125,7 @@ export function HomePage() {
 
         {featuredQuery.isError ? (
           <div className="bg-white rounded-2xl shadow-card p-6 text-center">
-            <WifiOff className="h-8 w-8 mx-auto mb-3 text-paper-ink-soft" aria-hidden="true" />
+            <Ilu name="ilu-sin-conexion" className="mx-auto h-32 w-[171px] mb-2" />
             <p className="font-bold text-paper-ink">No pudimos cargar los productos</p>
             <p className="text-sm text-paper-ink-soft mt-1 mb-4">Revisa tu conexión y vuelve a intentar. También puedes pedir por WhatsApp.</p>
             <div className="flex flex-col gap-2.5">

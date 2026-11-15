@@ -1,5 +1,17 @@
 // Ícono del set propio de Tiendas Marc (public/icons/<name>.svg). Son dibujos
-// a color, decorativos: el texto de al lado siempre dice qué es.
+// a color, decorativos: el texto de al lado siempre dice qué es. Los íconos
+// "ico-*" (segundo set, 2026-11) vienen en WebP.
 export function Ico({ name, className = 'h-6 w-6' }: { name: string; className?: string }) {
-  return <img src={`/icons/${name}.svg`} alt="" aria-hidden="true" draggable={false} className={`object-contain shrink-0 ${className}`} />
+  const file = name.startsWith('ico-') ? `${name}.webp` : `${name}.svg`
+  return <img src={`/icons/${file}`} alt="" aria-hidden="true" draggable={false} className={`object-contain shrink-0 ${className}`} />
+}
+
+// Ilustración a color (public/ilustraciones/<name>.webp, lienzo 4:3 con fondo
+// transparente). Decorativa: el título de al lado dice lo mismo con palabras.
+export function Ilu({ name, className = 'h-40 w-auto', eager = false }: { name: string; className?: string; eager?: boolean }) {
+  return (
+    <img src={`/ilustraciones/${name}.webp`} alt="" aria-hidden="true" draggable={false}
+      width={640} height={480} loading={eager ? 'eager' : 'lazy'} decoding="async"
+      className={`object-contain select-none ${className}`} />
+  )
 }

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Package, LogOut, ChevronRight, RefreshCw, ShoppingBag,
-  MapPin, Plus, Trash2, Pencil, Check, X, CalendarDays, Gift, BarChart3,
+  Package, LogOut, ChevronRight, RefreshCw, ShoppingBag, MapPin, Plus, Trash2, Pencil, Check, X, CalendarDays, BarChart3,
 } from 'lucide-react'
 import { storeApi, type StoreAddress } from '../api'
 import { useAuthStore } from '../authStore'
@@ -10,6 +9,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { orderLink } from '../components/ActiveOrderBanner'
 import { repeatOrder } from '../lib/repeatOrder'
+import { Ilu } from '../components/Ico'
 
 // yyyy-mm-dd para <input type="date">, en hora local — evita que un "hoy"
 // en UTC se muestre como "ayer" para quien está en Perú (UTC-5).
@@ -73,17 +73,20 @@ function PointsZone({ points }: { points: number }) {
   // Los puntos se muestran solo como puntos (dueño, 2026-11-15): se
   // canjean por productos de un catálogo de premios, no por soles.
   return (
-    <div className="bg-brand-blue-600 rounded-2xl shadow-card p-5 text-white">
-      <h3 className="font-display font-semibold flex items-center gap-2 mb-1">
-        <Gift className="h-4 w-4" />Tus puntos
-      </h3>
-      <p className="text-sm text-brand-blue-100 mb-4">Sumas puntos con cada compra entregada. Júntalos para canjearlos por productos.</p>
-      <p className="text-4xl font-display font-semibold tabular-nums leading-none">{points}</p>
-      <p className="text-sm text-brand-blue-100 mt-1">{points === 1 ? 'punto disponible' : 'puntos disponibles'}</p>
-      <Link to="/" className="mt-4 flex items-center justify-center gap-1.5 bg-white text-brand-blue-600 rounded-xl h-12 font-bold">
+    <div className="bg-white rounded-2xl shadow-card p-5">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-lg font-extrabold text-paper-ink">Tus puntos</h3>
+          <p className="mt-2 text-4xl font-extrabold text-paper-ink tabular-nums leading-none">{points}</p>
+          <p className="text-sm text-paper-ink-soft mt-1">{points === 1 ? 'punto disponible' : 'puntos disponibles'}</p>
+        </div>
+        <Ilu name="ilu-puntos-premios" className="h-28 w-[150px] -mr-2 shrink-0" />
+      </div>
+      <p className="text-sm text-paper-ink-soft mt-3">Sumas puntos con cada compra entregada. Júntalos para canjearlos por productos.</p>
+      <Link to="/" className="mt-4 flex items-center justify-center gap-1.5 bg-brand-blue-600 active:bg-brand-blue-700 text-white rounded-xl h-12 font-bold">
         Seguir sumando <ChevronRight className="h-4 w-4" />
       </Link>
-      <p className="text-sm text-brand-blue-100 mt-2.5 text-center">Muy pronto: catálogo de premios para canjear tus puntos.</p>
+      <p className="text-sm text-paper-ink-soft mt-2.5 text-center">Muy pronto: catálogo de premios para canjear tus puntos.</p>
     </div>
   )
 }
@@ -351,9 +354,11 @@ export function TrackOrderPage() {
       )}
 
       {!isLoading && orders.length === 0 && (
-        <div className="text-center py-12 text-paper-ink-ghost">
-          <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
-          <p className="text-paper-ink-ghost">No se encontraron pedidos</p>
+        <div className="text-center py-8">
+          <Ilu name="ilu-sin-pedidos" className="mx-auto h-36 w-48 mb-3" />
+          <p className="text-lg font-bold text-paper-ink">Aún no tienes pedidos</p>
+          <p className="text-sm text-paper-ink-soft mt-1 mb-4">Cuando compres, aquí los ves y repites uno en un toque.</p>
+          <Link to="/catalogo" className="inline-flex h-12 px-6 rounded-xl bg-brand-blue-600 text-white font-bold items-center justify-center">Ver productos</Link>
         </div>
       )}
 

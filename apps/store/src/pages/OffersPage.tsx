@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence } from 'framer-motion'
-import { Clock, Plus, ShoppingBag, Tag, WifiOff } from 'lucide-react'
+import { Plus, ShoppingBag } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { storeApi, type Offer } from '../api'
@@ -11,6 +11,7 @@ import { flyToCart } from '../lib/flyToCart'
 import { money } from '../lib/storeInfo'
 import { dealText } from '../lib/offers'
 import { thumb } from '../lib/thumb'
+import { Ilu, Ico } from '../components/Ico'
 
 // Ofertas en una sola lista, sin hojas ni pasos intermedios: cada tarjeta
 // dice qué es la promo, cuánto cuesta y se agrega con un toque.
@@ -78,7 +79,7 @@ function OfferCard({ offer, onChoose }: { offer: Offer; onChoose: () => void }) 
           <span className="self-start bg-brand-sun-400 text-brand-sun-900 text-sm font-extrabold px-2 py-0.5 rounded-md">{dealText(offer)}</span>
           {offer.endDate && (
             <p className="text-xs text-paper-ink-soft flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+              <Ico name="ico-reloj" className="h-4 w-4" />
               Hasta el {new Date(offer.endDate).toLocaleDateString('es-PE', { day: 'numeric', month: 'long' })}
             </p>
           )}
@@ -198,7 +199,7 @@ export function OffersPage() {
 
       {isError && (
         <div className="bg-white rounded-2xl shadow-card p-6 text-center mt-4">
-          <WifiOff className="h-8 w-8 mx-auto mb-3 text-paper-ink-soft" aria-hidden="true" />
+          <Ilu name="ilu-sin-conexion" className="mx-auto h-32 w-[171px] mb-2" />
           <p className="font-bold text-paper-ink">No pudimos cargar las ofertas</p>
           <p className="text-sm text-paper-ink-soft mt-1 mb-4">Revisa tu conexión y vuelve a intentar.</p>
           <button onClick={() => refetch()} className="w-full h-12 rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold">Reintentar</button>
@@ -207,7 +208,7 @@ export function OffersPage() {
 
       {!isLoading && !isError && offers.length === 0 && (
         <div className="bg-white rounded-2xl shadow-card p-6 text-center mt-4">
-          <Tag className="h-8 w-8 mx-auto mb-3 text-paper-ink-soft" aria-hidden="true" />
+          <Ilu name="ilu-avisos-ofertas" className="mx-auto h-32 w-[171px] mb-2" />
           <p className="font-bold text-paper-ink">Hoy no hay ofertas activas</p>
           <p className="text-sm text-paper-ink-soft mt-1 mb-4">Vuelve pronto. Mientras tanto, mira todo el catálogo.</p>
           <Link to="/catalogo" className="h-12 rounded-xl bg-brand-blue-600 text-white font-bold flex items-center justify-center">Ver productos</Link>

@@ -9,6 +9,7 @@ import { storeApi } from '../api'
 import { WhatsAppIcon } from './CartBar'
 import { BRAND_NAME, DELIVERY, money, whatsappLink } from '../lib/storeInfo'
 import { thumb } from '../lib/thumb'
+import { Ilu } from './Ico'
 
 export function CartDrawer() {
   const items = useCartStore(s => s.items)
@@ -104,7 +105,7 @@ export function CartDrawer() {
         <div className="flex-1 overflow-y-auto p-4">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-6">
-              <ShoppingBag className="h-14 w-14 text-paper-ink-soft mb-4" aria-hidden="true" />
+              <Ilu name="ilu-carrito-vacio" className="h-36 w-48 mb-3" />
               <p className="text-lg font-bold text-paper-ink">Aún no tienes productos</p>
               <p className="text-sm text-paper-ink-soft mt-1 mb-5">Busca lo que necesitas o mira las ofertas de la semana.</p>
               <button onClick={() => { closeCart(); navigate('/catalogo', overlayNav()) }}
