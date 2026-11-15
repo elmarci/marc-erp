@@ -9,6 +9,7 @@ import { MobileTabBar } from './components/MobileTabBar'
 import { CartBar, VOICE_LIST_ROUTES } from './components/CartBar'
 import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
 import { WhatsAppFAB } from './components/WhatsAppFAB'
+import { WelcomeGuide } from './components/WelcomeGuide'
 import { useAuthStore } from './authStore'
 import { HomePage } from './pages/HomePage'
 import { CatalogPage } from './pages/CatalogPage'
@@ -29,6 +30,7 @@ const TrackOrderPage = page(() => import('./pages/TrackOrderPage'), 'TrackOrderP
 const OffersPage = page(() => import('./pages/OffersPage'), 'OffersPage')
 const BasketPage = page(() => import('./pages/BasketPage'), 'BasketPage')
 const ComplaintsPage = page(() => import('./pages/ComplaintsPage'), 'ComplaintsPage')
+const HowToBuyPage = page(() => import('./pages/HowToBuyPage'), 'HowToBuyPage')
 const TvPage = page(() => import('./pages/TvPage'), 'TvPage')
 const PrivacyPage = page(() => import('./pages/LegalPage'), 'PrivacyPage')
 const TermsPage = page(() => import('./pages/LegalPage'), 'TermsPage')
@@ -78,6 +80,7 @@ export default function App() {
       <CartDrawer />
       <InstallAppBanner />
       <NotifyOptInBanner />
+      <WelcomeGuide />
       {/* Transición entre pantallas — deliberadamente discreta: la versión
           anterior (rotación 3D + desplazamiento + escala a la vez, 0.42s)
           se sintió "de diapositiva de PowerPoint" en testeo real. Ahora es
@@ -106,6 +109,7 @@ export default function App() {
             <Route path="/ofertas" element={<OffersPage />} />
             <Route path="/canasta" element={<BasketPage />} />
             <Route path="/libro-de-reclamaciones" element={<ComplaintsPage />} />
+            <Route path="/como-comprar" element={<HowToBuyPage />} />
           </Routes>
           </Suspense>
         </motion.div>

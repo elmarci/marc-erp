@@ -46,6 +46,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
     { to: '/categorias', icon: 'nav-categorias-relleno', label: 'Categorías' },
     { to: '/ofertas', icon: 'menu-ofertas', label: 'Ofertas', badge: offersCount },
     { to: '/canasta', icon: 'menu-canasta', label: 'Arma tu canasta' },
+    { to: '/como-comprar', icon: 'menu-ayuda', label: 'Cómo comprar' },
   ]
 
   const accountLinks = isLoggedIn ? [

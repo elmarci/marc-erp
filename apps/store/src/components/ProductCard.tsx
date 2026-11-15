@@ -212,33 +212,36 @@ export function ProductCard({ product }: { product: Product }) {
                   className="w-full h-full object-contain" />
               : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-8 w-8 text-paper-ink-ghost" aria-hidden="true" /></div>}
           </div>
-          <p className="text-sm sm:text-[15px] font-medium text-paper-ink leading-snug line-clamp-2 min-h-[2.75em]">{product.name}</p>
-          <p className="text-lg sm:text-xl font-extrabold text-paper-ink tabular-nums leading-none">
+          <p className="text-sm sm:text-[15px] font-semibold text-paper-ink leading-snug line-clamp-2 min-h-[2.75em]">{product.name}</p>
+          <p className="text-base sm:text-[17px] font-extrabold text-paper-ink tabular-nums leading-none">
             S/ {Number(product.salePrice).toFixed(2)}
-            {product.isBulk && <span className="text-sm font-semibold text-paper-ink-soft"> /{unit}</span>}
+            {product.isBulk && <span className="text-[13px] font-semibold text-paper-ink-soft"> /{unit}</span>}
           </p>
         </Link>
 
         {outOfStock || product.isBulk ? (
           <button onClick={handleAdd} disabled={outOfStock}
             aria-label={outOfStock ? `${product.name}, agotado` : `Elegir cantidad de ${product.name}`}
-            className={`w-full h-[46px] rounded-xl flex items-center justify-center gap-1.5 font-bold text-sm ${outOfStock ? 'bg-paper-surface text-paper-ink-soft cursor-not-allowed' : 'bg-brand-green-600 active:bg-brand-green-700 text-white'}`}>
-            {outOfStock ? 'Agotado' : <><Scale className="h-4 w-4" />Elegir cantidad</>}
+            className={`w-full h-[34px] rounded-full flex items-center justify-center gap-1.5 font-bold text-[13px] ${outOfStock ? 'bg-paper-surface text-paper-ink-soft cursor-not-allowed' : 'bg-brand-green-600 active:bg-brand-green-700 text-white'}`}>
+            {outOfStock ? 'Agotado' : <><Scale className="h-3.5 w-3.5" />Elegir cantidad</>}
           </button>
         ) : (
-          <div className="flex items-stretch h-[46px] rounded-xl overflow-hidden border border-paper-line">
+          <div className="flex items-center h-[34px] rounded-full bg-paper-surface p-[3px]">
+            {/* Control de cantidad delgado (34 px): píldora gris con botones
+              redondos; solo el + va en verde. Cada botón tiene 28 px más el
+              margen de la píldora, suficiente para el dedo sin verse tosco. */}
             <button onClick={() => updateQuantity(product.id, qty - 1)} disabled={qty === 0}
               aria-label={`Quitar uno de ${product.name}`}
-              className="w-11 flex items-center justify-center text-paper-ink active:bg-paper-surface disabled:text-paper-ink-ghost disabled:opacity-50">
-              <Minus className="h-4 w-4" />
+              className="h-7 w-7 rounded-full bg-white shadow-sm flex items-center justify-center text-paper-ink active:bg-paper-line disabled:shadow-none disabled:bg-transparent disabled:text-paper-ink-ghost">
+              <Minus className="h-3.5 w-3.5" strokeWidth={2.75} />
             </button>
             <span aria-live="polite"
-              className={`flex-1 flex items-center justify-center text-base font-bold tabular-nums ${qty > 0 ? 'text-paper-ink' : 'text-paper-ink-soft'}`}>{qty}</span>
+              className={`flex-1 text-center text-sm font-bold tabular-nums ${qty > 0 ? 'text-paper-ink' : 'text-paper-ink-soft'}`}>{qty}</span>
             <button onClick={qty > 0 ? () => { addItem(product); flyToCart(imgRef.current) } : handleAdd}
               disabled={qty >= product.currentStock}
               aria-label={qty > 0 ? `Agregar uno más de ${product.name}` : `Agregar ${product.name}`}
-              className="w-11 flex items-center justify-center bg-brand-green-600 active:bg-brand-green-700 disabled:opacity-40 text-white">
-              <Plus className="h-5 w-5" />
+              className="h-7 w-7 rounded-full bg-brand-green-600 active:bg-brand-green-700 disabled:opacity-40 text-white flex items-center justify-center">
+              <Plus className="h-4 w-4" strokeWidth={2.75} />
             </button>
           </div>
         )}

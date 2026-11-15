@@ -97,7 +97,7 @@ function useBusinessSettings() {
     showPoints: get('receipt_show_points', 'true') !== 'false',
     showCoupon: get('receipt_show_coupon', 'true') !== 'false',
     showQr: get('receipt_show_qr', 'true') !== 'false',
-    cardCommissionPercent: Number(get('card_commission_percent', '4.06')) || 0,
+    cardCommissionPercent: Number(get('card_commission_percent', '3.5')) || 0,
   };
 }
 

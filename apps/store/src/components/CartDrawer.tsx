@@ -62,7 +62,7 @@ export function CartDrawer() {
       ...lines, '',
       `*TOTAL: S/ ${total.toFixed(2)}*`, '',
       'Mi dirección: ',
-      'Pago con (Yape o efectivo): ',
+      'Pago con (Yape, efectivo o tarjeta): ',
     ].join('\n')
     window.open(whatsappLink(msg), '_blank')
   }
@@ -176,7 +176,7 @@ export function CartDrawer() {
                     <p className="text-[13px] font-semibold text-paper-ink line-clamp-2 leading-tight min-h-[2.4em]">{p.name}</p>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-sm font-extrabold text-paper-ink tabular-nums">S/ {Number(p.salePrice).toFixed(2)}</span>
-                      <span className="h-7 w-7 rounded-lg bg-brand-green-600 text-white flex items-center justify-center"><Plus className="h-4 w-4" /></span>
+                      <span className="h-7 w-7 rounded-full bg-brand-green-600 text-white flex items-center justify-center"><Plus className="h-4 w-4" strokeWidth={2.75} /></span>
                     </div>
                   </button>
                 ))}
@@ -192,6 +192,7 @@ export function CartDrawer() {
               <span className="text-2xl font-extrabold text-paper-ink tabular-nums">{money(total)}</span>
             </div>
             <p className="text-sm text-paper-ink-soft">Envío desde {money(DELIVERY.costFrom)} en {DELIVERY.zoneName}. Recoger en tienda no cuesta.</p>
+            <p className="text-sm text-paper-ink-soft -mt-1">Pagas con Yape, efectivo o tarjeta débito/crédito.</p>
             <button onClick={handleCheckout}
               className="w-full h-[52px] rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold text-base">
               Hacer pedido

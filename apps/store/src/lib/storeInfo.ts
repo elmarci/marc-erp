@@ -21,8 +21,10 @@ export const DELIVERY = {
   zones: ['Portada', 'Villa Hermosa', 'Naranjos', 'Unión', 'Tres Marías', 'Huertos', 'UPIS', 'Eucaliptos', 'Paradero 1', 'Santa Rosa'],
   costFrom: 1.0,
   expressFrom: 3.0,
-  // Tarjeta (Izipay) se suma cuando el checkout online la acepte.
-  payments: ['Yape', 'Efectivo'],
+  // Formas de pago que se muestran en el inicio, el carrito y los textos.
+  // La tarjeta se cobra al recibir con el POS Izipay del repartidor (o en
+  // caja si recoge), con la comisión FEES.cardPercent.
+  payments: ['Yape', 'Efectivo', 'Tarjeta débito o crédito'],
 }
 
 export const money = (n: number) => `S/ ${n.toFixed(2)}`
