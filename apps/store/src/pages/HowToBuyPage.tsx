@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
-import { Ico } from '../components/Ico'
+import { Ico, Ilu } from '../components/Ico'
 import { WhatsAppIcon } from '../components/CartBar'
 import { BRAND_NAME, DELIVERY, FEES, money, whatsappLink } from '../lib/storeInfo'
 
@@ -8,7 +8,7 @@ import { BRAND_NAME, DELIVERY, FEES, money, whatsappLink } from '../lib/storeInf
 // costos, pagos y puntos. Pública (no pide cuenta) y sirve también para
 // mandar el enlace por WhatsApp: www.tiendasmarc.pe/como-comprar
 const STEPS = [
-  { icon: 'nav-categorias-relleno', title: 'Busca o elige por categoría', text: 'Usa el buscador, las categorías o las ofertas. También puedes dictar tu lista con el micrófono.' },
+  { icon: 'ico-buscar', title: 'Busca o elige por categoría', text: 'Usa el buscador, las categorías o las ofertas. También puedes dictar tu lista con el micrófono.' },
   { icon: 'nav-carrito-relleno', title: 'Agrega al carrito', text: 'Toca el + verde de cada producto. Con − y + cambias la cantidad. Los productos a granel (por kilo) te dejan pedir por peso o por monto, por ejemplo S/ 5.' },
   { icon: 'chk-delivery', title: 'Elige delivery o recojo', text: `Delivery a tu puerta (compra mínima S/ ${DELIVERY.minOrder}) o recoges gratis en la tienda. Comparte tu ubicación para que el envío se calcule exacto.` },
   { icon: 'chk-tarjeta', title: 'Elige cómo pagar', text: `Yape ahora o al recibir, efectivo, o tarjeta débito/crédito al recibir (comisión ${FEES.cardPercent} %). No necesitas crear cuenta para pedir.` },
@@ -33,6 +33,15 @@ export function HowToBuyPage() {
       </Link>
       <h1 className="text-2xl font-extrabold text-paper-ink">Cómo comprar</h1>
       <p className="text-[15px] text-paper-ink-soft mt-1 mb-5">Tu pedido en 5 pasos, sin crear cuenta si no quieres.</p>
+
+      <div className="grid grid-cols-3 gap-2 mb-5" aria-hidden="true">
+        {[['ilu-bienvenida-elegir', 'Eliges'], ['ilu-bienvenida-pagar', 'Pagas'], ['ilu-bienvenida-reparto', 'Te llega']].map(([ilu, label]) => (
+          <div key={ilu} className="bg-white rounded-2xl shadow-card pt-2 pb-2.5 text-center">
+            <Ilu name={ilu} eager className="mx-auto h-[72px] w-24" />
+            <span className="block mt-1 text-[13px] font-bold text-paper-ink">{label}</span>
+          </div>
+        ))}
+      </div>
 
       <ol className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
         {STEPS.map((s, n) => (

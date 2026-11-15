@@ -2,12 +2,13 @@ import { useRef, useState } from 'react'
 import { useBackClose } from '../lib/useBackClose'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ShoppingCart, ShoppingBag, Plus, Minus, Scale, X } from 'lucide-react'
+import { ShoppingCart, Plus, Minus, Scale, X } from 'lucide-react'
 import { useCartStore } from '../cartStore'
 import type { Product } from '../api'
 import { toast } from 'sonner'
 import { flyToCart } from '../lib/flyToCart'
 import { thumb } from '../lib/thumb'
+import { Ico } from './Ico'
 
 // Redondeo a gramo (o su equivalente) al calcular el peso desde un monto —
 // evita arrastrar error de punto flotante (ej. 0.267000000004).
@@ -79,7 +80,7 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-paper-line">
           <div className="flex items-center gap-2">
-            <Scale className="h-4 w-4 text-brand-green-600" />
+            <Ico name="ico-granel" className="h-7 w-7" />
             <div>
               <p className="font-bold text-paper-ink text-sm">{product.name}</p>
               <p className="text-paper-ink-ghost text-xs">S/ {price.toFixed(2)} / {unit}</p>
@@ -210,7 +211,7 @@ export function ProductCard({ product }: { product: Product }) {
             {product.imageUrl
               ? <img ref={imgRef} src={thumb(product.imageUrl, 320)} alt="" loading="lazy" decoding="async" width={300} height={300}
                   className="w-full h-full object-contain" />
-              : <div className="w-full h-full flex items-center justify-center"><ShoppingBag className="h-8 w-8 text-paper-ink-ghost" aria-hidden="true" /></div>}
+              : <img src="/ilustraciones/ilu-producto-sin-foto.webp" alt="" loading="lazy" decoding="async" width={640} height={480} className="w-full h-full object-contain p-2" />}
           </div>
           <p className="text-sm sm:text-[15px] font-semibold text-paper-ink leading-snug line-clamp-2 min-h-[2.75em]">{product.name}</p>
           <p className="text-base sm:text-[17px] font-extrabold text-paper-ink tabular-nums leading-none">

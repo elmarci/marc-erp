@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Clock, CheckCircle2, Package, PackageCheck, Bike, Home, XCircle, ChevronRight, ChevronDown, MessageCircle, Star } from 'lucide-react'
-import { Ico } from '../components/Ico'
+import { Ico, Ilu } from '../components/Ico'
 import { storeApi, type OrderTracking, type StoreOrder, type TrackingStage } from '../api'
 import { io } from 'socket.io-client'
 import { whatsappLink } from '../lib/storeInfo'
@@ -137,6 +137,7 @@ export function OrderConfirmPage() {
   const needsPayment = PAYS_UPFRONT.has(order.paymentMethod) && order.paymentStatus === 'PENDING'
   const whatsappMsg = `Hola! Mi pedido es *${order.orderNumber}* — quiero enviar el comprobante de pago por ${PAYMENT_LABELS[order.paymentMethod]}.`
   const hero = heroFor(t, order, isDelivery, needsPayment)
+  const celebrate = !needsPayment && (t.stage === 'RECIBIDO' || t.stage === 'CONFIRMADO')
   const r = rank(t.stage)
 
   // La comisión de tarjeta no viene en un campo propio: es lo que queda del
@@ -210,8 +211,11 @@ export function OrderConfirmPage() {
 
       {/* Estado principal + tiempo de llegada */}
       <section className={`${card} p-4`} aria-live="polite">
-        <div className="flex items-start gap-3">
-          {STAGE_ICON[t.stage] ? (
+        {/* Recién hecho o confirmado: ilustración grande para que se entienda
+            de un vistazo que todo salió bien. */}
+        {celebrate && <Ilu name="ilu-pedido-confirmado" eager className="mx-auto h-36 w-48 -mt-1 mb-1" />}
+        <div className={`flex items-start gap-3 ${celebrate ? 'text-center justify-center' : ''}`}>
+          {celebrate ? null : STAGE_ICON[t.stage] ? (
             <img src={STAGE_ICON[t.stage]} alt="" width={56} height={56} className="h-14 w-14 shrink-0 object-contain" />
           ) : (
             <span className={`h-14 w-14 rounded-2xl flex items-center justify-center shrink-0 ${

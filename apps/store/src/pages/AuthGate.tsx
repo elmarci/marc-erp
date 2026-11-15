@@ -1,11 +1,12 @@
 import { useState, useRef } from 'react'
-import { Eye, EyeOff, Phone, Lock, User, Mail, ArrowLeft } from 'lucide-react'
+import { Eye, EyeOff, User, ArrowLeft } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google'
 import { api, storeApi } from '../api'
 import { useAuthStore } from '../authStore'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
+import { Ico } from '../components/Ico'
 
 // El botón de Google sólo se pinta si hay Client ID — sin GoogleOAuthProvider
 // montado en main.tsx, <GoogleLogin> no tiene contexto y rompería el render.
@@ -98,7 +99,7 @@ export function AuthGate() {
                     className="w-full h-12 bg-white border border-paper-line focus:border-brand-blue-600 rounded-xl pl-11 pr-4 text-base text-paper-ink placeholder:text-paper-ink-ghost outline-none" />
                 </div>
                 <div className="relative">
-                  <Phone className="absolute left-3.5 top-3.5 h-5 w-5 text-paper-ink-soft" />
+                  <Ico name="ico-telefono" className="absolute left-3 top-3 h-6 w-6" />
                   <input value={googlePhone} onChange={e => setGooglePhone(e.target.value)} placeholder="Celular (987 654 321)" type="tel" inputMode="numeric" autoComplete="tel-national"
                     className="w-full h-12 bg-white border border-paper-line focus:border-brand-blue-600 rounded-xl pl-11 pr-4 text-base text-paper-ink placeholder:text-paper-ink-ghost outline-none" />
                 </div>
@@ -128,21 +129,21 @@ export function AuthGate() {
                 )}
 
                 <div className="relative">
-                  <Phone className="absolute left-3.5 top-3.5 h-5 w-5 text-paper-ink-soft" />
+                  <Ico name="ico-telefono" className="absolute left-3 top-3 h-6 w-6" />
                   <input value={form.phone} onChange={set('phone')} placeholder="Celular (987 654 321)" type="tel" inputMode="numeric" autoComplete="tel-national"
                     className="w-full h-12 bg-white border border-paper-line focus:border-brand-blue-600 rounded-xl pl-11 pr-4 text-base text-paper-ink placeholder:text-paper-ink-ghost outline-none" />
                 </div>
 
                 {mode === 'register' && (
                   <div className="relative">
-                    <Mail className="absolute left-3.5 top-3.5 h-5 w-5 text-paper-ink-soft" />
+                    <Ico name="ico-correo" className="absolute left-3 top-3 h-6 w-6" />
                     <input value={form.email} onChange={set('email')} placeholder="Correo (opcional)" type="email"
                       className="w-full h-12 bg-white border border-paper-line focus:border-brand-blue-600 rounded-xl pl-11 pr-4 text-base text-paper-ink placeholder:text-paper-ink-ghost outline-none" />
                   </div>
                 )}
 
                 <div className="relative">
-                  <Lock className="absolute left-3.5 top-3.5 h-5 w-5 text-paper-ink-soft" />
+                  <Ico name="ico-candado" className="absolute left-3 top-3 h-6 w-6" />
                   <input value={form.password} onChange={set('password')} placeholder="Contraseña" autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                     type={showPass ? 'text' : 'password'}
                     className="w-full h-12 bg-white border border-paper-line focus:border-brand-blue-600 rounded-xl pl-11 pr-12 text-base text-paper-ink placeholder:text-paper-ink-ghost outline-none" />

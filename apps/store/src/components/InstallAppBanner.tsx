@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Download, X, Share, SquarePlus, Check, Compass } from 'lucide-react'
+import { Ilu } from './Ico'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -164,9 +165,7 @@ export function InstallAppBanner() {
             className="fixed bottom-40 md:bottom-0 inset-x-0 z-40 px-3 pointer-events-none md:pb-3"
           >
             <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-xl border border-paper-line p-3.5 flex items-center gap-3 pointer-events-auto">
-              <div className="h-11 w-11 shrink-0 rounded-xl bg-brand-blue-50 flex items-center justify-center">
-                <img src="/icon-192.png" alt="" className="h-8 w-8 rounded-lg" />
-              </div>
+              <Ilu name="ilu-instalar-app" eager className="h-14 w-[75px] -my-1 shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-paper-ink">Instala la app de Tienda Marc</p>
                 <p className="text-xs text-paper-ink-soft truncate">

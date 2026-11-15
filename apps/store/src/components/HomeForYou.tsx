@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { ChevronRight, RefreshCw } from 'lucide-react'
 import { storeApi, type Category, type Product } from '../api'
 import { useAuthStore } from '../authStore'
-import { Ico } from './Ico'
+import { Ico, Ilu } from './Ico'
 import { ProductCard } from './ProductCard'
 import { repeatOrder } from '../lib/repeatOrder'
 
@@ -30,15 +30,13 @@ export function HomeForYou({ className = '' }: { className?: string }) {
   if (!isLoggedIn || !customer) {
     return (
       <section className={className} aria-label="Crea tu cuenta">
-        <Link to="/ingresar" className="bg-brand-blue-600 rounded-2xl px-4 py-3.5 flex items-center gap-3 text-white">
-          <span className="h-11 w-11 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-            <Ico name="menu-puntos" className="h-7 w-7" />
-          </span>
+        <Link to="/ingresar" className="bg-white rounded-2xl shadow-card pl-2 pr-4 py-2 flex items-center gap-2.5">
+          <Ilu name="ilu-registro" eager className="h-[68px] w-[90px] shrink-0" />
           <span className="flex-1 min-w-0">
-            <span className="block font-bold text-[15px] leading-snug">Crea tu cuenta gratis</span>
-            <span className="block text-[13px] text-white/85 leading-snug">Ganas puntos en cada compra y sigues tus pedidos.</span>
+            <span className="block font-bold text-[15px] text-paper-ink leading-snug">Crea tu cuenta gratis</span>
+            <span className="block text-[13px] text-paper-ink-soft leading-snug">Ganas puntos en cada compra y sigues tus pedidos.</span>
           </span>
-          <ChevronRight className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <ChevronRight className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
         </Link>
       </section>
     )
@@ -52,7 +50,7 @@ export function HomeForYou({ className = '' }: { className?: string }) {
     <section className={className} aria-label="Para ti">
       <div className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
         <Link to="/mis-pedidos#canje" className="px-4 py-3 flex items-center gap-3">
-          <Ico name="menu-puntos" className="h-9 w-9" />
+          <Ico name="ico-puntos" className="h-9 w-9" />
           <span className="flex-1 min-w-0">
             <span className="block text-[15px] font-bold text-paper-ink leading-snug">Hola, {firstName}</span>
             <span className="block text-[13px] text-paper-ink-soft leading-snug">

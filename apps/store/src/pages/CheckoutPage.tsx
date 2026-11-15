@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, MapPin, Check, ShoppingBag, Plus, CheckCircle2, Gift, ChevronRight } from 'lucide-react'
-import { Ico } from '../components/Ico'
+import { ArrowLeft, Check, Plus, ChevronRight } from 'lucide-react'
+import { Ico, Ilu } from '../components/Ico'
 import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
@@ -184,7 +184,7 @@ export function CheckoutPage() {
   if (items.length === 0) {
     return (
       <main className="max-w-md mx-auto px-4 py-16 text-center">
-        <ShoppingBag className="h-14 w-14 mx-auto mb-4 text-paper-ink-soft" aria-hidden="true" />
+        <Ilu name="ilu-carrito-vacio" className="mx-auto h-36 w-48 mb-3" />
         <p className="text-lg font-bold text-paper-ink">Aún no tienes productos</p>
         <p className="text-sm text-paper-ink-soft mt-1 mb-5">Agrega lo que necesitas y vuelve para hacer tu pedido.</p>
         <Link to="/" className="h-12 rounded-xl bg-brand-blue-600 text-white font-bold flex items-center justify-center">Ver productos</Link>
@@ -288,7 +288,7 @@ export function CheckoutPage() {
                 <div className="space-y-2.5">
                   {savedAddresses.map(a => (
                     <button key={a.id} type="button" onClick={() => pickSavedAddress(a.id)} className={option(selectedAddressId === a.id)}>
-                      <MapPin className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                      <Ico name="ico-direccion" className="h-6 w-6" />
                       <span className="flex-1 min-w-0">
                         <span className="block font-bold text-paper-ink">{a.label}</span>
                         <span className="block text-sm text-paper-ink-soft">{a.address}, {a.district}</span>
@@ -339,7 +339,7 @@ export function CheckoutPage() {
                 <p className={sub}>Ubicación exacta</p>
                 {coords ? (
                   <div className="flex items-start gap-2.5 bg-brand-green-50 rounded-xl px-3.5 py-3">
-                    <CheckCircle2 className="h-5 w-5 text-brand-green-700 shrink-0 mt-0.5" aria-hidden="true" />
+                    <Ico name="ico-exito" className="h-5 w-5 mt-0.5" />
                     <p className="text-[15px] text-paper-ink leading-snug">
                       <span className="font-bold">Ubicación recibida.</span>{' '}
                       {shipping.km != null
@@ -526,12 +526,12 @@ export function CheckoutPage() {
           {pointsToEarn > 0 && (
             isLoggedIn ? (
               <p className="mt-3 flex items-center gap-2.5 rounded-xl bg-brand-blue-50 px-3.5 py-3 text-[15px] text-paper-ink">
-                <Gift className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <Ico name="ico-puntos" className="h-6 w-6" />
                 <span>Con este pedido sumas <b className="tabular-nums">{pointsToEarn} puntos</b></span>
               </p>
             ) : (
               <Link to="/ingresar" className="mt-3 flex items-center gap-2.5 rounded-xl bg-brand-blue-50 px-3.5 py-3 text-[15px] text-paper-ink">
-                <Gift className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <Ico name="ico-puntos" className="h-6 w-6" />
                 <span className="flex-1">Crea tu cuenta y suma <b className="tabular-nums">{pointsToEarn} puntos</b> con este pedido</span>
                 <ChevronRight className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
               </Link>

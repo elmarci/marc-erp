@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, Gift, LogOut, User, ChevronRight, BookOpen } from 'lucide-react'
+import { X, LogOut, User, ChevronRight, BookOpen } from 'lucide-react'
 import { Ico } from './Ico'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
@@ -82,7 +82,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
                   <p className="text-xs text-white/75">{customer.phone}</p>
                   <button onClick={() => go('/mis-pedidos#canje')}
                     className="mt-3 flex items-center gap-1.5 bg-white/15 hover:bg-white/25 rounded-full pl-2.5 pr-3 py-1.5 text-xs font-semibold transition-colors">
-                    <Gift className="h-3.5 w-3.5" />{points} pts disponibles
+                    <Ico name="ico-puntos" className="h-4 w-4" />{points} pts disponibles
                   </button>
                 </>
               ) : (

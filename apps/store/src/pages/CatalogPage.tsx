@@ -7,6 +7,7 @@ import type { Category, Product } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { VoiceSearchButton } from '../components/VoiceSearchButton'
 import { getCategoryIcon } from '../categoryIcons'
+import { Ilu } from '../components/Ico'
 
 // Mismo trato que los íconos de categoría del Inicio: un acento de color fijo
 // por posición, para que el banner "estás acá" sea consistente entre
@@ -386,9 +387,9 @@ export function CatalogPage() {
                 ))}
               </div>
             ) : sections.length === 0 ? (
-              <div className="text-center py-20 text-paper-ink-ghost">
-                <Search className="h-12 w-12 mx-auto mb-3 opacity-40" />
-                <p className="text-lg text-paper-ink-soft">No se encontraron productos</p>
+              <div className="text-center py-12">
+                <Ilu name="ilu-sin-resultados" className="mx-auto h-36 w-48 mb-3" />
+                <p className="text-lg font-bold text-paper-ink">No encontramos productos</p>
               </div>
             ) : (
               <>
@@ -429,10 +430,10 @@ export function CatalogPage() {
               ))}
             </div>
           ) : flatProducts.length === 0 ? (
-            <div className="text-center py-20 text-paper-ink-ghost">
-              <Search className="h-12 w-12 mx-auto mb-3 opacity-40" />
-              <p className="text-lg text-paper-ink-soft">No se encontraron productos</p>
-              <p className="text-sm mt-1">Intenta con otro término de búsqueda</p>
+            <div className="text-center py-12">
+              <Ilu name="ilu-sin-resultados" className="mx-auto h-36 w-48 mb-3" />
+              <p className="text-lg font-bold text-paper-ink">No encontramos productos</p>
+              <p className="text-sm text-paper-ink-soft mt-1">Prueba con otra palabra, por ejemplo la marca o el tipo de producto.</p>
             </div>
           ) : (
             <>

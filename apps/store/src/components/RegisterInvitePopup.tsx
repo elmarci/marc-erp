@@ -5,7 +5,7 @@ import { X } from 'lucide-react'
 import { useAuthStore } from '../authStore'
 import { useCartStore } from '../cartStore'
 import { useBackClose } from '../lib/useBackClose'
-import { Ico } from './Ico'
+import { Ico, Ilu } from './Ico'
 import { welcomeSeenAt } from './WelcomeGuide'
 
 // Popup para quien navega sin cuenta: lo invita a registrarse (gratis) para
@@ -22,7 +22,7 @@ const AFTER_GUIDE_MS = 2 * 60 * 1000
 const SKIP_ROUTES = ['/checkout', '/pedido', '/ingresar', '/libro-de-reclamaciones', '/mis-pedidos']
 
 const BENEFITS = [
-  { icon: 'menu-puntos', text: 'Sumas puntos en cada compra para canjearlos por productos' },
+  { icon: 'ico-puntos', text: 'Sumas puntos en cada compra para canjearlos por productos' },
   { icon: 'menu-pedidos', text: 'Sigues tus pedidos y repites uno en un toque' },
   { icon: 'menu-direcciones', text: 'Guardas tus direcciones y pides más rápido' },
 ] as const
@@ -85,15 +85,13 @@ export function RegisterInvitePopup() {
           <motion.div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
             initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 340, damping: 30 }} onClick={e => e.stopPropagation()}>
-            <div className="relative bg-brand-blue-600 text-white px-5 pt-6 pb-5 text-center">
-              <button onClick={dismiss} aria-label="Cerrar" className="absolute top-3 right-3 h-9 w-9 rounded-full flex items-center justify-center text-white/90 active:bg-white/15">
+            <div className="relative bg-brand-blue-50 px-5 pt-4 pb-4 text-center">
+              <button onClick={dismiss} aria-label="Cerrar" className="absolute top-3 right-3 h-9 w-9 rounded-full flex items-center justify-center text-paper-ink-soft active:bg-white">
                 <X className="h-5 w-5" />
               </button>
-              <span className="mx-auto h-16 w-16 rounded-2xl bg-white flex items-center justify-center">
-                <Ico name="menu-puntos" className="h-11 w-11" />
-              </span>
-              <h2 id="wo-title" className="mt-3 text-xl font-extrabold leading-tight">Crea tu cuenta gratis y suma puntos</h2>
-              <p className="mt-1 text-[15px] text-white/85">Te toma menos de un minuto.</p>
+              <Ilu name="ilu-registro" eager className="mx-auto h-36 w-48" />
+              <h2 id="wo-title" className="mt-1 text-xl font-extrabold leading-tight text-paper-ink">Crea tu cuenta gratis y suma puntos</h2>
+              <p className="mt-1 text-[15px] text-paper-ink-soft">Te toma menos de un minuto.</p>
             </div>
             <div className="px-5 pt-4 pb-5">
               <ul className="space-y-2.5">
