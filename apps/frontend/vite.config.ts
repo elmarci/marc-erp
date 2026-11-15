@@ -87,7 +87,6 @@ export default defineConfig({
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', 'lucide-react'],
           'data-vendor': ['@tanstack/react-query', 'axios', 'zustand'],
-          'chart-vendor': ['recharts'],
         },
       },
     },

@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card'
 import { api, getErrorMessage } from '@/services/api'
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 import { io } from 'socket.io-client'
+import { useAuthStore } from '@/stores/authStore'
 import { RiderTrackingPanel } from './RiderTrackingPanel'
 
 interface StoreOrder {
@@ -162,8 +163,11 @@ function ConfirmOrderModal({ order, onClose, onConfirmed }: {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['store-orders'] })
       queryClient.invalidateQueries({ queryKey: ['sales'] })
-      const { saleNumber } = res.data.data
+      const { saleNumber, stockWarnings } = res.data.data as { saleNumber: string; stockWarnings?: string[] }
       toast.success(`✅ Pedido confirmado. Venta ${saleNumber} generada.`)
+      // El sistema no tenía stock suficiente: se ajustó solo, pero hay que
+      // revisar el físico (p. ej. dos clientes pidieron la última unidad).
+      for (const w of stockWarnings ?? []) toast.warning(`Stock: ${w}`, { duration: 15000 })
       onConfirmed(saleNumber)
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -257,6 +261,7 @@ export function StoreOrdersPage() {
     const base = (import.meta.env['VITE_API_URL'] as string | undefined) ?? 'http://localhost:3001/api/v1'
     const API_URL = base.replace('/api/v1', '')
     const socket = io(API_URL, { transports: ['websocket', 'polling'] })
+    socket.on('connect', () => socket.emit('join-staff', useAuthStore.getState().accessToken))
 
     socket.on('store:new-order', (order: { orderNumber: string; customerName: string; total: number; paymentMethod: string }) => {
       queryClient.invalidateQueries({ queryKey: ['store-orders'] })

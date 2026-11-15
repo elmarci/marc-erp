@@ -1,31 +1,43 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { LoginPage } from '@/modules/auth/LoginPage';
-import { DashboardPage } from '@/modules/dashboard/DashboardPage';
-import { PosPage } from '@/modules/pos/PosPage';
-import { ProductsPage } from '@/modules/products/ProductsPage';
-import { ProductFormPage } from '@/modules/products/ProductFormPage';
-import { SalesPage } from '@/modules/sales/SalesPage';
-import { SaleDetailPage } from '@/modules/sales/SaleDetailPage';
-import { CustomersPage } from '@/modules/customers/CustomersPage';
-import { PurchasesPage } from '@/modules/purchases/PurchasesPage';
-import { InventoryPage } from '@/modules/inventory/InventoryPage';
-import { ReportsPage } from '@/modules/reports/ReportsPage';
-import { OffersPage } from '@/modules/offers/OffersPage';
-import { NotificationsPage } from '@/modules/notifications/NotificationsPage';
-import { StoreOrdersPage } from '@/modules/store-orders/StoreOrdersPage';
-import { ComplaintsPage } from '@/modules/complaints/ComplaintsPage';
-import { RidersPage } from '@/modules/riders/RidersPage';
-import { TvScreenPage } from '@/modules/tv/TvScreenPage';
-import { CashPage } from '@/modules/cash/CashPage';
-import { UsersPage } from '@/modules/users/UsersPage';
-import { AttendancePage } from '@/modules/attendance/AttendancePage';
-import { SettingsPage } from '@/modules/settings/SettingsPage';
-import { CategoriesPage } from '@/modules/categories/CategoriesPage';
 import { ChangePasswordPage } from '@/modules/auth/ChangePasswordPage';
+
+// Cada pantalla se descarga al abrirla (antes todo el ERP era un solo archivo
+// de 1,2 MB). El service worker igual las guarda todas para usar sin internet.
+const DashboardPage = lazy(() => import('@/modules/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const PosPage = lazy(() => import('@/modules/pos/PosPage').then((m) => ({ default: m.PosPage })));
+const ProductsPage = lazy(() => import('@/modules/products/ProductsPage').then((m) => ({ default: m.ProductsPage })));
+const ProductFormPage = lazy(() => import('@/modules/products/ProductFormPage').then((m) => ({ default: m.ProductFormPage })));
+const SalesPage = lazy(() => import('@/modules/sales/SalesPage').then((m) => ({ default: m.SalesPage })));
+const SaleDetailPage = lazy(() => import('@/modules/sales/SaleDetailPage').then((m) => ({ default: m.SaleDetailPage })));
+const CustomersPage = lazy(() => import('@/modules/customers/CustomersPage').then((m) => ({ default: m.CustomersPage })));
+const PurchasesPage = lazy(() => import('@/modules/purchases/PurchasesPage').then((m) => ({ default: m.PurchasesPage })));
+const InventoryPage = lazy(() => import('@/modules/inventory/InventoryPage').then((m) => ({ default: m.InventoryPage })));
+const ReportsPage = lazy(() => import('@/modules/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })));
+const OffersPage = lazy(() => import('@/modules/offers/OffersPage').then((m) => ({ default: m.OffersPage })));
+const NotificationsPage = lazy(() => import('@/modules/notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
+const StoreOrdersPage = lazy(() => import('@/modules/store-orders/StoreOrdersPage').then((m) => ({ default: m.StoreOrdersPage })));
+const ComplaintsPage = lazy(() => import('@/modules/complaints/ComplaintsPage').then((m) => ({ default: m.ComplaintsPage })));
+const RidersPage = lazy(() => import('@/modules/riders/RidersPage').then((m) => ({ default: m.RidersPage })));
+const TvScreenPage = lazy(() => import('@/modules/tv/TvScreenPage').then((m) => ({ default: m.TvScreenPage })));
+const CashPage = lazy(() => import('@/modules/cash/CashPage').then((m) => ({ default: m.CashPage })));
+const UsersPage = lazy(() => import('@/modules/users/UsersPage').then((m) => ({ default: m.UsersPage })));
+const AttendancePage = lazy(() => import('@/modules/attendance/AttendancePage').then((m) => ({ default: m.AttendancePage })));
+const SettingsPage = lazy(() => import('@/modules/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const CategoriesPage = lazy(() => import('@/modules/categories/CategoriesPage').then((m) => ({ default: m.CategoriesPage })));
+
+function PageLoading() {
+  return (
+    <div className="flex h-[60vh] items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  );
+}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -44,6 +56,7 @@ export default function App() {
   return (
     <>
       <Toaster position="top-right" richColors closeButton />
+      <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
@@ -90,6 +103,7 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+      </Suspense>
     </>
   );
 }

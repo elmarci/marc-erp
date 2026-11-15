@@ -1,5 +1,6 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { logger } from '../config/logger';
+import { bumpCatalogVersion } from '../config/catalogCache';
 
 // Los campos Decimal (costos, stock a granel, cantidades, etc.) se
 // serializan como texto por defecto en JSON.stringify — Prisma lo hace así
@@ -30,6 +31,19 @@ export const prisma =
 if (process.env.NODE_ENV === 'development') {
   globalForPrisma.prisma = prisma;
 }
+
+// Cualquier escritura que cambie lo que ve la tienda (precio, stock, foto,
+// categoría, oferta, ajustes) invalida la caché del catálogo. Incluye las
+// ventas del POS, porque bajan el stock.
+const CATALOG_MODELS = new Set(['Product', 'Category', 'Promotion', 'PromotionProduct', 'PromotionCategory', 'Setting']);
+const WRITE_ACTIONS = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'delete', 'deleteMany']);
+prisma.$use(async (params, next) => {
+  const result = await next(params);
+  if (params.model && CATALOG_MODELS.has(params.model) && WRITE_ACTIONS.has(params.action)) {
+    bumpCatalogVersion();
+  }
+  return result;
+});
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (prisma as any).$on('error', (e: any) => {

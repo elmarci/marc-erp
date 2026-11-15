@@ -20,7 +20,7 @@ export async function trySyncOfflineSales(queryClient?: QueryClient) {
   try {
     for (const sale of pending) {
       try {
-        await api.post('/sales', { ...sale.payload, isOfflineSync: true, offlineCreatedAt: sale.createdAt });
+        await api.post('/sales', { ...sale.payload, isOfflineSync: true, offlineCreatedAt: sale.createdAt, clientSaleId: sale.localId });
         useOfflineSalesStore.getState().remove(sale.localId);
         syncedCount++;
       } catch (err) {

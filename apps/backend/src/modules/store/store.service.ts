@@ -3,7 +3,7 @@ import { NotFoundError, BusinessError } from '../../utils/errors';
 import { emitEvent } from '../../config/socket';
 import { redis } from '../../config/redis';
 import { getSettingValues } from '../../utils/settings';
-import { nowInLima } from '../../utils/timezone';
+import { withOrderNumber, withSaleNumber } from '../../utils/sequence';
 import { deliveryService } from '../delivery/delivery.service';
 import { storeDeliveryFee, cardFee, CARD_FEE_PERCENT } from './deliveryFee';
 import { buildTracking } from './orderTracking';
@@ -406,11 +406,11 @@ export class StoreService {
       ? [`COMISIÓN TARJETA ${CARD_FEE_PERCENT}%: S/ ${cardCommission.toFixed(2)}`, data.notes].filter(Boolean).join(' | ')
       : data.notes;
 
-    // Generate order number
-    const count = await prisma.storeOrder.count();
-    const orderNumber = `ORD-${String(count + 1).padStart(5, '0')}`;
-
-    const order = await prisma.storeOrder.create({
+    // Número de pedido: el siguiente al último. Antes era count()+1, y dos
+    // pedidos en el mismo instante recibían el mismo número: uno fallaba con
+    // "order_number ya existe" (28 de 30 en la prueba de carga). Ahora, si
+    // choca, se reintenta con el siguiente número.
+    const createWithNumber = (orderNumber: string) => prisma.storeOrder.create({
       data: {
         orderNumber,
         customerName: data.customerName,
@@ -434,6 +434,7 @@ export class StoreService {
       },
       include: { items: true },
     });
+    const order = await withOrderNumber(createWithNumber);
 
     emitEvent('store:new-order', {
       id: order.id, orderNumber: order.orderNumber,
@@ -561,7 +562,18 @@ export class StoreService {
     const pointsPerSol = Number(loyaltyConfig['loyalty_points_per_sol'] ?? 1);
     const pointsEarned = customerId ? Math.floor(Number(order.total) * pointsPerSol) : 0;
 
-    return prisma.$transaction(async (tx) => {
+    // El número de venta se reparte fuera de la transacción; si choca, se
+    // repite toda la transacción con otro número (ver utils/sequence.ts).
+    return withSaleNumber((saleNumber) => prisma.$transaction(async (tx) => {
+      const stockWarnings: string[] = [];
+      // Tomar el pedido de forma atómica: si dos personas pulsan "Confirmar" a
+      // la vez (o hay doble clic), solo una crea la venta.
+      const claimed = await tx.storeOrder.updateMany({
+        where: { id, status: 'PENDING', saleId: null },
+        data: { status: 'CONFIRMED' },
+      });
+      if (claimed.count === 0) throw new BusinessError('Este pedido ya fue confirmado o ya no está pendiente.');
+
       // Fetch products and validate stock
       const productIds = order.items.map(i => i.productId);
       const products = await tx.product.findMany({ where: { id: { in: productIds } } });
@@ -610,12 +622,6 @@ export class StoreService {
       const taxRate = 0.18;
       const netAmount = discountedSubtotal / (1 + taxRate);
       const taxAmount = discountedSubtotal - netAmount;
-
-      // Generate sale number — fecha de Lima explícita, no la del proceso
-      // Node (en producción corre en UTC).
-      const saleCount = await tx.sale.count();
-      const { year, month } = nowInLima();
-      const saleNumber = `V${year}${String(month).padStart(2, '0')}${String(saleCount + 1).padStart(6, '0')}`;
 
       // Create the sale
       const sale = await tx.sale.create({
@@ -671,25 +677,58 @@ export class StoreService {
         });
       }
 
-      // Decrement stock + inventory movements
+      // Descontar stock con una resta dentro de la misma consulta (antes se
+      // escribía un valor calculado antes y, si el POS vendía el mismo producto
+      // a la vez, uno de los dos descuentos se perdía). Si el sistema no tiene
+      // suficiente, se hace el mismo ajuste automático que en el POS (venta sin
+      // stock con auto-ajuste) y se avisa a quien confirma, en vez de dejar el
+      // stock en 0 sin decir nada. Orden fijo por producto para no bloquearse
+      // con otra venta que toque los mismos productos.
+      const unitsByProduct = new Map<string, number>();
       for (const item of order.items) {
-        const product = productMap.get(item.productId);
-        if (!product) continue;
-        const stockBefore = Number(product.currentStock);
-        const newStock = stockBefore - Number(item.quantity);
-
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { currentStock: Math.max(0, newStock) },
+        unitsByProduct.set(item.productId, (unitsByProduct.get(item.productId) ?? 0) + Number(item.quantity));
+      }
+      for (const productId of [...unitsByProduct.keys()].sort()) {
+        const product = productMap.get(productId);
+        if (!product || product.isMiscItem) continue;
+        const units = unitsByProduct.get(productId)!;
+        const after = await tx.product.update({
+          where: { id: productId },
+          data: { currentStock: { decrement: units } },
+          select: { currentStock: true },
         });
+        let stockAfter = Number(after.currentStock);
+        let stockBefore = stockAfter + units;
+
+        if (stockAfter < 0) {
+          const shortage = -stockAfter;
+          await tx.product.update({ where: { id: productId }, data: { currentStock: { increment: shortage } } });
+          await tx.inventoryMovement.create({
+            data: {
+              productId,
+              type: 'ADJUSTMENT_IN',
+              quantity: shortage,
+              quantityBefore: stockBefore,
+              quantityAfter: stockBefore + shortage,
+              unitCost: product.costPrice,
+              referenceType: 'SALE_AUTO_ADJUST',
+              referenceId: order.id,
+              userId,
+              notes: `Ajuste automático por pedido web sin stock registrado (${order.orderNumber})`,
+            },
+          });
+          stockWarnings.push(`${product.name}: el sistema tenía ${stockBefore}, se vendieron ${units}. Se ajustó ${shortage} automáticamente; revisa el físico.`);
+          stockBefore += shortage;
+          stockAfter = 0;
+        }
 
         await tx.inventoryMovement.create({
           data: {
-            productId: item.productId,
+            productId,
             type: 'SALE_OUT',
-            quantity: Number(item.quantity),
+            quantity: units,
             quantityBefore: stockBefore,
-            quantityAfter: Math.max(0, newStock),
+            quantityAfter: stockAfter,
             unitCost: product.costPrice,
             referenceType: 'STORE_ORDER',
             referenceId: order.id,
@@ -702,18 +741,18 @@ export class StoreService {
       // Update store order: CONFIRMED + link to sale
       const updated = await tx.storeOrder.update({
         where: { id },
-        data: { status: 'CONFIRMED', saleId: sale.id },
+        data: { saleId: sale.id },
         include: { items: true },
       });
 
       // Notify customer
       emitEvent(`store:order-updated:${order.orderNumber}`, { status: 'CONFIRMED', paymentStatus: order.paymentStatus });
 
-      const result = { order: updated, saleId: sale.id, saleNumber: sale.saleNumber };
+      const result = { order: updated, saleId: sale.id, saleNumber: sale.saleNumber, stockWarnings };
       // Invalidate dashboard cache so it reflects the new web sale
       await redis.del('reports:dashboard').catch(() => {});
       return result;
-    });
+    }));
   }
 
   async updateOrderStatus(id: string, status: string, paymentStatus?: string) {

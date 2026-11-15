@@ -106,6 +106,7 @@ export function OrderConfirmPage() {
   useEffect(() => {
     if (!orderNumber) return
     const socket = io(API_BASE, { transports: ['websocket', 'polling'] })
+    socket.on('connect', () => socket.emit('join-order', orderNumber))
     socket.on(`store:order-updated:${orderNumber}`, () => {
       queryClient.invalidateQueries({ queryKey: ['order', orderNumber] })
     })

@@ -22,7 +22,9 @@ export interface CachedProduct {
 interface ProductCacheState {
   products: Record<string, CachedProduct>;
   lastSyncedAt: string | null;
-  setProducts: (list: CachedProduct[]) => void;
+  lastFullSyncAt: string | null;
+  setProducts: (list: CachedProduct[], serverTime?: string) => void;
+  mergeProducts: (changed: CachedProduct[], removedIds: string[], serverTime: string) => void;
   findByBarcode: (barcode: string) => (CachedProduct & { matchedPack?: boolean }) | undefined;
 }
 
@@ -35,11 +37,21 @@ export const useProductCacheStore = create<ProductCacheState>()(
     (set, get) => ({
       products: {},
       lastSyncedAt: null,
+      lastFullSyncAt: null,
 
-      setProducts: (list) => {
+      setProducts: (list, serverTime) => {
         const products: Record<string, CachedProduct> = {};
         for (const p of list) products[p.id] = p;
-        set({ products, lastSyncedAt: new Date().toISOString() });
+        const at = serverTime ?? new Date().toISOString();
+        set({ products, lastSyncedAt: at, lastFullSyncAt: at });
+      },
+
+      // Solo lo que cambió desde la última vez (ver GET /products/pos-sync).
+      mergeProducts: (changed, removedIds, serverTime) => {
+        const products = { ...get().products };
+        for (const id of removedIds) delete products[id];
+        for (const p of changed) products[p.id] = p;
+        set({ products, lastSyncedAt: serverTime });
       },
 
       findByBarcode: (barcode) => {
