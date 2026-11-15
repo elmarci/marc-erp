@@ -50,6 +50,13 @@ const EMPTY_CATEGORIES: Category[] = []
 export function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('search') ?? '')
+  // Se busca cuando la persona deja de escribir (350 ms), no en cada tecla:
+  // antes "leche gloria" eran 12 consultas al servidor y ~245 fotos.
+  const [debouncedSearch, setDebouncedSearch] = useState(search.trim())
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 350)
+    return () => window.clearTimeout(t)
+  }, [search])
   const [categoryId, setCategoryId] = useState(searchParams.get('categoryId') ?? '')
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -71,7 +78,7 @@ export function CatalogPage() {
   // categorías en vez de quedarse pegado a una sola. Buscar por texto sigue
   // siendo una lista plana simple — no tiene un "orden de categorías" al
   // que encadenarse.
-  const isChained = Boolean(categoryId) && !search
+  const isChained = Boolean(categoryId) && !debouncedSearch
   const sequence = useMemo(() => buildSequence(categories), [categories])
   const startIndex = useMemo(() => {
     if (!isChained) return -1
@@ -163,9 +170,9 @@ export function CatalogPage() {
   const {
     data: productsData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['store-products', search, categoryId],
+    queryKey: ['store-products', debouncedSearch, categoryId],
     queryFn: ({ pageParam }) => storeApi.getProducts({
-      ...(search ? { search } : {}),
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
       ...(categoryId ? { categoryId } : {}),
       page: pageParam, limit: 24,
     }),
@@ -202,7 +209,7 @@ export function CatalogPage() {
   const bannerAccent = topCategoryIndex >= 0 ? BANNER_ACCENTS[topCategoryIndex % BANNER_ACCENTS.length] : DEFAULT_BANNER_ACCENT
   const bannerLabel = isChained
     ? (currentUnit?.name ?? 'Catálogo de productos')
-    : (activeCategory ? activeCategory.name : search ? `"${search}"` : 'Catálogo de productos')
+    : (activeCategory ? activeCategory.name : debouncedSearch ? `"${debouncedSearch}"` : 'Catálogo de productos')
   const bannerParentLabel = isChained ? currentUnit?.parentName : undefined
 
   useEffect(() => {

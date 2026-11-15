@@ -681,6 +681,9 @@ export class PurchasesService {
     input: { productId: string; quantity: number; unitCost: number; isBonus: boolean },
     context: { userId: string; supplierId: string; referenceId: string; notes: string },
   ) {
+    // Bloquea la fila del producto hasta terminar: el costo promedio se calcula
+    // con el stock leído, y una venta simultánea no debe cambiarlo en medio.
+    await tx.$queryRaw`SELECT id FROM products WHERE id = ${input.productId} FOR UPDATE`;
     const product = await tx.product.findUnique({ where: { id: input.productId } });
     if (!product) throw new NotFoundError(`Producto ${input.productId}`);
 
@@ -1248,6 +1251,9 @@ export class PurchasesService {
 
     await prisma.$transaction(async (tx) => {
       for (const m of movements) {
+        // Bloquea la fila del producto hasta terminar: el costo promedio se calcula
+        // con el stock leído, y una venta simultánea no debe cambiarlo en medio.
+        await tx.$queryRaw`SELECT id FROM products WHERE id = ${m.productId} FOR UPDATE`;
         const product = await tx.product.findUnique({ where: { id: m.productId } });
         if (!product) continue;
 
@@ -1523,6 +1529,9 @@ export class PurchasesService {
 
     await prisma.$transaction(async (tx) => {
       for (const m of movements) {
+        // Bloquea la fila del producto hasta terminar: el costo promedio se calcula
+        // con el stock leído, y una venta simultánea no debe cambiarlo en medio.
+        await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId} FOR UPDATE`;
         const product = await tx.product.findUnique({ where: { id: productId } });
         if (!product) continue;
 

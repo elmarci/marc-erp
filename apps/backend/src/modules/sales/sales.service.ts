@@ -6,7 +6,7 @@ import { redis } from '../../config/redis';
 import { emitEvent } from '../../config/socket';
 import { getSettingValues } from '../../utils/settings';
 import { couponsService } from '../coupons/coupons.service';
-import { nowInLima } from '../../utils/timezone';
+import { withSaleNumber } from '../../utils/sequence';
 import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
 import { cardCommission, isCardMethod } from '../../utils/commission';
 
@@ -58,6 +58,7 @@ export interface CreateSaleInput {
   pointsToRedeem?: number;
   isOfflineSync?: boolean;
   offlineCreatedAt?: Date;
+  clientSaleId?: string;
   bottleDeposits?: BottleDepositItemInput[];
 }
 
@@ -139,7 +140,34 @@ function buildSalesWhere(query: Omit<ListSalesQuery, 'page' | 'limit' | 'sortBy'
 }
 
 export class SalesService {
+  // Una venta reenviada con el mismo clientSaleId (típico de la cola sin
+  // internet: el servidor la guardó pero la respuesta no llegó y el equipo la
+  // vuelve a mandar) devuelve la venta ya creada en vez de duplicarla. La
+  // marca vive 30 días en Redis; si Redis no está, la venta se procesa igual.
   async create(input: CreateSaleInput) {
+    if (!input.clientSaleId) return this.createOnce(input);
+    const key = `sale:client:${input.clientSaleId}`;
+    let reserved = false;
+    try {
+      const existing = await redis.get(key);
+      if (existing && existing !== 'pending') return this.getById(existing);
+      reserved = (await redis.set(key, 'pending', 'EX', 120, 'NX')) === 'OK';
+      if (!reserved) throw new BusinessError('Esta venta ya se está registrando. Espera unos segundos.');
+    } catch (err) {
+      if (err instanceof BusinessError) throw err;
+      return this.createOnce(input); // Redis caído
+    }
+    try {
+      const sale = await this.createOnce(input);
+      await redis.set(key, sale.id, 'EX', 30 * 24 * 3600).catch(() => {});
+      return sale;
+    } catch (err) {
+      if (reserved) await redis.del(key).catch(() => {});
+      throw err;
+    }
+  }
+
+  private async createOnce(input: CreateSaleInput) {
     // Verificar sesión de caja abierta — excepto al sincronizar una venta
     // hecha offline: para entonces el cajero pudo haber cerrado la caja sin
     // saber que esa venta seguía pendiente de subir, y bloquearla la dejaría
@@ -395,11 +423,10 @@ export class SalesService {
       }
     }
 
-    // Generar número de venta
-    const saleNumber = await this.generateSaleNumber();
-
-    // Procesar venta en transacción
-    const sale = await prisma.$transaction(async (tx) => {
+    // Procesar venta en transacción. El número de venta lo reparte un
+    // contador atómico; si choca con uno existente se repite la transacción
+    // con otro número (ver utils/sequence.ts).
+    const sale = await withSaleNumber((saleNumber) => prisma.$transaction(async (tx) => {
       const newSale = await tx.sale.create({
         data: {
           saleNumber,
@@ -443,16 +470,20 @@ export class SalesService {
         },
       });
 
-      // Reducir stock y registrar movimientos. El stock corre producto a
-      // producto (no se relee de `products`) porque una venta puede traer dos
-      // líneas del mismo producto: unidades sueltas y un paquete.
-      const runningStock = new Map<string, number>();
+      // Reducir stock y registrar movimientos (ver abajo).
 
       // Ajuste automático: lo que faltaba entra al inventario justo antes de la
       // venta (mismo kardex, mismo usuario), así el stock termina en 0 y no negativo.
       for (const [productId, shortage] of stockShortfall) {
         const product = products.find((p) => p.id === productId)!;
-        const before = Number(product.currentStock);
+        // Se suma lo que falta con un incremento (no se escribe un valor
+        // calculado antes, que pisaría otra venta simultánea).
+        const raised = await tx.product.update({
+          where: { id: productId },
+          data: { currentStock: { increment: shortage } },
+          select: { currentStock: true },
+        });
+        const before = Number(raised.currentStock) - shortage;
         await tx.inventoryMovement.create({
           data: {
             productId,
@@ -467,22 +498,26 @@ export class SalesService {
             userId: input.cashierId,
           },
         });
-        runningStock.set(productId, before + shortage);
       }
 
-      for (const item of saleItems) {
+      // Orden fijo por producto: dos ventas que tocan los mismos productos
+      // los bloquean en el mismo orden y no se traban entre sí.
+      const stockLines = [...saleItems].sort((a, b) => a.productId.localeCompare(b.productId));
+      for (const item of stockLines) {
         const product = products.find((p) => p.id === item.productId)!;
         if (product.isMiscItem) continue; // no maneja stock
 
-        const stockBefore = runningStock.get(item.productId) ?? Number(product.currentStock);
+        // Resta dentro de la misma consulta: si el POS de otra caja o un pedido
+        // web descuentan el mismo producto a la vez, ninguno se pierde (antes
+        // se escribía un valor calculado antes y uno de los dos se perdía).
         const unitsOut = Number(item.quantity) * item.unitsPerSale;
-        const newStock = stockBefore - unitsOut;
-        runningStock.set(item.productId, newStock);
-
-        await tx.product.update({
+        const updated = await tx.product.update({
           where: { id: item.productId },
-          data: { currentStock: newStock },
+          data: { currentStock: { decrement: unitsOut } },
+          select: { currentStock: true },
         });
+        const newStock = Number(updated.currentStock);
+        const stockBefore = newStock + unitsOut;
 
         // Lo vendido sale primero del lote que vence antes (FEFO).
         if (product.trackExpiry) {
@@ -605,7 +640,7 @@ export class SalesService {
       }
 
       return { ...newSale, generatedCoupon };
-    });
+    }));
 
     logger.info({ saleId: sale.id, total: totalAmount, cashierId: input.cashierId }, 'Sale completed');
     await redis.del('reports:dashboard').catch(() => {});
@@ -760,13 +795,14 @@ export class SalesService {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
         if (!product) continue;
 
-        const stockBefore = Number(product.currentStock);
         const unitsBack = Number(item.quantity) * item.unitsPerSale;
-        const newStock = stockBefore + unitsBack;
-        await tx.product.update({
+        const restored = await tx.product.update({
           where: { id: item.productId },
-          data: { currentStock: newStock },
+          data: { currentStock: { increment: unitsBack } },
+          select: { currentStock: true },
         });
+        const newStock = Number(restored.currentStock);
+        const stockBefore = newStock - unitsBack;
         if (product.trackExpiry) {
           await inventoryAlertsService.restoreBatchesOnVoid(tx, item.productId, unitsBack);
         }
@@ -913,22 +949,6 @@ export class SalesService {
       select: { id: true, firstName: true, lastName: true },
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });
-  }
-
-  private async generateSaleNumber(): Promise<string> {
-    // Fecha de Lima explícita, no la del proceso Node (en producción corre en
-    // UTC) — si no, el correlativo del día cambia ~5h antes/después de la
-    // medianoche real de Lima.
-    const { year, month, day } = nowInLima();
-    const prefix = `V${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`;
-
-    const lastSale = await prisma.sale.findFirst({
-      where: { saleNumber: { startsWith: prefix } },
-      orderBy: { saleNumber: 'desc' },
-    });
-
-    const lastNum = lastSale ? parseInt(lastSale.saleNumber.slice(-5)) : 0;
-    return `${prefix}${String(lastNum + 1).padStart(5, '0')}`;
   }
 }
 

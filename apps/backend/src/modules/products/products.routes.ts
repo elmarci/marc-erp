@@ -106,6 +106,18 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
+// Sincronización del catálogo local del POS: solo lo que cambió desde
+// `since`. Antes cada POS bajaba los ~2.000 productos cada 5 minutos aunque
+// nada cambiara. Devuelve los productos activos modificados y los ids que
+// dejaron de estar a la venta (borrados o inactivos) para quitarlos.
+router.get('/pos-sync', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { since } = z.object({ since: z.coerce.date() }).parse(req.query);
+    const data = await productsService.posSync(since);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 router.get('/low-stock', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const products = await productsService.getLowStockAlerts();

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * Hook global que sincroniza el ERP en tiempo real via WebSocket.
@@ -13,6 +14,9 @@ export function useRealtimeSync() {
     const base = (import.meta.env['VITE_API_URL'] as string | undefined) ?? 'http://localhost:3001/api/v1';
     const API_URL = base.replace('/api/v1', '');
     const socket = io(API_URL, { transports: ['websocket', 'polling'] });
+    // Los avisos solo llegan a la sala del personal: entrar con el token de
+    // la sesión en cada conexión (también al reconectar).
+    socket.on('connect', () => socket.emit('join-staff', useAuthStore.getState().accessToken));
 
     // Venta creada en POS o tienda web
     socket.on('erp:sale-created', (data: { cashSessionId: string }) => {

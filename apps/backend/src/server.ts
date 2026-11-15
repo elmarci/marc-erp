@@ -83,6 +83,8 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  // El POS lee la hora del servidor para sincronizar su catálogo local.
+  exposedHeaders: ['Date'],
 }));
 
 // Tope de peticiones por IP. Ojo: en Perú muchos clientes de Claro, Movistar
@@ -150,7 +152,10 @@ app.use('/uploads', (_req, res, next) => {
 if (env.NODE_ENV !== 'test') {
   app.use(morgan('combined', {
     stream: { write: (msg) => logger.info(msg.trim()) },
-    skip: (req) => req.path === '/health',
+    // Las lecturas exitosas del catálogo y del seguimiento son la gran mayoría
+    // de las peticiones (con 1.000 visitantes, ~150 MB de log por hora) y no
+    // aportan para revisar problemas: solo se registran si fallan.
+    skip: (req, res) => req.path === '/health' || (res.statusCode < 400 && isPublicCatalog(req)),
   }));
 }
 
@@ -229,6 +234,12 @@ io.on('connection', (socket) => {
       jwt.verify(token, env.JWT_SECRET);
       socket.join('staff');
     } catch { /* token inválido o vencido: no entra */ }
+  });
+
+  // Página de seguimiento de un pedido: recibe solo los cambios de ESE pedido
+  // (el aviso trae el estado, sin datos personales).
+  socket.on('join-order', (orderNumber: unknown) => {
+    if (typeof orderNumber === 'string' && /^ORD-\d{1,10}$/.test(orderNumber)) socket.join(`order:${orderNumber}`);
   });
 
   socket.on('disconnect', () => {

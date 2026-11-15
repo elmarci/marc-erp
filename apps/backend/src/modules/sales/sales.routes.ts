@@ -78,6 +78,9 @@ const createSaleSchema = z.object({
   // no bloquear por stock/sesión ya cerrada, ver sales.service.ts.
   isOfflineSync: z.boolean().optional(),
   offlineCreatedAt: z.coerce.date().optional(),
+  // Identificador que pone el equipo a cada venta: si la misma venta llega
+  // dos veces (se cortó internet justo después de guardarla), no se duplica.
+  clientSaleId: z.string().trim().min(8).max(64).optional(),
 });
 
 const returnSchema = z.object({

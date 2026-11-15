@@ -182,6 +182,21 @@ export class ProductsService {
     return `PRO${String(next).padStart(3, '0')}`;
   }
 
+  async posSync(since: Date) {
+    // Margen de 5 s para no perder una escritura que se confirmó justo en el
+    // borde (la hora la decide el servidor, no el equipo).
+    const serverTime = new Date();
+    const from = new Date(since.getTime() - 5000);
+    const rows = await prisma.product.findMany({
+      where: { updatedAt: { gt: from } },
+      include: { category: { select: { id: true, name: true } } },
+      take: 5000,
+    });
+    const changed = rows.filter((p) => !p.deletedAt && p.status === 'ACTIVE');
+    const removedIds = rows.filter((p) => p.deletedAt || p.status !== 'ACTIVE').map((p) => p.id);
+    return { changed, removedIds, serverTime: serverTime.toISOString() };
+  }
+
   async search(query: SearchProductsQuery) {
     const { q, categoryId, supplierId, status, lowStock, isBulk, favorite, page, limit, sortBy = 'name', sortOrder = 'asc' } = query;
     const skip = (page - 1) * limit;

@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 // Cada cuánto se refresca en segundo plano el catálogo local (para el
 // escaneo de códigos de barra y la grilla) mientras hay conexión.
 const PRODUCT_CACHE_REFRESH_MS = 5 * 60 * 1000;
+const PRODUCT_FULL_REFRESH_MS = 60 * 60 * 1000;
 
 interface CashSession {
   id: string;
@@ -117,11 +118,27 @@ export function PosPage() {
   // grilla) — se refresca mientras hay conexión, para tener con qué seguir
   // vendiendo si se cae el internet a mitad de turno.
   useEffect(() => {
+    // Cada 5 min baja solo lo cambiado (precio, stock, productos nuevos o
+    // retirados); el catálogo completo solo al abrir sin copia local o una vez
+    // por hora como respaldo. Antes bajaba los ~2.000 productos cada 5 min.
     const refreshCatalog = async () => {
       if (!navigator.onLine) return;
+      const { lastSyncedAt, lastFullSyncAt, products } = useProductCacheStore.getState();
+      const needFull = !lastSyncedAt || !lastFullSyncAt || Object.keys(products).length === 0
+        || Date.now() - new Date(lastFullSyncAt).getTime() > PRODUCT_FULL_REFRESH_MS;
       try {
-        const res = await api.get<{ data: CachedProduct[] }>('/products?limit=2000&status=ACTIVE');
-        useProductCacheStore.getState().setProducts(res.data.data);
+        if (needFull) {
+          const res = await api.get<{ data: CachedProduct[] }>('/products?limit=2000&status=ACTIVE');
+          // Hora del servidor (cabecera Date), no la del equipo, que puede estar desfasada.
+          const serverDate = res.headers['date'] ? new Date(res.headers['date'] as string) : null;
+          useProductCacheStore.getState().setProducts(res.data.data, serverDate && !isNaN(serverDate.getTime()) ? serverDate.toISOString() : undefined);
+        } else {
+          const res = await api.get<{ data: { changed: CachedProduct[]; removedIds: string[]; serverTime: string } }>(
+            '/products/pos-sync', { params: { since: lastSyncedAt } },
+          );
+          const { changed, removedIds, serverTime } = res.data.data;
+          useProductCacheStore.getState().mergeProducts(changed, removedIds, serverTime);
+        }
       } catch {
         // sin conexión real o falla puntual — se reintenta en el próximo ciclo, no es crítico
       }
