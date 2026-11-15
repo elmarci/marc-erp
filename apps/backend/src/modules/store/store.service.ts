@@ -5,7 +5,7 @@ import { redis } from '../../config/redis';
 import { getSettingValues } from '../../utils/settings';
 import { withOrderNumber, withSaleNumber } from '../../utils/sequence';
 import { deliveryService } from '../delivery/delivery.service';
-import { storeDeliveryFee, cardFee, CARD_FEE_PERCENT } from './deliveryFee';
+import { storeDeliveryFee, cardFee, CARD_FEE_PERCENT, DELIVERY_MIN_ORDER } from './deliveryFee';
 import { buildTracking } from './orderTracking';
 import { discountPrices, packInfo, pickPrice } from './storePricing';
 import { orderAccessKey, isValidOrderKey } from './orderAccess';
@@ -368,6 +368,9 @@ export class StoreService {
       };
     });
     subtotal = Math.round(subtotal * 100) / 100;
+    if (data.deliveryType === 'DELIVERY' && subtotal < DELIVERY_MIN_ORDER) {
+      throw new BusinessError(`La compra mínima para delivery es S/ ${DELIVERY_MIN_ORDER.toFixed(2)} en productos.`);
+    }
 
     // Envío: gratis al recoger; en delivery, por distancia a la tienda (GPS)
     // o por zona si no hay GPS útil. Ver deliveryFee.ts.

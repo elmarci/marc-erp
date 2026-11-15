@@ -38,7 +38,7 @@ export function CheckoutPage() {
   const expressAvailable = deliveryStatus().now
   const firstDay = days.find(d => d.turns.length > 0)?.offset ?? 1
   const [dayOffset, setDayOffset] = useState(firstDay)
-  const [turnKey, setTurnKey] = useState<'M' | 'T' | 'X' | ''>('')
+  const [turnKey, setTurnKey] = useState<'M' | 'A' | 'N' | 'X' | ''>('')
   const [hour, setHour] = useState('')
   const day = days.find(d => d.offset === dayOffset) ?? days[1]
   const turn = day.turns.find(t => t.key === turnKey)
@@ -201,7 +201,8 @@ export function CheckoutPage() {
   const confirm = () => {
     if (!form.deliveryType) { toast.error('Elige si te lo llevamos o lo recoges'); return }
     if (isDelivery && !form.address.trim()) { toast.error('Escribe tu dirección de entrega'); return }
-    if (isDelivery && !form.district) { toast.error('Elige tu zona'); return }
+    if (isDelivery && !form.district.trim()) { toast.error('Escribe tu zona o urbanización'); return }
+    if (isDelivery && total < DELIVERY.minOrder) { toast.error(`La compra mínima para delivery es ${money(DELIVERY.minOrder)} en productos`); return }
     if (isDelivery && !coords && !gpsSkipped) { toast.error('Comparte tu ubicación, o indica que no estás en el lugar de entrega'); return }
     if (isDelivery && !turnKey) { toast.error('Elige el turno de entrega'); return }
     if (isDelivery && !express && !hour) { toast.error('Elige la hora de entrega'); return }
@@ -256,7 +257,7 @@ export function CheckoutPage() {
           {step(1, 'co-entrega', '¿Cómo lo recibes?')}
           <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-labelledby="co-entrega">
             {([
-              { val: 'DELIVERY', icon: 'chk-delivery', title: 'Delivery', desc: `Desde ${money(DELIVERY.costFrom)}` },
+              { val: 'DELIVERY', icon: 'chk-delivery', title: 'Delivery', desc: `Desde ${money(DELIVERY.costFrom)}, mín. S/ ${DELIVERY.minOrder}` },
               { val: 'PICKUP', icon: 'chk-recojo', title: 'Recojo en tienda', desc: 'Sin costo' },
             ] as const).map(o => {
               const active = form.deliveryType === o.val
@@ -310,12 +311,12 @@ export function CheckoutPage() {
                       placeholder="Mz A Lt 5, calle o avenida" className={input} />
                   </div>
                   <div>
-                    <label htmlFor="co-zone" className={label}>Zona</label>
-                    <select id="co-zone" value={form.district} onChange={set('district')} className={input}>
-                      <option value="">Elige tu zona</option>
-                      {DELIVERY.zones.map(z => <option key={z} value={z}>{z}</option>)}
-                    </select>
-                    <p className="text-sm text-paper-ink-soft mt-1.5">Solo repartimos en {DELIVERY.zoneName}.</p>
+                    <label htmlFor="co-zone" className={label}>Zona o urbanización</label>
+                    <input id="co-zone" value={form.district} onChange={set('district')} list="co-zones" autoComplete="address-level3"
+                      placeholder="Ej.: Portada, Huertos, UPIS" className={input} />
+                    <datalist id="co-zones">
+                      {DELIVERY.zones.map(z => <option key={z} value={z} />)}
+                    </datalist>
                   </div>
                   <div>
                     <label htmlFor="co-ref" className={label}>Referencia <span className="font-normal text-paper-ink-soft">(opcional)</span></label>

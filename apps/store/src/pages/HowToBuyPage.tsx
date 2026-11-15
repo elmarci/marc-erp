@@ -8,18 +8,17 @@ import { BRAND_NAME, DELIVERY, FEES, money, whatsappLink } from '../lib/storeInf
 // costos, pagos y puntos. Pública (no pide cuenta) y sirve también para
 // mandar el enlace por WhatsApp: www.tiendasmarc.pe/como-comprar
 const STEPS = [
-  { icon: 'nav-categorias-relleno', title: 'Busca o elige por categoría', text: 'Usa el buscador, las categorías o las ofertas. También puedes dictar tu lista con el micrófono o usar "Arma tu canasta" con tu presupuesto.' },
+  { icon: 'nav-categorias-relleno', title: 'Busca o elige por categoría', text: 'Usa el buscador, las categorías o las ofertas. También puedes dictar tu lista con el micrófono.' },
   { icon: 'nav-carrito-relleno', title: 'Agrega al carrito', text: 'Toca el + verde de cada producto. Con − y + cambias la cantidad. Los productos a granel (por kilo) te dejan pedir por peso o por monto, por ejemplo S/ 5.' },
-  { icon: 'chk-delivery', title: 'Elige delivery o recojo', text: `Delivery en ${DELIVERY.zoneName} o recoges gratis en la tienda. Comparte tu ubicación para que el envío se calcule exacto.` },
+  { icon: 'chk-delivery', title: 'Elige delivery o recojo', text: `Delivery a tu puerta (compra mínima S/ ${DELIVERY.minOrder}) o recoges gratis en la tienda. Comparte tu ubicación para que el envío se calcule exacto.` },
   { icon: 'chk-tarjeta', title: 'Elige cómo pagar', text: `Yape ahora o al recibir, efectivo, o tarjeta débito/crédito al recibir (comisión ${FEES.cardPercent} %). No necesitas crear cuenta para pedir.` },
   { icon: 'seg-moto', title: 'Sigue tu pedido', text: 'Te mostramos cada paso: recibido, preparando, en camino (con el repartidor en el mapa) y entregado.' },
 ] as const
 
 const FAQ: Array<[string, string]> = [
   ['¿Necesito crear una cuenta?', 'No. Puedes pedir como invitado. Con cuenta ganas puntos en cada compra, guardas tus direcciones y repites pedidos en un toque.'],
-  ['¿Cuánto cuesta el envío?', `${money(FEES.tiers[0].fee)} hasta 500 m de la tienda, ${money(FEES.tiers[1].fee)} hasta 1 km y ${money(FEES.beyond)} a más distancia. El envío express suma ${money(FEES.expressExtra)}. Recoger en tienda no cuesta.`],
-  ['¿A qué zonas llegan?', `${DELIVERY.zoneName}: ${DELIVERY.zones.join(', ')}.`],
-  ['¿En qué horario reparten?', 'Mañana de 6 a 9 am y tarde de 5 a 9 pm. Viernes y sábado, hasta la 1 am.'],
+  ['¿Cuánto cuesta el envío?', `${money(FEES.tiers[0].fee)} hasta 500 m de la tienda, ${money(FEES.tiers[1].fee)} hasta 1 km y ${money(FEES.beyond)} a más distancia. El envío express suma ${money(FEES.expressExtra)}. Recoger en tienda no cuesta. La compra mínima para delivery es ${money(DELIVERY.minOrder)} en productos.`],
+  ['¿En qué horario reparten?', 'Mañana de 6 a 9 am, tarde de 2 a 5 pm y noche de 6 a 9 pm. Viernes y sábado, hasta la 1 am.'],
   ['¿Cómo pago con tarjeta?', `Elige "Tarjeta al recibir": el repartidor lleva el POS y pagas con débito o crédito. Se suma una comisión de ${FEES.cardPercent} % que ves antes de confirmar. Nunca te pedimos los datos de tu tarjeta por la web.`],
   ['¿Cómo funcionan los puntos?', 'Con tu cuenta, cada compra entregada te suma puntos. Los vas juntando para canjearlos por productos del catálogo de premios. Los ves en Mis pedidos, en "Puntos y canje".'],
   ['¿Cómo instalo la app en mi celular?', 'En Android, abre la tienda en Chrome y toca "Instalar" cuando aparezca el aviso, o en el menú ⋮ elige "Instalar app". En iPhone, abre en Safari, toca Compartir y luego "Agregar a inicio".'],

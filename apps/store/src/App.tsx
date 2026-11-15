@@ -29,7 +29,6 @@ const CheckoutPage = page(() => import('./pages/CheckoutPage'), 'CheckoutPage')
 const OrderConfirmPage = page(() => import('./pages/OrderConfirmPage'), 'OrderConfirmPage')
 const TrackOrderPage = page(() => import('./pages/TrackOrderPage'), 'TrackOrderPage')
 const OffersPage = page(() => import('./pages/OffersPage'), 'OffersPage')
-const BasketPage = page(() => import('./pages/BasketPage'), 'BasketPage')
 const ComplaintsPage = page(() => import('./pages/ComplaintsPage'), 'ComplaintsPage')
 const HowToBuyPage = page(() => import('./pages/HowToBuyPage'), 'HowToBuyPage')
 const TvPage = page(() => import('./pages/TvPage'), 'TvPage')
@@ -109,21 +108,18 @@ export default function App() {
             <Route path="/pedido/:orderNumber" element={<OrderConfirmPage />} />
             <Route path="/mis-pedidos" element={<TrackOrderPage />} />
             <Route path="/ofertas" element={<OffersPage />} />
-            <Route path="/canasta" element={<BasketPage />} />
             <Route path="/libro-de-reclamaciones" element={<ComplaintsPage />} />
             <Route path="/como-comprar" element={<HowToBuyPage />} />
           </Routes>
           </Suspense>
         </motion.div>
       </AnimatePresence>
-      {/* En pago, canasta, confirmación y cuenta no va: esas pantallas ya traen su propio botón principal y su WhatsApp. */}
-      {!['/checkout', '/canasta', '/pedido', '/mis-pedidos', '/libro-de-reclamaciones'].some(p => location.pathname.startsWith(p)) && <CartBar />}
+      {/* En pago, confirmación y cuenta no va: esas pantallas ya traen su propio botón principal y su WhatsApp. */}
+      {!['/checkout', '/pedido', '/mis-pedidos', '/libro-de-reclamaciones'].some(p => location.pathname.startsWith(p)) && <CartBar />}
       <MobileTabBar />
-      {/* /canasta tiene su propia barra fija de total y su propio micrófono:
-          los botones flotantes la tapaban. */}
       {/* Lista por voz: solo donde se elige qué comprar, para no tapar botones en ficha, cuenta o pago. */}
       {VOICE_LIST_ROUTES.includes(location.pathname) && <VoiceShoppingListButton />}
-      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/canasta') && !location.pathname.startsWith('/libro') && <WhatsAppFAB />}
+      {!location.pathname.startsWith('/checkout') && !location.pathname.startsWith('/libro') && <WhatsAppFAB />}
     </div>
   )
 }

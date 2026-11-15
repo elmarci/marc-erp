@@ -79,7 +79,7 @@ export function RegisterInvitePopup() {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-paper-ink/50 p-3 sm:p-4"
+        <motion.div className="fixed inset-0 z-[60] flex items-center justify-center bg-paper-ink/50 p-4"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismiss}
           role="dialog" aria-modal="true" aria-labelledby="wo-title">
           <motion.div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
@@ -95,7 +95,7 @@ export function RegisterInvitePopup() {
               <h2 id="wo-title" className="mt-3 text-xl font-extrabold leading-tight">Crea tu cuenta gratis y suma puntos</h2>
               <p className="mt-1 text-[15px] text-white/85">Te toma menos de un minuto.</p>
             </div>
-            <div className="px-5 pt-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-5">
+            <div className="px-5 pt-4 pb-5">
               <ul className="space-y-2.5">
                 {BENEFITS.map(b => (
                   <li key={b.text} className="flex items-center gap-3 text-[15px] text-paper-ink leading-snug">

@@ -191,7 +191,7 @@ export function CartDrawer() {
               <span className="text-base font-bold text-paper-ink">Total de productos</span>
               <span className="text-2xl font-extrabold text-paper-ink tabular-nums">{money(total)}</span>
             </div>
-            <p className="text-sm text-paper-ink-soft">Envío desde {money(DELIVERY.costFrom)} en {DELIVERY.zoneName}. Recoger en tienda no cuesta.</p>
+            <p className="text-sm text-paper-ink-soft">Delivery desde {money(DELIVERY.costFrom)} (compra mínima {money(DELIVERY.minOrder)}). Recoger en tienda no cuesta.</p>
             <p className="text-sm text-paper-ink-soft -mt-1">Pagas con Yape, efectivo o tarjeta débito/crédito.</p>
             <button onClick={handleCheckout}
               className="w-full h-[52px] rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold text-base">

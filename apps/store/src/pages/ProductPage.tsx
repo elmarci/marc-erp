@@ -225,7 +225,7 @@ export function ProductPage() {
             <Truck className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
             <p className="text-sm text-paper-ink-soft leading-snug">
               <span className="font-bold text-paper-ink">{deliveryStatus().title}.</span>{' '}
-              Envío desde {money(DELIVERY.costFrom)} en {DELIVERY.zoneName}.
+              Envío desde {money(DELIVERY.costFrom)}.
             </p>
           </div>
         </div>
