@@ -148,6 +148,7 @@ export interface StoreOrder {
   total: number
   pointsRedeemed: number
   pointsDiscountAmount: number
+  welcomeDiscountAmount?: number
   createdAt: string
   reference?: string | null
   deliveryStatus?: string | null
@@ -280,6 +281,10 @@ export const storeApi = {
   // Pedidos de la cuenta con sesión iniciada.
   myOrders: () =>
     api.get<{ data: StoreOrder[] }>('/store/orders/mine'),
+
+  // Si la cuenta con sesión todavía puede usar el descuento de bienvenida.
+  getWelcomeOffer: () =>
+    api.get<{ data: { eligible: boolean; percent: number; min: number; cap: number } }>('/store/welcome-offer'),
 
   getProfile: () =>
     api.get<{ data: StoreProfile }>('/store/auth/profile'),

@@ -8,6 +8,7 @@ import { deliveryService } from '../delivery/delivery.service';
 import { storeDeliveryFee, cardFee, CARD_FEE_PERCENT } from './deliveryFee';
 import { buildTracking } from './orderTracking';
 import { discountPrices, packInfo, pickPrice } from './storePricing';
+import { isExcludedCategory, isWelcomeEligible, welcomeDiscount, WELCOME_PERCENT } from './welcomeOffer';
 import { orderAccessKey, isValidOrderKey } from './orderAccess';
 
 export class StoreService {
@@ -283,6 +284,7 @@ export class StoreService {
       // isMiscItem: false — no es un producto real de catálogo, no se puede
       // pedir por acá aunque alguien arme el request a mano con su id.
       where: { id: { in: realProductIds }, deletedAt: null, status: 'ACTIVE', isMiscItem: false },
+      include: { category: { select: { name: true, parent: { select: { name: true } } } } },
     });
 
     const productMap = new Map(products.map(p => [p.id, p]));
@@ -335,6 +337,7 @@ export class StoreService {
     }
 
     let subtotal = 0;
+    let welcomeBase = 0; // lo que entra al descuento de bienvenida
     const orderItems = resolvedItems.map(item => {
       const product = productMap.get(item.realProductId)!;
       const salePrice = Number(product.salePrice);
@@ -352,6 +355,7 @@ export class StoreService {
       }
       const itemSubtotal = Math.round(unitPrice * item.quantity * 100) / 100;
       subtotal += itemSubtotal;
+      if (!isExcludedCategory(product.category?.name, product.category?.parent?.name)) welcomeBase += itemSubtotal;
       // El nombre puede traer el peso elegido ("Pollo (0.5 kg)"), pero
       // siempre empieza con el nombre real del producto.
       const name = item.name && item.name.startsWith(product.name) ? item.name.slice(0, 160) : product.name;
@@ -377,7 +381,13 @@ export class StoreService {
     // puntos ocurre recién al confirmar el pedido (mismo momento en que se
     // suman los ganados), con el mismo resguardo atómico que el POS para
     // evitar canjear el mismo punto dos veces en pedidos simultáneos.
-    const pointsToRedeem = data.pointsToRedeem ?? 0;
+    // Bienvenida: primera compra de una cuenta nueva (ver welcomeOffer.ts).
+    // Si aplica, no se canjean puntos en el mismo pedido.
+    const welcomeDiscountAmount = await isWelcomeEligible(data.storeCustomerId)
+      ? welcomeDiscount(subtotal, Math.round(welcomeBase * 100) / 100)
+      : 0;
+
+    const pointsToRedeem = welcomeDiscountAmount > 0 ? 0 : (data.pointsToRedeem ?? 0);
     let pointsDiscountAmount = 0;
     if (pointsToRedeem > 0) {
       if (!data.storeCustomerId) {
@@ -399,12 +409,14 @@ export class StoreService {
     // columna propia en el pedido: entra en `total` y se puede recuperar
     // como total − subtotal − envío + descuento por puntos (así la lee
     // confirmOrder). También queda escrita en la nota para la tienda.
-    const beforeCard = subtotal + deliveryCost - pointsDiscountAmount;
+    const beforeCard = Math.round((subtotal + deliveryCost - pointsDiscountAmount - welcomeDiscountAmount) * 100) / 100;
     const cardCommission = data.paymentMethod === 'CARD_CONTRAENTREGA' ? cardFee(beforeCard) : 0;
     const total = beforeCard + cardCommission;
-    const notes = cardCommission > 0
-      ? [`COMISIÓN TARJETA ${CARD_FEE_PERCENT}%: S/ ${cardCommission.toFixed(2)}`, data.notes].filter(Boolean).join(' | ')
-      : data.notes;
+    const notes = [
+      welcomeDiscountAmount > 0 ? `BIENVENIDA ${WELCOME_PERCENT}%: -S/ ${welcomeDiscountAmount.toFixed(2)}` : null,
+      cardCommission > 0 ? `COMISIÓN TARJETA ${CARD_FEE_PERCENT}%: S/ ${cardCommission.toFixed(2)}` : null,
+      data.notes,
+    ].filter(Boolean).join(' | ') || undefined;
 
     // Número de pedido: el siguiente al último. Antes era count()+1, y dos
     // pedidos en el mismo instante recibían el mismo número: uno fallaba con
@@ -427,6 +439,7 @@ export class StoreService {
         longitude: data.longitude,
         pointsRedeemed: pointsToRedeem,
         pointsDiscountAmount,
+        welcomeDiscountAmount,
         subtotal,
         deliveryCost,
         total,
@@ -612,11 +625,13 @@ export class StoreService {
       // pedido — acá se aplica de verdad a la venta del ERP, igual que
       // cualquier otro descuento de una venta hecha en el POS.
       const pointsDiscountAmount = Number(order.pointsDiscountAmount);
-      const discountedSubtotal = subtotal - pointsDiscountAmount;
+      const welcomeDiscountAmount = Number(order.welcomeDiscountAmount ?? 0);
+      const orderDiscount = pointsDiscountAmount + welcomeDiscountAmount;
+      const discountedSubtotal = subtotal - orderDiscount;
       // Comisión de tarjeta cobrada en el pedido web: se guarda aparte del
       // total de la venta, igual que hace el POS (no infla ventas ni NRUS).
       const cardCommission = order.paymentMethod === 'CARD_CONTRAENTREGA'
-        ? Math.max(0, Math.round((Number(order.total) - Number(order.subtotal) - Number(order.deliveryCost) + pointsDiscountAmount) * 100) / 100)
+        ? Math.max(0, Math.round((Number(order.total) - Number(order.subtotal) - Number(order.deliveryCost) + orderDiscount) * 100) / 100)
         : 0;
 
       const taxRate = 0.18;
@@ -635,13 +650,14 @@ export class StoreService {
           subtotal: netAmount,
           taxAmount,
           totalAmount: discountedSubtotal,
-          discountAmount: pointsDiscountAmount,
+          discountAmount: orderDiscount,
           commissionAmount: cardCommission,
           commissionPercent: cardCommission > 0 ? CARD_FEE_PERCENT : 0,
           status: 'COMPLETED',
           pointsEarned,
           notes: `Pedido web ${order.orderNumber} — ${order.deliveryType === 'DELIVERY' ? 'Delivery' : 'Recojo en tienda'}`
-            + (order.pointsRedeemed > 0 ? ` — canjeó ${order.pointsRedeemed} pts (S/ ${pointsDiscountAmount.toFixed(2)})` : ''),
+            + (order.pointsRedeemed > 0 ? ` — canjeó ${order.pointsRedeemed} pts (S/ ${pointsDiscountAmount.toFixed(2)})` : '')
+            + (welcomeDiscountAmount > 0 ? ` — bienvenida ${WELCOME_PERCENT}% (S/ ${welcomeDiscountAmount.toFixed(2)})` : ''),
           items: {
             create: saleItems,
           },

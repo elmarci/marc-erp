@@ -1695,6 +1695,9 @@ model StoreOrder {
   // ganados), con el mismo resguardo atómico contra doble-canje.
   pointsRedeemed        Int     @default(0) @map("points_redeemed")
   pointsDiscountAmount  Decimal @default(0) @map("points_discount_amount") @db.Decimal(12, 2)
+  // Descuento de bienvenida (primera compra de una cuenta nueva, ver
+  // store/welcomeOffer.ts). Ya está restado en `total`.
+  welcomeDiscountAmount Decimal @default(0) @map("welcome_discount_amount") @db.Decimal(12, 2)
   // ── Reparto (biker) ──────────────────────────────────────────────────
   // riderId nulo = todavía no lo tomó nadie; si además status está en
   // CONFIRMED/PREPARING/READY, el pedido aparece en la bolsa de disponibles

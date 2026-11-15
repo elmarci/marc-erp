@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { storeService } from './store.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { storeAuthMiddleware, requireStoreAuth } from './store-auth.routes';
+import { isWelcomeEligible, WELCOME_CAP, WELCOME_MIN, WELCOME_PERCENT } from './welcomeOffer';
 import { basketService } from '../baskets/basket.service';
 import { cachedCatalog } from '../../config/catalogCache';
 import { publicComplaintsRouter, adminComplaintsRouter } from './complaints';
@@ -125,6 +126,17 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
     const storeCustomerId = (req as Request & { customerId?: string }).customerId;
     const order = await storeService.createOrder({ ...data, storeCustomerId });
     res.status(201).json({ success: true, data: order });
+  } catch (err) { next(err); }
+});
+
+// Descuento de bienvenida: si la cuenta con sesión todavía puede usarlo y
+// sus reglas (la tienda muestra la barra "te faltan S/ X" y el descuento
+// estimado; el que vale es el que calcula createOrder).
+router.get('/welcome-offer', storeAuthMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = (req as Request & { customerId?: string }).customerId;
+    const eligible = await isWelcomeEligible(customerId);
+    res.json({ success: true, data: { eligible, percent: WELCOME_PERCENT, min: WELCOME_MIN, cap: WELCOME_CAP } });
   } catch (err) { next(err); }
 });
 

@@ -7,7 +7,8 @@ import { useNavigate } from 'react-router-dom'
 import { storeApi } from '../api'
 
 import { WhatsAppIcon } from './CartBar'
-import { BRAND_NAME, DELIVERY, money, whatsappLink } from '../lib/storeInfo'
+import { BRAND_NAME, DELIVERY, WELCOME, money, welcomeEstimate, whatsappLink } from '../lib/storeInfo'
+import { useWelcomeOffer } from '../lib/useWelcomeOffer'
 import { thumb } from '../lib/thumb'
 
 export function CartDrawer() {
@@ -22,6 +23,7 @@ export function CartDrawer() {
   const addItem = useCartStore(s => s.addItem)
   const total = cartTotal(items)
   const navigate = useNavigate()
+  const welcome = useWelcomeOffer()
 
   // "¿Se te olvidó algo?" — v1 simple: productos destacados que todavía no
   // están en el carrito. No es una recomendación inteligente por combinación
@@ -191,6 +193,7 @@ export function CartDrawer() {
               <span className="text-base font-bold text-paper-ink">Total de productos</span>
               <span className="text-2xl font-extrabold text-paper-ink tabular-nums">{money(total)}</span>
             </div>
+            {welcome !== 'used' && <WelcomeBar items={items} guest={welcome === 'guest'} onRegister={() => { closeCart(); navigate('/ingresar') }} />}
             <p className="text-sm text-paper-ink-soft">Envío desde {money(DELIVERY.costFrom)} en {DELIVERY.zoneName}. Recoger en tienda no cuesta.</p>
             <p className="text-sm text-paper-ink-soft -mt-1">Pagas con Yape, efectivo o tarjeta débito/crédito.</p>
             <button onClick={handleCheckout}
@@ -236,6 +239,28 @@ function BundleRow({ group, onRemove }: { group: CartItem[]; onRemove: () => voi
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Barra del descuento de bienvenida: cuánto falta para el mínimo o cuánto
+// ahorra. Al invitado le dice que se registre para usarlo.
+function WelcomeBar({ items, guest, onRegister }: { items: CartItem[]; guest: boolean; onRegister: () => void }) {
+  const { discount, missing } = welcomeEstimate(items)
+  const progress = Math.min(1, (WELCOME.min - missing) / WELCOME.min)
+  return (
+    <div className="rounded-xl bg-brand-blue-50 px-3.5 py-2.5">
+      <p className="text-sm text-paper-ink leading-snug">
+        {missing > 0
+          ? <>Te faltan <strong className="tabular-nums">{money(missing)}</strong> para tu {WELCOME.percent} % de bienvenida</>
+          : <>Tu {WELCOME.percent} % de bienvenida: <strong className="tabular-nums">−{money(discount)}</strong>{guest ? ' si te registras' : ' en este pedido'}</>}
+      </p>
+      <div className="mt-1.5 h-1.5 rounded-full bg-white overflow-hidden" aria-hidden="true">
+        <div className="h-full rounded-full bg-brand-blue-600 transition-all" style={{ width: `${progress * 100}%` }} />
+      </div>
+      {guest && (
+        <button onClick={onRegister} className="mt-1 h-9 text-sm font-bold text-brand-blue-600">Crear mi cuenta gratis</button>
+      )}
     </div>
   )
 }

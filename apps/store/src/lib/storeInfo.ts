@@ -131,3 +131,27 @@ export function deliveryDays(now = new Date()): DeliveryDay[] {
     }
   })
 }
+
+/* ── Descuento de bienvenida ─────────────────────────────────────────── */
+// Mismos valores que apps/backend/src/modules/store/welcomeOffer.ts: acá solo
+// se MUESTRA (popup, barra del carrito, resumen); el que vale es el que
+// calcula el servidor al crear el pedido.
+export const WELCOME = { percent: 20, min: 40, cap: 15 }
+const WELCOME_EXCLUDED = /cigarr|tabaco|licor|cerveza|vino|alcohol|ron\b|pisco|whisk|vodka/
+const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+type WelcomeLine = { product: { salePrice: number; category?: { name: string; parent?: { name: string } | null } | null }; quantity: number }
+
+// Cuánto descontaría la bienvenida a este carrito (0 si no llega al mínimo).
+export function welcomeEstimate(items: WelcomeLine[]) {
+  let all = 0, base = 0
+  for (const i of items) {
+    const line = i.product.salePrice * i.quantity
+    all += line
+    const c = i.product.category
+    if (!(c && (WELCOME_EXCLUDED.test(norm(c.name)) || (c.parent && WELCOME_EXCLUDED.test(norm(c.parent.name)))))) base += line
+  }
+  const missing = Math.max(0, Math.round((WELCOME.min - all) * 100) / 100)
+  const discount = missing > 0 || base <= 0 ? 0 : Math.min(WELCOME.cap, Math.round(base * WELCOME.percent) / 100)
+  return { discount, missing, excludedSome: base < all }
+}

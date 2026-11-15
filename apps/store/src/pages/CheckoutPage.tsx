@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, MapPin, Check, ShoppingBag, Plus, CheckCircle2, Gift } from 'lucide-react'
 import { Ico } from '../components/Ico'
 import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
 import { toast } from 'sonner'
-import { DELIVERY, FEES, cardFee, deliveryDays, deliveryFee, deliveryStatus, money } from '../lib/storeInfo'
+import { DELIVERY, FEES, WELCOME, cardFee, deliveryDays, deliveryFee, deliveryStatus, money, welcomeEstimate } from '../lib/storeInfo'
+import { useWelcomeOffer } from '../lib/useWelcomeOffer'
 import { orderLink, rememberActiveOrder } from '../components/ActiveOrderBanner'
 
 // Quien compra sin cuenta no vuelve a escribir su nombre y WhatsApp en cada
@@ -82,11 +83,17 @@ export function CheckoutPage() {
   const shipping = deliveryFee({ coords, zone: form.district, express })
   const feeKnown = form.deliveryType === 'DELIVERY' && (shipping.km != null || !!form.district)
   const fee = form.deliveryType === 'DELIVERY' && feeKnown ? shipping.fee : 0
+  // Bienvenida: primera compra de una cuenta nueva. Si aplica, no se
+  // canjean puntos en el mismo pedido (igual que en el servidor).
+  const welcome = useWelcomeOffer()
+  const queryClient = useQueryClient()
+  const welcomeCalc = welcomeEstimate(items)
+  const welcomeDiscount = welcome === 'eligible' ? welcomeCalc.discount : 0
   const pointsNeeded = pointValue > 0 ? Math.ceil((total + fee) / pointValue) : 0
-  const pointsToRedeem = usePoints ? Math.min(pointsAvailable, pointsNeeded) : 0
+  const pointsToRedeem = usePoints && welcomeDiscount === 0 ? Math.min(pointsAvailable, pointsNeeded) : 0
   const pointsDiscount = Math.min(pointsToRedeem * pointValue, total + fee)
-  const cardCommission = form.paymentMethod === 'CARD_CONTRAENTREGA' ? cardFee(total + fee - pointsDiscount) : 0
-  const finalTotal = total + fee - pointsDiscount + cardCommission
+  const cardCommission = form.paymentMethod === 'CARD_CONTRAENTREGA' ? cardFee(total + fee - pointsDiscount - welcomeDiscount) : 0
+  const finalTotal = total + fee - pointsDiscount - welcomeDiscount + cardCommission
 
   // Fecha, turno, hora y quién recibe viajan al inicio de la nota del
   // pedido: así la tienda y el repartidor los ven sin cambiar la base de datos.
@@ -166,6 +173,8 @@ export function CheckoutPage() {
       })),
     }),
     onSuccess: (res) => {
+      // La bienvenida es solo para el primer pedido: volver a preguntar.
+      queryClient.invalidateQueries({ queryKey: ['welcome-offer'] })
       // Guardar la dirección nueva es un extra de conveniencia — si falla no
       // debe bloquear ni afectar la confirmación del pedido, que ya sucedió.
       if (isLoggedIn && saveNewAddress && !selectedAddressId && form.address) {
@@ -526,7 +535,24 @@ export function CheckoutPage() {
           </ul>
 
           {/* Canje de puntos: saldo real del ERP, el mismo que ve la caja. */}
-          {isLoggedIn && pointsAvailable > 0 && (
+          {/* Invitado: cuánto ahorraría registrándose. */}
+          {welcome === 'guest' && (
+            <Link to="/ingresar" className="mt-3 flex items-center gap-3 rounded-xl bg-brand-blue-50 p-3.5">
+              <span className="h-9 w-9 rounded-full bg-brand-blue-600 text-white text-[13px] font-extrabold flex items-center justify-center shrink-0">{WELCOME.percent}%</span>
+              <span className="flex-1 text-[15px] text-paper-ink leading-snug">
+                {welcomeCalc.discount > 0
+                  ? <>Regístrate y ahorra <b className="tabular-nums">{money(welcomeCalc.discount)}</b> en este pedido</>
+                  : <>Regístrate: {WELCOME.percent} % en tu primera compra desde S/ {WELCOME.min}</>}
+              </span>
+            </Link>
+          )}
+          {welcome === 'eligible' && welcomeCalc.missing > 0 && (
+            <p className="mt-3 rounded-xl bg-brand-blue-50 p-3.5 text-[15px] text-paper-ink leading-snug">
+              Te faltan <b className="tabular-nums">{money(welcomeCalc.missing)}</b> en productos para tu {WELCOME.percent} % de bienvenida.
+            </p>
+          )}
+
+          {isLoggedIn && pointsAvailable > 0 && welcomeDiscount === 0 && (
             <label className={`mt-3 flex items-center gap-3 rounded-xl border-2 p-3.5 cursor-pointer ${usePoints ? 'border-brand-blue-600 bg-brand-blue-50' : 'border-paper-line'}`}>
               <input type="checkbox" checked={usePoints} onChange={e => setUsePoints(e.target.checked)}
                 className="h-5 w-5 rounded accent-brand-blue-600 shrink-0" />
@@ -544,6 +570,11 @@ export function CheckoutPage() {
             <div className="flex justify-between text-paper-ink-soft">
               <dt>Productos</dt><dd className="tabular-nums">{money(total)}</dd>
             </div>
+            {welcomeDiscount > 0 && (
+              <div className="flex justify-between text-paper-ink">
+                <dt className="font-semibold">Bienvenida −{WELCOME.percent} %</dt><dd className="tabular-nums font-semibold">−{money(welcomeDiscount)}</dd>
+              </div>
+            )}
             {usePoints && pointsDiscount > 0 && (
               <div className="flex justify-between text-paper-ink-soft">
                 <dt>Puntos canjeados</dt><dd className="tabular-nums">−{money(pointsDiscount)}</dd>

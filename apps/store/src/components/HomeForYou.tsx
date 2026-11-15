@@ -7,6 +7,8 @@ import { useAuthStore } from '../authStore'
 import { Ico } from './Ico'
 import { ProductCard } from './ProductCard'
 import { repeatOrder } from '../lib/repeatOrder'
+import { useWelcomeOffer } from '../lib/useWelcomeOffer'
+import { WELCOME } from '../lib/storeInfo'
 
 /* ── Tarjeta personal ─────────────────────────────────────────────────
    Un solo mensaje según quién entra:
@@ -14,6 +16,7 @@ import { repeatOrder } from '../lib/repeatOrder'
    - Con cuenta: sus puntos y, si ya compró, "Vuelve a pedir" en un toque. */
 export function HomeForYou({ className = '' }: { className?: string }) {
   const { customer, isLoggedIn } = useAuthStore()
+  const welcome = useWelcomeOffer()
 
   const { data: profileData } = useQuery({
     queryKey: ['store-profile'],
@@ -35,8 +38,8 @@ export function HomeForYou({ className = '' }: { className?: string }) {
             <Ico name="menu-puntos" className="h-7 w-7" />
           </span>
           <span className="flex-1 min-w-0">
-            <span className="block font-bold text-[15px] leading-snug">Crea tu cuenta gratis</span>
-            <span className="block text-[13px] text-white/85 leading-snug">Ganas puntos en cada compra y sigues tus pedidos.</span>
+            <span className="block font-bold text-[15px] leading-snug">{WELCOME.percent} % en tu primera compra</span>
+            <span className="block text-[13px] text-white/85 leading-snug">Crea tu cuenta gratis. Compra mínima S/ {WELCOME.min}, hasta S/ {WELCOME.cap} de descuento.</span>
           </span>
           <ChevronRight className="h-5 w-5 shrink-0" aria-hidden="true" />
         </Link>
@@ -51,6 +54,14 @@ export function HomeForYou({ className = '' }: { className?: string }) {
   return (
     <section className={className} aria-label="Para ti">
       <div className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
+        {welcome === 'eligible' && (
+          <div className="px-4 py-3 flex items-center gap-3 bg-brand-blue-50 rounded-t-2xl">
+            <span className="h-9 w-9 rounded-full bg-brand-blue-600 text-white text-[13px] font-extrabold flex items-center justify-center shrink-0">{WELCOME.percent}%</span>
+            <span className="text-[13px] text-paper-ink leading-snug">
+              <strong>Tu {WELCOME.percent} % de bienvenida te espera.</strong> Se aplica solo en tu primer pedido desde S/ {WELCOME.min}.
+            </span>
+          </div>
+        )}
         <Link to="/mis-pedidos#canje" className="px-4 py-3 flex items-center gap-3">
           <Ico name="menu-puntos" className="h-9 w-9" />
           <span className="flex-1 min-w-0">

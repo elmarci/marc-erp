@@ -140,8 +140,10 @@ export function OrderConfirmPage() {
   const r = rank(t.stage)
 
   // La comisión de tarjeta no viene en un campo propio: es lo que queda del
-  // total al quitar productos y envío (y sumar lo canjeado con puntos).
-  const cardCommission = Math.max(0, Math.round((Number(order.total) - Number(order.subtotal) - Number(order.deliveryCost) + Number(order.pointsDiscountAmount ?? 0)) * 100) / 100)
+  // total al quitar productos y envío (y sumar los descuentos).
+  const pointsDiscount = Number(order.pointsDiscountAmount ?? 0)
+  const welcomeDiscount = Number(order.welcomeDiscountAmount ?? 0)
+  const cardCommission = Math.max(0, Math.round((Number(order.total) - Number(order.subtotal) - Number(order.deliveryCost) + pointsDiscount + welcomeDiscount) * 100) / 100)
 
   // Tiempo de llegada: por calles si el mapa ya trazó la ruta; si no, el
   // estimado en línea recta que manda el servidor.
@@ -474,6 +476,16 @@ export function OrderConfirmPage() {
           {Number(order.deliveryCost) > 0 && (
             <div className="flex justify-between text-sm text-paper-ink-soft mt-1">
               <span>Envío</span><span className="tabular-nums">S/ {Number(order.deliveryCost).toFixed(2)}</span>
+            </div>
+          )}
+          {welcomeDiscount > 0 && (
+            <div className="flex justify-between text-sm text-paper-ink mt-1 font-semibold">
+              <span>Descuento de bienvenida</span><span className="tabular-nums">−S/ {welcomeDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          {pointsDiscount > 0 && (
+            <div className="flex justify-between text-sm text-paper-ink-soft mt-1">
+              <span>Puntos canjeados</span><span className="tabular-nums">−S/ {pointsDiscount.toFixed(2)}</span>
             </div>
           )}
           {order.paymentMethod === 'CARD_CONTRAENTREGA' && cardCommission > 0 && (
