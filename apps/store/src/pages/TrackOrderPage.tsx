@@ -7,9 +7,9 @@ import {
 import { storeApi, type StoreAddress } from '../api'
 import { useAuthStore } from '../authStore'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useCartStore } from '../cartStore'
 import { toast } from 'sonner'
 import { orderLink } from '../components/ActiveOrderBanner'
+import { repeatOrder } from '../lib/repeatOrder'
 
 // yyyy-mm-dd para <input type="date">, en hora local — evita que un "hoy"
 // en UTC se muestre como "ayer" para quien está en Perú (UTC-5).
@@ -254,7 +254,6 @@ function ProfileEditor({ name, email }: { name: string; email: string | null }) 
 export function TrackOrderPage() {
   const { customer, logout } = useAuthStore()
   const navigate = useNavigate()
-  const { addItem, openCart } = useCartStore()
   const location = useLocation()
 
   const { data: profileData } = useQuery({
@@ -285,23 +284,6 @@ export function TrackOrderPage() {
     }, 150)
     return () => clearTimeout(timer)
   }, [location.hash, profile])
-
-  // Repite el pedido con los productos y precios de hoy (no los de entonces):
-  // el servidor cobra el precio vigente, así el carrito muestra lo mismo.
-  const repeatOrder = async (order: typeof orders[0]) => {
-    const ids = [...new Set(order.items.map(i => i.productId).filter((id): id is string => !!id))]
-    const found = await Promise.all(ids.map(id => storeApi.getProduct(id).then(r => r.data.data).catch(() => null)))
-    let added = 0
-    for (const product of found) {
-      if (!product || Number(product.currentStock) <= 0) continue
-      const qty = order.items.filter(i => i.productId === product.id).reduce((s, i) => s + Number(i.quantity), 0)
-      addItem(product, product.isBulk ? qty : Math.max(1, Math.round(qty)))
-      added++
-    }
-    if (!added) { toast.error('Esos productos ya no están disponibles'); return }
-    openCart()
-    toast.success(added < ids.length ? 'Agregamos lo que sigue disponible' : 'Productos del pedido agregados al carrito')
-  }
 
   // Invitado sin cuenta — sus pedidos por WhatsApp no quedan asociados a un
   // perfil, así que no hay nada que mostrar acá sin iniciar sesión.

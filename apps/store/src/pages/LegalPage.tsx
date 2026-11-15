@@ -76,7 +76,7 @@ export function PrivacyPage() {
           <li><strong>Datos de tu cuenta:</strong> nombre, número de teléfono (WhatsApp), correo electrónico y contraseña (guardada cifrada; nunca la vemos).</li>
           <li><strong>Si ingresas con Google:</strong> solo tu correo, tu nombre y el identificador de tu cuenta de Google. No accedemos a tus contactos, archivos ni a ningún otro dato de Google.</li>
           <li><strong>Datos de entrega:</strong> direcciones, distrito, referencias y, si lo autorizas, la ubicación de tu celular para ubicar tu casa en el mapa.</li>
-          <li><strong>Datos de tus pedidos:</strong> productos, montos, método de pago elegido (Yape, Plin o efectivo) y, si la envías, la captura de tu pago. No recibimos ni guardamos datos de tarjetas.</li>
+          <li><strong>Datos de tus pedidos:</strong> productos, montos, método de pago elegido (Yape, efectivo o tarjeta) y, si la envías, la captura de tu pago. La tarjeta se cobra con el POS al entregar: no recibimos ni guardamos datos de tarjetas.</li>
           <li><strong>Puntos y beneficios:</strong> tu historial de compras para calcular puntos y ofertas.</li>
           <li><strong>Avisos:</strong> si aceptas recibir notificaciones, guardamos el permiso de tu navegador para enviarte ofertas.</li>
         </ul>
@@ -177,8 +177,8 @@ export function TermsPage() {
 
       <Section title="4. Pedidos y pagos">
         <p>
-          Tu pedido queda confirmado cuando lo aceptamos. Puedes pagar con Yape, Plin o en efectivo, según las opciones que
-          se muestren al pagar. Si pagas por adelantado, preparamos el pedido cuando confirmamos el pago. Podemos cancelar
+          Tu pedido queda confirmado cuando lo aceptamos. Puedes pagar con Yape, en efectivo o con tarjeta de débito o crédito (con una comisión que se muestra antes de
+          confirmar), según las opciones que se muestren al pagar. Si pagas por adelantado, preparamos el pedido cuando confirmamos el pago. Podemos cancelar
           pedidos con datos falsos o que no podamos confirmar; si ya pagaste, te devolvemos el dinero.
         </p>
       </Section>

@@ -379,7 +379,7 @@ export class SalesService {
     // Comisión de tarjeta: se calcula aquí con la tasa vigente (no se confía
     // en lo que mande el frontend) sobre la porción pagada con tarjeta, y va
     // aparte de totalAmount — es un recargo al cliente, no venta de productos.
-    const commissionPercent = Number(couponConfig['card_commission_percent'] ?? 4.06) || 0;
+    const commissionPercent = Number(couponConfig['card_commission_percent'] ?? 3.5) || 0;
     const paymentCommissions = input.payments.map((p) => (isCardMethod(p.method) ? cardCommission(p.amount, commissionPercent) : 0));
     const commissionAmount = paymentCommissions.reduce((sum, c) => sum + c, 0);
 

@@ -6,6 +6,7 @@ import { Ico } from '../components/Ico'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
 import { PromoCarousel } from '../components/PromoCarousel'
+import { HomeForNow, HomeForYou } from '../components/HomeForYou'
 import { WhatsAppIcon } from '../components/CartBar'
 import { getCategoryIcon, getCategoryTile } from '../categoryIcons'
 import { BRAND_NAME, DELIVERY, deliveryStatus, money, whatsappLink } from '../lib/storeInfo'
@@ -20,7 +21,7 @@ function CardSkeleton() {
       <div className="aspect-[4/3] sm:aspect-square rounded-xl bg-paper-surface animate-pulse" />
       <div className="h-4 rounded bg-paper-surface animate-pulse" />
       <div className="h-4 w-2/3 rounded bg-paper-surface animate-pulse" />
-      <div className="h-[46px] rounded-xl bg-paper-surface animate-pulse" />
+      <div className="h-[34px] rounded-full bg-paper-surface animate-pulse" />
     </div>
   )
 }
@@ -97,6 +98,11 @@ export function HomePage() {
         </section>
       )}
 
+      {/* Mensaje según quién entra (invitado / con cuenta) y productos
+          según la hora del día. */}
+      <HomeForYou className={`${WRAP} pt-5`} />
+      <HomeForNow categories={categories} wrap={WRAP} />
+
       {offers.length > 0 && (
         <>
           <div className={`${WRAP} pt-4 flex items-center justify-between`}>
@@ -155,6 +161,16 @@ export function HomePage() {
           </span>
           <ChevronRight className="h-5 w-5 text-paper-ink-soft shrink-0" aria-hidden="true" />
         </Link>
+        <Link to="/como-comprar" className="mt-2.5 bg-white rounded-2xl shadow-card p-4 flex items-center gap-3.5">
+          <span className="h-12 w-12 rounded-xl bg-brand-blue-50 flex items-center justify-center shrink-0">
+            <Ico name="menu-ayuda" className="h-7 w-7" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-bold text-paper-ink">¿Primera vez? Así se compra</span>
+            <span className="block text-sm text-paper-ink-soft leading-snug">Pasos, horarios, costos de envío y formas de pago.</span>
+          </span>
+          <ChevronRight className="h-5 w-5 text-paper-ink-soft shrink-0" aria-hidden="true" />
+        </Link>
       </section>
 
       {/* Cómo funciona el reparto y el pago: datos reales, a la vista, sin
@@ -204,6 +220,7 @@ export function HomePage() {
         <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
           <Link to="/terminos" className="underline py-3">Términos y condiciones</Link>
           <Link to="/privacidad" className="underline py-3">Política de privacidad</Link>
+          <Link to="/como-comprar" className="underline py-3">Cómo comprar</Link>
         </p>
         <Link to="/libro-de-reclamaciones"
           className="mt-2 inline-flex items-center gap-2.5 h-12 px-4 rounded-xl bg-white border border-paper-line text-paper-ink font-bold">

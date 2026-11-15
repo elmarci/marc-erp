@@ -262,12 +262,16 @@ async function ensureDefaultSettings() {
     { key: 'receipt_show_points', value: 'true', type: 'boolean', label: 'Mostrar puntos ganados en el ticket', group: 'receipts' },
     { key: 'receipt_show_coupon', value: 'true', type: 'boolean', label: 'Mostrar cupón generado en el ticket', group: 'receipts' },
     { key: 'receipt_show_qr', value: 'true', type: 'boolean', label: 'Mostrar código QR de la tienda en el ticket', group: 'receipts' },
-    { key: 'card_commission_percent', value: '4.06', type: 'number', label: 'Comisión por pago con tarjeta (%)', group: 'payments' },
+    { key: 'card_commission_percent', value: '3.5', type: 'number', label: 'Comisión por pago con tarjeta (%)', group: 'payments' },
     { key: 'min_margin_volatile', value: '1', type: 'number', label: 'Margen mínimo por kg o unidad en frutas, verduras y granel (S/)', group: 'inventory' },
   ];
   for (const s of defaults) {
     await prisma.setting.upsert({ where: { key: s.key }, update: {}, create: s });
   }
+  // La comisión por tarjeta es 3.5 % en caja y en la tienda (decisión del
+  // dueño, 2026-11-15). Solo se corrige el valor antiguo de fábrica (4.06):
+  // si alguien ya puso otro valor a mano en Configuración, se respeta.
+  await prisma.setting.updateMany({ where: { key: 'card_commission_percent', value: '4.06' }, data: { value: '3.5' } });
 }
 
 // ─── Inicio del servidor ─────────────────────────────────────────────────────

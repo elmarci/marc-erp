@@ -18,4 +18,4 @@ export function cardCommission(amount: number, percent: number): number {
   return Math.round(cents) / 100;
 }
 
-export const DEFAULT_CARD_COMMISSION_PERCENT = 4.06;
+export const DEFAULT_CARD_COMMISSION_PERCENT = 3.5;

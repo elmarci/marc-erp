@@ -95,15 +95,15 @@ function OfferCard({ offer, onChoose }: { offer: Offer; onChoose: () => void }) 
               <li key={product.id} className="flex items-center gap-3 py-2">
                 <Thumb src={product.imageUrl} size="h-11 w-11" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-paper-ink leading-snug line-clamp-2">{product.name}</p>
+                  <p className="text-sm font-semibold text-paper-ink leading-snug line-clamp-2">{product.name}</p>
                   <p className="tabular-nums leading-tight">
                     <span className="text-base font-extrabold text-paper-ink">{money(discounted(original, offer))}</span>{' '}
                     <span className="text-xs text-paper-ink-soft line-through">{money(original)}</span>
                   </p>
                 </div>
                 <button onClick={() => addDiscounted(product)} aria-label={`Agregar ${product.name} con descuento`}
-                  className="h-11 w-11 shrink-0 rounded-xl bg-brand-green-600 active:bg-brand-green-700 text-white flex items-center justify-center">
-                  <Plus className="h-5 w-5" />
+                  className="h-9 w-9 shrink-0 rounded-full bg-brand-green-600 active:bg-brand-green-700 text-white flex items-center justify-center">
+                  <Plus className="h-4 w-4" strokeWidth={2.75} />
                 </button>
               </li>
             )
@@ -127,7 +127,7 @@ function OfferCard({ offer, onChoose }: { offer: Offer; onChoose: () => void }) 
             </p>
           )}
           <button onClick={addPack}
-            className="w-full h-[46px] rounded-xl bg-brand-green-600 active:bg-brand-green-700 text-white font-bold text-[15px] flex items-center justify-center gap-1.5">
+            className="w-full h-10 rounded-full bg-brand-green-600 active:bg-brand-green-700 text-white font-bold text-sm flex items-center justify-center gap-1.5">
             {canAutoAddPack(offer) ? 'Agregar paquete' : 'Elegir y agregar'}
             {pack && <span className="font-extrabold tabular-nums">· {money(pack.totalPrice)}</span>}
           </button>
