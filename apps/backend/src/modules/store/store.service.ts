@@ -34,7 +34,7 @@ export class StoreService {
 
   /* ── Configuración de portada (hero) ──────────────────────────────────── */
   async getDisplaySettings() {
-    const values = await getSettingValues(['store_hero_video_url', 'store_hero_poster_url', 'loyalty_point_value']);
+    const values = await getSettingValues(['store_hero_video_url', 'store_hero_poster_url', 'loyalty_point_value', 'loyalty_points_per_sol']);
     return {
       heroVideoUrl: values['store_hero_video_url'] || null,
       heroPosterUrl: values['store_hero_poster_url'] || null,
@@ -42,6 +42,9 @@ export class StoreService {
       // ERP (sales.service.ts), para que el checkout pueda mostrar "tienes
       // N puntos = S/ X de descuento" sin inventar su propia tasa.
       loyaltyPointValue: Number(values['loyalty_point_value'] ?? 0.03),
+      // Puntos que gana por cada sol (misma regla que confirmOrder): la
+      // tienda muestra "con este pedido sumas N puntos".
+      loyaltyPointsPerSol: Number(values['loyalty_points_per_sol'] ?? 1),
     };
   }
 
@@ -377,7 +380,11 @@ export class StoreService {
     // puntos ocurre recién al confirmar el pedido (mismo momento en que se
     // suman los ganados), con el mismo resguardo atómico que el POS para
     // evitar canjear el mismo punto dos veces en pedidos simultáneos.
-    const pointsToRedeem = data.pointsToRedeem ?? 0;
+    // En la tienda online los puntos ya no se canjean como descuento en soles
+    // (dueño, 2026-11-15): se canjearán por productos de un catálogo de
+    // premios. Se ignora lo que mande el navegador (incluso una versión vieja
+    // de la app guardada en el celular).
+    const pointsToRedeem = 0;
     let pointsDiscountAmount = 0;
     if (pointsToRedeem > 0) {
       if (!data.storeCustomerId) {

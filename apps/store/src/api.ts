@@ -256,7 +256,7 @@ export const storeApi = {
     api.get<{ data: Offer[] }>('/store/offers'),
 
   getDisplaySettings: () =>
-    api.get<{ data: { heroVideoUrl: string | null; heroPosterUrl: string | null; loyaltyPointValue: number } }>('/store/display-settings'),
+    api.get<{ data: { heroVideoUrl: string | null; heroPosterUrl: string | null; loyaltyPointValue: number; loyaltyPointsPerSol?: number } }>('/store/display-settings'),
 
   createOrder: (data: {
     customerName: string; customerPhone: string; customerEmail?: string;

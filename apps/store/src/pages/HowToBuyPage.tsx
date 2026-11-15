@@ -21,7 +21,7 @@ const FAQ: Array<[string, string]> = [
   ['¿A qué zonas llegan?', `${DELIVERY.zoneName}: ${DELIVERY.zones.join(', ')}.`],
   ['¿En qué horario reparten?', 'Mañana de 6 a 9 am y tarde de 5 a 9 pm. Viernes y sábado, hasta la 1 am.'],
   ['¿Cómo pago con tarjeta?', `Elige "Tarjeta al recibir": el repartidor lleva el POS y pagas con débito o crédito. Se suma una comisión de ${FEES.cardPercent} % que ves antes de confirmar. Nunca te pedimos los datos de tu tarjeta por la web.`],
-  ['¿Cómo funcionan los puntos?', 'Con tu cuenta, cada compra entregada te da puntos. Al pagar puedes usarlos como descuento. Los ves en Mis pedidos, en "Puntos y canje".'],
+  ['¿Cómo funcionan los puntos?', 'Con tu cuenta, cada compra entregada te suma puntos. Los vas juntando para canjearlos por productos del catálogo de premios. Los ves en Mis pedidos, en "Puntos y canje".'],
   ['¿Cómo instalo la app en mi celular?', 'En Android, abre la tienda en Chrome y toca "Instalar" cuando aparezca el aviso, o en el menú ⋮ elige "Instalar app". En iPhone, abre en Safari, toca Compartir y luego "Agregar a inicio".'],
   ['¿Y si tengo un problema con mi pedido?', 'Escríbenos por WhatsApp y lo vemos al momento. También tienes el Libro de Reclamaciones al pie de la página.'],
 ]

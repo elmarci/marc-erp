@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, MapPin, Check, ShoppingBag, Plus, CheckCircle2, Gift } from 'lucide-react'
+import { ArrowLeft, MapPin, Check, ShoppingBag, Plus, CheckCircle2, Gift, ChevronRight } from 'lucide-react'
 import { Ico } from '../components/Ico'
 import { useCartStore, cartTotal } from '../cartStore'
 import { useAuthStore } from '../authStore'
@@ -62,11 +62,10 @@ export function CheckoutPage() {
     queryKey: ['store-display-settings'],
     queryFn: () => storeApi.getDisplaySettings(),
   })
-  const pointValue = displaySettings?.data.data.loyaltyPointValue ?? 0.03
-  const pointsAvailable = profileData?.data.data.loyaltyPoints ?? 0
-  const [usePoints, setUsePoints] = useState(false)
-  // No canjea más puntos de los necesarios para cubrir el pedido — si tiene
-  // 1000 puntos y el pedido cuesta S/10, no le conviene gastarlos todos acá.
+  // Puntos: en la tienda solo se SUMAN (se canjean por productos de un
+  // catálogo de premios, no como descuento en soles). Mismo cálculo que
+  // confirmOrder: puntos por sol sobre el total del pedido.
+  const pointsPerSol = displaySettings?.data.data.loyaltyPointsPerSol ?? 1
   const [form, setForm] = useState({
     customerName: customer?.name ?? savedContact().name ?? '',
     customerPhone: customer?.phone ?? savedContact().phone ?? '',
@@ -82,11 +81,9 @@ export function CheckoutPage() {
   const shipping = deliveryFee({ coords, zone: form.district, express })
   const feeKnown = form.deliveryType === 'DELIVERY' && (shipping.km != null || !!form.district)
   const fee = form.deliveryType === 'DELIVERY' && feeKnown ? shipping.fee : 0
-  const pointsNeeded = pointValue > 0 ? Math.ceil((total + fee) / pointValue) : 0
-  const pointsToRedeem = usePoints ? Math.min(pointsAvailable, pointsNeeded) : 0
-  const pointsDiscount = Math.min(pointsToRedeem * pointValue, total + fee)
-  const cardCommission = form.paymentMethod === 'CARD_CONTRAENTREGA' ? cardFee(total + fee - pointsDiscount) : 0
-  const finalTotal = total + fee - pointsDiscount + cardCommission
+  const cardCommission = form.paymentMethod === 'CARD_CONTRAENTREGA' ? cardFee(total + fee) : 0
+  const finalTotal = total + fee + cardCommission
+  const pointsToEarn = Math.floor(finalTotal * pointsPerSol)
 
   // Fecha, turno, hora y quién recibe viajan al inicio de la nota del
   // pedido: así la tienda y el repartidor los ven sin cambiar la base de datos.
@@ -157,7 +154,6 @@ export function CheckoutPage() {
       express: form.deliveryType === 'DELIVERY' && express ? true : undefined,
       latitude: coords?.lat,
       longitude: coords?.lng,
-      pointsToRedeem: pointsToRedeem > 0 ? pointsToRedeem : undefined,
       items: items.map(i => ({
         productId: i.product.id,
         quantity: i.quantity,
@@ -479,7 +475,7 @@ export function CheckoutPage() {
             </div>
             {!isLoggedIn && (
               <p className="text-sm text-paper-ink-soft">
-                ¿Ya tienes cuenta? <Link to="/ingresar" className="font-bold text-brand-blue-600 underline inline-block py-3 -my-3">Ingresa</Link> para usar tus puntos y direcciones guardadas.
+                ¿Ya tienes cuenta? <Link to="/ingresar" className="font-bold text-brand-blue-600 underline inline-block py-3 -my-3">Ingresa</Link> para sumar puntos y usar tus direcciones guardadas.
               </p>
             )}
           </div>
@@ -525,30 +521,26 @@ export function CheckoutPage() {
             ))}
           </ul>
 
-          {/* Canje de puntos: saldo real del ERP, el mismo que ve la caja. */}
-          {isLoggedIn && pointsAvailable > 0 && (
-            <label className={`mt-3 flex items-center gap-3 rounded-xl border-2 p-3.5 cursor-pointer ${usePoints ? 'border-brand-blue-600 bg-brand-blue-50' : 'border-paper-line'}`}>
-              <input type="checkbox" checked={usePoints} onChange={e => setUsePoints(e.target.checked)}
-                className="h-5 w-5 rounded accent-brand-blue-600 shrink-0" />
-              <Gift className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
-              <span className="flex-1 text-[15px] text-paper-ink">
-                Usar {pointsToRedeem > 0 ? pointsToRedeem : Math.min(pointsAvailable, pointsNeeded)} de tus <b>{pointsAvailable} puntos</b>
-              </span>
-              <span className="text-[15px] font-bold text-paper-ink shrink-0 tabular-nums">
-                −{money(usePoints ? pointsDiscount : Math.min(pointsAvailable * pointValue, total))}
-              </span>
-            </label>
+          {/* Puntos que suma con este pedido (o que sumaría con cuenta). */}
+          {pointsToEarn > 0 && (
+            isLoggedIn ? (
+              <p className="mt-3 flex items-center gap-2.5 rounded-xl bg-brand-blue-50 px-3.5 py-3 text-[15px] text-paper-ink">
+                <Gift className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <span>Con este pedido sumas <b className="tabular-nums">{pointsToEarn} puntos</b></span>
+              </p>
+            ) : (
+              <Link to="/ingresar" className="mt-3 flex items-center gap-2.5 rounded-xl bg-brand-blue-50 px-3.5 py-3 text-[15px] text-paper-ink">
+                <Gift className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <span className="flex-1">Crea tu cuenta y suma <b className="tabular-nums">{pointsToEarn} puntos</b> con este pedido</span>
+                <ChevronRight className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
+              </Link>
+            )
           )}
 
           <dl className="mt-3 pt-3 border-t border-paper-line space-y-1.5 text-[15px]">
             <div className="flex justify-between text-paper-ink-soft">
               <dt>Productos</dt><dd className="tabular-nums">{money(total)}</dd>
             </div>
-            {usePoints && pointsDiscount > 0 && (
-              <div className="flex justify-between text-paper-ink-soft">
-                <dt>Puntos canjeados</dt><dd className="tabular-nums">−{money(pointsDiscount)}</dd>
-              </div>
-            )}
             {isDelivery && (
               <div className="flex justify-between text-paper-ink-soft">
                 <dt>Envío{express ? ' express' : ''}</dt><dd className="tabular-nums">{feeKnown ? money(fee) : 'Falta tu zona'}</dd>

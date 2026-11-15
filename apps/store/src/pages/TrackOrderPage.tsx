@@ -70,33 +70,20 @@ function ConsumptionReport() {
 
 /* ── Puntos y zona de canje ────────────────────────────────────────────── */
 function PointsZone({ points }: { points: number }) {
-  const { data } = useQuery({
-    queryKey: ['store-display-settings'],
-    queryFn: () => storeApi.getDisplaySettings(),
-  })
-  const pointValue = data?.data.data.loyaltyPointValue ?? 0.03
-  const worth = points * pointValue
-
+  // Los puntos se muestran solo como puntos (dueño, 2026-11-15): se
+  // canjean por productos de un catálogo de premios, no por soles.
   return (
     <div className="bg-brand-blue-600 rounded-2xl shadow-card p-5 text-white">
       <h3 className="font-display font-semibold flex items-center gap-2 mb-1">
-        <Gift className="h-4 w-4" />Zona de canje
+        <Gift className="h-4 w-4" />Tus puntos
       </h3>
-      <p className="text-sm text-brand-blue-100 mb-4">Tus puntos valen dinero real en tu próxima compra.</p>
-      <div className="flex items-end justify-between">
-        <div>
-          <p className="text-3xl font-display font-semibold tabular-nums">{points}</p>
-          <p className="text-sm text-brand-blue-100">puntos disponibles</p>
-        </div>
-        <div className="text-right">
-          <p className="text-xl font-bold tabular-nums">S/ {worth.toFixed(2)}</p>
-          <p className="text-sm text-brand-blue-100">valor equivalente</p>
-        </div>
-      </div>
+      <p className="text-sm text-brand-blue-100 mb-4">Sumas puntos con cada compra entregada. Júntalos para canjearlos por productos.</p>
+      <p className="text-4xl font-display font-semibold tabular-nums leading-none">{points}</p>
+      <p className="text-sm text-brand-blue-100 mt-1">{points === 1 ? 'punto disponible' : 'puntos disponibles'}</p>
       <Link to="/" className="mt-4 flex items-center justify-center gap-1.5 bg-white text-brand-blue-600 rounded-xl h-12 font-bold">
-        Usarlos en mi próxima compra <ChevronRight className="h-4 w-4" />
+        Seguir sumando <ChevronRight className="h-4 w-4" />
       </Link>
-      <p className="text-sm text-brand-blue-100 mt-2.5 text-center">Tú eliges cuántos usar al confirmar tu pedido.</p>
+      <p className="text-sm text-brand-blue-100 mt-2.5 text-center">Muy pronto: catálogo de premios para canjear tus puntos.</p>
     </div>
   )
 }

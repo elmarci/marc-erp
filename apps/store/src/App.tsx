@@ -10,6 +10,7 @@ import { CartBar, VOICE_LIST_ROUTES } from './components/CartBar'
 import { VoiceShoppingListButton } from './components/VoiceShoppingListModal'
 import { WhatsAppFAB } from './components/WhatsAppFAB'
 import { WelcomeGuide } from './components/WelcomeGuide'
+import { RegisterInvitePopup } from './components/RegisterInvitePopup'
 import { useAuthStore } from './authStore'
 import { HomePage } from './pages/HomePage'
 import { CatalogPage } from './pages/CatalogPage'
@@ -81,6 +82,7 @@ export default function App() {
       <InstallAppBanner />
       <NotifyOptInBanner />
       <WelcomeGuide />
+      <RegisterInvitePopup />
       {/* Transición entre pantallas — deliberadamente discreta: la versión
           anterior (rotación 3D + desplazamiento + escala a la vez, 0.42s)
           se sintió "de diapositiva de PowerPoint" en testeo real. Ahora es
