@@ -18,6 +18,9 @@ export const FEE_EXPRESS_EXTRA = 2.0;
 // Más lejos que esto, el GPS casi seguro no es el lugar de entrega (el
 // cliente pidió desde otro sitio): se ignora y se cobra por zona.
 export const MAX_GPS_KM = 5;
+// Compra mínima para delivery, en productos sin envío (dueño, 2026-11-15).
+// Igual que DELIVERY.minOrder en apps/store/src/lib/storeInfo.ts.
+export const DELIVERY_MIN_ORDER = 8;
 export const NEAR_ZONES = ['Naranjos', 'Villa Hermosa', 'Unión', 'Paradero 1'];
 
 // Comisión por pagar con tarjeta (débito o crédito por igual) en la tienda

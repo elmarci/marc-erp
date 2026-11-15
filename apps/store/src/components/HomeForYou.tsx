@@ -56,7 +56,7 @@ export function HomeForYou({ className = '' }: { className?: string }) {
           <span className="flex-1 min-w-0">
             <span className="block text-[15px] font-bold text-paper-ink leading-snug">Hola, {firstName}</span>
             <span className="block text-[13px] text-paper-ink-soft leading-snug">
-              Tienes <strong className="text-paper-ink tabular-nums">{points}</strong> {points === 1 ? 'punto' : 'puntos'} para canjear al pagar
+              Tienes <strong className="text-paper-ink tabular-nums">{points}</strong> {points === 1 ? 'punto' : 'puntos'} acumulados
             </span>
           </span>
           <ChevronRight className="h-5 w-5 text-paper-ink-soft shrink-0" aria-hidden="true" />

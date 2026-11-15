@@ -17,9 +17,15 @@ export const BUSINESS = {
 export const WHATSAPP_NUMBER = '51930555831'
 
 export const DELIVERY = {
+  // Solo referencia interna de reparto: NO se muestra al cliente (dueño,
+  // 2026-11-15: no autolimitarnos). Las zonas son sugerencias en el
+  // checkout; se puede escribir cualquier otra.
   zoneName: 'Manchay alto',
   zones: ['Portada', 'Villa Hermosa', 'Naranjos', 'Unión', 'Tres Marías', 'Huertos', 'UPIS', 'Eucaliptos', 'Paradero 1', 'Santa Rosa'],
   costFrom: 1.0,
+  // Compra mínima para delivery, en productos (sin envío). Igual que
+  // DELIVERY_MIN_ORDER en apps/backend/src/modules/store/deliveryFee.ts.
+  minOrder: 8,
   expressFrom: 3.0,
   // Formas de pago que se muestran en el inicio, el carrito y los textos.
   // La tarjeta se cobra al recibir con el POS Izipay del repartidor (o en
@@ -32,8 +38,9 @@ export const money = (n: number) => `S/ ${n.toFixed(2)}`
 export const whatsappLink = (text: string) =>
   `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`
 
-// Turnos de reparto en hora de Lima: mañana 6–9 am y tarde 5–9 pm todos los
-// días; viernes y sábado la tarde se extiende hasta la 1 am.
+// Turnos de reparto en hora de Lima (dueño, 2026-11-15): mañana 6–9 am,
+// tarde 2–5 pm y noche 6–9 pm todos los días; viernes y sábado la noche se
+// extiende hasta la 1 am.
 type Status = { now: boolean; title: string }
 
 function limaParts(date: Date) {
@@ -50,11 +57,13 @@ export function deliveryStatus(date = new Date()): Status {
 
   if (lateFromYesterday && minutes < h(1)) return { now: true, title: 'Repartiendo ahora, hasta la 1 am' }
   if (minutes >= h(6) && minutes < h(9)) return { now: true, title: 'Repartiendo ahora, hasta las 9 am' }
-  if (minutes >= h(17) && (minutes < h(21) || lateTonight)) {
+  if (minutes >= h(14) && minutes < h(17)) return { now: true, title: 'Repartiendo ahora, hasta las 5 pm' }
+  if (minutes >= h(18) && (minutes < h(21) || lateTonight)) {
     return { now: true, title: lateTonight ? 'Repartiendo ahora, hasta la 1 am' : 'Repartiendo ahora, hasta las 9 pm' }
   }
   if (minutes < h(6)) return { now: false, title: 'Próximo reparto: 6 a 9 am' }
-  if (minutes < h(17)) return { now: false, title: lateTonight ? 'Próximo reparto: 5 pm a 1 am' : 'Próximo reparto: 5 a 9 pm' }
+  if (minutes < h(14)) return { now: false, title: 'Próximo reparto: 2 a 5 pm' }
+  if (minutes < h(18)) return { now: false, title: lateTonight ? 'Próximo reparto: 6 pm a 1 am' : 'Próximo reparto: 6 a 9 pm' }
   return { now: false, title: 'Próximo reparto: mañana, 6 a 9 am' }
 }
 
@@ -100,7 +109,7 @@ const clock = (min: number) => {
   return `${h12}:${String(mm).padStart(2, '0')} ${h24 < 12 ? 'am' : 'pm'}`
 }
 
-export type DeliveryTurn = { key: 'M' | 'T'; name: string; range: string; times: string[] }
+export type DeliveryTurn = { key: 'M' | 'A' | 'N'; name: string; range: string; times: string[] }
 export type DeliveryDay = { offset: number; label: string; date: string; turns: DeliveryTurn[] }
 
 // Hoy, mañana y pasado mañana (hora de Lima) con sus turnos y horas cada 30
@@ -121,7 +130,8 @@ export function deliveryDays(now = new Date()): DeliveryDay[] {
     }
     const turns: DeliveryTurn[] = [
       { key: 'M' as const, name: 'Mañana', range: '6 a 9 am', times: slots(6 * 60, 9 * 60) },
-      { key: 'T' as const, name: late ? 'Tarde y noche' : 'Tarde', range: late ? '5 pm a 1 am' : '5 a 9 pm', times: slots(17 * 60, late ? 25 * 60 : 21 * 60) },
+      { key: 'A' as const, name: 'Tarde', range: '2 a 5 pm', times: slots(14 * 60, 17 * 60) },
+      { key: 'N' as const, name: 'Noche', range: late ? '6 pm a 1 am' : '6 a 9 pm', times: slots(18 * 60, late ? 25 * 60 : 21 * 60) },
     ].filter(t => t.times.length > 0)
     return {
       offset,

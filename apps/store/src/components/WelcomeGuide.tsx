@@ -21,9 +21,9 @@ export function welcomeSeenAt(): number | null {
 
 const SLIDES = [
   {
-    icon: 'menu-canasta',
+    icon: 'nav-carrito-relleno',
     title: 'Elige tus productos',
-    text: 'Busca, mira las ofertas o dinos tu lista por voz. Con "Arma tu canasta" te armamos la compra según tu presupuesto.',
+    text: 'Busca por nombre, entra a las categorías o mira las ofertas. También puedes dictar tu lista con el micrófono.',
   },
   {
     icon: 'chk-tarjeta',
@@ -33,7 +33,7 @@ const SLIDES = [
   {
     icon: 'seg-moto',
     title: 'Te lo llevamos',
-    text: `Reparto en ${DELIVERY.zoneName} desde S/ ${DELIVERY.costFrom.toFixed(2)}. Sigues a tu repartidor en el mapa hasta tu puerta.`,
+    text: `Delivery desde S/ ${DELIVERY.costFrom.toFixed(2)}, tres repartos al día. Sigues a tu repartidor en el mapa hasta tu puerta.`,
   },
 ] as const
 
@@ -68,10 +68,10 @@ export function WelcomeGuide() {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-paper-ink/50 p-3 sm:p-4"
+        <motion.div className="fixed inset-0 z-[60] flex items-center justify-center bg-paper-ink/50 p-4"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           role="dialog" aria-modal="true" aria-labelledby="welcome-title">
-          <motion.div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-5"
+          <motion.div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-5 pb-5"
             initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 340, damping: 30 }}>
             <div className="flex items-center justify-between">

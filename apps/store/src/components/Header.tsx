@@ -52,7 +52,7 @@ export function Header() {
             <img src="/logo-icon.png" alt="" width={40} height={40} className="h-10 w-10 rounded-full bg-white object-cover" />
             <span className="leading-tight min-w-0">
               <span className="block text-lg font-extrabold truncate">{BRAND_NAME}</span>
-              <span className="block text-xs font-semibold text-brand-blue-100 truncate">Reparto en {DELIVERY.zoneName}</span>
+              <span className="block text-xs font-semibold text-brand-blue-100 truncate">Delivery a tu puerta</span>
             </span>
           </Link>
 

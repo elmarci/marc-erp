@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActiveOrderBanner } from '../components/ActiveOrderBanner'
 import { Link } from 'react-router-dom'
-import { BookOpen, ChevronRight, LayoutGrid, ShoppingBasket, WifiOff } from 'lucide-react'
+import { BookOpen, ChevronRight, LayoutGrid, WifiOff } from 'lucide-react'
 import { Ico } from '../components/Ico'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
@@ -151,17 +151,7 @@ export function HomePage() {
       </section>
 
       <section className={`${WRAP} pt-6`}>
-        <Link to="/canasta" className="bg-white rounded-2xl shadow-card p-4 flex items-center gap-3.5">
-          <span className="h-12 w-12 rounded-xl bg-brand-blue-50 flex items-center justify-center shrink-0">
-            <ShoppingBasket className="h-6 w-6 text-brand-blue-600" aria-hidden="true" />
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-bold text-paper-ink">Arma tu canasta</span>
-            <span className="block text-sm text-paper-ink-soft leading-snug">Dinos cuánto tienes y para cuántos. Te armamos la compra.</span>
-          </span>
-          <ChevronRight className="h-5 w-5 text-paper-ink-soft shrink-0" aria-hidden="true" />
-        </Link>
-        <Link to="/como-comprar" className="mt-2.5 bg-white rounded-2xl shadow-card p-4 flex items-center gap-3.5">
+        <Link to="/como-comprar" className="bg-white rounded-2xl shadow-card p-4 flex items-center gap-3.5">
           <span className="h-12 w-12 rounded-xl bg-brand-blue-50 flex items-center justify-center shrink-0">
             <Ico name="menu-ayuda" className="h-7 w-7" />
           </span>
@@ -181,15 +171,15 @@ export function HomePage() {
           <div className="flex gap-3 p-4">
             <Ico name="chk-ubicacion" className="h-7 w-7" />
             <div>
-              <p className="font-bold text-paper-ink">Repartimos en {DELIVERY.zoneName}</p>
-              <p className="text-sm text-paper-ink-soft leading-relaxed">{DELIVERY.zones.join(', ')}.</p>
+              <p className="font-bold text-paper-ink">Te lo llevamos a tu puerta</p>
+              <p className="text-sm text-paper-ink-soft leading-relaxed">Comparte tu ubicación al pedir y te mostramos el costo exacto del envío. Compra mínima {money(DELIVERY.minOrder)}.</p>
             </div>
           </div>
           <div className="flex gap-3 p-4">
             <Ico name="aviso-horario" className="h-7 w-7" />
             <div>
-              <p className="font-bold text-paper-ink">Dos repartos al día</p>
-              <p className="text-sm text-paper-ink-soft leading-relaxed">Mañana de 6 a 9 am y tarde de 5 a 9 pm. Viernes y sábado, hasta la 1 am.</p>
+              <p className="font-bold text-paper-ink">Tres repartos al día</p>
+              <p className="text-sm text-paper-ink-soft leading-relaxed">Mañana de 6 a 9 am, tarde de 2 a 5 pm y noche de 6 a 9 pm. Viernes y sábado, hasta la 1 am.</p>
             </div>
           </div>
           <div className="flex gap-3 p-4">
