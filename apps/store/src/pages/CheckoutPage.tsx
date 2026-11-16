@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Check, Plus, ChevronRight } from 'lucide-react'
 import { Ico, Ilu } from '../components/Ico'
 import { useCartStore, cartTotal } from '../cartStore'
+import { missingRequired, realIdOf } from '../lib/choices'
 import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
 import { toast } from 'sonner'
@@ -155,7 +156,11 @@ export function CheckoutPage() {
       latitude: coords?.lat,
       longitude: coords?.lng,
       items: items.map(i => ({
-        productId: i.product.id,
+        // Línea con paquete u opciones: se manda el id real del producto y
+        // lo elegido; el servidor decide el precio del paquete.
+        productId: realIdOf(i.product),
+        pack: i.product.line?.pack,
+        options: i.product.line?.options,
         quantity: i.quantity,
         unitPrice: Number(i.product.salePrice),  // precio real (incluyendo descuento de oferta)
         name: i.product.name,                     // nombre con badge si aplica
@@ -211,6 +216,11 @@ export function CheckoutPage() {
     if (otherReceiver && receiver.name.trim().length < 2) { toast.error('Escribe el nombre de quien recibe'); return }
     if (otherReceiver && receiver.phone.replace(/\D/g, '').length < 9) { toast.error('Escribe el celular de quien recibe'); return }
     if (!form.paymentMethod) { toast.error('Elige cómo quieres pagar'); return }
+    const sinOpcion = items.find(i => missingRequired(i.product).length > 0)
+    if (sinOpcion) {
+      toast.error(`Falta elegir ${missingRequired(sinOpcion.product).join(' y ').toLowerCase()} de "${sinOpcion.product.name}". Ábrelo en el carrito.`)
+      return
+    }
     mutation.mutate()
   }
 
@@ -516,7 +526,10 @@ export function CheckoutPage() {
             {items.map(item => (
               <li key={item.product.id} className="flex items-baseline gap-3 py-2.5 text-[15px]">
                 <span className="font-bold text-paper-ink tabular-nums shrink-0">{item.quantity} ×</span>
-                <span className="flex-1 min-w-0 text-paper-ink line-clamp-2">{item.product.name}</span>
+                <span className="flex-1 min-w-0 text-paper-ink">
+                  <span className="line-clamp-2">{item.product.name}</span>
+                  {item.product.line?.optionsText && <span className="block text-sm font-semibold text-brand-blue-700">{item.product.line.optionsText}</span>}
+                </span>
                 <span className="font-bold text-paper-ink tabular-nums shrink-0">{money(item.product.salePrice * item.quantity)}</span>
               </li>
             ))}

@@ -6,6 +6,8 @@ import { storeAuthMiddleware, requireStoreAuth } from './store-auth.routes';
 import { basketService } from '../baskets/basket.service';
 import { cachedCatalog } from '../../config/catalogCache';
 import { publicComplaintsRouter, adminComplaintsRouter } from './complaints';
+import { loadOptionGroups, saveOptionGroups, optionGroupSchema } from './storeOptions';
+import { prisma } from '../../database/client';
 
 const router = Router();
 
@@ -117,6 +119,10 @@ router.post('/orders', storeAuthMiddleware, async (req: Request, res: Response, 
         quantity: z.coerce.number().positive(),
         unitPrice: z.coerce.number().min(0).optional(),
         name: z.string().optional(),
+        // true = presentación paquete/caja del producto (Product.packSize).
+        pack: z.boolean().optional(),
+        // Opciones de despacho elegidas: { idDelGrupo: "Pierna" }.
+        options: z.record(z.string().max(40)).optional(),
       })).min(1),
     }).parse(req.body);
 
@@ -194,6 +200,28 @@ router.patch('/admin/orders/:id/paquete', authenticate, authorizeMinRole('CASHIE
     }).parse(req.body);
     const order = await storeService.updateOrderPackage(req.params.id, data);
     res.json({ success: true, data: order });
+  } catch (err) { next(err); }
+});
+
+// Opciones de despacho de la tienda (pierna/pecho, helada/sin helar…).
+// Se leen con los nombres de productos para mostrarlos en el ERP.
+router.get('/admin/options', authenticate, authorizeMinRole('SUPERVISOR'), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const groups = await loadOptionGroups();
+    const ids = [...new Set(groups.flatMap(g => g.productIds))];
+    const products = ids.length
+      ? await prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+      : [];
+    res.json({ success: true, data: { groups, products } });
+  } catch (err) { next(err); }
+});
+
+router.put('/admin/options', authenticate, authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { groups } = z.object({ groups: z.array(optionGroupSchema).max(50) }).parse(req.body);
+    const clean = groups.map(g => ({ ...g, choices: [...new Set(g.choices)] }));
+    await saveOptionGroups(clean);
+    res.json({ success: true, data: { groups: clean } });
   } catch (err) { next(err); }
 });
 

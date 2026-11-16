@@ -1839,6 +1839,12 @@ model StoreOrderItem {
   quantity  Decimal @db.Decimal(10, 3)
   unitPrice Decimal @map("unit_price") @db.Decimal(10, 2)
   subtotal  Decimal @db.Decimal(10, 2)
+  // Unidades de stock por cada unidad pedida: 1 normal, packSize si el
+  // cliente pidió la presentación paquete/caja (igual que SaleItem).
+  unitsPerSale Int     @default(1) @map("units_per_sale")
+  // Opciones elegidas por el cliente para despacho, ya en texto
+  // ("Presa: Pierna · Temperatura: Helada"). Ver store/storeOptions.ts.
+  options      String?
 
   order StoreOrder @relation(fields: [orderId], references: [id])
 

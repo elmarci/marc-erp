@@ -22,6 +22,7 @@ import {
   Tv,
   Clock,
   BookOpen,
+  ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -51,6 +52,7 @@ const navItems: NavItem[] = [
   { path: '/cash', label: 'Caja', icon: Wallet },
   { path: '/attendance', label: 'Asistencia', icon: Clock },
   { path: '/store-orders', label: 'Pedidos Online', icon: Store, minRole: 'CASHIER' },
+  { path: '/store-options', label: 'Opciones Tienda', icon: ListChecks, minRole: 'SUPERVISOR' },
   { path: '/complaints', label: 'Libro de Reclamaciones', icon: BookOpen, minRole: 'SUPERVISOR' },
   { path: '/riders', label: 'Repartidores', icon: Bike, minRole: 'SUPERVISOR' },
   { path: '/tv', label: 'Pantalla TV', icon: Tv, minRole: 'SUPERVISOR' },

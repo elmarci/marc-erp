@@ -25,7 +25,18 @@ export interface Product {
   isBulk?: boolean
   bulkUnit?: string | null
   category: { id: string; name: string; parent?: { id: string; name: string } | null }
+  // Presentación paquete/caja configurada en el ERP (la misma del POS).
+  pack?: { size: number; price: number; label: string } | null
+  // Opciones de despacho que el cliente elige (pierna/pecho, helada…).
+  options?: ProductOptionGroup[]
+  // Solo en el carrito: línea con presentación u opciones elegidas (ver lib/choices.ts).
+  line?: {
+    realId: string; pack?: boolean; options?: Record<string, string>; optionsText?: string
+    unit?: { name: string; salePrice: number; currentStock: number }
+  }
 }
+
+export interface ProductOptionGroup { id: string; name: string; choices: string[]; required: boolean }
 
 export interface CategoryChild {
   id: string
@@ -165,6 +176,8 @@ export interface StoreOrder {
     quantity: number
     unitPrice: number
     subtotal: number
+    unitsPerSale?: number
+    options?: string | null
   }>
 }
 
@@ -230,7 +243,7 @@ export const storeApi = {
     deliveryType: string; address?: string; district?: string;
     reference?: string; notes?: string; paymentMethod: string; express?: boolean;
     latitude?: number; longitude?: number; pointsToRedeem?: number;
-    items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
+    items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string; pack?: boolean; options?: Record<string, string> }>;
   }) =>
     api.post<{ data: StoreOrder }>('/store/orders', data),
 

@@ -20,7 +20,7 @@ interface StoreOrder {
   latitude: number | null; longitude: number | null
   riderId: string | null; deliveryStatus: string | null; rider: { id: string; nombre: string } | null
   packageTamano: string; packageTipo: string; packagePesoKg: number; packageFragil: boolean
-  items: Array<{ id: string; name: string; quantity: number; unitPrice: number; subtotal: number }>
+  items: Array<{ id: string; name: string; quantity: number; unitPrice: number; subtotal: number; unitsPerSale?: number; options?: string | null }>
 }
 
 const DELIVERY_STATUS_LABELS: Record<string, string> = {
@@ -385,6 +385,9 @@ export function StoreOrdersPage() {
                     <div className="text-right shrink-0">
                       <p className="font-bold text-lg">{formatCurrency(order.total)}</p>
                       <p className="text-xs text-muted-foreground">{order.items.length} prod.</p>
+                      {order.items.some(i => i.options) && (
+                        <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Con opciones</p>
+                      )}
                     </div>
                   </div>
 
@@ -395,9 +398,20 @@ export function StoreOrdersPage() {
                         <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Productos pedidos</p>
                         <div className="space-y-1">
                           {order.items.map(item => (
-                            <div key={item.id} className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">{item.name} ×{item.quantity}</span>
-                              <span>{formatCurrency(item.subtotal)}</span>
+                            <div key={item.id} className="flex justify-between gap-3 text-sm">
+                              <div className="min-w-0">
+                                <span className="text-muted-foreground">{item.name} ×{Number(item.quantity)}</span>
+                                {(item.unitsPerSale ?? 1) > 1 && (
+                                  <span className="ml-1.5 text-xs text-muted-foreground">({Number(item.quantity) * (item.unitsPerSale ?? 1)} und.)</span>
+                                )}
+                                {/* Opción elegida por el cliente: es dato de despacho, va resaltada. */}
+                                {item.options && (
+                                  <span className="mt-0.5 block w-fit rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                    {item.options}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="shrink-0">{formatCurrency(item.subtotal)}</span>
                             </div>
                           ))}
                           <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">

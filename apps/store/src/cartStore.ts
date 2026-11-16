@@ -23,6 +23,9 @@ interface CartStore {
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, qty: number) => { finalQuantity: number; capped: boolean }
   renameItem: (productId: string, name: string) => void
+  // Cambia una línea por otra (ej. le faltaba elegir "helada"): si la nueva
+  // ya está en el carrito, se suman.
+  replaceItem: (productId: string, product: Product) => void
   // Agrega un paquete/combo como grupo NUEVO e independiente — cada llamada
   // genera su propio id de instancia, así que pedir la misma promo dos veces
   // (ej. el cliente quiere repetir un combo) suma un segundo grupo en vez de
@@ -66,6 +69,19 @@ export const useCartStore = create<CartStore>()(
       renameItem: (productId, name) =>
         set(s => ({ items: s.items.map(i => i.product.id === productId ? { ...i, product: { ...i.product, name } } : i) })),
 
+      replaceItem: (productId, product) => {
+        const { items } = get()
+        const old = items.find(i => i.product.id === productId)
+        if (!old) return
+        const rest = items.filter(i => i.product.id !== productId)
+        const existing = rest.find(i => i.product.id === product.id)
+        set({
+          items: existing
+            ? rest.map(i => i.product.id === product.id ? { ...i, quantity: Math.min(i.quantity + old.quantity, product.currentStock) } : i)
+            : items.map(i => i.product.id === productId ? { ...i, product } : i),
+        })
+      },
+
       addBundle: (entries, meta) => {
         const { items } = get()
         const bundleId = `bundle-instance-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -97,5 +113,6 @@ export const useCartStore = create<CartStore>()(
 export const cartTotal = (items: CartItem[]) =>
   items.reduce((s, i) => s + i.product.salePrice * i.quantity, 0)
 
+// Un producto a granel (0.87 kg de pollo) cuenta como 1, no como 0.87.
 export const cartCount = (items: CartItem[]) =>
-  items.reduce((s, i) => s + i.quantity, 0)
+  items.reduce((s, i) => s + (i.product.isBulk ? 1 : i.quantity), 0)

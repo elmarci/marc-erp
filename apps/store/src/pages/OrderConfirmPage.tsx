@@ -459,7 +459,10 @@ export function OrderConfirmPage() {
                             ? <img src={thumb(item.imageUrl, 160)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                             : <Package className="h-3 w-3 text-paper-ink-ghost" />}
                         </div>
-                        <span className="text-paper-ink font-semibold truncate max-w-[140px]">{item.name}</span>
+                        <span className="min-w-0 max-w-[160px]">
+                          <span className="block text-paper-ink font-semibold truncate">{item.name}</span>
+                          {item.options && <span className="block text-xs font-semibold text-brand-blue-700">{item.options}</span>}
+                        </span>
                       </div>
                     </td>
                     <td className="py-2 text-right text-paper-ink-soft tabular-nums">{Number(item.unitPrice).toFixed(2)}</td>
