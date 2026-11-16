@@ -123,7 +123,7 @@ export function ProductPage() {
         <div className="relative aspect-square bg-white rounded-[20px] shadow-card overflow-hidden">
           {product.imageUrl
             ? <img ref={imgRef} src={product.imageUrl} alt={product.name} width={600} height={600} className="w-full h-full object-contain p-4" />
-            : <div className="w-full h-full flex items-center justify-center bg-paper-surface"><img src="/ilustraciones/ilu-producto-sin-foto.webp" alt="" width={640} height={480} className="w-3/4 h-auto object-contain" /></div>
+            : <div className="w-full h-full flex items-center justify-center bg-paper-surface"><img src="/ilustraciones/ilu-producto-sin-foto.webp" alt="" width={640} height={480} className="w-full h-full object-cover" /></div>
           }
         </div>
 

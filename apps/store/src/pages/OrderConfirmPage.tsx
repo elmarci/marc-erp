@@ -213,7 +213,7 @@ export function OrderConfirmPage() {
       <section className={`${card} p-4`} aria-live="polite">
         {/* Recién hecho o confirmado: ilustración grande para que se entienda
             de un vistazo que todo salió bien. */}
-        {celebrate && <Ilu name="ilu-pedido-confirmado" eager className="mx-auto h-36 w-48 -mt-1 mb-1" />}
+        {celebrate && <Ilu name="ilu-pedido-confirmado" eager className="mx-auto h-36 w-48 mb-3" />}
         <div className={`flex items-start gap-3 ${celebrate ? 'text-center justify-center' : ''}`}>
           {celebrate ? null : STAGE_ICON[t.stage] ? (
             <img src={STAGE_ICON[t.stage]} alt="" width={56} height={56} className="h-14 w-14 shrink-0 object-contain" />

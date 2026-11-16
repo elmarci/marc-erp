@@ -80,7 +80,7 @@ function PointsZone({ points }: { points: number }) {
           <p className="mt-2 text-4xl font-extrabold text-paper-ink tabular-nums leading-none">{points}</p>
           <p className="text-sm text-paper-ink-soft mt-1">{points === 1 ? 'punto disponible' : 'puntos disponibles'}</p>
         </div>
-        <Ilu name="ilu-puntos-premios" className="h-28 w-[150px] -mr-2 shrink-0" />
+        <Ilu name="ilu-puntos-premios" className="h-24 w-32 shrink-0" />
       </div>
       <p className="text-sm text-paper-ink-soft mt-3">Sumas puntos con cada compra entregada. Júntalos para canjearlos por productos.</p>
       <Link to="/" className="mt-4 flex items-center justify-center gap-1.5 bg-brand-blue-600 active:bg-brand-blue-700 text-white rounded-xl h-12 font-bold">

@@ -85,12 +85,14 @@ export function RegisterInvitePopup() {
           <motion.div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
             initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 340, damping: 30 }} onClick={e => e.stopPropagation()}>
-            <div className="relative bg-brand-blue-50 px-5 pt-4 pb-4 text-center">
-              <button onClick={dismiss} aria-label="Cerrar" className="absolute top-3 right-3 h-9 w-9 rounded-full flex items-center justify-center text-paper-ink-soft active:bg-white">
+            <div className="relative">
+              <Ilu name="ilu-registro" eager className="w-full h-44 !rounded-none" />
+              <button onClick={dismiss} aria-label="Cerrar" className="absolute top-3 right-3 h-9 w-9 rounded-full bg-white/90 shadow-card flex items-center justify-center text-paper-ink">
                 <X className="h-5 w-5" />
               </button>
-              <Ilu name="ilu-registro" eager className="mx-auto h-36 w-48" />
-              <h2 id="wo-title" className="mt-1 text-xl font-extrabold leading-tight text-paper-ink">Crea tu cuenta gratis y suma puntos</h2>
+            </div>
+            <div className="px-5 pt-4 text-center">
+              <h2 id="wo-title" className="text-xl font-extrabold leading-tight text-paper-ink">Crea tu cuenta gratis y suma puntos</h2>
               <p className="mt-1 text-[15px] text-paper-ink-soft">Te toma menos de un minuto.</p>
             </div>
             <div className="px-5 pt-4 pb-5">

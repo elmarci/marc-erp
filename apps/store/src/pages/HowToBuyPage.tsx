@@ -36,8 +36,8 @@ export function HowToBuyPage() {
 
       <div className="grid grid-cols-3 gap-2 mb-5" aria-hidden="true">
         {[['ilu-bienvenida-elegir', 'Eliges'], ['ilu-bienvenida-pagar', 'Pagas'], ['ilu-bienvenida-reparto', 'Te llega']].map(([ilu, label]) => (
-          <div key={ilu} className="bg-white rounded-2xl shadow-card pt-2 pb-2.5 text-center">
-            <Ilu name={ilu} eager className="mx-auto h-[72px] w-24" />
+          <div key={ilu} className="bg-white rounded-2xl shadow-card p-1.5 pb-2 text-center">
+            <Ilu name={ilu} eager className="w-full h-auto aspect-[4/3] !rounded-xl" />
             <span className="block mt-1 text-[13px] font-bold text-paper-ink">{label}</span>
           </div>
         ))}

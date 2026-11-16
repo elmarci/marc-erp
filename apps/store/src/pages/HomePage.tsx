@@ -61,7 +61,7 @@ export function HomePage() {
         <div className="bg-white rounded-2xl shadow-card px-3.5 py-3 flex items-center gap-3">
           {status.now
             ? <Ico name="aviso-reparto" className="h-10 w-10" />
-            : <Ilu name="ilu-fuera-de-horario" eager className="h-14 w-[75px] -my-1 -ml-1 shrink-0" />}
+            : <Ilu name="ilu-fuera-de-horario" eager className="h-11 w-[58px] !rounded-xl shrink-0" />}
           <div className="min-w-0">
             <p className="text-[15px] font-bold text-paper-ink leading-snug">{status.title}</p>
             <p className="text-[13px] text-paper-ink-soft leading-snug">
