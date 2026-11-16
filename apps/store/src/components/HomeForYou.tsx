@@ -30,8 +30,8 @@ export function HomeForYou({ className = '' }: { className?: string }) {
   if (!isLoggedIn || !customer) {
     return (
       <section className={className} aria-label="Crea tu cuenta">
-        <Link to="/ingresar" className="bg-white rounded-2xl shadow-card pl-2 pr-4 py-2 flex items-center gap-2.5">
-          <Ilu name="ilu-registro" eager className="h-[68px] w-[90px] shrink-0" />
+        <Link to="/ingresar" className="bg-white rounded-2xl shadow-card pl-2.5 pr-4 py-2.5 flex items-center gap-3">
+          <Ilu name="ilu-registro" eager className="h-[60px] w-20 !rounded-xl shrink-0" />
           <span className="flex-1 min-w-0">
             <span className="block font-bold text-[15px] text-paper-ink leading-snug">Crea tu cuenta gratis</span>
             <span className="block text-[13px] text-paper-ink-soft leading-snug">Ganas puntos en cada compra y sigues tus pedidos.</span>

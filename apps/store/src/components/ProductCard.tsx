@@ -211,7 +211,7 @@ export function ProductCard({ product }: { product: Product }) {
             {product.imageUrl
               ? <img ref={imgRef} src={thumb(product.imageUrl, 320)} alt="" loading="lazy" decoding="async" width={300} height={300}
                   className="w-full h-full object-contain" />
-              : <img src="/ilustraciones/ilu-producto-sin-foto.webp" alt="" loading="lazy" decoding="async" width={640} height={480} className="w-full h-full object-contain p-2" />}
+              : <img src="/ilustraciones/ilu-producto-sin-foto.webp" alt="" loading="lazy" decoding="async" width={640} height={480} className="w-full h-full object-cover" />}
           </div>
           <p className="text-sm sm:text-[15px] font-semibold text-paper-ink leading-snug line-clamp-2 min-h-[2.75em]">{product.name}</p>
           <p className="text-base sm:text-[17px] font-extrabold text-paper-ink tabular-nums leading-none">

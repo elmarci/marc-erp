@@ -71,7 +71,7 @@ export function NotifyOptInBanner() {
           className="fixed bottom-40 md:bottom-0 inset-x-0 z-40 px-3 pointer-events-none md:pb-3"
         >
           <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-xl border border-paper-line p-3.5 flex items-center gap-3 pointer-events-auto">
-            <Ilu name="ilu-avisos-ofertas" eager className="h-14 w-[75px] -my-1 shrink-0" />
+            <Ilu name="ilu-avisos-ofertas" eager className="h-12 w-16 !rounded-xl shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-paper-ink">¿Avisos de ofertas?</p>
               <p className="text-xs text-paper-ink-soft truncate">Entérate apenas hay una promo nueva o empieza la hora feliz</p>

@@ -85,7 +85,7 @@ export function WelcomeGuide() {
               <motion.div key={i} className="pt-3 pb-5 text-center"
                 initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }}
                 transition={{ duration: 0.18 }}>
-                <Ilu name={slide.ilu} eager className="mx-auto h-44 w-[234px]" />
+                <Ilu name={slide.ilu} eager className="w-full h-auto aspect-[4/3]" />
                 <h2 id="welcome-title" className="mt-2 text-xl font-extrabold text-paper-ink">{slide.title}</h2>
                 <p className="mt-1.5 text-[15px] text-paper-ink-soft leading-relaxed">{slide.text}</p>
               </motion.div>
