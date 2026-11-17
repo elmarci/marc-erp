@@ -909,7 +909,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
               <div className="rounded-lg border p-4 space-y-1.5">
                 <label className="flex items-center gap-2 text-sm cursor-pointer w-fit ml-auto">
                   <input type="checkbox" checked={includeTax} onChange={e => setIncludeTax(e.target.checked)} className="h-4 w-4 rounded border-input" />
-                  Sumar IGV 18% (solo si el proveedor factura y lo desglosa aparte)
+                  Sumar IGV 18% (solo si el proveedor factura y lo desglosa aparte). El IGV se suma al costo del producto.
                 </label>
                 {includeTax && (
                   <>
@@ -1201,7 +1201,7 @@ function NewOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           {items.length > 0 && (
             <label className="flex items-center gap-2 text-sm cursor-pointer w-fit ml-auto">
               <input type="checkbox" checked={includeTax} onChange={e => setIncludeTax(e.target.checked)} className="h-4 w-4 rounded border-input" />
-              Sumar IGV 18% (solo si el proveedor factura y lo desglosa aparte)
+              Sumar IGV 18% (solo si el proveedor factura y lo desglosa aparte). El IGV se suma al costo del producto.
             </label>
           )}
         </div>

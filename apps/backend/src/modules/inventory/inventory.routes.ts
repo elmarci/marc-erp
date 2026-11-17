@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { inventoryService } from './inventory.service';
 import { inventoryAlertsService } from './inventory-alerts.service';
+import { ADJUSTMENT_REASON_CODES } from './adjustment-reasons';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { sendExcel } from '../../utils/excel';
 import { limaDateFromParam, limaDateToParam } from '../../utils/timezone';
@@ -100,27 +101,29 @@ router.get('/adjustments', async (req: Request, res: Response, next: NextFunctio
 
 router.post('/adjustments', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { reason, notes, items } = z.object({
+    const { reason, reasonCode, notes, items } = z.object({
       reason: z.string().min(3),
+      reasonCode: z.enum(ADJUSTMENT_REASON_CODES).optional(),
       notes: z.string().optional(),
       items: z.array(z.object({
         productId: z.string().uuid(),
         physicalQuantity: z.coerce.number().min(0),
       })).min(1),
     }).parse(req.body);
-    const adj = await inventoryService.createAdjustment(req.user!.sub, reason, notes, items as { productId: string; physicalQuantity: number }[]);
+    const adj = await inventoryService.createAdjustment(req.user!.sub, reason, notes, items as { productId: string; physicalQuantity: number }[], reasonCode);
     res.status(201).json({ success: true, data: adj });
   } catch (err) { next(err); }
 });
 
 router.post('/quick-adjust', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { productId, newQuantity, reason } = z.object({
+    const { productId, newQuantity, reason, reasonCode } = z.object({
       productId: z.string().uuid(),
       newQuantity: z.coerce.number().min(0),
       reason: z.string().min(3),
+      reasonCode: z.enum(ADJUSTMENT_REASON_CODES).optional(),
     }).parse(req.body);
-    const result = await inventoryService.quickAdjust(req.user!.sub, productId, newQuantity, reason);
+    const result = await inventoryService.quickAdjust(req.user!.sub, productId, newQuantity, reason, reasonCode);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });

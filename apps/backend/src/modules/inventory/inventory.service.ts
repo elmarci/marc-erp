@@ -217,7 +217,7 @@ export class InventoryService {
   }
 
   /* ── Ajuste rápido de un producto ─────────────────────────────────────────── */
-  async quickAdjust(userId: string, productId: string, newQuantity: number, reason: string) {
+  async quickAdjust(userId: string, productId: string, newQuantity: number, reason: string, reasonCode?: string) {
     const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null } });
     if (!product) throw new NotFoundError('Producto');
 
@@ -227,7 +227,7 @@ export class InventoryService {
     return prisma.$transaction(async (tx) => {
       const adjustment = await tx.inventoryAdjustment.create({
         data: {
-          userId, reason,
+          userId, reason, reasonCode,
           items: {
             create: [{
               productId,
@@ -253,6 +253,7 @@ export class InventoryService {
             unitCost: product.costPrice,
             referenceType: 'ADJUSTMENT',
             referenceId: adjustment.id,
+            reasonCode,
             userId, notes: reason,
           },
         });
@@ -263,7 +264,7 @@ export class InventoryService {
   }
 
   /* ── Ajuste masivo ──────────────────────────────────────────────────────── */
-  async createAdjustment(userId: string, reason: string, notes: string | undefined, items: Array<{ productId: string; physicalQuantity: number }>) {
+  async createAdjustment(userId: string, reason: string, notes: string | undefined, items: Array<{ productId: string; physicalQuantity: number }>, reasonCode?: string) {
     const products = await prisma.product.findMany({ where: { id: { in: items.map(i => i.productId) } } });
     const productMap = new Map(products.map(p => [p.id, p]));
     for (const item of items) {
@@ -273,7 +274,7 @@ export class InventoryService {
     return prisma.$transaction(async (tx) => {
       const adjustment = await tx.inventoryAdjustment.create({
         data: {
-          userId, reason, notes,
+          userId, reason, reasonCode, notes,
           items: {
             create: items.map(item => {
               const product = productMap.get(item.productId)!;
@@ -305,6 +306,7 @@ export class InventoryService {
             unitCost: product.costPrice,
             referenceType: 'ADJUSTMENT',
             referenceId: adjustment.id,
+            reasonCode,
             userId, notes: reason,
           },
         });

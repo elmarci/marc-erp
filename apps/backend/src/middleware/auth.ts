@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { UserRole } from '@prisma/client';
 import { AuthenticationError, AuthorizationError } from '../utils/errors';
 import { env } from '../config/env';
+import { auditContext } from '../modules/audit/audit-context';
 
 export interface JwtPayload {
   sub: string; // user id
@@ -30,14 +31,21 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     const token = authHeader.slice(7);
     const payload = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
     req.user = payload;
-    next();
   } catch (err) {
     if (err instanceof AuthenticationError) {
       next(err);
     } else {
       next(new AuthenticationError('Token inválido o expirado. Inicie sesión nuevamente.'));
     }
+    return;
   }
+  // El resto de la petición corre "a nombre de" este usuario para el registro
+  // de auditoría (ver modules/audit). Va fuera del try para que un error de
+  // la ruta no se confunda con un token inválido.
+  auditContext.run(
+    { userId: req.user!.sub, ipAddress: req.ip, userAgent: req.headers['user-agent'] },
+    () => next(),
+  );
 }
 
 export function authorize(...roles: UserRole[]) {

@@ -85,6 +85,7 @@ export function SettingsPage() {
   const couponSettings = settings?.filter((s) => s.group === 'coupons') ?? [];
   const loyaltySettings = settings?.filter((s) => s.group === 'loyalty') ?? [];
   const receiptSettings = settings?.filter((s) => s.group === 'receipts') ?? [];
+  const adminSettings = settings?.filter((s) => s.group === 'administration' && s.key !== 'tax_regime') ?? [];
   const marginSetting = settings?.find((s) => s.key === 'min_margin_volatile');
   const cardCommissionSetting = settings?.find((s) => s.key === 'card_commission_percent');
   const logoUrl = settings?.find((s) => s.key === 'business_logo_url')?.value;
@@ -294,6 +295,42 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {adminSettings.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle>Régimen tributario y costos</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            {adminSettings.map((s) =>
+              s.type === 'boolean' ? (
+                <label key={s.key} className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-input"
+                    defaultChecked={s.value === 'true'}
+                    onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.checked ? 'true' : 'false' }))}
+                  />
+                  <span className="text-sm font-medium">{s.label}</span>
+                </label>
+              ) : (
+                <div key={s.key}>
+                  <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
+                  <Input
+                    type="number" step="1" min={0}
+                    defaultValue={s.value}
+                    onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
+                  />
+                </div>
+              ),
+            )}
+            <div className="flex justify-end pt-2">
+              <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
+                disabled={Object.keys(values).length === 0}>
+                <Save className="mr-2 h-4 w-4" />Guardar Cambios
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {cardCommissionSetting && (
         <Card>

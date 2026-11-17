@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { logger } from '../config/logger';
 import { bumpCatalogVersion } from '../config/catalogCache';
+import { installAuditMiddleware } from '../modules/audit/audit.middleware';
 
 // Los campos Decimal (costos, stock a granel, cantidades, etc.) se
 // serializan como texto por defecto en JSON.stringify — Prisma lo hace así
@@ -44,6 +45,8 @@ prisma.$use(async (params, next) => {
   }
   return result;
 });
+
+installAuditMiddleware(prisma);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (prisma as any).$on('error', (e: any) => {

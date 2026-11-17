@@ -954,6 +954,7 @@ interface TreasuryMovementRow {
 interface ExpenseRow {
   id: string; category: string; description: string; amount: number;
   method: string; expenseDate: string; templateId: string | null;
+  voidedAt: string | null; voidReason: string | null;
 }
 
 interface TransferRow {
@@ -968,7 +969,7 @@ interface RecurringTemplate {
 
 const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   PERSONNEL: 'Personal', BAGS: 'Bolsas', TRANSPORT: 'Transporte', SYSTEM: 'Sistema',
-  WATER: 'Agua', ELECTRICITY: 'Electricidad', RENT: 'Alquiler', OTHER: 'Otro',
+  WATER: 'Agua', ELECTRICITY: 'Electricidad', RENT: 'Alquiler', TAXES: 'Impuestos (cuota SUNAT)', OTHER: 'Otro',
 };
 
 const TREASURY_ACCOUNT_LABELS: Record<string, string> = { CASH: 'Efectivo', YAPE: 'Yape', PLIN: 'Plin' };
@@ -1187,6 +1188,81 @@ function TransferModal({ balances, onClose }: {
   );
 }
 
+// Corregir o anular un gasto ya registrado. El monto y el método no se editan
+// porque ya movieron dinero: para cambiarlos se anula y se registra de nuevo.
+function ExpenseActionModal({ expense, mode, onClose }: { expense: ExpenseRow; mode: 'edit' | 'void'; onClose: () => void }) {
+  const [category, setCategory] = useState(expense.category);
+  const [description, setDescription] = useState(expense.description);
+  const [expenseDate, setExpenseDate] = useState(
+    new Date(new Date(expense.expenseDate).getTime() - 5 * 3600_000).toISOString().slice(0, 10),
+  );
+  const [reason, setReason] = useState('');
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => mode === 'edit'
+      ? api.patch(`/treasury/expenses/${expense.id}`, { category, description, expenseDate })
+      : api.post(`/treasury/expenses/${expense.id}/void`, { reason }),
+    onSuccess: () => {
+      for (const key of ['treasury-balance', 'treasury-movements', 'treasury-expenses', 'cash-session']) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+      toast.success(mode === 'edit' ? 'Gasto corregido.' : 'Gasto anulado. El dinero volvió a su cuenta.');
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between p-6 pb-4">
+          <h2 className="text-lg font-bold">{mode === 'edit' ? 'Corregir gasto' : 'Anular gasto'}</h2>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar"><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="px-6 pb-6 space-y-4">
+          {mode === 'edit' ? (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Categoría</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  {Object.entries(EXPENSE_CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Descripción</label>
+                <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Fecha del gasto</label>
+                <Input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Monto: {formatCurrency(expense.amount)} · {PAYMENT_METHOD_LABELS[expense.method] ?? expense.method}. Para cambiar el monto o el método, anula este gasto y regístralo de nuevo.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm">
+                Se anulará <span className="font-semibold">{expense.description}</span> por {formatCurrency(expense.amount)} y el dinero volverá a la cuenta de donde salió. El gasto queda en el historial como anulado.
+              </p>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Motivo</label>
+                <Input placeholder="Ej: monto mal digitado" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+              </div>
+            </>
+          )}
+          <Button className="w-full" variant={mode === 'void' ? 'destructive' : 'default'} onClick={() => mutation.mutate()}
+            loading={mutation.isPending} disabled={mode === 'edit' ? !description.trim() : reason.trim().length < 3}>
+            {mode === 'edit' ? 'Guardar cambios' : 'Anular gasto'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ExpenseModal({ onClose }: { onClose: () => void }) {
   const [category, setCategory] = useState('PERSONNEL');
   const [description, setDescription] = useState('');
@@ -1315,6 +1391,7 @@ function TreasuryPanel() {
   const queryClient = useQueryClient();
   const [showDeposit, setShowDeposit] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
+  const [expenseAction, setExpenseAction] = useState<{ expense: ExpenseRow; mode: 'edit' | 'void' } | null>(null);
   const [showTemplate, setShowTemplate] = useState(false);
   const [showReconcile, setShowReconcile] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
@@ -1339,7 +1416,7 @@ function TreasuryPanel() {
 
   const { data: expenses } = useQuery({
     queryKey: ['treasury-expenses'],
-    queryFn: async () => (await api.get<{ data: ExpenseRow[] }>('/treasury/expenses?limit=50')).data.data,
+    queryFn: async () => (await api.get<{ data: ExpenseRow[] }>('/treasury/expenses?limit=50&includeVoided=true')).data.data,
     enabled: tab === 'gastos',
   });
 
@@ -1466,23 +1543,33 @@ function TreasuryPanel() {
                   <th className="px-4 py-3 font-medium">Descripción</th>
                   <th className="px-4 py-3 font-medium">Método</th>
                   <th className="px-4 py-3 font-medium text-right">Monto</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {(expenses ?? []).map((e) => (
-                  <tr key={e.id}>
+                  <tr key={e.id} className={e.voidedAt ? 'text-muted-foreground' : undefined}>
                     <td className="px-4 py-3 text-muted-foreground">{formatDateTime(e.expenseDate)}</td>
                     <td className="px-4 py-3"><Badge variant="outline">{EXPENSE_CATEGORY_LABELS[e.category] ?? e.category}</Badge></td>
                     <td className="px-4 py-3">
-                      {e.description}
+                      <span className={e.voidedAt ? 'line-through' : undefined}>{e.description}</span>
                       {e.templateId && <span className="ml-1.5 text-xs text-muted-foreground">(recurrente)</span>}
+                      {e.voidedAt && <p className="text-xs">Anulado: {e.voidReason}</p>}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{PAYMENT_METHOD_LABELS[e.method] ?? e.method}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{formatCurrency(e.amount)}</td>
+                    <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', e.voidedAt && 'line-through')}>{formatCurrency(e.amount)}</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {!e.voidedAt && (
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => setExpenseAction({ expense: e, mode: 'edit' })}>Editar</Button>
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setExpenseAction({ expense: e, mode: 'void' })}>Anular</Button>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {(!expenses || expenses.length === 0) && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Sin gastos registrados</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Sin gastos registrados</td></tr>
                 )}
               </tbody>
             </table>
@@ -1616,6 +1703,7 @@ function TreasuryPanel() {
 
       {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
       {showExpense && <ExpenseModal onClose={() => setShowExpense(false)} />}
+      {expenseAction && <ExpenseActionModal {...expenseAction} onClose={() => setExpenseAction(null)} />}
       {showTransfer && <TransferModal balances={balances} onClose={() => setShowTransfer(false)} />}
       {showTemplate && <RecurringTemplateModal onClose={() => setShowTemplate(false)} />}
       {showReconcile && <ReconcileModal balances={balances} onClose={() => setShowReconcile(false)} />}

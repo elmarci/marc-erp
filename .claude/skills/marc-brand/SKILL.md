@@ -145,7 +145,7 @@ necesitar arranque manual (`"C:\Program Files\Docker\Docker\Docker Desktop.exe"`
 
 - Deploy: commit a `main` → push → Railway redespliega el/los servicio(s)
   afectados. Cambiar una **variable de entorno** también dispara redeploy.
-- Cambios de schema Prisma: `DATABASE_URL=<proxy publico> npx prisma db push`
+- Cambios de schema Prisma: con migraciones (`prisma/migrations`). En producción: `DATABASE_URL=<proxy publico> npx prisma migrate deploy` (ver HANDOFF §3; ya no se usa `db push`)
   desde `apps/backend` (no hay migración automática en el entrypoint).
 - `railway` CLI: lecturas OK; algunas escrituras (editar dominios) piden
   `railway login` de nuevo; `railway variables --set` sí funcionó.

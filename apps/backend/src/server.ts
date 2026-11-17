@@ -42,6 +42,7 @@ import promotionsRoutes from './modules/promotions/promotions.routes';
 import couponsRoutes from './modules/coupons/coupons.routes';
 import treasuryRoutes from './modules/treasury/treasury.routes';
 import loansRoutes from './modules/loans/loans.routes';
+import administrationRoutes from './modules/administration/administration.routes';
 import { treasuryService } from './modules/treasury/treasury.service';
 import { promotionsService } from './modules/promotions/promotions.service';
 import { pushService } from './modules/push/push.service';
@@ -201,6 +202,7 @@ app.use(`${API_PREFIX}/promotions`, promotionsRoutes);
 app.use(`${API_PREFIX}/coupons`, couponsRoutes);
 app.use(`${API_PREFIX}/treasury`, treasuryRoutes);
 app.use(`${API_PREFIX}/loans`, loansRoutes);
+app.use(`${API_PREFIX}/administration`, administrationRoutes);
 app.use(`${API_PREFIX}/bottle-deposits`, bottleDepositsRoutes);
 
 // ─── Swagger docs ────────────────────────────────────────────────────────────
@@ -263,6 +265,11 @@ async function ensureDefaultSettings() {
     { key: 'receipt_show_coupon', value: 'true', type: 'boolean', label: 'Mostrar cupón generado en el ticket', group: 'receipts' },
     { key: 'receipt_show_qr', value: 'true', type: 'boolean', label: 'Mostrar código QR de la tienda en el ticket', group: 'receipts' },
     { key: 'card_commission_percent', value: '3.5', type: 'number', label: 'Comisión por pago con tarjeta (%)', group: 'payments' },
+    { key: 'tax_regime', value: 'NRUS', label: 'Régimen tributario', group: 'administration' },
+    { key: 'nrus_monthly_limit', value: '8000', type: 'number', label: 'Tope mensual del régimen en ventas y en compras (S/)', group: 'administration' },
+    { key: 'nrus_annual_limit', value: '96000', type: 'number', label: 'Tope anual del régimen en ventas y en compras (S/)', group: 'administration' },
+    { key: 'nrus_alert_percent', value: '80', type: 'number', label: 'Avisar cuando se llegue a este % del tope', group: 'administration' },
+    { key: 'purchase_igv_is_cost', value: 'true', type: 'boolean', label: 'El IGV de las compras es parte del costo (no se recupera)', group: 'administration' },
     { key: 'min_margin_volatile', value: '1', type: 'number', label: 'Margen mínimo por kg o unidad en frutas, verduras y granel (S/)', group: 'inventory' },
   ];
   for (const s of defaults) {

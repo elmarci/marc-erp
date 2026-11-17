@@ -77,14 +77,15 @@ router.post('/transfers', async (req: Request, res: Response, next: NextFunction
 
 router.get('/expenses', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { category, dateFrom, dateTo, page, limit } = z.object({
+    const { category, dateFrom, dateTo, page, limit, includeVoided } = z.object({
       category: z.nativeEnum(ExpenseCategory).optional(),
       dateFrom: z.string().transform((s) => parseLimaDate(s, false)).optional(),
       dateTo: z.string().transform((s) => parseLimaDate(s, true)).optional(),
       page: z.coerce.number().min(1).default(1),
       limit: z.coerce.number().min(1).max(100).default(25),
+      includeVoided: z.enum(['true', 'false']).optional(),
     }).parse(req.query);
-    const result = await treasuryService.listExpenses({ category, dateFrom, dateTo, page, limit });
+    const result = await treasuryService.listExpenses({ category, dateFrom, dateTo, page, limit, includeVoided: includeVoided === 'true' });
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 });
@@ -118,6 +119,28 @@ router.post('/expenses', async (req: Request, res: Response, next: NextFunction)
       category, description, amount, method, reference, notes, expenseDate, cashSessionId, userId: req.user!.sub,
     });
     res.status(201).json({ success: true, data: expense });
+  } catch (err) { next(err); }
+});
+
+router.patch('/expenses/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = z.object({
+      category: z.nativeEnum(ExpenseCategory).optional(),
+      description: z.string().min(1).optional(),
+      reference: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+      expenseDate: z.string().transform((s) => parseLimaDate(s, false)).optional(),
+    }).parse(req.body);
+    const expense = await treasuryService.updateExpense(req.params.id, data);
+    res.json({ success: true, data: expense });
+  } catch (err) { next(err); }
+});
+
+router.post('/expenses/:id/void', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { reason } = z.object({ reason: z.string().trim().min(3, 'Indica el motivo de la anulación.') }).parse(req.body);
+    const expense = await treasuryService.voidExpense(req.params.id, req.user!.sub, reason);
+    res.json({ success: true, data: expense });
   } catch (err) { next(err); }
 });
 

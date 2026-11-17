@@ -1,5 +1,20 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/client';
 import { redis, CACHE_TTL } from '../../config/redis';
+
+// Ventas netas de devoluciones. Una venta devuelta (parcial o total) cuenta
+// solo por lo que el cliente se quedó: se resta lo devuelto del total de la
+// venta, de la cantidad y del subtotal de cada línea. Así ingreso y costo
+// bajan juntos y el margen no queda inflado por mercadería que volvió.
+export const NET_SALE_TOTAL = Prisma.raw(
+  `(s.total_amount - COALESCE((SELECT SUM(r.total_amount) FROM sale_returns r WHERE r.sale_id = s.id), 0))`,
+);
+export const NET_ITEM_QTY = Prisma.raw(
+  `(si.quantity - COALESCE((SELECT SUM(ri.quantity) FROM sale_return_items ri WHERE ri.sale_item_id = si.id), 0))`,
+);
+export const NET_ITEM_SUBTOTAL = Prisma.raw(
+  `(si.subtotal - COALESCE((SELECT SUM(ri.refund_amount) FROM sale_return_items ri WHERE ri.sale_item_id = si.id), 0))`,
+);
 
 interface DateRange {
   from: Date;
@@ -440,38 +455,38 @@ export class ReportsService {
       month: 'YYYY-MM',
     }[groupBy];
 
-    const statusFilter = ['COMPLETED', 'PARTIALLY_RETURNED'] as const;
-
     const [revenueAgg, costRows, revenueByPeriod, costByPeriod, byProduct] = await Promise.all([
-      prisma.sale.aggregate({
-        where: { status: { in: [...statusFilter] }, createdAt: { gte: range.from, lte: range.to } },
-        _sum: { totalAmount: true },
-      }),
+      prisma.$queryRaw<{ revenue: number }[]>`
+        SELECT SUM(${NET_SALE_TOTAL})::float as revenue
+        FROM sales s
+        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED', 'RETURNED')
+          AND s.created_at BETWEEN ${range.from} AND ${range.to}
+      `,
       prisma.$queryRaw<{ cost: number; items_without_cost: bigint }[]>`
         SELECT
-          SUM(si.quantity * COALESCE(si.cost_price, 0))::float as cost,
+          SUM(${NET_ITEM_QTY} * COALESCE(si.cost_price, 0))::float as cost,
           COUNT(*) FILTER (WHERE si.cost_price IS NULL)::bigint as items_without_cost
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
-        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
+        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED', 'RETURNED')
           AND s.created_at BETWEEN ${range.from} AND ${range.to}
       `,
       prisma.$queryRaw<{ period: string; revenue: number }[]>`
         SELECT
           TO_CHAR(s.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
-          SUM(s.total_amount)::float as revenue
+          SUM(${NET_SALE_TOTAL})::float as revenue
         FROM sales s
-        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
+        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED', 'RETURNED')
           AND s.created_at BETWEEN ${range.from} AND ${range.to}
         GROUP BY period
       `,
       prisma.$queryRaw<{ period: string; cost: number }[]>`
         SELECT
           TO_CHAR(s.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', ${groupFormat}) as period,
-          SUM(si.quantity * COALESCE(si.cost_price, 0))::float as cost
+          SUM(${NET_ITEM_QTY} * COALESCE(si.cost_price, 0))::float as cost
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
-        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
+        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED', 'RETURNED')
           AND s.created_at BETWEEN ${range.from} AND ${range.to}
         GROUP BY period
       `,
@@ -479,21 +494,21 @@ export class ReportsService {
         SELECT
           p.id as product_id,
           p.name,
-          SUM(si.subtotal)::float as revenue,
-          SUM(si.quantity * COALESCE(si.cost_price, 0))::float as cost,
-          SUM(si.quantity)::float as quantity
+          SUM(${NET_ITEM_SUBTOTAL})::float as revenue,
+          SUM(${NET_ITEM_QTY} * COALESCE(si.cost_price, 0))::float as cost,
+          SUM(${NET_ITEM_QTY})::float as quantity
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
         JOIN products p ON si.product_id = p.id
-        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED')
+        WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED', 'RETURNED')
           AND s.created_at BETWEEN ${range.from} AND ${range.to}
         GROUP BY p.id, p.name
-        ORDER BY (SUM(si.subtotal) - SUM(si.quantity * COALESCE(si.cost_price, 0))) DESC
+        ORDER BY (SUM(${NET_ITEM_SUBTOTAL}) - SUM(${NET_ITEM_QTY} * COALESCE(si.cost_price, 0))) DESC
         LIMIT 5000
       `,
     ]);
 
-    const revenue = Number(revenueAgg._sum.totalAmount ?? 0);
+    const revenue = Number(revenueAgg[0]?.revenue ?? 0);
     const cost = Number(costRows[0]?.cost ?? 0);
     const margin = revenue - cost;
 
@@ -559,7 +574,7 @@ export class ReportsService {
       this.getMarginReport(range, 'day'),
       prisma.expense.groupBy({
         by: ['category'],
-        where: { expenseDate: { gte: range.from, lte: range.to } },
+        where: { voidedAt: null, expenseDate: { gte: range.from, lte: range.to } },
         _sum: { amount: true },
         _count: true,
       }),
