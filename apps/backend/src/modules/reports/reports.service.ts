@@ -574,7 +574,7 @@ export class ReportsService {
       this.getMarginReport(range, 'day'),
       prisma.expense.groupBy({
         by: ['category'],
-        where: { voidedAt: null, expenseDate: { gte: range.from, lte: range.to } },
+        where: { voidedAt: null, accrualDate: { gte: range.from, lte: range.to } },
         _sum: { amount: true },
         _count: true,
       }),

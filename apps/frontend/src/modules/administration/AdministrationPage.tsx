@@ -182,7 +182,7 @@ interface PeriodFigures {
   grossSales: number; returns: number; netSales: number; cogs: number; grossProfit: number; grossMarginPercent: number;
   expenses: number; inventoryLosses: number; deliveryIncome: number; riderPayments: number; deliveryNet: number;
   netProfit: number; netMarginPercent: number; tickets: number; itemsWithoutCost: number; cardCommissionCollected: number;
-  expensesByCategory: { category: string; total: number; count: number }[];
+  expensesByCategory: { category: string; name: string | null; total: number; count: number }[];
   lossesByReason: { code: string; label: string; total: number; count: number }[];
   otherAdjustments: { code: string | null; label: string; direction: 'IN' | 'OUT'; total: number; count: number }[];
   autoAdjustments: { total: number; count: number };
@@ -330,7 +330,7 @@ function IncomeBody({ data }: { data: IncomeStatement }) {
             <Row label="Gastos" sign="−" cur={c.expenses} prev={p.expenses} pct={change.expenses} good={false}
               toggleKey={c.expensesByCategory.length > 0 ? 'expenses' : undefined} />
             {open.expenses && c.expensesByCategory.map((e) => (
-              <Row key={e.category} indent label={EXPENSE_LABELS[e.category] ?? e.category} cur={e.total} />
+              <Row key={`${e.category}-${e.name}`} indent label={e.name ?? EXPENSE_LABELS[e.category] ?? e.category} cur={e.total} />
             ))}
 
             <Row label="Mermas de inventario" sign="−" cur={c.inventoryLosses} prev={p.inventoryLosses} pct={change.inventoryLosses} good={false}

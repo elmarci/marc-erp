@@ -19,6 +19,10 @@ import { downloadExcel } from '@/lib/exportExcel';
 import { notifyMarginAlerts, type MarginAlert } from '@/lib/marginAlerts';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { printThermalHtml } from '@/lib/printThermal';
+import {
+  SupplierDocFields, EditDocumentModal, SupplierReturnModal, SupplierReturnsList,
+  emptyDoc, docPayload, docProblem, DOC_TYPE_LABELS, type SupplierDoc, type SupplierReturnRow,
+} from './SupplierDocuments';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface Supplier {
@@ -55,6 +59,9 @@ interface Payer {
 
 interface OrderDetail extends PurchaseOrder {
   supplierInvoice: string | null; notes: string | null;
+  docType: string | null; docSeries: string | null; docNumber: string | null; docIssueDate: string | null;
+  creditedAmount: number;
+  supplierReturns: SupplierReturnRow[];
   supplier: Supplier;
   payer: { id: string; name: string; phone: string | null } | null;
   approvedBy: { firstName: string; lastName: string } | null;
@@ -105,10 +112,12 @@ interface SupplierCatalogItem {
 }
 
 /* ─── Status helpers ────────────────────────────────────────────────────── */
+// Flujo simple: Pedida → Recibida (en parte o completa), o Anulada. Las
+// órdenes antiguas "por aprobar" o "aprobadas" ya se muestran como Pedida.
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Borrador', PENDING_APPROVAL: 'Pend. aprobación',
-  APPROVED: 'Aprobada', SENT: 'Enviada',
-  PARTIALLY_RECEIVED: 'Parcial', RECEIVED: 'Recibida', CANCELLED: 'Cancelada',
+  DRAFT: 'Borrador', PENDING_APPROVAL: 'Pedida',
+  APPROVED: 'Pedida', SENT: 'Pedida',
+  PARTIALLY_RECEIVED: 'Recibida en parte', RECEIVED: 'Recibida', CANCELLED: 'Anulada',
 };
 const STATUS_VARIANT: Record<string, 'default' | 'success' | 'destructive' | 'secondary' | 'outline'> = {
   DRAFT: 'secondary', PENDING_APPROVAL: 'default', APPROVED: 'default',
@@ -583,7 +592,7 @@ function useLineFocus() {
 function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; onCreated: (order: OrderDetail) => void }) {
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState('');
-  const [documentNumber, setDocumentNumber] = useState('');
+  const [doc, setDoc] = useState<SupplierDoc>(emptyDoc);
   const [date, setDate] = useState(() => todayLimaDateString());
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
@@ -706,7 +715,9 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   // Lácteos, panadería, carnes y embutidos: sin fecha de vencimiento no se registra.
   const missingExpiry = lines.some(l => l.trackExpiry && effQty(l) > 0 && !l.expiryDate);
 
-  const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0) && !missingExpiry
+  const supplierTaxId = suppliers?.find(s => s.id === supplierId)?.taxId ?? null;
+  const docIssue = docProblem(doc, supplierTaxId);
+  const canSubmit = !!supplierId && lines.length > 0 && lines.every(l => effQty(l) > 0) && !missingExpiry && !docIssue
     && (payerMode
       ? !!payerId && payerAmountNum > 0.009 && (payTarget === 0 || !payment.paid || legsMatch(payment.legs, payTarget))
       : (!payment.paid || total === 0 || legsMatch(payment.legs, total)));
@@ -714,7 +725,7 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
   const mutation = useMutation({
     mutationFn: () => api.post<{ data: OrderDetail; marginAlerts?: MarginAlert[] }>('/purchases/direct', {
       supplierId,
-      documentNumber: documentNumber || undefined,
+      doc: docPayload(doc),
       date: date ? new Date(`${date}T12:00:00`).toISOString() : undefined,
       notes: notes || undefined,
       includeTax,
@@ -768,22 +779,22 @@ function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => void; on
         </div>
 
         <div className="overflow-y-auto p-5 space-y-4 flex-1">
-          <div className="rounded-lg border p-4 grid grid-cols-3 gap-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Proveedor *</label>
-              <Select value={supplierId} onChange={e => setSupplierId(e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {suppliers?.map(s => <option key={s.id} value={s.id}>{s.businessName}</option>)}
-              </Select>
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium">Proveedor *</label>
+                <Select value={supplierId} onChange={e => setSupplierId(e.target.value)}>
+                  <option value="">Seleccionar...</option>
+                  {suppliers?.map(s => <option key={s.id} value={s.id}>{s.businessName}</option>)}
+                </Select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Fecha de recepción</label>
+                <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">N° Documento</label>
-              <Input value={documentNumber} onChange={e => setDocumentNumber(e.target.value)} placeholder="F001-000123" />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Fecha</label>
-              <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
-            </div>
+            <SupplierDocFields value={doc} onChange={setDoc} supplierTaxId={supplierTaxId} />
+            {docIssue && supplierId && <p className="text-xs text-destructive">{docIssue}</p>}
           </div>
 
           {supplierId && catalog && (
@@ -1394,6 +1405,11 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
     }))
   );
   const [notes, setNotes] = useState('');
+  const [doc, setDoc] = useState<SupplierDoc>(() => ({
+    ...emptyDoc(), docType: order.docType ?? '', docSeries: order.docSeries ?? '', docNumber: order.docNumber ?? '',
+    docIssueDate: order.docIssueDate ? order.docIssueDate.slice(0, 10) : '',
+  }));
+  const docIssue = docProblem(doc, order.supplier.taxId);
   const [scan, setScan] = useState('');
   const [bonusSearch, setBonusSearch] = useState('');
   const debouncedBonusSearch = useDebouncedValue(bonusSearch, 300);
@@ -1439,7 +1455,7 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
   // Fecha de vencimiento obligatoria en lo que se recibe de productos que la controlan.
   const missingExpiry = items.some(i => i.trackExpiry && i.receivedQty > 0 && !i.expiryDate);
 
-  const canSubmitPayment = !missingExpiry && (payerMode
+  const canSubmitPayment = !missingExpiry && !docIssue && (payerMode
     ? !!payerId && payerAmountNum > 0.009 && (payTarget === 0 || !payment.paid || legsMatch(payment.legs, payTarget))
     : (!payment.paid || receiptTotal === 0 || legsMatch(payment.legs, receiptTotal)));
 
@@ -1482,6 +1498,7 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
         expiryDate: i.trackExpiry && i.expiryDate ? new Date(`${i.expiryDate}T12:00:00`).toISOString() : undefined,
       })),
       notes,
+      doc: docPayload(doc),
       payerId: payerMode ? (payerId || undefined) : undefined,
       payerAmount: payerMode ? payerAmountNum : undefined,
       payment: (payerMode && payTarget === 0) ? undefined : payment,
@@ -1591,6 +1608,12 @@ function ReceiveOrderModal({ order, onClose, onReceived }: {
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="rounded-lg border p-4 space-y-2">
+            <p className="text-sm font-medium">Comprobante que llegó con la mercadería</p>
+            <SupplierDocFields value={doc} onChange={setDoc} supplierTaxId={order.supplier.taxId} />
+            {docIssue && <p className="text-xs text-destructive">{docIssue}</p>}
           </div>
 
           <div>
@@ -2125,18 +2148,14 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
   const [showPay, setShowPay] = useState(false);
   const [correctingItem, setCorrectingItem] = useState<{ productId: string; name: string; receivedQty: number; unitCost: number; isBonus: boolean } | null>(null);
   const [editingItem, setEditingItem] = useState<{ id: string; name: string; orderedQty: number; unitCost: number } | null>(null);
+  const [editingDoc, setEditingDoc] = useState(false);
+  const [showReturn, setShowReturn] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: detail } = useQuery({
     queryKey: ['purchase', order.id],
     queryFn: async () => (await api.get<{ data: OrderDetail }>(`/purchases/${order.id}`)).data.data,
     enabled: expanded,
-  });
-
-  const approveMutation = useMutation({
-    mutationFn: () => api.post(`/purchases/${order.id}/approve`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchases'] }); toast.success('Orden aprobada.'); },
-    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const cancelMutation = useMutation({
@@ -2206,8 +2225,8 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
     }
   };
 
-  const canApprove = order.status === 'PENDING_APPROVAL';
-  const canReceive = ['APPROVED', 'SENT', 'PARTIALLY_RECEIVED'].includes(order.status);
+  // Ya no hay paso de aprobación: lo pedido se puede recibir de inmediato.
+  const canReceive = ['PENDING_APPROVAL', 'APPROVED', 'SENT', 'PARTIALLY_RECEIVED'].includes(order.status);
   const canCancel = !['RECEIVED', 'CANCELLED'].includes(order.status);
   const canVoid = order.status === 'RECEIVED';
   // Antes de recibir mercadería no hay stock/costo que revertir — se puede
@@ -2235,9 +2254,6 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
         <td className="px-4 py-3.5 text-center">{order._count.items}</td>
         <td className="px-4 py-3.5">
           <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-            {canApprove && <Button size="sm" variant="outline" onClick={() => approveMutation.mutate()} loading={approveMutation.isPending}>
-              <CheckCircle className="mr-1 h-3.5 w-3.5 text-success" />Aprobar
-            </Button>}
             {canReceive && <Button size="sm" variant="outline" onClick={() => { setExpanded(true); setShowReceive(true); }}>
               <Truck className="mr-1 h-3.5 w-3.5" />Recibir
             </Button>}
@@ -2315,6 +2331,22 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
               </table>
               {detail.notes && <p className="text-muted-foreground text-xs">Notas: {detail.notes}</p>}
 
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Comprobante:</span>
+                {detail.supplierInvoice || detail.docType ? (
+                  <span className="font-medium">
+                    {[detail.docType ? DOC_TYPE_LABELS[detail.docType] : null, detail.supplierInvoice].filter(Boolean).join(' ')}
+                    {detail.docIssueDate && <span className="font-normal text-muted-foreground"> · emitido {formatDateTime(detail.docIssueDate).slice(0, 10)}</span>}
+                    {detail.supplier.taxId && <span className="font-normal text-muted-foreground"> · RUC {detail.supplier.taxId}</span>}
+                  </span>
+                ) : <span className="text-muted-foreground">sin registrar</span>}
+                {!detail.voidedAt && (
+                  <button className="text-primary hover:underline" onClick={() => setEditingDoc(true)}>
+                    {detail.supplierInvoice || detail.docType ? 'Corregir' : 'Agregar'}
+                  </button>
+                )}
+              </div>
+
               {detail.hasDiscrepancy && (
                 <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive space-y-1">
                   <p className="font-semibold">Observada — no entra a pagos "por monto" (FIFO) hasta resolverse</p>
@@ -2339,6 +2371,11 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                   {detail.payerAmount > 0 && (
                     <p className="text-xs text-muted-foreground">
                       {formatCurrency(detail.payerAmount)} financiado por un pagador (no salió de Caja General).
+                    </p>
+                  )}
+                  {Number(detail.creditedAmount) > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {formatCurrency(detail.creditedAmount)} descontado con notas de crédito del proveedor.
                     </p>
                   )}
                   {detail.payments.length > 0 && (
@@ -2386,18 +2423,32 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
                 </div>
               )}
 
+              <SupplierReturnsList returns={detail.supplierReturns ?? []} orderId={detail.id} />
+
               {detail.voidedAt && (
                 <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive">
                   <p className="font-semibold">Anulada el {formatDateTime(detail.voidedAt)}{detail.voidedBy ? ` por ${detail.voidedBy.firstName} ${detail.voidedBy.lastName}` : ''}</p>
                   {detail.voidReason && <p className="mt-0.5">Motivo: {detail.voidReason}</p>}
                 </div>
               )}
-              <Button variant="outline" size="sm" onClick={() => printPurchaseReceipt(detail)}>
-                <FileText className="mr-1.5 h-3.5 w-3.5" />Imprimir comprobante
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => printPurchaseReceipt(detail)}>
+                  <FileText className="mr-1.5 h-3.5 w-3.5" />Imprimir comprobante
+                </Button>
+                {!detail.voidedAt && ['RECEIVED', 'PARTIALLY_RECEIVED'].includes(detail.status) && (
+                  <Button variant="outline" size="sm" onClick={() => setShowReturn(true)}>
+                    <Undo2 className="mr-1.5 h-3.5 w-3.5" />Devolver al proveedor
+                  </Button>
+                )}
+              </div>
             </div>
           </td>
         </tr>
+      )}
+
+      {editingDoc && detail && <EditDocumentModal order={detail} onClose={() => setEditingDoc(false)} />}
+      {showReturn && detail && (
+        <SupplierReturnModal orderId={detail.id} supplierName={detail.supplier.businessName} onClose={() => setShowReturn(false)} />
       )}
 
       {showPay && detail && (
@@ -2610,7 +2661,7 @@ function OrdersTab() {
             </div>
             <Select className="w-44" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
               <option value="">Todos los estados</option>
-              {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {Object.entries(STATUS_LABELS).filter(([k]) => !['PENDING_APPROVAL', 'APPROVED'].includes(k)).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
             <Select className="w-40" value={paymentStatusFilter} onChange={e => { setPaymentStatusFilter(e.target.value); setPage(1); }}>
               <option value="">Cualquier pago</option>
