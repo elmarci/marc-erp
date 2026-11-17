@@ -2,6 +2,7 @@ import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck } from 'lucide-react'
 import { useBackClose, overlayNav } from '../lib/useBackClose'
 import { useQuery } from '@tanstack/react-query'
 import { useCartStore, cartTotal, type CartItem } from '../cartStore'
+import { missingRequired, withChoice } from '../lib/choices'
 import { useAuthStore } from '../authStore'
 import { useNavigate } from 'react-router-dom'
 import { storeApi } from '../api'
@@ -55,7 +56,7 @@ export function CartDrawer() {
   // Opción de respaldo para quien no quiere crear cuenta — arma el pedido
   // completo en un mensaje estructurado y lo manda directo a WhatsApp.
   const handleWhatsApp = () => {
-    const lines = items.map(i => `• ${i.product.name} ×${i.quantity} — S/ ${(Number(i.product.salePrice) * i.quantity).toFixed(2)}`)
+    const lines = items.map(i => `• ${i.product.name}${i.product.line?.optionsText ? ` (${i.product.line.optionsText})` : ''} ×${i.quantity} — S/ ${(Number(i.product.salePrice) * i.quantity).toFixed(2)}`)
     const greeting = customer ? `Hola ${BRAND_NAME}, soy ${customer.name}.` : `Hola ${BRAND_NAME}.`
     const msg = [
       greeting, '',
@@ -134,6 +135,12 @@ export function CartDrawer() {
                         S/ {(Number(row.item.product.salePrice) * row.item.quantity).toFixed(2)}
                       </span>
                     </div>
+                    {row.item.product.line?.optionsText && (
+                      <span className="mt-1 inline-block rounded-md bg-brand-blue-50 px-2 py-0.5 text-[13px] font-semibold text-brand-blue-700">
+                        {row.item.product.line.optionsText}
+                      </span>
+                    )}
+                    <MissingOptions item={row.item} />
                     <p className="text-paper-ink-soft text-sm mt-0.5">S/ {Number(row.item.product.salePrice).toFixed(2)} {row.item.product.isBulk ? `por ${row.item.product.bulkUnit ?? 'kg'}` : 'c/u'}</p>
                     <div className="flex items-center justify-between mt-1.5">
                       {row.item.product.isBulk ? (
@@ -237,6 +244,32 @@ function BundleRow({ group, onRemove }: { group: CartItem[]; onRemove: () => voi
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Línea agregada sin elegir una opción obligatoria (por ejemplo desde la
+// lista por voz o "agrega también"): se elige acá mismo, sin salir del carrito.
+function MissingOptions({ item }: { item: CartItem }) {
+  const replaceItem = useCartStore(s => s.replaceItem)
+  const missing = (item.product.options ?? []).filter(g => missingRequired(item.product).includes(g.name))
+  if (missing.length === 0) return null
+  const current = item.product.line?.options ?? {}
+  return (
+    <div className="mt-1.5 rounded-xl bg-red-50 px-2.5 py-2 space-y-1.5">
+      {missing.map(g => (
+        <div key={g.id}>
+          <p className="text-[13px] font-bold text-red-700">Elige {g.name.toLowerCase()}:</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {g.choices.map(c => (
+              <button key={c} onClick={() => replaceItem(item.product.id, withChoice(item.product, { pack: !!item.product.line?.pack, options: { ...current, [g.id]: c } }))}
+                className="min-h-9 px-3 rounded-full border-2 border-paper-line bg-white text-sm font-semibold text-paper-ink">
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

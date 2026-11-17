@@ -9,6 +9,26 @@ import { storeDeliveryFee, cardFee, CARD_FEE_PERCENT, DELIVERY_MIN_ORDER } from 
 import { buildTracking } from './orderTracking';
 import { discountPrices, packInfo, pickPrice } from './storePricing';
 import { orderAccessKey, isValidOrderKey } from './orderAccess';
+import { loadOptionGroups, groupsForProduct, optionsText, type OptionGroup } from './storeOptions';
+
+// Datos que la tienda necesita además del producto: la presentación
+// paquete/caja (la misma que vende el POS) y las opciones de despacho que
+// aplican (pierna/pecho, helada/sin helar…).
+type StoreProductRow = {
+  id: string; salePrice: unknown; categoryId?: string;
+  packSize?: number | null; packPrice?: unknown; packLabel?: string | null;
+  category?: { id?: string; parentId?: string | null; parent?: { id: string } | null } | null;
+};
+function toStoreProduct<T extends StoreProductRow>(p: T, groups: OptionGroup[]) {
+  const { packSize, packPrice, packLabel, ...rest } = p;
+  const hasPack = packSize != null && packSize >= 2 && packPrice != null && Number(packPrice) > 0;
+  return {
+    ...rest,
+    salePrice: Number(p.salePrice),
+    pack: hasPack ? { size: packSize!, price: Number(packPrice), label: packLabel || 'Paquete' } : null,
+    options: groupsForProduct(groups, p),
+  };
+}
 
 export class StoreService {
 
@@ -83,7 +103,8 @@ export class StoreService {
         select: {
           id: true, name: true, barcode: true, salePrice: true,
           currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
-          category: { select: { id: true, name: true } },
+          categoryId: true, packSize: true, packPrice: true, packLabel: true,
+          category: { select: { id: true, name: true, parentId: true } },
         },
         // storeFeatured primero (palanca manual del dueño), luego categoría
         // padre e hija (el sort_order de las subcategorías solo es único
@@ -107,8 +128,9 @@ export class StoreService {
       prisma.product.count({ where }),
     ]);
 
+    const groups = await loadOptionGroups();
     return {
-      data: data.map(p => ({ ...p, salePrice: Number(p.salePrice) })),
+      data: data.map(p => toStoreProduct(p, groups)),
       pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
     };
   }
@@ -134,7 +156,8 @@ export class StoreService {
     const productSelect = {
       id: true, name: true, barcode: true, salePrice: true,
       currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
-      category: { select: { id: true, name: true } },
+          categoryId: true, packSize: true, packPrice: true, packLabel: true,
+      category: { select: { id: true, name: true, parentId: true } },
     } as const;
 
     const topIds = topSelling.map(t => t.productId);
@@ -158,7 +181,8 @@ export class StoreService {
       result = [...result, ...fillers];
     }
 
-    return result.map(p => ({ ...p, salePrice: Number(p.salePrice) }));
+    const groups = await loadOptionGroups();
+    return result.map(p => toStoreProduct(p, groups));
   }
 
   async getProductById(id: string) {
@@ -167,6 +191,7 @@ export class StoreService {
       select: {
         id: true, name: true, barcode: true, salePrice: true,
         currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
+          categoryId: true, packSize: true, packPrice: true, packLabel: true,
         category: {
           select: {
             id: true, name: true,
@@ -176,7 +201,7 @@ export class StoreService {
       },
     });
     if (!product) throw new NotFoundError('Producto');
-    return { ...product, salePrice: Number(product.salePrice) };
+    return toStoreProduct(product, await loadOptionGroups());
   }
 
   async getCategories() {
@@ -267,7 +292,7 @@ export class StoreService {
     latitude?: number; longitude?: number;
     storeCustomerId?: string;
     pointsToRedeem?: number;
-    items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string }>;
+    items: Array<{ productId: string; quantity: number; unitPrice?: number; name?: string; pack?: boolean; options?: Record<string, string> }>;
   }) {
     // Extraer IDs reales
     // Bundle format: "bundle-{offerId36chars}-{productId36chars}"
@@ -297,6 +322,17 @@ export class StoreService {
       }
     }
 
+    // Presentación paquete/caja (ej. Golden x20 a S/ 3.50): solo si el
+    // producto la tiene configurada en el ERP; nunca en paquetes de ofertas.
+    const unitsPerSaleOf = (item: (typeof resolvedItems)[number]) => {
+      if (!item.pack || item.offerId) return 1;
+      const product = productMap.get(item.realProductId)!;
+      if (!product.packSize || product.packSize < 2 || product.packPrice == null) {
+        throw new BusinessError(`"${product.name}" ya no se vende por paquete. Quítalo del carrito y agrégalo de nuevo.`);
+      }
+      return product.packSize;
+    };
+
     // Verificar stock disponible — este endpoint es público (lo llama
     // cualquier visitante de la tienda sin autenticarse), así que es la única
     // línea de defensa real contra pedir más de lo que hay; el carrito del
@@ -305,7 +341,7 @@ export class StoreService {
     for (const item of resolvedItems) {
       requestedByProduct.set(
         item.realProductId,
-        (requestedByProduct.get(item.realProductId) ?? 0) + item.quantity,
+        (requestedByProduct.get(item.realProductId) ?? 0) + item.quantity * unitsPerSaleOf(item),
       );
     }
     for (const [productId, requestedQty] of requestedByProduct) {
@@ -320,7 +356,7 @@ export class StoreService {
     // Solo los productos a granel se venden por fracción (kg, L).
     for (const item of resolvedItems) {
       const product = productMap.get(item.realProductId)!;
-      if (!product.isBulk && !Number.isInteger(item.quantity)) {
+      if ((!product.isBulk || item.pack) && !Number.isInteger(item.quantity)) {
         throw new BusinessError(`La cantidad de "${product.name}" debe ser un número entero.`);
       }
     }
@@ -337,12 +373,23 @@ export class StoreService {
       if (item.offerId) bundleUnits.set(item.offerId, (bundleUnits.get(item.offerId) ?? 0) + item.quantity);
     }
 
+    const optionGroups = await loadOptionGroups();
+    const categories = await prisma.category.findMany({
+      where: { id: { in: [...new Set(products.map(p => p.categoryId))] } },
+      select: { id: true, parentId: true },
+    });
+    const parentOf = new Map(categories.map(c => [c.id, c.parentId]));
+
     let subtotal = 0;
     const orderItems = resolvedItems.map(item => {
       const product = productMap.get(item.realProductId)!;
       const salePrice = Number(product.salePrice);
+      const unitsPerSale = unitsPerSaleOf(item);
       let unitPrice: number;
-      if (item.offerId) {
+      if (unitsPerSale > 1) {
+        // Mismo precio de paquete que cobra el POS.
+        unitPrice = Number(product.packPrice);
+      } else if (item.offerId) {
         const promo = promoById.get(item.offerId);
         const pack = promo && promo.products.some(pp => pp.productId === item.realProductId) ? packInfo(promo) : null;
         const complete = pack && (bundleUnits.get(item.offerId)! % pack.totalQty === 0);
@@ -357,7 +404,18 @@ export class StoreService {
       subtotal += itemSubtotal;
       // El nombre puede traer el peso elegido ("Pollo (0.5 kg)"), pero
       // siempre empieza con el nombre real del producto.
-      const name = item.name && item.name.startsWith(product.name) ? item.name.slice(0, 160) : product.name;
+      const name = unitsPerSale > 1
+        ? `${product.name} (${product.packLabel || 'Paquete'} x${unitsPerSale})`
+        : item.name && item.name.startsWith(product.name) ? item.name.slice(0, 160) : product.name;
+      // Opciones de despacho (pierna/pecho, helada…). En productos que
+      // vienen dentro de una oferta no se exige elegir: el combo ya se armó.
+      const applicable = groupsForProduct(optionGroups, {
+        id: product.id, categoryId: product.categoryId, category: { parentId: parentOf.get(product.categoryId) ?? null },
+      });
+      const options = optionsText(
+        item.offerId ? applicable.map(g => ({ ...g, required: false })) : applicable,
+        item.options, product.name,
+      );
       return {
         productId: item.realProductId,  // siempre guardar el ID real del producto
         name,
@@ -365,6 +423,8 @@ export class StoreService {
         quantity: item.quantity,
         unitPrice,
         subtotal: itemSubtotal,
+        unitsPerSale,
+        options,
       };
     });
     subtotal = Math.round(subtotal * 100) / 100;
@@ -596,7 +656,9 @@ export class StoreService {
         const product = productMap.get(item.productId);
         return {
           productId: item.productId,
-          productName: item.name,
+          // La opción elegida viaja en el nombre para que salga en el ticket.
+          productName: item.options ? `${item.name} — ${item.options}`.slice(0, 250) : item.name,
+          unitsPerSale: item.unitsPerSale,
           quantity: item.quantity,
           unitPrice: Number(item.unitPrice),
           originalPrice: Number(item.unitPrice),
@@ -611,10 +673,10 @@ export class StoreService {
           // comodín no tiene costo real, se asume 15% de margen en vez de
           // 0 de costo — no debería llegar a vender por acá (no aparece en
           // la tienda), pero por si acaso queda igual de protegido.
-          costPrice: product ? (product.isMiscItem ? Number(item.unitPrice) * 0.85 : Number(product.costPrice)) : null,
+          costPrice: product ? (product.isMiscItem ? Number(item.unitPrice) * 0.85 : Number(product.costPrice) * item.unitsPerSale) : null,
           // Para el ticket si se reimprime desde el ERP: columna "Unidad"
           // clara (kg/g/l/ml o "und"), igual que sales.service.ts.
-          unit: product ? (product.isBulk ? (product.bulkUnit ?? 'kg') : 'und') : 'und',
+          unit: product ? (product.isBulk && item.unitsPerSale === 1 ? (product.bulkUnit ?? 'kg') : 'und') : 'und',
         };
       });
 
@@ -696,7 +758,7 @@ export class StoreService {
       // con otra venta que toque los mismos productos.
       const unitsByProduct = new Map<string, number>();
       for (const item of order.items) {
-        unitsByProduct.set(item.productId, (unitsByProduct.get(item.productId) ?? 0) + Number(item.quantity));
+        unitsByProduct.set(item.productId, (unitsByProduct.get(item.productId) ?? 0) + Number(item.quantity) * item.unitsPerSale);
       }
       for (const productId of [...unitsByProduct.keys()].sort()) {
         const product = productMap.get(productId);

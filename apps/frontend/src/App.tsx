@@ -22,6 +22,7 @@ const ReportsPage = lazy(() => import('@/modules/reports/ReportsPage').then((m) 
 const OffersPage = lazy(() => import('@/modules/offers/OffersPage').then((m) => ({ default: m.OffersPage })));
 const NotificationsPage = lazy(() => import('@/modules/notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
 const StoreOrdersPage = lazy(() => import('@/modules/store-orders/StoreOrdersPage').then((m) => ({ default: m.StoreOrdersPage })));
+const StoreOptionsPage = lazy(() => import('@/modules/store-options/StoreOptionsPage').then((m) => ({ default: m.StoreOptionsPage })));
 const ComplaintsPage = lazy(() => import('@/modules/complaints/ComplaintsPage').then((m) => ({ default: m.ComplaintsPage })));
 const RidersPage = lazy(() => import('@/modules/riders/RidersPage').then((m) => ({ default: m.RidersPage })));
 const TvScreenPage = lazy(() => import('@/modules/tv/TvScreenPage').then((m) => ({ default: m.TvScreenPage })));
@@ -93,6 +94,7 @@ export default function App() {
           <Route path="offers" element={<OffersPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="store-orders" element={<StoreOrdersPage />} />
+          <Route path="store-options" element={<StoreOptionsPage />} />
           <Route path="complaints" element={<ComplaintsPage />} />
           <Route path="riders" element={<RidersPage />} />
           <Route path="tv" element={<TvScreenPage />} />

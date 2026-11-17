@@ -381,7 +381,7 @@ export function TrackOrderPage() {
                 </div>
                 <div className="space-y-0.5 mb-3">
                   {order.items.slice(0, 3).map((item, i) => (
-                    <p key={i} className="text-sm text-paper-ink-soft">• {item.name} ×{item.quantity}</p>
+                    <p key={i} className="text-sm text-paper-ink-soft">• {item.name}{item.options ? ` (${item.options})` : ''} ×{item.quantity}</p>
                   ))}
                   {order.items.length > 3 && <p className="text-xs text-paper-ink-ghost">+{order.items.length - 3} más</p>}
                 </div>

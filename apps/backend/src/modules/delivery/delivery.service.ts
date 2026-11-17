@@ -13,7 +13,7 @@ const POOL_STATUSES = ['CONFIRMED', 'PREPARING', 'READY'];
 
 const orderWithItems = { items: true } as const;
 
-function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quantity: unknown }[] }) {
+function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quantity: unknown; options?: string | null }[] }) {
   const hasGps = order.latitude != null && order.longitude != null;
   const coords = hasGps ? { lat: order.latitude as number, lng: order.longitude as number } : STORE_ORIGIN;
   const distanciaKm = hasGps ? haversineKm(STORE_ORIGIN, coords) : 0;
@@ -43,7 +43,7 @@ function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quanti
     esperaMin,
     clienteNombre: order.customerName,
     clienteTelefono: order.customerPhone,
-    items: order.items.map((i) => ({ nombre: i.name, cantidad: Number(i.quantity) })),
+    items: order.items.map((i) => ({ nombre: i.options ? `${i.name} — ${i.options}` : i.name, cantidad: Number(i.quantity) })),
     paquete: {
       tamano: order.packageTamano as 'chico' | 'mediano' | 'grande',
       tipo: order.packageTipo as 'bolsa' | 'caja' | 'bulto',

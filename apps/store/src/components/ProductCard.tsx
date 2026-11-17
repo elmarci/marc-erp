@@ -9,6 +9,8 @@ import { toast } from 'sonner'
 import { flyToCart } from '../lib/flyToCart'
 import { thumb } from '../lib/thumb'
 import { Ico } from './Ico'
+import { ChoiceModal, OptionsPicker } from './ProductChoice'
+import { missingRequired, needsChooser, realIdOf, withChoice } from '../lib/choices'
 
 // Redondeo a gramo (o su equivalente) al calcular el peso desde un monto —
 // evita arrastrar error de punto flotante (ej. 0.267000000004).
@@ -18,6 +20,12 @@ const BULK_WEIGHT_STEP = 0.001
 function BulkModal({ product, onClose }: { product: Product; onClose: () => void }) {
   useBackClose(true, onClose)
   const { addItem, renameItem, openCart } = useCartStore()
+  // Opciones de despacho (ej. pollo: pierna o pecho): cada elección es una
+  // línea distinta del carrito.
+  const [options, setOptions] = useState<Record<string, string>>({})
+  const [tried, setTried] = useState(false)
+  const missing = missingRequired(product, options)
+  const lineProduct = withChoice(product, { pack: false, options })
   // Sólo tiene sentido "pedir por monto" en unidades que se pesan/miden de
   // verdad (kg, g, L) — para "unidad" (ej. a granel por pieza suelta) el
   // precio ya es exacto sin necesidad de pesar nada.
@@ -45,8 +53,9 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
   const handleAdd = () => {
     const q = finalQty
     if (!q || q <= 0) { toast.error(mode === 'monto' ? 'Ingresa un monto válido' : 'Ingresa una cantidad válida'); return }
+    if (missing.length) { setTried(true); toast.error(`Elige ${missing.join(' y ').toLowerCase()}`); return }
     const result = addItem({
-      ...product,
+      ...lineProduct,
       name: `${product.name} (${q} ${unit})`,
       salePrice: price, // price per unit
     }, q)
@@ -58,7 +67,7 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
     // el stock hay que corregirlo para que coincida con lo que realmente se
     // agregó, no con lo que se pidió antes de topar.
     if (result.finalQuantity !== q) {
-      renameItem(product.id, `${product.name} (${result.finalQuantity} ${unit})`)
+      renameItem(lineProduct.id, `${product.name} (${result.finalQuantity} ${unit})`)
     }
     if (result.capped) {
       toast.warning(`Solo se agregaron ${result.finalQuantity} ${unit} de "${product.name}" — stock disponible: ${product.currentStock} ${unit}.`)
@@ -92,6 +101,7 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
         </div>
 
         <div className="p-4 space-y-4">
+          <OptionsPicker product={product} value={options} onChange={setOptions} showMissing={tried} />
           {isWeighable && (
             <div className="flex rounded-xl bg-paper-surface p-1 text-sm font-semibold">
               <button onClick={() => setMode('monto')}
@@ -184,15 +194,23 @@ function BulkModal({ product, onClose }: { product: Product; onClose: () => void
 export function ProductCard({ product }: { product: Product }) {
   const { addItem, updateQuantity, items } = useCartStore()
   const [showBulk, setShowBulk] = useState(false)
+  const [showChoice, setShowChoice] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
-  const cartItem = items.find(i => i.product.id === product.id)
-  const qty = cartItem?.quantity ?? 0
+  // Con paquete u opciones, el producto puede estar en varias líneas
+  // (2 heladas + 1 sin helar): el contador suma todas.
+  const chooser = needsChooser(product)
+  const lines = items.filter(i => !i.bundle && realIdOf(i.product) === product.id)
+  const qty = chooser
+    ? lines.reduce((s, i) => s + (product.isBulk ? 0 : i.quantity), 0)
+    : items.find(i => i.product.id === product.id)?.quantity ?? 0
+  const lastLine = lines[lines.length - 1]
   const outOfStock = product.currentStock <= 0
   const unit = product.bulkUnit ?? 'kg'
 
   const handleAdd = () => {
     if (outOfStock) return
     if (product.isBulk) { setShowBulk(true); return }
+    if (chooser) { setShowChoice(true); return }
     const result = addItem(product)
     if (result.addedQuantity <= 0) {
       toast.error(`Ya tienes en el carrito todo el stock de "${product.name}" (${product.currentStock}).`)
@@ -218,6 +236,11 @@ export function ProductCard({ product }: { product: Product }) {
             S/ {Number(product.salePrice).toFixed(2)}
             {product.isBulk && <span className="text-[13px] font-semibold text-paper-ink-soft"> /{unit}</span>}
           </p>
+          {product.pack && !product.isBulk && (
+            <p className="-mt-1 text-xs font-semibold text-brand-blue-700 tabular-nums leading-none">
+              {product.pack.label} x{product.pack.size}: S/ {product.pack.price.toFixed(2)}
+            </p>
+          )}
         </Link>
 
         {outOfStock || product.isBulk ? (
@@ -231,15 +254,17 @@ export function ProductCard({ product }: { product: Product }) {
             {/* Control de cantidad delgado (34 px): píldora gris con botones
               redondos; solo el + va en verde. Cada botón tiene 28 px más el
               margen de la píldora, suficiente para el dedo sin verse tosco. */}
-            <button onClick={() => updateQuantity(product.id, qty - 1)} disabled={qty === 0}
+            <button onClick={() => chooser
+                ? lastLine && updateQuantity(lastLine.product.id, lastLine.quantity - 1)
+                : updateQuantity(product.id, qty - 1)} disabled={qty === 0}
               aria-label={`Quitar uno de ${product.name}`}
               className="h-7 w-7 rounded-full bg-white shadow-sm flex items-center justify-center text-paper-ink active:bg-paper-line disabled:shadow-none disabled:bg-transparent disabled:text-paper-ink-ghost">
               <Minus className="h-3.5 w-3.5" strokeWidth={2.75} />
             </button>
             <span aria-live="polite"
               className={`flex-1 text-center text-sm font-bold tabular-nums ${qty > 0 ? 'text-paper-ink' : 'text-paper-ink-soft'}`}>{qty}</span>
-            <button onClick={qty > 0 ? () => { addItem(product); flyToCart(imgRef.current) } : handleAdd}
-              disabled={qty >= product.currentStock}
+            <button onClick={qty > 0 && !chooser ? () => { addItem(product); flyToCart(imgRef.current) } : handleAdd}
+              disabled={!chooser && qty >= product.currentStock}
               aria-label={qty > 0 ? `Agregar uno más de ${product.name}` : `Agregar ${product.name}`}
               className="h-7 w-7 rounded-full bg-brand-green-600 active:bg-brand-green-700 disabled:opacity-40 text-white flex items-center justify-center">
               <Plus className="h-4 w-4" strokeWidth={2.75} />
@@ -250,6 +275,7 @@ export function ProductCard({ product }: { product: Product }) {
 
       <AnimatePresence>
         {showBulk && <BulkModal product={product} onClose={() => setShowBulk(false)} />}
+        {showChoice && <ChoiceModal product={product} onClose={() => setShowChoice(false)} />}
       </AnimatePresence>
     </>
   )

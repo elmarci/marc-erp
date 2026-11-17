@@ -9,6 +9,8 @@ import { ProductCard } from '../components/ProductCard'
 import { flyToCart } from '../lib/flyToCart'
 import { toast } from 'sonner'
 import { WhatsAppIcon } from '../components/CartBar'
+import { OptionsPicker, PackPicker } from '../components/ProductChoice'
+import { missingRequired, withChoice, type Choice } from '../lib/choices'
 import { BRAND_NAME, DELIVERY, deliveryStatus, money, whatsappLink } from '../lib/storeInfo'
 
 // Redondeo a gramo (o su equivalente) al calcular el peso desde un monto —
@@ -23,23 +25,24 @@ export function ProductPage() {
   const [bulkQty, setBulkQty] = useState('')
   const [bulkAmount, setBulkAmount] = useState('')
   const imgRef = useRef<HTMLImageElement>(null)
+  // Presentación (unidad/paquete) y opciones (pierna/pecho, helada…)
+  // elegidas: cada combinación es su propia línea del carrito.
+  const [choice, setChoice] = useState<Choice>({ pack: false, options: {} })
+  const [triedAdd, setTriedAdd] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['store-product', id],
     queryFn: () => storeApi.getProduct(id!),
     enabled: !!id,
   })
-  const product = data?.data.data
+  const baseProduct = data?.data.data
 
   const { data: similarData } = useQuery({
-    queryKey: ['store-similar', product?.category.id, id],
-    queryFn: () => storeApi.getProducts({ categoryId: product!.category.id, excludeId: id!, limit: 6 }),
-    enabled: !!product,
+    queryKey: ['store-similar', baseProduct?.category.id, id],
+    queryFn: () => storeApi.getProducts({ categoryId: baseProduct!.category.id, excludeId: id!, limit: 6 }),
+    enabled: !!baseProduct,
   })
   const similar = similarData?.data.data ?? []
-
-  const cartItem = items.find(i => i.product.id === id)
-  const qty = cartItem?.quantity ?? 0
 
   if (isLoading) {
     return (
@@ -56,7 +59,7 @@ export function ProductPage() {
     )
   }
 
-  if (!product) {
+  if (!baseProduct) {
     return (
       <main className="max-w-md mx-auto px-4 py-16 text-center">
         <Ilu name="ilu-sin-resultados" className="mx-auto h-36 w-48 mb-3" />
@@ -69,7 +72,19 @@ export function ProductPage() {
     )
   }
 
-  const outOfStock = product.currentStock <= 0
+  // El "producto" de la línea elegida: con paquete cambia nombre, precio y
+  // stock (en paquetes); con opciones, solo el id de la línea.
+  const product = withChoice(baseProduct, choice)
+  const qty = items.find(i => i.product.id === product.id)?.quantity ?? 0
+  const missing = missingRequired(baseProduct, choice.options)
+  const blockIfMissing = () => {
+    if (!missing.length) return false
+    setTriedAdd(true)
+    toast.error(`Elige ${missing.join(' y ').toLowerCase()}`)
+    return true
+  }
+
+  const outOfStock = baseProduct.currentStock <= 0
   const unit = product.bulkUnit ?? 'kg'
   // Sólo tiene sentido "pedir por monto" en unidades que se pesan/miden de
   // verdad (kg, g, L) — quien compra a distancia no tiene forma de saber
@@ -89,6 +104,7 @@ export function ProductPage() {
   const handleAddBulk = () => {
     const q = finalBulkQty
     if (!q || q <= 0) { toast.error(effectiveBulkMode === 'monto' ? 'Ingresa un monto válido' : 'Ingresa una cantidad válida'); return }
+    if (blockIfMissing()) return
     const result = addItem({ ...product, name: `${product.name} (${q} ${unit})` }, q)
     if (result.addedQuantity <= 0) {
       toast.error(`No hay más stock disponible (máximo ${product.currentStock} ${unit}).`)
@@ -101,6 +117,7 @@ export function ProductPage() {
   }
 
   const handleAdd = () => {
+    if (blockIfMissing()) return
     const result = addItem(product)
     if (result.addedQuantity <= 0) {
       toast.error(`Ya tienes todo el stock disponible en el carrito (${product.currentStock}).`)
@@ -137,6 +154,14 @@ export function ProductPage() {
           {product.description && (
             <p className="text-paper-ink-soft text-base leading-relaxed mt-4">{product.description}</p>
           )}
+
+          {!outOfStock && (baseProduct.pack || baseProduct.options?.length) ? (
+            <div className="mt-5 bg-white rounded-2xl shadow-card p-4 space-y-5">
+              <PackPicker product={baseProduct} pack={choice.pack} onChange={pack => setChoice(c => ({ ...c, pack }))} />
+              <OptionsPicker product={baseProduct} value={choice.options} showMissing={triedAdd}
+                onChange={options => setChoice(c => ({ ...c, options }))} />
+            </div>
+          ) : null}
 
           <div className="mt-5">
             {outOfStock ? (
