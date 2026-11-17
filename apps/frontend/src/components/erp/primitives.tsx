@@ -128,8 +128,8 @@ export function Segmented<T extends string>({
   );
 }
 
-export function Kbd({ children }: { children: React.ReactNode }) {
+export function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <kbd className="rounded-[4px] bg-ink/[0.06] px-1.5 py-px font-sans text-[11px] font-medium text-ink-muted">{children}</kbd>
+    <kbd className={cn('rounded-[4px] bg-ink/[0.06] px-1.5 py-px font-sans text-[11px] font-medium text-ink-muted', className)}>{children}</kbd>
   );
 }

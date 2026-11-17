@@ -48,12 +48,12 @@ export function PageTabs<T extends string>({
           key={k} type="button" role="tab" aria-selected={value === k} onClick={() => onChange(k)}
           className={cn(
             'tap flex h-8 shrink-0 items-center gap-1.5 rounded-ctl px-3 text-table transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
-            value === k ? 'bg-ink font-medium text-white' : 'text-ink-muted hover:bg-ink/[0.05] hover:text-ink',
+            value === k ? 'bg-ink font-medium text-on-ink' : 'text-ink-muted hover:bg-ink/[0.05] hover:text-ink',
           )}
         >
           {label}
           {extra != null && extra !== false && (
-            <span className={cn('rounded-full px-1.5 text-[11px] tabular-nums', value === k ? 'bg-white/20' : 'bg-ink/[0.07] text-ink')}>{extra}</span>
+            <span className={cn('rounded-full px-1.5 text-[11px] tabular-nums', value === k ? 'bg-on-ink/20' : 'bg-ink/[0.07] text-ink')}>{extra}</span>
           )}
         </button>
       ))}

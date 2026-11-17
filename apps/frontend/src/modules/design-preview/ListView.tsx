@@ -115,8 +115,8 @@ export function ListView({ tableState, onNew, onVoid }: {
           defaultSort={{ key: 'fecha', dir: 'desc' }}
           selectable
           bulkActions={() => <>
-            <Btn size="sm" variant="ghost" className="hover:bg-white/10"><Wallet />Registrar pago</Btn>
-            <Btn size="sm" variant="ghost" className="hover:bg-white/10"><Download />Exportar</Btn>
+            <Btn size="sm" variant="ghost" className="hover:bg-on-ink/10"><Wallet />Registrar pago</Btn>
+            <Btn size="sm" variant="ghost" className="hover:bg-on-ink/10"><Download />Exportar</Btn>
           </>}
           rowActions={(r) => [
             { label: 'Ver detalle', icon: FileText, onSelect: () => {} },

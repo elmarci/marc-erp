@@ -46,6 +46,7 @@
     --line-strong: 240 5% 84%;   /* bordes de inputs */
     --ink: 240 6% 10%;
     --ink-muted: 240 4% 40%;     /* 6.0:1 sobre blanco */
+    --on-ink: 0 0% 100%;         /* texto sobre fondo bg-ink */
     --brand: 128 57% 32%;        /* verde MARC, mismo tono, 5.0:1 con texto blanco */
     --brand-hover: 128 58% 27%;
     --brand-soft: 128 35% 94%;
@@ -87,6 +88,26 @@
     --pos-bg: 0 0% 6%;
     --pos-cart: 0 0% 9%;
     --pos-product: 0 0% 11%;
+
+    /* Fase 5 en modo oscuro */
+    --canvas: 0 0% 7%;
+    --surface: 0 0% 10%;
+    --surface-2: 0 0% 12.5%;
+    --line: 0 0% 18%;
+    --line-strong: 0 0% 24%;
+    --nav: 0 0% 5%;
+    --ink: 0 0% 95%;
+    --ink-muted: 0 0% 62%;
+    --on-ink: 0 0% 8%;
+    --brand: 128 50% 40%;
+    --brand-hover: 128 50% 35%;
+    --brand-soft: 128 20% 15%;
+    --ok: 170 50% 45%;
+    --warn: 32 85% 52%;
+    --bad: 4 70% 55%;
+    --ok-ink: 170 50% 60%;
+    --warn-ink: 32 85% 62%;
+    --bad-ink: 4 75% 68%;
   }
 }
 

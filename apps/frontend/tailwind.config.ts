@@ -65,6 +65,7 @@ const config: Config = {
         surface: { DEFAULT: 'hsl(var(--surface))', 2: 'hsl(var(--surface-2))' },
         line: { DEFAULT: 'hsl(var(--line))', strong: 'hsl(var(--line-strong))' },
         ink: { DEFAULT: 'hsl(var(--ink))', muted: 'hsl(var(--ink-muted))' },
+        'on-ink': 'hsl(var(--on-ink))',
         brand: { DEFAULT: 'hsl(var(--brand))', hover: 'hsl(var(--brand-hover))', soft: 'hsl(var(--brand-soft))' },
         ok: { DEFAULT: 'hsl(var(--ok))', ink: 'hsl(var(--ok-ink))' },
         warn: { DEFAULT: 'hsl(var(--warn))', ink: 'hsl(var(--warn-ink))' },

@@ -82,7 +82,7 @@ export function Truncate({ text, className }: { text: string; className?: string
     <Tooltip.Root delayDuration={300}>
       <Tooltip.Trigger asChild><span className={cn('block max-w-[280px] truncate', className)}>{text}</span></Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content sideOffset={4} className="erp z-50 max-w-xs rounded-ctl bg-ink px-2 py-1 text-meta text-white shadow-md">{text}</Tooltip.Content>
+        <Tooltip.Content sideOffset={4} className="erp z-50 max-w-xs rounded-ctl bg-ink px-2 py-1 text-meta text-on-ink shadow-md">{text}</Tooltip.Content>
       </Tooltip.Portal>
     </Tooltip.Root>
   );
@@ -183,11 +183,11 @@ export function DataTable<T>(p: DataTableProps<T>) {
   return (
     <Tooltip.Provider>
       {selectable && selRows.length > 0 && p.bulkActions && (
-        <div className="mx-3 mb-2 flex min-h-9 flex-wrap items-center gap-2 rounded-ctl bg-ink px-3 py-1 text-table text-white [&_button]:text-white">
+        <div className="mx-3 mb-2 flex min-h-9 flex-wrap items-center gap-2 rounded-ctl bg-ink px-3 py-1 text-table text-on-ink [&_button]:text-on-ink">
           <span className="tabular-nums">{selRows.length} {selRows.length === 1 ? 'elegida' : 'elegidas'}</span>
-          <span className="mx-1 h-4 w-px bg-white/20" />
+          <span className="mx-1 h-4 w-px bg-on-ink/20" />
           {p.bulkActions(selRows, clear)}
-          <button type="button" onClick={clear} className="ml-auto rounded p-1 hover:bg-white/10" aria-label="Quitar selección"><X className="size-4" /></button>
+          <button type="button" onClick={clear} className="ml-auto rounded p-1 hover:bg-on-ink/10" aria-label="Quitar selección"><X className="size-4" /></button>
         </div>
       )}
 

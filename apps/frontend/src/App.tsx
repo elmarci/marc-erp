@@ -60,7 +60,24 @@ export default function App() {
   useOfflineSync();
   return (
     <ConfirmProvider>
-      <Toaster position="top-right" richColors closeButton />
+      <Toaster
+        position="top-right"
+        closeButton
+        toastOptions={{
+          // Avisos sobrios: fondo blanco, texto oscuro y el color solo en el ícono.
+          classNames: {
+            toast: 'erp !rounded-srf !border-0 !bg-surface !text-ink !shadow-[0_12px_32px_-8px_rgba(0,0,0,.18),0_0_0_1px_hsl(var(--line))] !text-table',
+            title: '!font-medium',
+            description: '!text-ink-muted',
+            closeButton: '!border-line !bg-surface !text-ink-muted hover:!text-ink',
+            success: '[&_[data-icon]]:!text-ok',
+            error: '[&_[data-icon]]:!text-bad',
+            warning: '[&_[data-icon]]:!text-warn',
+            info: '[&_[data-icon]]:!text-ink-muted',
+            actionButton: '!bg-ink !text-on-ink',
+          },
+        }}
+      />
       <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
