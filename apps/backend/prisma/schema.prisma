@@ -120,6 +120,8 @@ enum ExpenseCategory {
   ELECTRICITY
   RENT
   OTHER
+  // Cuota mensual del NRUS y otros tributos (SUNAT, municipalidad).
+  TAXES
 }
 
 enum PromotionType {
@@ -634,6 +636,10 @@ model InventoryMovement {
   avgCostAfter   Decimal?     @map("avg_cost_after") @db.Decimal(10, 4)
   referenceType  String?      @map("reference_type") // "SALE", "PURCHASE", "ADJUSTMENT"
   referenceId    String?      @map("reference_id")
+  // Motivo del ajuste, de una lista cerrada (ver inventory/adjustment-reasons.ts):
+  // EXPIRED, DAMAGED, THEFT, INTERNAL_USE, TASTING, COUNT, ENTRY_ERROR, OTHER.
+  // Es lo que permite medir la merma en el estado de resultados.
+  reasonCode     String?      @map("reason_code")
   notes          String?
   userId         String?      @map("user_id")
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -644,6 +650,7 @@ model InventoryMovement {
   @@index([type])
   @@index([createdAt])
   @@index([referenceType, referenceId])
+  @@index([reasonCode])
   @@map("inventory_movements")
 }
 
@@ -651,6 +658,7 @@ model InventoryAdjustment {
   id        String   @id @default(uuid())
   userId    String   @map("user_id")
   reason    String
+  reasonCode String? @map("reason_code")
   notes     String?
   status    String   @default("APPLIED")
   createdAt DateTime @default(now()) @map("created_at")
@@ -1442,6 +1450,11 @@ model Expense {
   templateId  String?         @map("template_id") // si se generó solo desde una plantilla recurrente
   notes       String?
   userId      String          @map("user_id")
+  // Anulación: el gasto no se borra — se marca, se devuelve el dinero a la
+  // cuenta de la que salió y deja de contar en reportes.
+  voidedAt    DateTime?       @map("voided_at")
+  voidedById  String?         @map("voided_by_id")
+  voidReason  String?         @map("void_reason")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 

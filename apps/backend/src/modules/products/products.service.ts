@@ -561,6 +561,7 @@ export class ProductsService {
     physicalQuantity: number,
     reason: string,
     notes?: string,
+    reasonCode?: string,
   ) {
     const product = await prisma.product.findFirst({
       where: { id: productId, deletedAt: null },
@@ -576,6 +577,7 @@ export class ProductsService {
         data: {
           userId,
           reason,
+          reasonCode,
           notes,
           items: {
             create: {
@@ -604,6 +606,7 @@ export class ProductsService {
           unitCost: product.costPrice,
           referenceType: 'ADJUSTMENT',
           referenceId: adjustment.id,
+          reasonCode,
           notes: reason,
           userId,
         },
@@ -699,6 +702,7 @@ export class ProductsService {
         physicalQuantity,
         'Vencimiento',
         input.notes || `Lote${batch.batchNumber ? ` ${batch.batchNumber}` : ''} vencido (${expiry}) — ${input.lossQuantity} unid.`,
+        'EXPIRED',
       );
       resolvedNotes = resolvedNotes ?? `Merma registrada: ${input.lossQuantity} unid.`;
     }

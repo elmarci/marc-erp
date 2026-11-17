@@ -44,7 +44,7 @@ interface NetProfitReport {
 
 const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   PERSONNEL: 'Personal', BAGS: 'Bolsas', TRANSPORT: 'Transporte', SYSTEM: 'Sistema',
-  WATER: 'Agua', ELECTRICITY: 'Electricidad', RENT: 'Alquiler', OTHER: 'Otro',
+  WATER: 'Agua', ELECTRICITY: 'Electricidad', RENT: 'Alquiler', TAXES: 'Impuestos (cuota SUNAT)', OTHER: 'Otro',
 };
 
 /* ─── Date preset helpers ────────────────────────────────────────────────── */

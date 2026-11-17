@@ -30,6 +30,7 @@ const CashPage = lazy(() => import('@/modules/cash/CashPage').then((m) => ({ def
 const UsersPage = lazy(() => import('@/modules/users/UsersPage').then((m) => ({ default: m.UsersPage })));
 const AttendancePage = lazy(() => import('@/modules/attendance/AttendancePage').then((m) => ({ default: m.AttendancePage })));
 const SettingsPage = lazy(() => import('@/modules/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AdministrationPage = lazy(() => import('@/modules/administration/AdministrationPage').then((m) => ({ default: m.AdministrationPage })));
 const CategoriesPage = lazy(() => import('@/modules/categories/CategoriesPage').then((m) => ({ default: m.CategoriesPage })));
 
 function PageLoading() {
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="cash" element={<CashPage />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="administration" element={<AdministrationPage />} />
           <Route path="offers" element={<OffersPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="store-orders" element={<StoreOrdersPage />} />

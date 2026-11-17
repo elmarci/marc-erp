@@ -1,0 +1,29 @@
+name: Revisión
+
+# Corre en cada pull request y en cada push a main: si los tipos o las pruebas
+# de los cálculos de dinero fallan, se ve antes de que llegue a producción.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Backend · tipos
+        working-directory: apps/backend
+        run: npx prisma generate && npx tsc -p tsconfig.build.json --noEmit
+      - name: Backend · pruebas
+        working-directory: apps/backend
+        run: npx vitest run
+      - name: ERP · tipos
+        working-directory: apps/frontend
+        run: npx tsc --noEmit

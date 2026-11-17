@@ -22,7 +22,7 @@ Repo: `github.com/elmarci/marc-erp`, rama `main`. Dominios: tienda `www.tiendasm
 1. Instalar Git, Node 20+, Docker Desktop, Claude Code; `gh auth login` y `railway login`.
 2. Clonar el repo y **copiar encima el contenido del zip de migración** (trae los `.env`, imágenes y carpetas que no están en git).
 3. `docker-compose up --build` (servicios `erp_postgres`, `erp_redis`, `erp_backend`, `erp_frontend`, `erp_pgadmin`; los puertos salen de `docker-compose.yml`/`.env`).
-4. Base local vacía: `npm run db:seed` (o `prisma db push` + seed). **No hay migraciones**: el esquema se aplica con `prisma db push`. Los datos reales viven solo en Railway.
+4. Base local vacía: en `apps/backend`, `npx prisma migrate deploy` y luego `npm run db:seed`. El esquema se versiona con **migraciones** en `apps/backend/prisma/migrations` (desde 2026-11-17; antes era `prisma db push`). Los datos reales viven solo en Railway.
 5. Credenciales de prueba locales: ver `apps/backend/prisma` / seed y la pantalla de login local. Nunca usarlas en producción.
 
 Trampas conocidas:
@@ -36,7 +36,8 @@ Trampas conocidas:
 
 - **Push a `main` despliega solo** los servicios: `marc-erp-backend`, `Sistema ERP` (frontend), `Tienda Virtual` (store), `apps/delivery`, `mars-logistics`. Postgres y Redis son de Railway.
 - Seguir el estado: `railway status --json` (cada servicio `latestDeployment.status`: BUILDING → DEPLOYING → SUCCESS).
-- **Si cambias `schema.prisma`, aplica el esquema a producción** (no hay migraciones): `npx prisma db push --schema apps/backend/prisma/schema.prisma --skip-generate` con `DATABASE_URL` apuntando a la `DATABASE_PUBLIC_URL` de Railway (sácala con `railway variables`; **nunca la subas al repo**). Hazlo antes de que el backend nuevo arranque.
+- **Si cambias `schema.prisma`, crea una migración** (no uses `db push` en producción): en `apps/backend`, `npx prisma migrate dev --name <que_cambia>` contra la base local genera la carpeta en `prisma/migrations`; se sube al repo junto con el código. En producción se aplica con `npx prisma migrate deploy` con `DATABASE_URL` apuntando a la `DATABASE_PUBLIC_URL` de Railway (sácala con `railway variables`; **nunca la subas al repo**), antes de que el backend nuevo arranque. `migrate deploy` solo agrega lo pendiente y nunca borra columnas por su cuenta.
+- **Primera vez en producción (una sola vez):** la base se creó con `db push`, así que hay que marcar la migración inicial como ya aplicada: `npx prisma migrate resolve --applied 0_baseline` y recién después `npx prisma migrate deploy`. Antes conviene comprobar que producción coincide con el esquema de `main` anterior (`npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel <schema anterior> --exit-code`).
 - Dominios/Branding/despliegue: usa el skill del repo **`marc-brand`** (`.claude/skills/marc-brand`) para cualquier UI de marca o tema de dominio/deploy.
 - Preferencia visual de la tienda: look moderno tipo Rappi/PedidosYa, no impreso/serif; verde con moderación, azul secundario.
 

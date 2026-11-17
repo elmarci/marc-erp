@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { ADJUSTMENT_REASON_CODES } from '../inventory/adjustment-reasons';
 import multer from 'multer';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
@@ -240,10 +241,11 @@ router.get('/:id/movements', async (req: Request, res: Response, next: NextFunct
 
 router.post('/:id/adjust-stock', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { physicalQuantity, reason, notes } = z.object({
+    const { physicalQuantity, reason, notes, reasonCode } = z.object({
       physicalQuantity: z.number().min(0),
       reason: z.string().min(1),
       notes: z.string().optional(),
+      reasonCode: z.enum(ADJUSTMENT_REASON_CODES).optional(),
     }).parse(req.body);
 
     const result = await productsService.adjustStock(
@@ -252,6 +254,7 @@ router.post('/:id/adjust-stock', authorizeMinRole('WAREHOUSE'), async (req: Requ
       physicalQuantity,
       reason,
       notes,
+      reasonCode,
     );
     res.json({ success: true, data: result });
   } catch (err) { next(err); }

@@ -17,6 +17,7 @@ import { formatCurrency, formatCost, formatDateTime, cn, looksLikeScannedCode } 
 import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { MarginAlert } from '@/lib/marginAlerts';
+import { ADJUSTMENT_REASONS, adjustmentReasonLabel } from './adjustmentReasons';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface DashboardData {
@@ -36,7 +37,7 @@ interface Movement {
   product: { id: string; name: string; barcode: string | null };
 }
 interface Adjustment {
-  id: string; reason: string; notes: string | null; createdAt: string;
+  id: string; reason: string; reasonCode: string | null; notes: string | null; createdAt: string;
   user: { firstName: string; lastName: string };
   _count: { items: number };
   items: Array<{ productId: string; productName: string; systemQuantity: number; physicalQuantity: number; difference: number }>;
@@ -215,11 +216,14 @@ function CostHistoryModal({ product, onClose }: { product: StockProduct; onClose
 function QuickAdjustModal({ product, onClose }: { product: StockProduct; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [qty, setQty] = useState(String(product.current_stock));
+  const [reasonCode, setReasonCode] = useState('COUNT');
   const [reason, setReason] = useState('');
 
   const mutation = useMutation({
     mutationFn: () => api.post('/inventory/quick-adjust', {
-      productId: product.id, newQuantity: Number(qty), reason,
+      productId: product.id, newQuantity: Number(qty),
+      reasonCode: diff > 0 && isLossReason ? 'COUNT' : reasonCode,
+      reason: reason.trim().length >= 3 ? reason.trim() : adjustmentReasonLabel(reasonCode),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inv-stock'] });
@@ -232,6 +236,7 @@ function QuickAdjustModal({ product, onClose }: { product: StockProduct; onClose
   });
 
   const diff = Number(qty) - product.current_stock;
+  const isLossReason = ADJUSTMENT_REASONS.some(r => r.code === reasonCode && r.loss);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -259,15 +264,25 @@ function QuickAdjustModal({ product, onClose }: { product: StockProduct; onClose
             )}
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Motivo *</label>
+            <label className="mb-1.5 block text-sm font-medium">Motivo</label>
+            <select value={diff > 0 && isLossReason ? 'COUNT' : reasonCode} onChange={e => setReasonCode(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+              {ADJUSTMENT_REASONS.filter(r => diff <= 0 || !r.loss).map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+            </select>
+            {diff < 0 && isLossReason && (
+              <p className="mt-1.5 text-xs text-muted-foreground">Se contará como merma en el estado de resultados.</p>
+            )}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Detalle (opcional)</label>
             <Input value={reason} onChange={e => setReason(e.target.value)}
-              placeholder="Ej: Conteo físico, merma, rotura..." />
+              placeholder="Ej: 3 yogures pasados de fecha" />
           </div>
         </div>
         <div className="border-t p-4 flex gap-3">
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
           <Button className="flex-1" loading={mutation.isPending}
-            disabled={!reason || qty === '' || Number(qty) < 0 || diff === 0}
+            disabled={qty === '' || Number(qty) < 0 || diff === 0}
             onClick={() => mutation.mutate()}>
             Confirmar
           </Button>
@@ -280,6 +295,7 @@ function QuickAdjustModal({ product, onClose }: { product: StockProduct; onClose
 /* ─── Bulk Adjust Modal ──────────────────────────────────────────────────── */
 function BulkAdjustModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
+  const [reasonCode, setReasonCode] = useState('COUNT');
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
@@ -314,7 +330,8 @@ function BulkAdjustModal({ onClose }: { onClose: () => void }) {
 
   const mutation = useMutation({
     mutationFn: () => api.post('/inventory/adjustments', {
-      reason, notes: notes || undefined,
+      reasonCode, reason: reason.trim().length >= 3 ? reason.trim() : adjustmentReasonLabel(reasonCode),
+      notes: notes || undefined,
       items: items.map(i => ({ productId: i.productId, physicalQuantity: i.physicalQty })),
     }),
     onSuccess: () => {
@@ -338,9 +355,16 @@ function BulkAdjustModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="overflow-y-auto p-5 space-y-4 flex-1">
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className="mb-1 block text-sm font-medium">Motivo *</label>
-              <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Conteo físico mensual, merma..." />
+            <div>
+              <label className="mb-1 block text-sm font-medium">Motivo</label>
+              <select value={reasonCode} onChange={e => setReasonCode(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                {ADJUSTMENT_REASONS.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Detalle (opcional)</label>
+              <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: conteo mensual de bebidas" />
             </div>
             <div className="col-span-2">
               <label className="mb-1 block text-sm font-medium">Observaciones</label>
@@ -406,7 +430,7 @@ function BulkAdjustModal({ onClose }: { onClose: () => void }) {
         <div className="border-t p-5 flex gap-3 justify-end">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button loading={mutation.isPending}
-            disabled={!reason || items.length === 0 || changedCount === 0}
+            disabled={items.length === 0 || changedCount === 0}
             onClick={() => mutation.mutate()}>
             Aplicar ajuste ({changedCount} cambios)
           </Button>
@@ -926,7 +950,12 @@ function AdjustmentsTab() {
                     <tr key={adj.id} className="hover:bg-muted/30 cursor-pointer"
                       onClick={() => setExpanded(expanded === adj.id ? null : adj.id)}>
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatDateTime(adj.createdAt)}</td>
-                      <td className="px-4 py-3 font-medium">{adj.reason}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-medium">{adjustmentReasonLabel(adj.reasonCode)}</span>
+                        {adj.reason && adj.reason !== adjustmentReasonLabel(adj.reasonCode) && (
+                          <span className="text-muted-foreground"> · {adj.reason}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">{adj.user.firstName} {adj.user.lastName}</td>
                       <td className="px-4 py-3 text-center">{adj._count.items}</td>
                       <td className="px-4 py-3 text-right">

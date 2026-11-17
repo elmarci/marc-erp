@@ -300,14 +300,74 @@ export class TreasuryService {
     });
   }
 
+  // Corrige los datos descriptivos de un gasto. El monto y el método no se
+  // editan (ya movieron dinero): para cambiarlos se anula y se registra de nuevo.
+  async updateExpense(id: string, data: {
+    category?: string; description?: string; reference?: string | null; notes?: string | null; expenseDate?: Date;
+  }) {
+    const expense = await prisma.expense.findUnique({ where: { id } });
+    if (!expense) throw new NotFoundError('Gasto');
+    if (expense.voidedAt) throw new BusinessError('Este gasto está anulado y ya no se puede editar.');
+    return prisma.expense.update({
+      where: { id },
+      data: {
+        ...(data.category ? { category: data.category as never } : {}),
+        ...(data.description ? { description: data.description } : {}),
+        ...(data.reference !== undefined ? { reference: data.reference } : {}),
+        ...(data.notes !== undefined ? { notes: data.notes } : {}),
+        ...(data.expenseDate ? { expenseDate: data.expenseDate } : {}),
+      },
+    });
+  }
+
+  // Anula un gasto mal registrado: no se borra, queda marcado con quién y por
+  // qué, y el dinero vuelve a donde salió. Si salió de una caja de turno que
+  // sigue abierta vuelve a ese cajón; si esa caja ya cerró (su efectivo ya
+  // pasó a Caja General) vuelve a Caja General.
+  async voidExpense(id: string, userId: string, reason: string) {
+    return prisma.$transaction(async (tx) => {
+      const expense = await tx.expense.findUnique({ where: { id } });
+      if (!expense) throw new NotFoundError('Gasto');
+      if (expense.voidedAt) throw new BusinessError('Este gasto ya fue anulado.');
+
+      const amount = Number(expense.amount);
+      const cashMovement = await tx.cashMovement.findFirst({
+        where: { referenceType: 'EXPENSE', referenceId: id },
+        include: { cashSession: { select: { id: true, status: true } } },
+      });
+      const description = `Anulación de gasto: ${expense.description}`;
+
+      if (cashMovement && cashMovement.cashSession.status === 'OPEN') {
+        await tx.cashMovement.create({
+          data: {
+            cashSessionId: cashMovement.cashSession.id, type: 'DEPOSIT', amount,
+            reason: description, referenceType: 'EXPENSE_VOID', referenceId: id,
+          },
+        });
+      } else {
+        await this.recordMovement(
+          tx, 'DEPOSIT', amount, description, userId, 'EXPENSE_VOID', id,
+          cashMovement ? 'CASH' : methodToAccount(expense.method),
+        );
+      }
+
+      return tx.expense.update({
+        where: { id },
+        data: { voidedAt: new Date(), voidedById: userId, voidReason: reason },
+      });
+    });
+  }
+
   async listExpenses(filters: {
     page: number;
     limit: number;
     category?: string;
     dateFrom?: Date;
     dateTo?: Date;
+    includeVoided?: boolean;
   }) {
     const where: Record<string, unknown> = {};
+    if (!filters.includeVoided) where['voidedAt'] = null;
     if (filters.category) where['category'] = filters.category;
     if (filters.dateFrom || filters.dateTo) {
       where['expenseDate'] = {
@@ -336,7 +396,7 @@ export class TreasuryService {
   async getExpensesSummary(dateFrom: Date, dateTo: Date) {
     const rows = await prisma.expense.groupBy({
       by: ['category'],
-      where: { expenseDate: { gte: dateFrom, lte: dateTo } },
+      where: { voidedAt: null, expenseDate: { gte: dateFrom, lte: dateTo } },
       _sum: { amount: true },
       _count: true,
     });

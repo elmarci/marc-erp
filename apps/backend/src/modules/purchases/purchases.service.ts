@@ -6,6 +6,8 @@ import { emitEvent } from '../../config/socket';
 import { getAccountingState, getAgingBucket, emptyAgingSummary, type AgingBucket } from './purchase-state.util';
 import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
 import type { Prisma, PurchaseOrderStatus } from '@prisma/client';
+import { getSettingValues } from '../../utils/settings';
+import { purchaseTaxFactor, round4, weightedAverageCost } from '../../utils/costing';
 
 interface DirectPurchaseItemInput {
   productId: string;
@@ -666,6 +668,16 @@ export class PurchasesService {
   }
 
   /**
+   * Cuánto encarece el IGV el costo de las líneas de una compra (1 = nada).
+   * Ver purchaseTaxFactor: solo aplica si el IGV es costo para el negocio.
+   */
+  private async orderTaxFactor(order: { subtotal: Prisma.Decimal | number; taxAmount: Prisma.Decimal | number }): Promise<number> {
+    if (!(Number(order.taxAmount) > 0)) return 1;
+    const values = await getSettingValues(['purchase_igv_is_cost']);
+    return purchaseTaxFactor(Number(order.subtotal), Number(order.taxAmount), values.purchase_igv_is_cost !== 'false');
+  }
+
+  /**
    * Núcleo del Costo Promedio Ponderado: recalcula stock y costo de un
    * producto por UNA línea de compra (o bonificación), y deja el rastro en
    * el kardex (InventoryMovement) con el costo de antes/después para poder
@@ -678,7 +690,7 @@ export class PurchasesService {
    */
   private async applyPurchaseLine(
     tx: Prisma.TransactionClient,
-    input: { productId: string; quantity: number; unitCost: number; isBonus: boolean },
+    input: { productId: string; quantity: number; unitCost: number; isBonus: boolean; taxFactor?: number },
     context: { userId: string; supplierId: string; referenceId: string; notes: string },
   ) {
     // Bloquea la fila del producto hasta terminar: el costo promedio se calcula
@@ -687,13 +699,14 @@ export class PurchasesService {
     const product = await tx.product.findUnique({ where: { id: input.productId } });
     if (!product) throw new NotFoundError(`Producto ${input.productId}`);
 
-    const effectiveCost = input.isBonus ? 0 : input.unitCost;
+    // El costo que entra al inventario incluye el IGV de la compra cuando el
+    // negocio no lo recupera (NRUS): taxFactor = 1.18 en una compra "+IGV".
+    // El precio de lista del proveedor (supplierProduct) se guarda sin IGV.
+    const effectiveCost = input.isBonus ? 0 : round4(input.unitCost * (input.taxFactor ?? 1));
     const stockBefore = Number(product.currentStock);
     const avgCostBefore = Number(product.costPrice);
     const stockAfter = stockBefore + input.quantity;
-    const avgCostAfter = stockAfter > 0
-      ? (stockBefore * avgCostBefore + input.quantity * effectiveCost) / stockAfter
-      : avgCostBefore;
+    const avgCostAfter = weightedAverageCost(stockBefore, avgCostBefore, input.quantity, effectiveCost);
 
     await tx.product.update({
       where: { id: input.productId },
@@ -703,7 +716,7 @@ export class PurchasesService {
         // El costo real de ESTA compra (no el promedio) — es el que alimenta
         // la alerta de margen bajo en productos de precio volátil. Las
         // bonificaciones (costo 0) no cuentan como "último precio pagado".
-        ...(!input.isBonus && input.unitCost > 0 ? { lastPurchaseCost: input.unitCost, lastPurchaseAt: new Date() } : {}),
+        ...(!input.isBonus && input.unitCost > 0 ? { lastPurchaseCost: effectiveCost, lastPurchaseAt: new Date() } : {}),
       },
     });
 
@@ -890,6 +903,7 @@ export class PurchasesService {
           quantity: item.receivedQty,
           unitCost: item.unitCost,
           isBonus: item.isBonus ?? false,
+          taxFactor: await this.orderTaxFactor(order),
         }, {
           userId,
           supplierId: order.supplierId,
@@ -1141,6 +1155,7 @@ export class PurchasesService {
           quantity: item.quantity,
           unitCost: item.unitCost,
           isBonus: item.isBonus ?? false,
+          taxFactor: await this.orderTaxFactor({ subtotal, taxAmount }),
         }, {
           userId,
           supplierId: data.supplierId,
@@ -1563,6 +1578,7 @@ export class PurchasesService {
 
         await this.applyPurchaseLine(tx, {
           productId: toProductId, quantity: newQuantity ?? Number(m.quantity), unitCost: newUnitCost, isBonus: newIsBonus,
+          taxFactor: await this.orderTaxFactor(order),
         }, {
           userId, supplierId: order.supplierId, referenceId: orderId,
           notes: `Corrección de línea OC ${order.orderNumber} — ${reason} (${changeSummary})`,
