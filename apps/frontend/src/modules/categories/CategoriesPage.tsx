@@ -1,12 +1,12 @@
+// Categorías y subcategorías de productos (Inventario, POS y tienda online):
+// crear, editar, controles de vencimiento y precio volátil, imagen.
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Plus, X, Pencil, Trash2, FolderTree, ImagePlus, ChevronRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
+import { ChevronRight, FolderTree, ImagePlus, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Btn, Check, EmptyState, Field, Modal, PageHeader, RowMenu, StatusBadge, fieldCls, surfaceCls, useConfirm } from '@/components/erp'
 import { api, getErrorMessage } from '@/services/api'
+import { cn } from '@/lib/utils'
 
 interface CategoryNode {
   id: string
@@ -78,109 +78,72 @@ function CategoryModal({ category, parentOptions, defaultParentId, onClose }: {
     onError: (err) => toast.error(getErrorMessage(err)),
   })
 
+  const toggle = (k: 'isActive' | 'requiresExpiry' | 'volatilePricing') => () => setForm(v => ({ ...v, [k]: !v[k] }))
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-5">
-          <h2 className="text-lg font-bold">{isEdit ? 'Editar categoría' : 'Nueva categoría'}</h2>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+    <Modal open onOpenChange={(o) => !o && onClose()} title={isEdit ? 'Editar categoría' : 'Nueva categoría'}
+      footer={<>
+        <Btn onClick={onClose}>Cancelar</Btn>
+        <Btn variant="primary" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!form.name}>{isEdit ? 'Guardar cambios' : 'Crear categoría'}</Btn>
+      </>}>
+      <div className="flex flex-col gap-4">
+        <Field label="Nombre" required><input className={fieldCls} value={form.name} onChange={e => setForm(v => ({ ...v, name: e.target.value }))} placeholder="Ej: Licores" autoFocus /></Field>
+        <Field label="Categoría padre">
+          <select className={fieldCls} value={form.parentId} onChange={e => setForm(v => ({ ...v, parentId: e.target.value }))}>
+            <option value="">Ninguna (categoría principal)</option>
+            {parentOptions.filter(p => p.id !== category?.id).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Descripción"><input className={fieldCls} value={form.description} onChange={e => setForm(v => ({ ...v, description: e.target.value }))} placeholder="Opcional" /></Field>
+        <div className="grid grid-cols-2 items-end gap-3">
+          <Field label="Orden"><input type="number" className={cn(fieldCls, 'text-right tabular-nums')} value={form.sortOrder} onChange={e => setForm(v => ({ ...v, sortOrder: e.target.value }))} /></Field>
+          <label className="flex h-9 cursor-pointer items-center gap-2 text-table font-medium text-ink">
+            <Check checked={form.isActive} onChange={toggle('isActive')} label="Activa" />Activa
+          </label>
         </div>
 
-        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
-          <div>
-            <label className="mb-1 block text-sm font-medium">Nombre *</label>
-            <Input value={form.name} onChange={e => setForm(v => ({ ...v, name: e.target.value }))} placeholder="Ej: Licores" />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium">Categoría padre</label>
-            <select value={form.parentId} onChange={e => setForm(v => ({ ...v, parentId: e.target.value }))}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <option value="">Ninguna (categoría principal)</option>
-              {parentOptions.filter(p => p.id !== category?.id).map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium">Descripción</label>
-            <Input value={form.description} onChange={e => setForm(v => ({ ...v, description: e.target.value }))} placeholder="Opcional" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Orden</label>
-              <Input type="number" value={form.sortOrder} onChange={e => setForm(v => ({ ...v, sortOrder: e.target.value }))} />
-            </div>
-            <div className="flex items-end pb-2 gap-2">
-              <input type="checkbox" id="cat-active" checked={form.isActive}
-                onChange={e => setForm(v => ({ ...v, isActive: e.target.checked }))} className="h-4 w-4 rounded border-input" />
-              <label htmlFor="cat-active" className="text-sm font-medium">Activa</label>
-            </div>
-          </div>
-
-          <div className="rounded-lg border p-3 space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Controles del inventario</p>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-input" checked={form.requiresExpiry}
-                onChange={e => setForm(v => ({ ...v, requiresExpiry: e.target.checked }))} />
-              <span>
-                <span className="block text-sm font-medium">Vencimiento obligatorio</span>
-                <span className="block text-xs text-muted-foreground">
-                  Lácteos, panadería, carnes y embutidos. No se puede recibir una compra sin fecha de
-                  vencimiento y los productos (y subcategorías) quedan con el control activado.
-                </span>
+        <section className="flex flex-col divide-y divide-line rounded-ctl border border-line">
+          <p className="px-3 py-2 text-meta font-medium text-ink-muted">Controles del inventario</p>
+          <label className="flex cursor-pointer items-start gap-3 px-3 py-2.5">
+            <span className="pt-0.5"><Check checked={form.requiresExpiry} onChange={toggle('requiresExpiry')} label="Vencimiento obligatorio" /></span>
+            <span>
+              <span className="block text-table font-medium text-ink">Vencimiento obligatorio</span>
+              <span className="block text-meta text-ink-muted">
+                Lácteos, panadería, carnes y embutidos. No se puede recibir una compra sin fecha de vencimiento y los productos
+                (y subcategorías) quedan con el control activado.
               </span>
-            </label>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-input" checked={form.volatilePricing}
-                onChange={e => setForm(v => ({ ...v, volatilePricing: e.target.checked }))} />
-              <span>
-                <span className="block text-sm font-medium">Precio volátil (alerta de margen)</span>
-                <span className="block text-xs text-muted-foreground">
-                  Frutas y verduras. Si el último costo de compra deja poco margen contra el precio de venta,
-                  se avisa para que actualices el precio. Los productos a granel siempre tienen esta alerta.
-                </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 px-3 py-2.5">
+            <span className="pt-0.5"><Check checked={form.volatilePricing} onChange={toggle('volatilePricing')} label="Precio volátil" /></span>
+            <span>
+              <span className="block text-table font-medium text-ink">Precio volátil (alerta de margen)</span>
+              <span className="block text-meta text-ink-muted">
+                Frutas y verduras. Si el último costo de compra deja poco margen contra el precio de venta, se avisa para que
+                actualices el precio. Los productos a granel siempre tienen esta alerta.
               </span>
-            </label>
-          </div>
+            </span>
+          </label>
+        </section>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">Imagen</label>
-            <div className="flex items-center gap-3">
-              {form.imageUrl ? (
-                <img src={form.imageUrl} alt="" className="h-16 w-16 rounded-lg object-cover border" />
-              ) : (
-                <div className="h-16 w-16 rounded-lg border border-dashed flex items-center justify-center text-muted-foreground">
-                  <ImagePlus className="h-5 w-5" />
-                </div>
-              )}
-              <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) imageUploadMutation.mutate(f) }} />
-              <Button type="button" variant="outline" size="sm" loading={imageUploadMutation.isPending}
-                onClick={() => fileInputRef.current?.click()}>
-                {form.imageUrl ? 'Cambiar' : 'Subir imagen'}
-              </Button>
-              {form.imageUrl && (
-                <Button type="button" variant="ghost" size="sm" onClick={() => setForm(v => ({ ...v, imageUrl: '' }))}>Quitar</Button>
-              )}
-            </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-table font-medium text-ink">Imagen</span>
+          <div className="flex items-center gap-3">
+            {form.imageUrl
+              ? <img src={form.imageUrl} alt="" className="size-16 rounded-ctl object-cover shadow-[0_0_0_1px_hsl(var(--line))]" />
+              : <div className="grid size-16 place-items-center rounded-ctl bg-ink/[0.04] text-ink-muted shadow-[inset_0_0_0_1px_hsl(var(--line-strong))]"><ImagePlus className="size-5" /></div>}
+            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) imageUploadMutation.mutate(f) }} />
+            <Btn size="sm" loading={imageUploadMutation.isPending} onClick={() => fileInputRef.current?.click()}>{form.imageUrl ? 'Cambiar' : 'Subir imagen'}</Btn>
+            {form.imageUrl && <Btn size="sm" variant="ghost" onClick={() => setForm(v => ({ ...v, imageUrl: '' }))}>Quitar</Btn>}
           </div>
-        </div>
-
-        <div className="border-t p-5 flex gap-3 justify-end">
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!form.name}>
-            {isEdit ? 'Guardar cambios' : 'Crear categoría'}
-          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
-/* ─── Category Row ───────────────────────────────────────────────────── */
+/* ─── Fila de categoría (con sus subcategorías) ─────────────────────────── */
 function CategoryRow({ node, depth, onEdit, onAddChild, onDelete }: {
   node: CategoryNode; depth: number
   onEdit: (c: CategoryNode) => void
@@ -189,32 +152,30 @@ function CategoryRow({ node, depth, onEdit, onAddChild, onDelete }: {
 }) {
   return (
     <>
-      <div className={`flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 ${depth > 0 ? 'border-t' : 'border-t'}`}
-        style={{ paddingLeft: `${16 + depth * 28}px` }}>
-        {depth > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
-        {node.imageUrl ? (
-          <img src={node.imageUrl} alt="" className="h-9 w-9 rounded-lg object-cover border shrink-0" />
-        ) : (
-          <div className="h-9 w-9 rounded-lg border bg-muted flex items-center justify-center shrink-0">
-            <FolderTree className="h-4 w-4 text-muted-foreground" />
+      <div className="flex items-center gap-3 border-t border-line py-2 pr-2 first:border-t-0 hover:bg-surface-2" style={{ paddingLeft: `${12 + depth * 28}px` }}>
+        {depth > 0 && <ChevronRight className="size-3.5 shrink-0 text-ink-muted" />}
+        {node.imageUrl
+          ? <img src={node.imageUrl} alt="" className="size-8 shrink-0 rounded-ctl object-cover" />
+          : <div className="grid size-8 shrink-0 place-items-center rounded-ctl bg-ink/[0.05]"><FolderTree className="size-4 text-ink-muted" /></div>}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-table font-medium">{node.name}</p>
+          <div className="flex flex-wrap items-center gap-x-2 text-meta text-ink-muted">
+            <span className="tabular-nums">{node._count.products} productos</span>
+            {node.description && <span className="truncate">{node.description}</span>}
           </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm truncate">{node.name}</p>
-          {node.description && <p className="text-xs text-muted-foreground truncate">{node.description}</p>}
         </div>
-        {node.requiresExpiry && <Badge variant="warning" className="shrink-0">Vencimiento</Badge>}
-        {node.volatilePricing && <Badge variant="secondary" className="shrink-0">Precio volátil</Badge>}
-        <Badge variant="secondary" className="shrink-0">{node._count.products} productos</Badge>
-        {!node.isActive && <Badge variant="secondary" className="shrink-0">Inactiva</Badge>}
-        <div className="flex gap-1 shrink-0">
-          {depth === 0 && (
-            <Button variant="ghost" size="sm" onClick={() => onAddChild(node.id)}>+ Sub</Button>
-          )}
-          <Button variant="ghost" size="icon-sm" onClick={() => onEdit(node)}><Pencil className="h-3.5 w-3.5" /></Button>
-          <Button variant="ghost" size="icon-sm" className="text-destructive" onClick={() => onDelete(node)}>
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+        <div className="hidden shrink-0 flex-wrap justify-end gap-1 sm:flex">
+          {node.requiresExpiry && <StatusBadge tone="warn">Vencimiento</StatusBadge>}
+          {node.volatilePricing && <StatusBadge tone="neutral">Precio volátil</StatusBadge>}
+          {!node.isActive && <StatusBadge tone="muted">Inactiva</StatusBadge>}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {depth === 0 && <Btn size="sm" variant="ghost" className="hidden sm:inline-flex" onClick={() => onAddChild(node.id)}><Plus />Subcategoría</Btn>}
+          <Btn size="sm" onClick={() => onEdit(node)}><Pencil />Editar</Btn>
+          <RowMenu label={`Acciones de ${node.name}`} actions={[
+            ...(depth === 0 ? [{ label: 'Agregar subcategoría', icon: Plus, onSelect: () => onAddChild(node.id) }] : []),
+            { label: 'Eliminar', icon: Trash2, danger: true, separated: depth === 0, onSelect: () => onDelete(node) },
+          ]} />
         </div>
       </div>
       {node.children.map(child => (
@@ -224,9 +185,10 @@ function CategoryRow({ node, depth, onEdit, onAddChild, onDelete }: {
   )
 }
 
-/* ─── Main Page ──────────────────────────────────────────────────────── */
+/* ─── Página ─────────────────────────────────────────────────────────── */
 export function CategoriesPage() {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const [showModal, setShowModal] = useState(false)
   const [editCategory, setEditCategory] = useState<CategoryNode | undefined>()
   const [defaultParentId, setDefaultParentId] = useState<string | undefined>()
@@ -247,36 +209,22 @@ export function CategoriesPage() {
 
   const openCreate = (parentId?: string) => { setEditCategory(undefined); setDefaultParentId(parentId); setShowModal(true) }
   const openEdit = (c: CategoryNode) => { setEditCategory(c); setDefaultParentId(undefined); setShowModal(true) }
+  const remove = async (c: CategoryNode) => {
+    const r = await confirm({ title: `Eliminar la categoría "${c.name}"`, confirmLabel: 'Eliminar', tone: 'danger' })
+    if (r.ok) deleteMutation.mutate(c.id)
+  }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Categorías</h1>
-          <p className="text-sm text-muted-foreground">Organiza categorías y subcategorías de productos (usadas en Inventario, POS y la tienda online)</p>
-        </div>
-        <Button onClick={() => openCreate()}><Plus className="mr-2 h-4 w-4" />Nueva categoría</Button>
-      </div>
+    <div className="erp flex flex-col gap-5">
+      <PageHeader title="Categorías" actions={<Btn variant="primary" onClick={() => openCreate()}><Plus />Nueva categoría</Btn>}>
+        <p className="text-table text-ink-muted">Categorías y subcategorías de productos, usadas en Inventario, POS y la tienda online</p>
+      </PageHeader>
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Cargando...</div>
-          ) : topLevel.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 p-12 text-muted-foreground">
-              <FolderTree className="h-12 w-12 opacity-20" />
-              <p>No hay categorías creadas.</p>
-            </div>
-          ) : (
-            <div>
-              {topLevel.map(node => (
-                <CategoryRow key={node.id} node={node} depth={0} onEdit={openEdit} onAddChild={openCreate}
-                  onDelete={(c) => { if (confirm(`¿Eliminar "${c.name}"?`)) deleteMutation.mutate(c.id) }} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div className={cn('overflow-hidden', surfaceCls)}>
+        {isLoading ? <div className="py-12 text-center text-table text-ink-muted">Cargando…</div>
+          : topLevel.length === 0 ? <EmptyState icon={FolderTree} title="No hay categorías creadas." />
+          : topLevel.map(node => <CategoryRow key={node.id} node={node} depth={0} onEdit={openEdit} onAddChild={openCreate} onDelete={remove} />)}
+      </div>
 
       {showModal && (
         <CategoryModal
