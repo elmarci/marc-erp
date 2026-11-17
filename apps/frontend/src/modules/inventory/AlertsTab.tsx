@@ -39,7 +39,7 @@ function MarginAlertsPanel() {
     const r = await confirm({
       title: `No avisar más el margen de "${a.name}"`,
       description: 'Úsalo si se vende barato a propósito o el costo está en otra unidad.',
-      confirmLabel: 'No avisar',
+      confirmLabel: 'No avisar', tone: 'primary',
     });
     if (r.ok) muteMutation.mutate(a.productId);
   };

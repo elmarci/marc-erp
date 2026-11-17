@@ -1,21 +1,24 @@
+// Detalle de una venta: datos, pagos, productos, ticket y anulación.
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Ban, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { ReceiptModal, type ReceiptData } from '@/modules/pos/ReceiptModal';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Btn, Panel, StatusBadge, tableCls, tdCls, thCls, useConfirm } from '@/components/erp';
 import { api, getErrorMessage } from '@/services/api';
-import { formatCurrency, formatDateTime, STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/utils';
+import { cn, formatCurrency, formatDateTime, STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
+import { SALE_STATUS_TONE } from './SalesPage';
+
+const DOC_LABELS: Record<string, string> = { BOLETA: 'Boleta', FACTURA: 'Factura', NOTA_VENTA: 'Nota de venta', TICKET: 'Ticket' };
 
 export function SaleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { hasMinRole } = useAuthStore();
+  const confirm = useConfirm();
 
   const { data: sale, isLoading } = useQuery({
     queryKey: ['sale', id],
@@ -55,115 +58,89 @@ export function SaleDetailPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Cargando...</div>;
-  if (!sale) return <div className="p-8 text-center text-muted-foreground">Venta no encontrada</div>;
+  if (isLoading) return <div className="erp py-16 text-center text-table text-ink-muted">Cargando…</div>;
+  if (!sale) return <div className="erp py-16 text-center text-table text-ink-muted">Venta no encontrada</div>;
+
+  const voidSale = async () => {
+    const r = await confirm({
+      title: `Anular venta ${sale.saleNumber}`,
+      description: 'La venta queda anulada y sus productos vuelven al stock.',
+      confirmLabel: 'Anular venta',
+      reason: { label: 'Motivo de anulación', placeholder: 'Ej.: el cliente se arrepintió' },
+    });
+    if (r.ok && r.reason) voidMutation.mutate(r.reason);
+  };
+  const row = (label: string, value: React.ReactNode, cls?: string) => (
+    <div className={cn('flex justify-between gap-3', cls)}><span className="text-ink-muted">{label}</span><span className="tabular-nums">{value}</span></div>
+  );
 
   return (
-    <div className="space-y-6 max-w-3xl animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {/* navigate(-1) en vez de navigate('/sales') fijo — así vuelve a la
-              página, fila y filtros exactos de donde vino en vez de resetear
-              siempre al inicio de la lista. */}
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+    <div className="erp flex max-w-3xl flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {/* navigate(-1): vuelve a la página y filtros de donde vino. */}
+          <Btn variant="ghost" size="sm" aria-label="Volver" onClick={() => navigate(-1)}><ArrowLeft /></Btn>
           <div>
-            <h1 className="text-2xl font-bold">{sale.saleNumber}</h1>
-            <p className="text-sm text-muted-foreground">{formatDateTime(sale.createdAt)}</p>
+            <h1 className="flex items-center gap-2 font-mono text-title font-semibold tracking-tight text-ink">
+              {sale.saleNumber}
+              <StatusBadge tone={SALE_STATUS_TONE[sale.status] ?? 'neutral'} className="font-sans">{STATUS_LABELS[sale.status] ?? sale.status}</StatusBadge>
+            </h1>
+            <p className="text-table text-ink-muted">{formatDateTime(sale.createdAt)}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={sale.status === 'COMPLETED' ? 'success' : 'destructive'}>
-            {STATUS_LABELS[sale.status] ?? sale.status}
-          </Badge>
-          <Button variant="outline" size="sm" onClick={() => setShowReceipt(true)}>
-            <Printer className="mr-2 h-4 w-4" />Ticket
-          </Button>
+          <Btn onClick={() => setShowReceipt(true)}><Printer />Ticket</Btn>
           {hasMinRole('SUPERVISOR') && sale.status === 'COMPLETED' && (
-            <Button variant="destructive" size="sm"
-              onClick={() => {
-                const reason = window.prompt('Motivo de anulación:');
-                if (reason) voidMutation.mutate(reason);
-              }}>
-              <Ban className="mr-2 h-4 w-4" />Anular
-            </Button>
+            <Btn variant="danger" loading={voidMutation.isPending} onClick={voidSale}><Ban />Anular</Btn>
           )}
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Información</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Cajero</span>
-              <span>{sale.cashier.firstName} {sale.cashier.lastName}</span></div>
-            {sale.customer && <div className="flex justify-between"><span className="text-muted-foreground">Cliente</span>
-              <span>{sale.customer.firstName} {sale.customer.lastName}</span></div>}
-            <div className="flex justify-between"><span className="text-muted-foreground">Documento</span>
-              <span>{sale.documentType}</span></div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="text-base">Pagos</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {receiptPayments.map((p, i) => (
-              <div key={i} className="flex justify-between">
-                <span className="text-muted-foreground">{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</span>
-                <span className="font-medium">{formatCurrency(p.amount)}</span>
-              </div>
-            ))}
-            {change > 0.004 && (
-              <div className="flex justify-between border-t pt-2">
-                <span className="text-muted-foreground">Vuelto</span>
-                <span className="font-medium">{formatCurrency(change)}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-5 md:grid-cols-2">
+        <Panel title="Información" bodyClassName="flex flex-col gap-2 p-4 text-table">
+          {row('Cajero', `${sale.cashier.firstName} ${sale.cashier.lastName}`)}
+          {sale.customer && row('Cliente', `${sale.customer.firstName} ${sale.customer.lastName}`)}
+          {row('Documento', DOC_LABELS[sale.documentType] ?? sale.documentType)}
+          {sale.notes && row('Nota', sale.notes)}
+        </Panel>
+        <Panel title="Pagos" bodyClassName="flex flex-col gap-2 p-4 text-table">
+          {receiptPayments.map((p, i) => <div key={i}>{row(PAYMENT_METHOD_LABELS[p.method] ?? p.method, <span className="font-medium">{formatCurrency(p.amount)}</span>)}</div>)}
+          {change > 0.004 && row('Vuelto', <span className="font-medium">{formatCurrency(change)}</span>, 'border-t border-line pt-2')}
+        </Panel>
       </div>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Productos</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-2 text-left font-medium">Producto</th>
-                <th className="px-4 py-2 text-right font-medium">Cant.</th>
-                <th className="px-4 py-2 text-right font-medium">Precio</th>
-                <th className="px-4 py-2 text-right font-medium">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
+      <Panel title="Productos" meta={`${sale.items.length} línea(s)`}>
+        <div className="overflow-x-auto">
+          <table className={tableCls}>
+            <thead><tr>
+              <th className={thCls}>Producto</th>
+              <th className={cn(thCls, 'text-right')}>Cant.</th>
+              <th className={cn(thCls, 'text-right')}>Precio</th>
+              <th className={cn(thCls, 'text-right')}>Subtotal</th>
+            </tr></thead>
+            <tbody>
               {sale.items.map((item) => (
                 <tr key={item.id}>
-                  <td className="px-4 py-2">{item.productName}</td>
-                  <td className="px-4 py-2 text-right">{Number(item.quantity)}</td>
-                  <td className="px-4 py-2 text-right">{formatCurrency(item.unitPrice)}</td>
-                  <td className="px-4 py-2 text-right font-medium">{formatCurrency(item.subtotal)}</td>
+                  <td className={tdCls}>{item.productName}</td>
+                  <td className={cn(tdCls, 'text-right tabular-nums')}>{Number(item.quantity)}{item.unit ? <span className="ml-1 text-meta text-ink-muted">{item.unit}</span> : null}</td>
+                  <td className={cn(tdCls, 'text-right tabular-nums')}>{formatCurrency(item.unitPrice)}</td>
+                  <td className={cn(tdCls, 'text-right font-medium tabular-nums')}>{formatCurrency(item.subtotal)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="border-t p-4 space-y-1 text-sm">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Subtotal</span><span>{formatCurrency(sale.subtotal)}</span></div>
-            {Number(sale.discountAmount) > 0 && <div className="flex justify-between text-success">
-              <span>Descuento</span><span>-{formatCurrency(sale.discountAmount)}</span></div>}
-            <div className="flex justify-between text-muted-foreground">
-              <span>IGV</span><span>{formatCurrency(sale.taxAmount)}</span></div>
-            <div className="flex justify-between font-bold text-base border-t pt-1">
-              <span>TOTAL</span><span>{formatCurrency(sale.totalAmount)}</span></div>
-            {Number(sale.commissionAmount ?? 0) > 0 && <>
-              <div className="flex justify-between text-muted-foreground">
-                <span>Comisión tarjeta ({Number(sale.commissionPercent)}%)</span><span>{formatCurrency(Number(sale.commissionAmount))}</span></div>
-              <div className="flex justify-between font-semibold">
-                <span>Cobrado al cliente</span><span>{formatCurrency(Number(sale.totalAmount) + Number(sale.commissionAmount))}</span></div>
-            </>}
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="ml-auto flex max-w-xs flex-col gap-1 p-4 text-table">
+          {row('Subtotal', formatCurrency(sale.subtotal))}
+          {Number(sale.discountAmount) > 0 && row('Descuento', `-${formatCurrency(sale.discountAmount)}`)}
+          {row('IGV', formatCurrency(sale.taxAmount))}
+          <div className="mt-1 flex justify-between border-t border-line pt-2 text-section font-semibold"><span>Total</span><span className="tabular-nums">{formatCurrency(sale.totalAmount)}</span></div>
+          {Number(sale.commissionAmount ?? 0) > 0 && <>
+            {row(`Comisión tarjeta (${Number(sale.commissionPercent)}%)`, formatCurrency(Number(sale.commissionAmount)))}
+            <div className="flex justify-between font-semibold"><span>Cobrado al cliente</span><span className="tabular-nums">{formatCurrency(Number(sale.totalAmount) + Number(sale.commissionAmount))}</span></div>
+          </>}
+        </div>
+      </Panel>
       {showReceipt && (
         <ReceiptModal
           data={{

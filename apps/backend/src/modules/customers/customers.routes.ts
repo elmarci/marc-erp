@@ -104,17 +104,21 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Los campos vacíos llegan como null desde el formulario de Clientes
+    // (igual que al editar); antes se rechazaban y no se podía crear un
+    // cliente sin llenar todos los datos opcionales.
     const schema = z.object({
-      taxId: z.string().optional(),
-      taxIdType: z.string().optional(),
+      taxId: z.string().optional().nullable(),
+      taxIdType: z.string().optional().nullable(),
       firstName: z.string().min(1),
-      lastName: z.string().optional(),
-      businessName: z.string().optional(),
-      email: z.string().email().optional(),
-      phone: z.string().optional(),
-      address: z.string().optional(),
+      lastName: z.string().optional().nullable(),
+      businessName: z.string().optional().nullable(),
+      email: z.string().email().optional().nullable().or(z.literal('').transform(() => null)),
+      phone: z.string().optional().nullable(),
+      address: z.string().optional().nullable(),
       type: z.enum(['REGULAR', 'WHOLESALE', 'VIP', 'CREDIT']).default('REGULAR'),
       creditLimit: z.number().min(0).default(0),
+      notes: z.string().optional().nullable(),
     });
     const data = schema.parse(req.body) as Parameters<typeof prisma.customer.create>[0]['data'];
     const customer = await prisma.customer.create({ data });
