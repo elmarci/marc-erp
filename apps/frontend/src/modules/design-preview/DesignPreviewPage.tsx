@@ -11,19 +11,24 @@ import { CommandPalette, Sidebar, Topbar } from './Shell';
 import { ListView, type TableState } from './ListView';
 import { ConfirmDialog, FormView } from './FormView';
 import { compras, type CompraDemo } from './data';
+import { CajaView, CierreDialog, SalidaSheet, type CajaTab } from './CajaView';
 
 export function DesignPreviewPage() {
   const [params, setParams] = useSearchParams();
-  const vista = params.get('vista') === 'formulario' ? 'formulario' : 'lista';
+  const vista = (['formulario', 'caja'].includes(params.get('vista') ?? '') ? params.get('vista') : 'lista') as 'lista' | 'formulario' | 'caja';
+  const cajaTab = (params.get('caja') as CajaTab) || 'hoy';
+  const [salida, setSalida] = useState(params.get('salida') === '1');
+  const [cierre, setCierre] = useState(params.get('cierre') === '1');
   const tableState = (params.get('tabla') as TableState) || 'datos';
   const [collapsed, setCollapsed] = useState(params.get('menu') === 'chico');
   const [mobileOpen, setMobileOpen] = useState(params.get('menu') === 'abierto');
   const [search, setSearch] = useState(params.get('buscar') === '1');
   const [toVoid, setToVoid] = useState<CompraDemo | null>(params.get('anular') ? compras[0] : null);
 
-  const go = (v: 'lista' | 'formulario') => {
+  const go = (v: 'lista' | 'formulario' | 'caja', extra?: Record<string, string>) => {
     const p = new URLSearchParams(params);
     if (v === 'lista') p.delete('vista'); else p.set('vista', v);
+    Object.entries(extra ?? {}).forEach(([k, val]) => p.set(k, val));
     setParams(p);
   };
 
@@ -35,24 +40,29 @@ export function DesignPreviewPage() {
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
-        active="Compras"
+        active={vista === 'caja' ? 'Caja' : 'Compras'}
+        onNavigate={(label) => label === 'Caja' ? go('caja') : label === 'Compras' ? go('lista') : undefined}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
       />
       <div className="flex min-w-0 flex-1 flex-col lg:py-2 lg:pr-2">
         <div className={cn('flex min-h-0 flex-1 flex-col bg-surface lg:rounded-srf lg:shadow-[0_0_0_1px_hsl(var(--line))]')}>
           <Topbar
-            crumbs={vista === 'lista' ? ['Compras e inventario', 'Compras'] : ['Compras e inventario', 'Compras', 'Registrar compra']}
+            crumbs={vista === 'caja' ? ['Dinero', 'Caja'] : vista === 'lista' ? ['Compras e inventario', 'Compras'] : ['Compras e inventario', 'Compras', 'Registrar compra']}
             onSearch={() => setSearch(true)}
             onMenu={() => setMobileOpen(true)}
           />
           <main className="mx-auto w-full max-w-[1240px] flex-1 px-4 py-5 lg:px-8 lg:py-7">
-            {vista === 'lista'
+            {vista === 'caja' ? (
+              <CajaView tab={cajaTab} onTab={(t) => go('caja', { caja: t })} onSalida={() => setSalida(true)} onCerrar={() => setCierre(true)} />
+            ) : vista === 'lista'
               ? <ListView tableState={tableState} onNew={() => go('formulario')} onVoid={setToVoid} />
-              : <FormView onCancel={() => go('lista')} />}
+              : <FormView onCancel={() => go('lista')} pagoInicial={(params.get('pago') as 'ahora' | 'credito' | 'pagador') || 'ahora'} />}
           </main>
         </div>
       </div>
+      <SalidaSheet open={salida} onOpenChange={setSalida} />
+      <CierreDialog open={cierre} onOpenChange={setCierre} />
       <CommandPalette open={search} onOpenChange={setSearch} />
       <ConfirmDialog compra={toVoid} onOpenChange={(o) => !o && setToVoid(null)} />
     </div>

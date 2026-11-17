@@ -30,6 +30,7 @@ export const groups: Group[] = [
   ] },
   { label: 'Dinero', items: [
     { label: 'Caja', icon: Wallet },
+    { label: 'Gastos', icon: Receipt, count: 2 },
     { label: 'Reportes', icon: TrendingUp },
     { label: 'Administración', icon: Landmark },
   ] },
@@ -51,12 +52,12 @@ export const groups: Group[] = [
   ] },
 ];
 
-function NavLinkDemo({ item, active, collapsed }: { item: Item; active: boolean; collapsed: boolean }) {
+function NavLinkDemo({ item, active, collapsed, onNavigate }: { item: Item; active: boolean; collapsed: boolean; onNavigate?: (l: string) => void }) {
   const Icon = item.icon;
   return (
     <a
       href="#"
-      onClick={(e) => e.preventDefault()}
+      onClick={(e) => { e.preventDefault(); onNavigate?.(item.label); }}
       title={collapsed ? item.label : undefined}
       aria-current={active ? 'page' : undefined}
       className={cn(
@@ -78,7 +79,8 @@ function NavLinkDemo({ item, active, collapsed }: { item: Item; active: boolean;
   );
 }
 
-export function Sidebar({ collapsed, onToggle, active, mobileOpen, onCloseMobile }: {
+export function Sidebar({ collapsed, onToggle, active, mobileOpen, onCloseMobile, onNavigate }: {
+  onNavigate?: (label: string) => void;
   collapsed: boolean; onToggle: () => void; active: string; mobileOpen: boolean; onCloseMobile: () => void;
 }) {
   const [closed, setClosed] = useState<Record<string, boolean>>({ 'Tienda online': true });
@@ -128,7 +130,7 @@ export function Sidebar({ collapsed, onToggle, active, mobileOpen, onCloseMobile
                 {!isClosed && (
                   <div className="flex flex-col gap-px">
                     {g.items.map((i) => (
-                      <NavLinkDemo key={i.label} item={i} active={i.label === active} collapsed={collapsed} />
+                      <NavLinkDemo key={i.label} item={i} active={i.label === active} collapsed={collapsed} onNavigate={onNavigate} />
                     ))}
                   </div>
                 )}
