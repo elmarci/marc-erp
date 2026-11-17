@@ -1,13 +1,14 @@
+// Usuarios del ERP: lista, crear, editar (perfil, estado, horario) y desactivar.
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Plus, Edit, UserX, Clock } from 'lucide-react';
+import { Clock, Pencil, Plus, UserX, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+  Btn, EmptyState, PageHeader, RowMenu, StatusBadge, surfaceCls, tableCls, tdCls, thCls, useConfirm,
+} from '@/components/erp';
 import { api, getErrorMessage } from '@/services/api';
-import { formatDateTime, ROLE_LABELS, STATUS_LABELS } from '@/lib/utils';
-import { UserFormModal, EditableUser } from './UserFormModal';
+import { cn, formatDateTime, ROLE_LABELS, STATUS_LABELS } from '@/lib/utils';
+import { UserFormModal, type EditableUser } from './UserFormModal';
 import type { WorkSchedule } from '@/modules/attendance/attendance';
 
 interface User {
@@ -15,8 +16,11 @@ interface User {
   role: string; status: string; lastLoginAt: string | null; workSchedule: WorkSchedule | null;
 }
 
+const STATUS_TONE: Record<string, 'ok' | 'bad' | 'muted'> = { ACTIVE: 'ok', LOCKED: 'bad' };
+
 export function UsersPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [page] = useState(1);
   const [form, setForm] = useState<{ user?: EditableUser } | null>(null);
 
@@ -36,76 +40,62 @@ export function UsersPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Usuarios</h1>
-        <Button onClick={() => setForm({})}><Plus className="mr-2 h-4 w-4" />Nuevo usuario</Button>
-      </div>
+  const deactivate = async (user: User) => {
+    const r = await confirm({ title: `Desactivar a ${user.firstName} ${user.lastName}`, description: 'Ya no podrá ingresar al sistema.', confirmLabel: 'Desactivar' });
+    if (r.ok) deactivateMutation.mutate(user.id);
+  };
+  const users = data?.data ?? [];
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Cargando...</div>
-          ) : (data?.data ?? []).length === 0 ? (
-            <div className="flex flex-col items-center gap-3 p-12 text-muted-foreground">
-              <Users className="h-12 w-12 opacity-20" />
-              <p>No hay usuarios registrados</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium">Usuario</th>
-                    <th className="px-4 py-3 text-left font-medium">Correo</th>
-                    <th className="px-4 py-3 text-center font-medium">Rol</th>
-                    <th className="px-4 py-3 text-center font-medium">Estado</th>
-                    <th className="px-4 py-3 text-left font-medium">Último acceso</th>
-                    <th className="px-4 py-3 text-center font-medium">Acciones</th>
+  return (
+    <div className="erp flex flex-col gap-5">
+      <PageHeader title="Usuarios" actions={<Btn variant="primary" onClick={() => setForm({})}><Plus />Nuevo usuario</Btn>}>
+        <p className="text-table text-ink-muted">{data ? `${data.pagination.total} usuarios` : 'Accesos al sistema'}</p>
+      </PageHeader>
+
+      <div className={cn('overflow-hidden', surfaceCls)}>
+        {isLoading ? <div className="py-12 text-center text-table text-ink-muted">Cargando…</div>
+          : users.length === 0 ? <EmptyState icon={Users} title="No hay usuarios registrados" /> : (
+          <div className="overflow-x-auto">
+            <table className={tableCls}>
+              <thead><tr>
+                <th className={thCls}>Usuario</th>
+                <th className={cn(thCls, 'hidden md:table-cell')}>Correo</th>
+                <th className={thCls}>Rol</th>
+                <th className={thCls}>Estado</th>
+                <th className={cn(thCls, 'hidden sm:table-cell')}>Último acceso</th>
+                <th className={cn(thCls, 'w-px')}><span className="sr-only">Acciones</span></th>
+              </tr></thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id} className="hover:bg-surface-2">
+                    <td className={cn(tdCls, 'py-1.5')}>
+                      <div className="font-medium">{user.firstName} {user.lastName}</div>
+                      <div className="flex items-center gap-2 text-meta text-ink-muted">
+                        @{user.username}
+                        {user.workSchedule && <span className="inline-flex items-center gap-1"><Clock className="size-3" />con horario</span>}
+                      </div>
+                    </td>
+                    <td className={cn(tdCls, 'hidden text-ink-muted md:table-cell')}>{user.email}</td>
+                    <td className={cn(tdCls, 'text-ink-muted')}>{ROLE_LABELS[user.role] ?? user.role}</td>
+                    <td className={tdCls}><StatusBadge tone={STATUS_TONE[user.status] ?? 'muted'}>{STATUS_LABELS[user.status] ?? user.status}</StatusBadge></td>
+                    <td className={cn(tdCls, 'hidden tabular-nums text-meta text-ink-muted sm:table-cell')}>
+                      {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Nunca'}
+                    </td>
+                    <td className={cn(tdCls, 'px-1')}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Btn size="sm" onClick={() => setForm({ user })}><Pencil />Editar</Btn>
+                        <RowMenu label={`Acciones de ${user.firstName} ${user.lastName}`} actions={[
+                          { label: 'Desactivar', icon: UserX, danger: true, disabled: user.status !== 'ACTIVE', onSelect: () => deactivate(user) },
+                        ]} />
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {(data?.data ?? []).map((user) => (
-                    <tr key={user.id} className="hover:bg-muted/30">
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{user.firstName} {user.lastName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          @{user.username}
-                          {user.workSchedule && <span className="ml-2 inline-flex items-center gap-1"><Clock className="h-3 w-3" />con horario</span>}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge variant="secondary">{ROLE_LABELS[user.role] ?? user.role}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge variant={user.status === 'ACTIVE' ? 'success' : user.status === 'LOCKED' ? 'destructive' : 'secondary'}>
-                          {STATUS_LABELS[user.status] ?? user.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Nunca'}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex justify-center gap-1">
-                          <Button variant="ghost" size="icon-sm" aria-label="Editar" onClick={() => setForm({ user })}><Edit className="h-4 w-4" /></Button>
-                          {user.status === 'ACTIVE' && (
-                            <Button variant="ghost" size="icon-sm" className="text-destructive"
-                              onClick={() => { if (confirm('¿Desactivar usuario?')) deactivateMutation.mutate(user.id); }}>
-                              <UserX className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {form && (
         <UserFormModal
