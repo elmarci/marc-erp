@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { limaDaysUntil } from './inventory-alerts.service';
+import { limaDaysUntil } from './lima-days';
 
 describe('limaDaysUntil', () => {
   const expiry = new Date('2026-11-22T00:00:00.000Z');

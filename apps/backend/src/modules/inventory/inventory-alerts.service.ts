@@ -1,4 +1,5 @@
 import { Prisma, type BatchMovementType } from '@prisma/client';
+import { limaDaysUntil } from '../../utils/lima-days';
 import { prisma } from '../../database/client';
 import { getSettingValues } from '../../utils/settings';
 import { BusinessError } from '../../utils/errors';
@@ -21,14 +22,7 @@ export interface BatchRef {
 }
 
 /** Días calendario de Lima entre hoy y la fecha (negativo si ya pasó). */
-export function limaDaysUntil(date: Date, now: Date = new Date()): number {
-  // La fecha de vencimiento es un día de calendario (se guarda como medianoche
-  // UTC); "hoy" es el día en Lima.
-  const expiryDay = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  const l = new Date(now.getTime() - 5 * 3600 * 1000);
-  const today = Date.UTC(l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate());
-  return Math.round((expiryDay - today) / DAY_MS);
-}
+export { limaDaysUntil };
 
 // Una categoría hereda las reglas de su categoría padre: marcar "Lácteos"
 // alcanza para sus subcategorías sin tener que marcar una por una.
