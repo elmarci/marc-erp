@@ -40,7 +40,7 @@ export class AdministrationService {
       `,
       prisma.$queryRaw<{ month: string; total: number; orders: number }[]>`
         SELECT TO_CHAR(COALESCE(po.received_date, po.created_at) AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', 'YYYY-MM') as month,
-               SUM(po.total_amount)::float as total, COUNT(*)::int as orders
+               SUM(po.total_amount - po.perception_amount)::float as total, COUNT(*)::int as orders
         FROM purchase_orders po
         WHERE po.voided_at IS NULL AND po.status IN ('RECEIVED', 'PARTIALLY_RECEIVED')
           AND COALESCE(po.received_date, po.created_at) BETWEEN ${from} AND ${to}

@@ -52,7 +52,7 @@ export function FilterBar({
         )}
         {trailing && <div className="flex items-center gap-1 sm:ml-auto">{trailing}</div>}
       </div>
-      <div className="flex min-h-[40px] flex-wrap items-center gap-1.5 px-3 py-2">
+      {(chips.length > 0 || resultCount != null) && <div className="flex min-h-[40px] flex-wrap items-center gap-1.5 px-3 py-2">
         {chips.map((c) => (
           <span key={c.key} className="inline-flex h-6 items-center gap-1 rounded-ctl bg-ink/[0.05] pl-2 pr-1 text-meta text-ink">
             <span className="text-ink-muted">{c.label}:</span>
@@ -70,7 +70,8 @@ export function FilterBar({
             {resultCount.toLocaleString('es-PE')} {resultCount === 1 ? 'resultado' : 'resultados'}
           </span>
         )}
-      </div>
+      </div>}
+      {chips.length === 0 && resultCount == null && <div className="h-3" />}
     </div>
   );
 }

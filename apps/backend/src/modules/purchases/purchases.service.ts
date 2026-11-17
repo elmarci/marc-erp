@@ -7,7 +7,7 @@ import { getAccountingState, getAgingBucket, emptyAgingSummary, type AgingBucket
 import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
 import type { Prisma, PurchaseOrderStatus } from '@prisma/client';
 import { getSettingValues } from '../../utils/settings';
-import { purchaseTaxFactor, round4, weightedAverageCost } from '../../utils/costing';
+import { purchaseTaxFactor, purchaseTotals, round2, round4, weightedAverageCost } from '../../utils/costing';
 import {
   formatDocument, isValidRuc, normalizeDocNumber, normalizeSeries, parseLegacyDocument,
 } from '../../utils/supplier-doc';
@@ -74,6 +74,19 @@ export class PurchasesService {
         series = parsed.series;
         number = parsed.number;
         if (!type) type = parsed.series.startsWith('F') ? 'FACTURA' : parsed.series.startsWith('B') ? 'BOLETA' : null;
+      }
+    }
+
+    // El RUC viene del proveedor y se puede corregir en la compra: si cambia,
+    // se guarda en el proveedor.
+    const typedTaxId = doc.supplierTaxId?.trim() || null;
+    if (typedTaxId) {
+      const current = await tx.supplier.findUnique({ where: { id: supplierId }, select: { taxId: true } });
+      if (typedTaxId !== (current?.taxId ?? '')) {
+        if (!isValidRuc(typedTaxId)) throw new BusinessError('El RUC del proveedor no es válido: revisa los 11 dígitos.');
+        const taken = await tx.supplier.findFirst({ where: { taxId: typedTaxId, deletedAt: null, NOT: { id: supplierId } } });
+        if (taken) throw new BusinessError(`Ese RUC ya es del proveedor ${taken.businessName}.`);
+        await tx.supplier.update({ where: { id: supplierId }, data: { taxId: typedTaxId } });
       }
     }
 
@@ -341,20 +354,21 @@ export class PurchasesService {
     supplierInvoice?: string;
     doc?: SupplierDocInput;
     includeTax?: boolean;
+    perceptionAmount?: number;
     items: Array<{ productId: string; orderedQty: number; unitCost: number }>;
   }) {
     const supplier = await prisma.supplier.findFirst({ where: { id: data.supplierId, deletedAt: null } });
     if (!supplier) throw new NotFoundError('Proveedor');
     await this.assertNoMiscItem(data.items.map(i => i.productId));
 
-    let subtotal = 0;
+    let linesTotal = 0;
     for (const item of data.items) {
-      subtotal += item.orderedQty * item.unitCost;
+      linesTotal += item.orderedQty * item.unitCost;
     }
-    // Muchos proveedores (mercados, abastos) no facturan ni desglosan IGV —
-    // el costo unitario ya ES el total pagado, así que el IGV es opcional.
-    const taxAmount = data.includeTax ? subtotal * 0.18 : 0;
-    const totalAmount = subtotal + taxAmount;
+    // "Afecto a IGV": los costos ya traen el IGV; solo se calcula lo que va
+    // dentro para llevar la cuenta. La percepción se suma a lo que se paga.
+    const igvIncluded = !!data.includeTax;
+    const { subtotal, taxAmount, totalAmount } = purchaseTotals(linesTotal, { igvIncluded, perception: data.perceptionAmount });
     const docFields = await this.resolveSupplierDoc(
       prisma, data.supplierId,
       data.doc ?? (data.supplierInvoice ? { text: data.supplierInvoice } : undefined),
@@ -373,6 +387,8 @@ export class PurchasesService {
         subtotal,
         taxAmount,
         totalAmount,
+        igvIncluded,
+        perceptionAmount: round2(data.perceptionAmount ?? 0),
         items: {
           create: data.items.map(i => ({
             productId: i.productId,
@@ -779,10 +795,10 @@ export class PurchasesService {
    * Cuánto encarece el IGV el costo de las líneas de una compra (1 = nada).
    * Ver purchaseTaxFactor: solo aplica si el IGV es costo para el negocio.
    */
-  async orderTaxFactor(order: { subtotal: Prisma.Decimal | number; taxAmount: Prisma.Decimal | number }): Promise<number> {
+  async orderTaxFactor(order: { subtotal: Prisma.Decimal | number; taxAmount: Prisma.Decimal | number; igvIncluded?: boolean }): Promise<number> {
     if (!(Number(order.taxAmount) > 0)) return 1;
     const values = await getSettingValues(['purchase_igv_is_cost']);
-    return purchaseTaxFactor(Number(order.subtotal), Number(order.taxAmount), values.purchase_igv_is_cost !== 'false');
+    return purchaseTaxFactor(Number(order.subtotal), Number(order.taxAmount), values.purchase_igv_is_cost !== 'false', !!order.igvIncluded);
   }
 
   /**
@@ -912,11 +928,13 @@ export class PurchasesService {
     const order = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId } });
     const items = await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId: orderId } });
 
-    const newSubtotal = items.reduce((s, i) => s + Number(i.subtotal), 0);
+    const linesTotal = items.reduce((s, i) => s + Number(i.subtotal), 0);
     const oldSubtotal = Number(order.subtotal);
-    const taxRatio = oldSubtotal > 0 ? Number(order.taxAmount) / oldSubtotal : 0;
-    const newTaxAmount = Math.round(newSubtotal * taxRatio * 100) / 100;
-    const newTotalAmount = Math.round((newSubtotal + newTaxAmount) * 100) / 100;
+    const { subtotal: newSubtotal, taxAmount: newTaxAmount, totalAmount: newTotalAmount } = purchaseTotals(linesTotal, {
+      igvIncluded: order.igvIncluded,
+      legacyTaxRatio: oldSubtotal > 0 ? Number(order.taxAmount) / oldSubtotal : 0,
+      perception: Number(order.perceptionAmount),
+    });
 
     const paidAmount = Number(order.paidAmount);
     const newPaymentStatus = paidAmount <= 0 ? 'CREDIT' : paidAmount >= newTotalAmount - 0.009 ? 'PAID' : 'PARTIAL';
@@ -1151,6 +1169,7 @@ export class PurchasesService {
     date?: Date;
     notes?: string;
     includeTax?: boolean;
+    perceptionAmount?: number;
     items: DirectPurchaseItemInput[];
     payment?: PurchasePaymentInput;
     // Si un pagador (tercero, ej. "mi papá") financió toda o parte de esta
@@ -1173,15 +1192,15 @@ export class PurchasesService {
       : null;
     if (data.payerId && !payer) throw new NotFoundError('Pagador');
 
-    let subtotal = 0;
+    let linesTotal = 0;
     for (const item of data.items) {
-      if (!item.isBonus) subtotal += item.quantity * item.unitCost;
+      if (!item.isBonus) linesTotal += item.quantity * item.unitCost;
     }
-    // Igual que en las órdenes de compra: el IGV es opcional, porque casi
-    // siempre este flujo se usa para compras sin factura (mercado/abastos)
-    // donde el costo ingresado ya es el total real pagado.
-    const taxAmount = data.includeTax ? subtotal * 0.18 : 0;
-    const totalAmount = subtotal + taxAmount;
+    // Igual que en las órdenes de compra: "afecto a IGV" = los costos ya
+    // traen el IGV (solo se calcula lo que va dentro). La percepción va
+    // aparte: se le paga al proveedor pero no es costo de la mercadería.
+    const igvIncluded = !!data.includeTax;
+    const { subtotal, taxAmount, totalAmount } = purchaseTotals(linesTotal, { igvIncluded, perception: data.perceptionAmount });
     const now = data.date ?? new Date();
 
     // Sin payerAmount explícito pero con payerId, se asume que financió el
@@ -1223,6 +1242,8 @@ export class PurchasesService {
           subtotal,
           taxAmount,
           totalAmount,
+          igvIncluded,
+          perceptionAmount: round2(data.perceptionAmount ?? 0),
           dueDate,
           // Lo que el pagador puso ya queda saldado con el proveedor de
           // inmediato (paidAmount arranca en payerAmount); lo que falta se
@@ -1270,7 +1291,7 @@ export class PurchasesService {
           quantity: item.quantity,
           unitCost: item.unitCost,
           isBonus: item.isBonus ?? false,
-          taxFactor: await this.orderTaxFactor({ subtotal, taxAmount }),
+          taxFactor: await this.orderTaxFactor({ subtotal, taxAmount, igvIncluded }),
         }, {
           userId,
           supplierId: data.supplierId,
@@ -1286,7 +1307,7 @@ export class PurchasesService {
             expiryDate: item.expiryDate,
             purchaseOrderId: order.id,
             supplierId: data.supplierId,
-            unitCost: item.isBonus ? 0 : round4(item.unitCost * (await this.orderTaxFactor({ subtotal, taxAmount }))),
+            unitCost: item.isBonus ? 0 : round4(item.unitCost * (await this.orderTaxFactor({ subtotal, taxAmount, igvIncluded }))),
             userId,
           });
         }

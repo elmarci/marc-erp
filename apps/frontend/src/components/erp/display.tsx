@@ -126,11 +126,11 @@ export function StatCard({
 }
 
 /** Fila de indicadores unidos por una línea fina. */
-export function StatGrid({ children, cols = 4 }: { children: React.ReactNode; cols?: 2 | 3 | 4 }) {
+export function StatGrid({ children, cols = 4 }: { children: React.ReactNode; cols?: 2 | 3 | 4 | 5 }) {
   return (
     <div className={cn(
       'grid grid-cols-2 gap-px overflow-hidden bg-line', surfaceCls,
-      cols === 3 && 'lg:grid-cols-3', cols === 4 && 'lg:grid-cols-4',
+      cols === 3 && 'lg:grid-cols-3', cols === 4 && 'lg:grid-cols-4', cols === 5 && 'sm:grid-cols-3 lg:grid-cols-5',
     )}>
       {children}
     </div>
@@ -149,3 +149,8 @@ export function EmptyState({ icon: Icon, title, action, className }: {
     </div>
   );
 }
+
+// ── Tablas a mano (cuando DataTable no encaja, p. ej. filas que se abren) ──
+export const tableCls = 'w-full border-separate border-spacing-0 text-table text-ink';
+export const thCls = 'h-9 whitespace-nowrap border-b border-line bg-surface-2 px-3 text-left text-meta font-medium text-ink-muted';
+export const tdCls = 'h-10 border-b border-line px-3';

@@ -26,16 +26,20 @@ export interface ModalProps {
   children?: React.ReactNode;
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Formularios largos: no se cierra con clic afuera ni con Esc (solo con la X o Cancelar). */
+  keepOpen?: boolean;
 }
 
 const widths = { sm: 'max-w-[440px]', md: 'max-w-[560px]', lg: 'max-w-[760px]', xl: 'max-w-[960px]' };
 
-export function Modal({ open, onOpenChange, title, description, children, footer, size = 'md' }: ModalProps) {
+export function Modal({ open, onOpenChange, title, description, children, footer, size = 'md', keepOpen }: ModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className={overlayCls} />
         <Dialog.Content
+          onInteractOutside={keepOpen ? (e) => e.preventDefault() : undefined}
+          onEscapeKeyDown={keepOpen ? (e) => e.preventDefault() : undefined}
           className={cn('erp fixed left-1/2 top-1/2 z-50 flex max-h-[90vh] w-[calc(100%-24px)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-srf bg-surface', widths[size], shadowCls)}
         >
           <div className="flex items-start gap-3 border-b border-line px-5 py-4">
@@ -55,12 +59,14 @@ export function Modal({ open, onOpenChange, title, description, children, footer
 }
 
 /** Panel que entra por la derecha (en celular ocupa toda la pantalla). */
-export function Sheet({ open, onOpenChange, title, description, children, footer, size = 'md' }: ModalProps) {
+export function Sheet({ open, onOpenChange, title, description, children, footer, size = 'md', keepOpen }: ModalProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className={overlayCls} />
         <Dialog.Content
+          onInteractOutside={keepOpen ? (e) => e.preventDefault() : undefined}
+          onEscapeKeyDown={keepOpen ? (e) => e.preventDefault() : undefined}
           className={cn('erp fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-surface shadow-[0_0_48px_-12px_rgba(0,0,0,.3)]',
             size === 'sm' ? 'sm:max-w-[400px]' : size === 'md' ? 'sm:max-w-[480px]' : 'sm:max-w-[640px]')}
         >
@@ -90,7 +96,7 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   tone?: 'danger' | 'primary';
   /** Pide un motivo obligatorio y lo devuelve en onConfirm. */
-  reason?: { label: string; placeholder?: string; defaultValue?: string };
+  reason?: { label: string; placeholder?: string; defaultValue?: string; optional?: boolean };
 }
 
 export function ConfirmDialog({
@@ -99,7 +105,7 @@ export function ConfirmDialog({
   open: boolean; onOpenChange: (open: boolean) => void; onConfirm: (reason?: string) => void; loading?: boolean;
 }) {
   const [reason, setReason] = useState(o.reason?.defaultValue ?? '');
-  const needsReason = !!o.reason;
+  const needsReason = !!o.reason && !o.reason.optional;
   return (
     <Dialog.Root open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setReason(o.reason?.defaultValue ?? ''); }}>
       <Dialog.Portal>
@@ -107,14 +113,14 @@ export function ConfirmDialog({
         <Dialog.Content
           role="alertdialog"
           className={cn('erp fixed left-1/2 top-1/2 z-50 w-[calc(100%-24px)] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-srf bg-surface', shadowCls)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (!needsReason || reason.trim()) && !loading) { e.preventDefault(); onConfirm(needsReason ? reason.trim() : undefined); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (!needsReason || reason.trim()) && !loading) { e.preventDefault(); onConfirm(o.reason ? reason.trim() : undefined); } }}
         >
           <div className="flex flex-col gap-2 px-5 pb-4 pt-5">
             <Dialog.Title className="text-section font-semibold text-ink">{o.title}</Dialog.Title>
             {o.description ? <Dialog.Description asChild><div className="text-body text-ink-muted">{o.description}</div></Dialog.Description>
               : <Dialog.Description className="sr-only">{o.title}</Dialog.Description>}
             {o.reason && (
-              <Field label={o.reason.label} className="mt-2" required>
+              <Field label={o.reason.label} className="mt-2" required={!o.reason.optional}>
                 <input autoFocus className={fieldCls} value={reason} placeholder={o.reason.placeholder} onChange={(e) => setReason(e.target.value)} />
               </Field>
             )}
@@ -126,7 +132,7 @@ export function ConfirmDialog({
               variant={o.tone === 'primary' ? 'primary' : 'danger'}
               loading={loading}
               disabled={needsReason && !reason.trim()}
-              onClick={() => onConfirm(needsReason ? reason.trim() : undefined)}
+              onClick={() => onConfirm(o.reason ? reason.trim() : undefined)}
             >
               {o.confirmLabel ?? 'Confirmar'}
             </Btn>
