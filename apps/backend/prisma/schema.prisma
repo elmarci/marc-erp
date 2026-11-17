@@ -240,6 +240,7 @@ model User {
   loanPayments                   LoanPayment[]
   supplierReturns                SupplierReturn[]           @relation("SupplierReturnUser")
   supplierReturnsVoided          SupplierReturn[]           @relation("SupplierReturnVoidedBy")
+  employee                       Employee?
 
   @@index([email])
   @@index([username])
@@ -2137,4 +2138,142 @@ model StoreComplaint {
 
   @@index([status, createdAt])
   @@map("store_complaints")
+}
+
+// ─── Personal y planilla (Fase 4) ──────────────────────────────────────────
+// Un trabajador no necesita usuario del sistema. Si tiene uno (userId), su
+// asistencia sirve para calcular días trabajados y tardanzas del pago.
+
+enum EmploymentType {
+  INFORMAL // sin planilla: se le paga lo acordado, sin descuentos de ley
+  PLANILLA
+}
+
+enum LaborRegime {
+  MICRO // REMYPE microempresa: 15 días de vacaciones, sin gratificación ni CTS
+  GENERAL // régimen general: 30 días, 2 gratificaciones, CTS, EsSalud 9%
+}
+
+enum PayFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum PensionSystem {
+  NONE
+  ONP
+  AFP
+}
+
+enum PayrollKind {
+  REGULAR
+  GRATIFICACION
+  CTS
+  VACACIONES
+  LIQUIDACION
+}
+
+model Employee {
+  id               String         @id @default(uuid())
+  firstName        String         @map("first_name")
+  lastName         String         @map("last_name")
+  docNumber        String?        @unique @map("doc_number") // DNI o CE
+  phone            String?
+  position         String? // cajera, almacén, reparto…
+  startDate        DateTime       @map("start_date")
+  endDate          DateTime?      @map("end_date") // cese
+  isActive         Boolean        @default(true) @map("is_active")
+  userId           String?        @unique @map("user_id")
+  employmentType   EmploymentType @default(INFORMAL) @map("employment_type")
+  laborRegime      LaborRegime?   @map("labor_regime") // solo planilla
+  payFrequency     PayFrequency   @default(WEEKLY) @map("pay_frequency")
+  // Lo que gana en cada pago (semana, quincena o mes según payFrequency).
+  // En planilla el sueldo de ley es mensual: se guarda el mensual y cada
+  // pago quincenal/semanal es la parte que corresponde.
+  salary           Decimal        @db.Decimal(10, 2)
+  pensionSystem    PensionSystem  @default(NONE) @map("pension_system")
+  afpName          String?        @map("afp_name")
+  afpRate          Decimal?       @map("afp_rate") @db.Decimal(5, 2) // % total que descuenta la AFP
+  familyAllowance  Boolean        @default(false) @map("family_allowance") // asignación familiar
+  discountAbsences Boolean        @default(true) @map("discount_absences")
+  discountLateness Boolean        @default(false) @map("discount_lateness")
+  notes            String?
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  user     User?             @relation(fields: [userId], references: [id])
+  advances EmployeeAdvance[]
+  payments PayrollPayment[]
+
+  @@index([isActive])
+  @@map("employees")
+}
+
+// Adelanto de sueldo: el dinero sale el día que se da (queda como gasto de
+// Personal) y se descuenta solo en el siguiente pago.
+model EmployeeAdvance {
+  id         String        @id @default(uuid())
+  employeeId String        @map("employee_id")
+  amount     Decimal       @db.Decimal(10, 2)
+  givenAt    DateTime      @default(now()) @map("given_at")
+  method     PaymentMethod @default(CASH)
+  notes      String?
+  expenseId  String?       @unique @map("expense_id")
+  paymentId  String?       @map("payment_id") // pago donde se descontó
+  userId     String        @map("user_id")
+  voidedAt   DateTime?     @map("voided_at")
+  voidReason String?       @map("void_reason")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  employee Employee        @relation(fields: [employeeId], references: [id])
+  payment  PayrollPayment? @relation(fields: [paymentId], references: [id])
+
+  @@index([employeeId])
+  @@index([paymentId])
+  @@map("employee_advances")
+}
+
+model PayrollPayment {
+  id                String         @id @default(uuid())
+  number            String         @unique // "PG-000001"
+  employeeId        String         @map("employee_id")
+  kind              PayrollKind    @default(REGULAR)
+  periodStart       DateTime       @map("period_start") // día de calendario
+  periodEnd         DateTime       @map("period_end")
+  employmentType    EmploymentType @map("employment_type") // foto al pagar
+  laborRegime       LaborRegime?   @map("labor_regime")
+  daysScheduled     Int            @default(0) @map("days_scheduled")
+  daysWorked        Decimal        @default(0) @map("days_worked") @db.Decimal(5, 1)
+  lateMinutes       Int            @default(0) @map("late_minutes")
+  baseAmount        Decimal        @map("base_amount") @db.Decimal(10, 2)
+  familyAllowance   Decimal        @default(0) @map("family_allowance") @db.Decimal(10, 2)
+  bonus             Decimal        @default(0) @db.Decimal(10, 2) // bonos, horas extra
+  absenceDiscount   Decimal        @default(0) @map("absence_discount") @db.Decimal(10, 2)
+  lateDiscount      Decimal        @default(0) @map("late_discount") @db.Decimal(10, 2)
+  grossAmount       Decimal        @map("gross_amount") @db.Decimal(10, 2) // remuneración
+  pensionSystem     PensionSystem  @default(NONE) @map("pension_system")
+  pensionRate       Decimal        @default(0) @map("pension_rate") @db.Decimal(5, 2)
+  pensionDiscount   Decimal        @default(0) @map("pension_discount") @db.Decimal(10, 2)
+  advancesDeducted  Decimal        @default(0) @map("advances_deducted") @db.Decimal(10, 2)
+  otherDiscount     Decimal        @default(0) @map("other_discount") @db.Decimal(10, 2)
+  otherDiscountNote String?        @map("other_discount_note")
+  netAmount         Decimal        @map("net_amount") @db.Decimal(10, 2) // lo que recibe
+  employerHealth    Decimal        @default(0) @map("employer_health") @db.Decimal(10, 2) // EsSalud/SIS que paga el negocio
+  method            PaymentMethod  @default(CASH)
+  paidAt            DateTime       @default(now()) @map("paid_at")
+  expenseId         String?        @unique @map("expense_id") // el neto como gasto de Personal
+  healthExpenseId   String?        @unique @map("health_expense_id") // EsSalud por pagar
+  pensionExpenseId  String?        @unique @map("pension_expense_id") // ONP/AFP retenido, por pagar
+  notes             String?
+  userId            String         @map("user_id")
+  voidedAt          DateTime?      @map("voided_at")
+  voidReason        String?        @map("void_reason")
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  employee Employee          @relation(fields: [employeeId], references: [id])
+  advances EmployeeAdvance[]
+
+  @@index([employeeId, periodStart])
+  @@map("payroll_payments")
 }

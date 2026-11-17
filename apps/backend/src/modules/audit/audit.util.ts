@@ -23,6 +23,9 @@ export const AUDITED_MODELS: Record<string, { ignore: string[]; label: string[] 
   TaxRate: { ignore: [], label: ['name'] },
   Payer: { ignore: [], label: ['name'] },
   Batch: { ignore: ['quantity'], label: ['batchNumber'] },
+  Employee: { ignore: [], label: ['firstName', 'lastName'] },
+  EmployeeAdvance: { ignore: ['paymentId'], label: ['amount'] },
+  PayrollPayment: { ignore: [], label: ['number'] },
   Rider: { ignore: ['lastLat', 'lastLng', 'lastLocationAt', 'enServicio', 'zonasActivas'], label: ['nombre'] },
 };
 

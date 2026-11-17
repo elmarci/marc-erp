@@ -23,6 +23,10 @@ export interface ExpenseDocFields {
   receiptUrl?: string | null;
 }
 
+function inTx<T>(db: Prisma.TransactionClient | undefined, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return db ? fn(db) : prisma.$transaction(fn);
+}
+
 export interface CreateExpenseInput extends ExpenseDocFields {
   // categoryId es lo normal desde la Fase 2; category (el grupo fijo) se
   // acepta por compatibilidad y toma la primera categoría de ese grupo.
@@ -392,7 +396,9 @@ export class TreasuryService {
     }
   }
 
-  async createExpense(input: CreateExpenseInput) {
+  // `db`: transacción de quien llama (planilla, adelantos), para que el gasto
+  // y el resto de su registro se guarden juntos o no se guarde nada.
+  async createExpense(input: CreateExpenseInput, db?: Prisma.TransactionClient) {
     if (input.amount <= 0) throw new BusinessError('El monto debe ser mayor a 0.');
     if (input.period && !PERIOD_RE.test(input.period)) throw new BusinessError('El mes del gasto no es válido.');
     const expenseDate = input.expenseDate ?? new Date();
@@ -400,7 +406,7 @@ export class TreasuryService {
     const method = input.method ?? 'CASH';
     const fields = docFields(input);
 
-    return prisma.$transaction(async (tx) => {
+    return inTx(db, async (tx) => {
       const cat = await this.resolveCategory(tx, input);
       const expense = await tx.expense.create({
         data: {
@@ -490,8 +496,8 @@ export class TreasuryService {
   // qué, y el dinero vuelve a donde salió. Si salió de una caja de turno que
   // sigue abierta vuelve a ese cajón; si esa caja ya cerró (su efectivo ya
   // pasó a Caja General) vuelve a Caja General. Uno por pagar no movió dinero.
-  async voidExpense(id: string, userId: string, reason: string) {
-    return prisma.$transaction(async (tx) => {
+  async voidExpense(id: string, userId: string, reason: string, db?: Prisma.TransactionClient) {
+    return inTx(db, async (tx) => {
       const expense = await tx.expense.findUnique({ where: { id } });
       if (!expense) throw new NotFoundError('Gasto');
       if (expense.voidedAt) throw new BusinessError('Este gasto ya fue anulado.');
