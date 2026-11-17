@@ -62,7 +62,7 @@ export function authorize(...roles: UserRole[]) {
   };
 }
 
-const ROLE_HIERARCHY: Record<UserRole, number> = {
+export const ROLE_HIERARCHY: Record<UserRole, number> = {
   SUPER_ADMIN: 5,
   ADMIN: 4,
   SUPERVISOR: 3,

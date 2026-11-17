@@ -1,4 +1,5 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type BatchMovementType } from '@prisma/client';
+import { limaDaysUntil } from '../../utils/lima-days';
 import { prisma } from '../../database/client';
 import { getSettingValues } from '../../utils/settings';
 import { BusinessError } from '../../utils/errors';
@@ -12,6 +13,16 @@ export const DEFAULT_MIN_VOLATILE_MARGIN = 1;
 export const MIN_VOLATILE_MARGIN_KEY = 'min_margin_volatile';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface BatchRef {
+  referenceType?: string | null;
+  referenceId?: string | null;
+  userId?: string | null;
+  notes?: string | null;
+}
+
+/** Días calendario de Lima entre hoy y la fecha (negativo si ya pasó). */
+export { limaDaysUntil };
 
 // Una categoría hereda las reglas de su categoría padre: marcar "Lácteos"
 // alcanza para sus subcategorías sin tener que marcar una por una.
@@ -139,7 +150,9 @@ export class InventoryAlertsService {
     const batches = await prisma.batch.findMany({
       where: { resolvedAt: null, quantity: { gt: 0 }, expiryDate: { not: null } },
       include: {
-        product: { select: { id: true, name: true, currentStock: true, unitOfMeasure: true, isBulk: true, bulkUnit: true, category: { select: { name: true } } } },
+        product: { select: { id: true, name: true, currentStock: true, unitOfMeasure: true, isBulk: true, bulkUnit: true, salePrice: true, category: { select: { name: true } } } },
+        supplier: { select: { businessName: true } },
+        purchaseOrder: { select: { orderNumber: true } },
       },
       orderBy: { expiryDate: 'asc' },
     });
@@ -166,14 +179,17 @@ export class InventoryAlertsService {
       })
       .filter((p) => p.uncovered > 0.0005);
 
-    const daysLeft = (d: Date) => Math.floor((d.getTime() - now) / DAY_MS);
+    const daysLeft = (d: Date) => limaDaysUntil(d, new Date(now));
     const mapped = batches.map((b) => ({
       id: b.id,
       batchNumber: b.batchNumber,
       quantity: Number(b.quantity),
       expiryDate: b.expiryDate!,
       daysLeft: daysLeft(b.expiryDate!),
-      product: { ...b.product, currentStock: Number(b.product.currentStock) },
+      unitCost: b.unitCost != null ? Number(b.unitCost) : null,
+      supplierName: b.supplier?.businessName ?? null,
+      orderNumber: b.purchaseOrder?.orderNumber ?? null,
+      product: { ...b.product, currentStock: Number(b.product.currentStock), salePrice: Number(b.product.salePrice) },
     }));
 
     return {
@@ -188,11 +204,68 @@ export class InventoryAlertsService {
     };
   }
 
+  /* ── Lotes: entrada, salida e historial ─────────────────────────────────── */
+
+  /** Crea un lote y deja su entrada en el historial. */
+  async createBatch(tx: Prisma.TransactionClient, data: {
+    productId: string; quantity: number; expiryDate: Date | null; batchNumber?: string | null;
+    purchaseOrderId?: string | null; supplierId?: string | null; unitCost?: number | null;
+    type?: 'RECEIVED' | 'MANUAL'; userId?: string | null; notes?: string | null;
+  }) {
+    const batch = await tx.batch.create({
+      data: {
+        productId: data.productId,
+        batchNumber: data.batchNumber || null,
+        quantity: data.quantity,
+        initialQuantity: data.quantity,
+        expiryDate: data.expiryDate,
+        purchaseOrderId: data.purchaseOrderId ?? null,
+        supplierId: data.supplierId ?? null,
+        unitCost: data.unitCost ?? null,
+      },
+    });
+    await tx.batchMovement.create({
+      data: {
+        batchId: batch.id, type: data.type ?? 'RECEIVED', quantity: data.quantity, quantityAfter: data.quantity,
+        referenceType: data.purchaseOrderId ? 'PURCHASE' : null, referenceId: data.purchaseOrderId ?? null,
+        userId: data.userId ?? null, notes: data.notes ?? null,
+      },
+    });
+    return batch;
+  }
+
+  /** Saca una cantidad de un lote puntual (sin pasar por FEFO). */
+  async consumeBatch(
+    tx: Prisma.TransactionClient, batch: { id: string; quantity: Prisma.Decimal | number }, quantity: number,
+    type: BatchMovementType, ref?: BatchRef,
+  ) {
+    const take = Math.min(quantity, Number(batch.quantity));
+    if (take > 0) await this.moveBatch(tx, batch, -take, type, ref);
+  }
+
+  async moveBatch(
+    tx: Prisma.TransactionClient, batch: { id: string; quantity: Prisma.Decimal | number }, delta: number,
+    type: BatchMovementType, ref?: BatchRef,
+  ) {
+    const after = Math.round((Number(batch.quantity) + delta) * 1000) / 1000;
+    await tx.batch.update({ where: { id: batch.id }, data: { quantity: after } });
+    await tx.batchMovement.create({
+      data: {
+        batchId: batch.id, type, quantity: delta, quantityAfter: after,
+        referenceType: ref?.referenceType ?? null, referenceId: ref?.referenceId ?? null,
+        userId: ref?.userId ?? null, notes: ref?.notes ?? null,
+      },
+    });
+  }
+
   // Descuenta del lote que vence primero (FEFO) lo que se vendió — así el
   // lote vendido deja de aparecer como "por vencer" sin que nadie tenga que
   // resolverlo a mano, y las alertas solo muestran lo que realmente sigue en
-  // el estante.
-  async consumeBatchesFefo(tx: Prisma.TransactionClient, productId: string, quantity: number) {
+  // el estante. Cada descuento queda en el historial del lote con su venta.
+  async consumeBatchesFefo(
+    tx: Prisma.TransactionClient, productId: string, quantity: number,
+    type: BatchMovementType = 'SALE', ref?: BatchRef,
+  ) {
     let remaining = quantity;
     if (remaining <= 0) return;
     const batches = await tx.batch.findMany({
@@ -200,23 +273,70 @@ export class InventoryAlertsService {
       orderBy: [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
     });
     for (const b of batches) {
-      if (remaining <= 0) break;
+      if (remaining <= 0.0005) break;
       const take = Math.min(remaining, Number(b.quantity));
-      await tx.batch.update({ where: { id: b.id }, data: { quantity: Number(b.quantity) - take } });
+      await this.moveBatch(tx, b, -take, type, ref);
       remaining -= take;
     }
   }
 
-  // Al anular una venta del mismo día la mercadería vuelve al estante: se
-  // devuelve al lote que vence primero (que es del que FEFO la sacó).
-  async restoreBatchesOnVoid(tx: Prisma.TransactionClient, productId: string, quantity: number) {
-    if (quantity <= 0) return;
+  // Al anular una venta (o una devolución al proveedor) la mercadería vuelve
+  // al lote del que salió, según el historial. Lo que no tenga historial
+  // (ventas anteriores a la Fase 3) vuelve al lote que vence primero.
+  async restoreBatchesOnVoid(
+    tx: Prisma.TransactionClient, productId: string, quantity: number,
+    origin?: { type: BatchMovementType; referenceId: string }, voidType: BatchMovementType = 'SALE_VOID', ref?: BatchRef,
+  ) {
+    let remaining = quantity;
+    if (remaining <= 0) return;
+    if (origin) {
+      const taken = await tx.batchMovement.findMany({
+        where: { type: origin.type, referenceId: origin.referenceId, batch: { productId } },
+        include: { batch: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      for (const m of taken) {
+        if (remaining <= 0.0005) break;
+        const back = Math.min(remaining, -Number(m.quantity));
+        if (back <= 0) continue;
+        const fresh = await tx.batch.findUniqueOrThrow({ where: { id: m.batchId } });
+        await this.moveBatch(tx, fresh, back, voidType, ref);
+        remaining -= back;
+      }
+    }
+    if (remaining <= 0.0005) return;
     const batch = await tx.batch.findFirst({
       where: { productId, resolvedAt: null },
       orderBy: [{ expiryDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
     });
     if (!batch) return;
-    await tx.batch.update({ where: { id: batch.id }, data: { quantity: Number(batch.quantity) + quantity } });
+    await this.moveBatch(tx, batch, remaining, voidType, ref);
+  }
+
+  /** Detalle de un lote: de qué compra vino y todo lo que le pasó. */
+  async getBatchHistory(batchId: string) {
+    const batch = await prisma.batch.findUnique({
+      where: { id: batchId },
+      include: {
+        product: { select: { id: true, name: true, costPrice: true } },
+        purchaseOrder: { select: { id: true, orderNumber: true, supplierInvoice: true, receivedDate: true } },
+        supplier: { select: { id: true, businessName: true } },
+        movements: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!batch) throw new BusinessError('Lote no encontrado.');
+    const saleIds = batch.movements.filter((m) => m.referenceType === 'SALE' && m.referenceId).map((m) => m.referenceId!);
+    const sales = saleIds.length
+      ? await prisma.sale.findMany({ where: { id: { in: saleIds } }, select: { id: true, saleNumber: true } })
+      : [];
+    const saleNumbers = new Map(sales.map((x) => [x.id, x.saleNumber]));
+    return {
+      ...batch,
+      movements: batch.movements.map((m) => ({
+        ...m,
+        referenceLabel: m.referenceType === 'SALE' && m.referenceId ? saleNumbers.get(m.referenceId) ?? null : null,
+      })),
+    };
   }
 
   // Los lotes registrados antes de existir FEFO nunca se descontaron al
@@ -251,7 +371,7 @@ export class InventoryAlertsService {
     for (const b of batches) {
       if (excess <= 0.0005) break;
       const cut = Math.min(excess, Number(b.quantity));
-      await tx.batch.update({ where: { id: b.id }, data: { quantity: Number(b.quantity) - cut } });
+      await this.moveBatch(tx, b, -cut, 'RECONCILE', { notes: 'Ajuste para que los lotes no sumen más que el stock' });
       excess -= cut;
       touched += 1;
     }

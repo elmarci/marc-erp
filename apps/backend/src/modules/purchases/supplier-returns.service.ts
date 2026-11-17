@@ -173,7 +173,9 @@ export class SupplierReturnsService {
               notes: `Devolución ${ret.returnNumber} a ${full.supplier.businessName} (OC ${full.orderNumber})`,
             },
           });
-          await inventoryAlertsService.consumeBatchesFefo(tx, it.productId, it.quantity);
+          await inventoryAlertsService.consumeBatchesFefo(tx, it.productId, it.quantity, 'SUPPLIER_RETURN', {
+            referenceType: 'SUPPLIER_RETURN', referenceId: ret.id, userId, notes: `Devolución ${ret.returnNumber}`,
+          });
         }
         await tx.supplierReturnItem.create({
           data: { returnId: ret.id, productId: it.productId, quantity: it.quantity, unitCost },
@@ -241,7 +243,10 @@ export class SupplierReturnsService {
               notes: `Anulación de devolución ${ret.returnNumber} — ${reason}`,
             },
           });
-          await inventoryAlertsService.restoreBatchesOnVoid(tx, it.productId, qty);
+          await inventoryAlertsService.restoreBatchesOnVoid(
+            tx, it.productId, qty, { type: 'SUPPLIER_RETURN', referenceId: ret.id }, 'SUPPLIER_RETURN_VOID',
+            { referenceType: 'SUPPLIER_RETURN', referenceId: ret.id, userId, notes: `Anulación de ${ret.returnNumber}` },
+          );
         }
       }
 

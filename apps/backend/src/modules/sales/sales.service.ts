@@ -521,7 +521,9 @@ export class SalesService {
 
         // Lo vendido sale primero del lote que vence antes (FEFO).
         if (product.trackExpiry) {
-          await inventoryAlertsService.consumeBatchesFefo(tx, item.productId, unitsOut);
+          await inventoryAlertsService.consumeBatchesFefo(tx, item.productId, unitsOut, 'SALE', {
+            referenceType: 'SALE', referenceId: newSale.id, userId: input.cashierId,
+          });
         }
 
         await tx.inventoryMovement.create({
@@ -804,7 +806,10 @@ export class SalesService {
         const newStock = Number(restored.currentStock);
         const stockBefore = newStock - unitsBack;
         if (product.trackExpiry) {
-          await inventoryAlertsService.restoreBatchesOnVoid(tx, item.productId, unitsBack);
+          await inventoryAlertsService.restoreBatchesOnVoid(
+            tx, item.productId, unitsBack, { type: 'SALE', referenceId: id }, 'SALE_VOID',
+            { referenceType: 'SALE', referenceId: id, userId: voidedById, notes: `Anulación de venta ${sale.saleNumber}` },
+          );
         }
 
         await tx.inventoryMovement.create({

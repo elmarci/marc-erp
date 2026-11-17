@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUp, ArrowDown, Search, Plus, X, AlertTriangle, Package,
   BarChart3, ClipboardList, History, TrendingDown, DollarSign,
-  ChevronDown, ChevronUp, Printer, ScanBarcode, Scale, Star, FileSpreadsheet, CalendarClock,
+  ChevronDown, ChevronUp, Printer, ScanBarcode, Scale, Star, FileSpreadsheet, CalendarClock, ClipboardCheck, PackageX, Tag,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ import { downloadExcel } from '@/lib/exportExcel';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { MarginAlert } from '@/lib/marginAlerts';
 import { ADJUSTMENT_REASONS, adjustmentReasonLabel } from './adjustmentReasons';
+import { BatchHistoryModal, CycleCountTab, NoMovementTab, PromoteBatchModal, type ShelfBatch } from './StockHealth';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 interface DashboardData {
@@ -52,7 +53,7 @@ interface UncoveredRow {
   stock: number; covered: number; uncovered: number;
 }
 interface ExpiryControl {
-  batches: Array<ExpiringBatch & { expiryDate: string; daysLeft: number }>;
+  batches: ShelfBatch[];
   uncovered: UncoveredRow[];
   summary: { expired: number; within7: number; within30: number; uncovered: number };
 }
@@ -75,12 +76,15 @@ const isEntry = (t: string) => ['PURCHASE_IN', 'ADJUSTMENT_IN', 'RETURN_IN', 'IN
 const STATUS_LABEL: Record<string, string> = { ok: 'Normal', low: 'Stock bajo', out: 'Sin stock' };
 const STATUS_VARIANT: Record<string, 'success' | 'default' | 'destructive'> = { ok: 'success', low: 'default', out: 'destructive' };
 
-// Días calendario hasta el vencimiento (negativo = ya venció) — se compara
-// contra la medianoche de hoy para que "vence hoy" no salga como -1.
+// Días calendario hasta el vencimiento (negativo = ya venció). La fecha de
+// vencimiento es un día de calendario guardado a medianoche UTC; "hoy" es el
+// día en Lima.
 const daysUntil = (dateStr: string) => {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const target = new Date(dateStr); target.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  const t = new Date(dateStr);
+  const target = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  const l = new Date(Date.now() - 5 * 3600 * 1000);
+  const today = Date.UTC(l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate());
+  return Math.round((target - today) / (24 * 60 * 60 * 1000));
 };
 
 /* ─── Price Comparison Modal (mismo producto, distintos proveedores) ───────── */
@@ -1398,6 +1402,8 @@ function ExpiryTab() {
   const [filter, setFilter] = useState<ExpiryFilter>('all');
   const [resolving, setResolving] = useState<ExpiringBatch | null>(null);
   const [registering, setRegistering] = useState<UncoveredRow | null>(null);
+  const [promoting, setPromoting] = useState<ShelfBatch | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
 
   if (isLoading || !data) return <div className="py-12 text-center text-muted-foreground">Cargando...</div>;
 
@@ -1506,18 +1512,29 @@ function ExpiryTab() {
                       <p className="font-medium">{b.product.name}</p>
                       <p className="text-xs text-muted-foreground">{b.product.category.name}</p>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{b.batchNumber ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      <button type="button" onClick={() => setHistoryId(b.id)} className="text-left hover:underline">
+                        <p>{b.batchNumber ?? 'Sin número'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {b.orderNumber ? `${b.orderNumber}${b.supplierName ? ` · ${b.supplierName}` : ''}` : 'Ver historial'}
+                          {b.unitCost != null ? ` · costo ${formatCost(b.unitCost)}` : ''}
+                        </p>
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-center">{b.quantity}</td>
                     <td className="px-4 py-3 text-center tabular-nums">
-                      {new Date(b.expiryDate).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short', year: 'numeric' })}
+                      {new Date(b.expiryDate).toLocaleDateString('es-PE', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' })}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <Badge variant={b.daysLeft < 0 || b.daysLeft <= 3 ? 'destructive' : b.daysLeft <= 7 ? 'default' : 'secondary'}>
                         {b.daysLeft < 0 ? `Venció hace ${Math.abs(b.daysLeft)}d` : b.daysLeft === 0 ? 'Vence hoy' : `${b.daysLeft} días`}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button variant="outline" size="sm" onClick={() => setResolving({ ...b, expiryDate: b.expiryDate })}>Resolver</Button>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {b.daysLeft >= 0 && b.daysLeft <= 7 && (
+                        <Button size="sm" className="mr-2" onClick={() => setPromoting(b)}><Tag className="mr-1.5 h-3.5 w-3.5" />Poner en oferta</Button>
+                      )}
+                      <Button variant="outline" size="sm" onClick={() => setResolving({ ...b, product: { ...b.product, unitOfMeasure: '' } })}>Resolver</Button>
                     </td>
                   </tr>
                 ))}
@@ -1529,13 +1546,22 @@ function ExpiryTab() {
 
       {resolving && <ResolveBatchModal batch={resolving} onClose={() => setResolving(null)} />}
       {registering && <RegisterBatchModal row={registering} onClose={() => setRegistering(null)} />}
+      {promoting && <PromoteBatchModal batch={promoting} onClose={() => setPromoting(null)} />}
+      {historyId && <BatchHistoryModal batchId={historyId} onClose={() => setHistoryId(null)} />}
     </div>
   );
 }
 
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
+const TAB_KEYS = ['dashboard', 'stock', 'movements', 'adjustments', 'expiry', 'count', 'stale', 'alerts'] as const;
+type TabKey = typeof TAB_KEYS[number];
+
 export function InventoryPage() {
-  const [tab, setTab] = useState<'dashboard' | 'stock' | 'movements' | 'adjustments' | 'alerts' | 'expiry'>('dashboard');
+  // La pestaña va en la dirección (?tab=expiry) para que la campana de avisos
+  // pueda abrir directo la que corresponde.
+  const [params, setParams] = useSearchParams();
+  const tab = (TAB_KEYS as readonly string[]).includes(params.get('tab') ?? '') ? params.get('tab') as TabKey : 'dashboard';
+  const setTab = (key: TabKey) => setParams((p) => { const n = new URLSearchParams(p); n.set('tab', key); return n; }, { replace: true });
 
   const { data: summary } = useQuery({
     queryKey: ['inv-alerts-summary'],
@@ -1553,6 +1579,8 @@ export function InventoryPage() {
     { key: 'movements', icon: History, label: 'Movimientos' },
     { key: 'adjustments', icon: ClipboardList, label: 'Ajustes' },
     { key: 'expiry', icon: CalendarClock, label: 'Vencimientos' },
+    { key: 'count', icon: ClipboardCheck, label: 'Conteo' },
+    { key: 'stale', icon: PackageX, label: 'Sin movimiento' },
     { key: 'alerts', icon: AlertTriangle, label: 'Alertas' },
   ] as const;
 
@@ -1566,7 +1594,7 @@ export function InventoryPage() {
       <div className="flex gap-1 border-b overflow-x-auto">
         {tabs.map(({ key, icon: Icon, label }) => (
           <button key={key} onClick={() => setTab(key)}
-            className={cn('flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
+            className={cn('flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
               tab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
             <Icon className="h-4 w-4" />{label}
             {key === 'alerts' && alertCount > 0 && (
@@ -1584,6 +1612,8 @@ export function InventoryPage() {
       {tab === 'movements' && <MovementsTab />}
       {tab === 'adjustments' && <AdjustmentsTab />}
       {tab === 'expiry' && <ExpiryTab />}
+      {tab === 'count' && <CycleCountTab />}
+      {tab === 'stale' && <NoMovementTab />}
       {tab === 'alerts' && <AlertsTab />}
     </div>
   );

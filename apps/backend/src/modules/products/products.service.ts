@@ -657,7 +657,7 @@ export class ProductsService {
   // Registra la fecha de vencimiento de stock que ya estaba en el estante
   // pero entró sin fecha (stock inicial, ajustes, compras anteriores al
   // control). Solo se puede asignar fecha a lo que hoy no tiene una.
-  async createBatch(productId: string, input: { quantity: number; expiryDate: Date; batchNumber?: string | null }) {
+  async createBatch(productId: string, input: { quantity: number; expiryDate: Date; batchNumber?: string | null; userId?: string }) {
     const product = await prisma.product.findFirst({
       where: { id: productId, deletedAt: null },
       include: { batches: { where: { resolvedAt: null }, select: { quantity: true } } },
@@ -672,14 +672,16 @@ export class ProductsService {
         `Solo hay ${uncovered} unidad(es) sin fecha de vencimiento (stock ${Number(product.currentStock)}, con fecha ${covered}).`,
       );
     }
-    return prisma.batch.create({
-      data: {
-        productId,
-        quantity: input.quantity,
-        expiryDate: input.expiryDate,
-        batchNumber: input.batchNumber || null,
-      },
-    });
+    return prisma.$transaction((tx) => inventoryAlertsService.createBatch(tx, {
+      productId,
+      quantity: input.quantity,
+      expiryDate: input.expiryDate,
+      batchNumber: input.batchNumber,
+      unitCost: Number(product.costPrice),
+      type: 'MANUAL',
+      userId: input.userId ?? null,
+      notes: 'Fecha asignada a stock que no la tenía',
+    }));
   }
 
   async resolveBatch(
@@ -707,9 +709,14 @@ export class ProductsService {
       resolvedNotes = resolvedNotes ?? `Merma registrada: ${input.lossQuantity} unid.`;
     }
 
-    return prisma.batch.update({
-      where: { id: batchId },
-      data: { resolvedAt: new Date(), resolvedNotes },
+    return prisma.$transaction(async (tx) => {
+      await tx.batchMovement.create({
+        data: {
+          batchId, type: 'RESOLVED', quantity: 0, quantityAfter: batch.quantity, userId,
+          notes: resolvedNotes ?? 'Alerta atendida',
+        },
+      });
+      return tx.batch.update({ where: { id: batchId }, data: { resolvedAt: new Date(), resolvedNotes } });
     });
   }
 
