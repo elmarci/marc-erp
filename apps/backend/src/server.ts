@@ -43,6 +43,7 @@ import couponsRoutes from './modules/coupons/coupons.routes';
 import treasuryRoutes from './modules/treasury/treasury.routes';
 import loansRoutes from './modules/loans/loans.routes';
 import administrationRoutes from './modules/administration/administration.routes';
+import staffRoutes from './modules/staff/staff.routes';
 import { treasuryService } from './modules/treasury/treasury.service';
 import { promotionsService } from './modules/promotions/promotions.service';
 import { pushService } from './modules/push/push.service';
@@ -203,6 +204,7 @@ app.use(`${API_PREFIX}/coupons`, couponsRoutes);
 app.use(`${API_PREFIX}/treasury`, treasuryRoutes);
 app.use(`${API_PREFIX}/loans`, loansRoutes);
 app.use(`${API_PREFIX}/administration`, administrationRoutes);
+app.use(`${API_PREFIX}/staff`, staffRoutes);
 app.use(`${API_PREFIX}/bottle-deposits`, bottleDepositsRoutes);
 
 // ─── Swagger docs ────────────────────────────────────────────────────────────
