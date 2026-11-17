@@ -36,6 +36,7 @@ function SessionDetail({ sessionId, onClose }: { sessionId: string; onClose: () 
             <KeyRows rows={[
               ['Monto inicial', <Money v={s.openingAmount} />],
               ...Object.entries(sm.salesByMethod).map(([m, v]) => [`Ventas ${PAYMENT_METHOD_LABELS[m] ?? m}`, <Money v={v} sign />] as [string, React.ReactNode]),
+              ...Object.entries(sm.refundsByMethod ?? {}).filter(([, v]) => Number(v) > 0).map(([m, v]) => [`Devoluciones ${PAYMENT_METHOD_LABELS[m] ?? m} (ya restadas)`, <Money v={-v} />] as [string, React.ReactNode]),
               sm.debtPayments > 0 && ['Cobro de cuentas', <Money v={sm.debtPayments} sign />],
               sm.otherDeposits > 0 && ['Otros depósitos', <Money v={sm.otherDeposits} sign />],
               sm.purchasePayments > 0 && ['Pago a proveedores', <Money v={-sm.purchasePayments} sign />],

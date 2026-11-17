@@ -26,6 +26,8 @@ export interface SessionSummary {
   summary: {
     totalTransactions: number; totalSales: number;
     salesByMethod: Record<string, number>;
+    /** Lo devuelto por medio de pago; salesByMethod ya viene neto. */
+    refundsByMethod?: Record<string, number>;
     commissionsByMethod?: Record<string, number>; cardCommissions?: number;
     totalWithdrawals: number; totalDeposits: number; netCash: number;
     debtPayments: number; otherDeposits: number;

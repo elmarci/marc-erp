@@ -23,6 +23,9 @@ export function printArqueo(summary: SessionSummary, reconciliations: DigitalRec
   ${Object.entries(sm.salesByMethod).map(([m, v]) =>
     `<div class="row"><span>Ventas ${PAYMENT_METHOD_LABELS[m] ?? m}:</span><span>S/ ${Number(v).toFixed(2)}</span></div>`
   ).join('')}
+  ${Object.entries(sm.refundsByMethod ?? {}).filter(([, v]) => Number(v) > 0).map(([m, v]) =>
+    `<div class="row"><span>Devoluciones ${PAYMENT_METHOD_LABELS[m] ?? m} (ya restadas):</span><span>S/ ${Number(v).toFixed(2)}</span></div>`
+  ).join('')}
   ${(sm.cardCommissions ?? 0) > 0 ? `<div class="row"><span>Comisión tarjeta cobrada:</span><span>S/ ${Number(sm.cardCommissions).toFixed(2)}</span></div>` : ''}
   ${sm.debtPayments > 0 ? `<div class="row"><span>Cobro de cuentas:</span><span>+S/ ${sm.debtPayments.toFixed(2)}</span></div>` : ''}
   ${sm.otherDeposits > 0 ? `<div class="row"><span>Otros depósitos:</span><span>+S/ ${sm.otherDeposits.toFixed(2)}</span></div>` : ''}

@@ -73,7 +73,7 @@ export function CloseSessionDialog({ sessionId, summary, onClose, onClosed }: {
           </summary>
           <KeyRows className="mt-2 border-t border-line pt-2" rows={[
             ['Monto inicial', <Money v={summary.session.openingAmount} />],
-            ['Ventas efectivo', <Money v={sm.salesByMethod['CASH'] ?? 0} sign />],
+            [(sm.refundsByMethod?.['CASH'] ?? 0) > 0 ? `Ventas efectivo (ya restadas devoluciones de ${formatCurrency(sm.refundsByMethod!['CASH'])})` : 'Ventas efectivo', <Money v={sm.salesByMethod['CASH'] ?? 0} sign />],
             sm.debtPayments > 0 && ['Cobro de cuentas', <Money v={sm.debtPayments} sign />],
             sm.otherDeposits > 0 && ['Otros depósitos', <Money v={sm.otherDeposits} sign />],
             sm.purchasePayments > 0 && ['Pago a proveedores', <Money v={-sm.purchasePayments} sign />],

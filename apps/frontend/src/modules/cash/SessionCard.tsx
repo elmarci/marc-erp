@@ -14,6 +14,10 @@ import { printArqueo } from './printing';
 import type { CashSession, Movement, SessionSale, SessionSummary } from './types';
 
 type Filter = 'all' | 'sales' | 'moves';
+type Medio = 'ALL' | 'CASH' | 'YAPE' | 'PLIN' | 'CARD';
+const MEDIO_LABEL: Record<Medio, string> = { ALL: 'Todos', CASH: 'Efectivo', YAPE: 'Yape', PLIN: 'Plin', CARD: 'Tarjeta' };
+const inMedio = (method: string, medio: Medio) =>
+  medio === 'ALL' || method === medio || (medio === 'CARD' && (method === 'DEBIT_CARD' || method === 'CREDIT_CARD'));
 const hour = (iso: string) => new Date(iso).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'America/Lima' });
 
 function Column({ label, value, children, className }: { label: string; value: React.ReactNode; children?: React.ReactNode; className?: string }) {
@@ -28,6 +32,7 @@ function Column({ label, value, children, className }: { label: string; value: R
 
 export function SessionCard({ session }: { session: CashSession }) {
   const [filter, setFilter] = useState<Filter>('all');
+  const [medio, setMedio] = useState<Medio>('ALL');
   const [move, setMove] = useState<'out' | 'in' | null>(null);
   const [closing, setClosing] = useState(false);
   const [deposits, setDeposits] = useState(false);
@@ -48,21 +53,30 @@ export function SessionCard({ session }: { session: CashSession }) {
   });
 
   const sm = summary?.summary;
+  const refundTotal = Object.values(sm?.refundsByMethod ?? {}).reduce((a, v) => a + Number(v), 0);
   const rows = [
-    ...(filter !== 'moves' ? (sales ?? []).map((s) => {
+    ...(filter !== 'moves' ? (sales ?? []).flatMap((s) => {
+      const legs = s.payments.filter((p) => inMedio(p.method, medio));
+      if (!legs.length) return [];
       const cash = s.payments.filter((p) => p.method === 'CASH').reduce((a, p) => a + Number(p.amount), 0);
       const methods = [...new Set(s.payments.map((p) => PAYMENT_METHOD_LABELS[p.method] ?? p.method))].join(' + ');
-      return {
+      const mixed = s.payments.length > 1;
+      // Con un medio elegido, el monto es solo lo pagado por ese medio.
+      const amount = medio === 'ALL' ? Number(s.totalAmount) : legs.reduce((a, p) => a + Number(p.amount), 0);
+      return [{
         id: s.id, at: s.createdAt, kind: 'Venta', detail: `${s.saleNumber} · ${s._count.items} ítem(s)`,
-        medio: cash > 0 && cash < Number(s.totalAmount) ? `${methods} (efectivo ${formatCurrency(cash)})` : methods,
-        amount: Number(s.totalAmount),
-      };
+        medio: medio === 'ALL' && cash > 0 && cash < Number(s.totalAmount) ? `${methods} (efectivo ${formatCurrency(cash)})`
+          : medio !== 'ALL' && mixed ? `${methods} (de ${formatCurrency(s.totalAmount)})` : methods,
+        amount,
+      }];
     }) : []),
-    ...(filter !== 'sales' ? (movements ?? []).map((m) => ({
+    // Las entradas y salidas del cajón son siempre en efectivo.
+    ...(filter !== 'sales' && inMedio('CASH', medio) ? (movements ?? []).map((m) => ({
       id: m.id, at: m.createdAt, kind: m.type === 'WITHDRAWAL' ? 'Salida' : 'Entrada', detail: m.reason,
       medio: 'Efectivo', amount: m.type === 'WITHDRAWAL' ? -Number(m.amount) : Number(m.amount),
     })) : []),
   ].sort((a, b) => b.at.localeCompare(a.at));
+  const rowsTotal = rows.reduce((a, r) => a + r.amount, 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -98,6 +112,7 @@ export function SessionCard({ session }: { session: CashSession }) {
             <Column className="border-t border-line sm:border-t-0" label={`Vendido · ${sm.totalTransactions} venta(s)`} value={formatCurrency(sm.totalSales)}>
               <KeyRows rows={[
                 ...Object.entries(sm.salesByMethod).map(([m, v]) => [PAYMENT_METHOD_LABELS[m] ?? m, <Money v={v} />] as [string, React.ReactNode]),
+                refundTotal > 0 && ['Devoluciones (ya restadas)', <Money v={-refundTotal} sign />],
                 (sm.cardCommissions ?? 0) > 0 && ['Comisión tarjeta (aparte)', <Money v={sm.cardCommissions ?? 0} />],
               ]} />
               {((sm.salesByMethod['YAPE'] ?? 0) > 0 || (sm.salesByMethod['PLIN'] ?? 0) > 0) && (
@@ -117,10 +132,14 @@ export function SessionCard({ session }: { session: CashSession }) {
 
       <Panel title={`Movimientos de ${session.cashRegister.name}`}
         meta={`${session._count.sales} venta(s) · ${movements?.length ?? session._count.movements} entrada(s) y salida(s)`}
-        actions={<Segmented value={filter} onChange={setFilter} ariaLabel="Mostrar"
-          options={[['all', 'Todo'], ['sales', 'Ventas'], ['moves', 'Entradas y salidas']]} />}>
+        actions={<>
+          <Segmented value={medio} onChange={setMedio} ariaLabel="Medio de pago"
+            options={(Object.keys(MEDIO_LABEL) as Medio[]).map((k) => [k, MEDIO_LABEL[k]] as const)} />
+          <Segmented value={filter} onChange={setFilter} ariaLabel="Mostrar"
+            options={[['all', 'Todo'], ['sales', 'Ventas'], ['moves', 'Entradas y salidas']]} />
+        </>}>
         {rows.length === 0 ? (
-          <EmptyState title={filter === 'sales' ? 'Sin ventas en esta sesión' : filter === 'moves' ? 'Sin movimientos registrados' : 'Sin ventas ni movimientos todavía'} />
+          <EmptyState title={medio !== 'ALL' ? `Nada en ${MEDIO_LABEL[medio]} en esta sesión` : filter === 'sales' ? 'Sin ventas en esta sesión' : filter === 'moves' ? 'Sin movimientos registrados' : 'Sin ventas ni movimientos todavía'} />
         ) : (
           <div className="max-h-[420px] overflow-y-auto">
             <table className={tableCls}>
@@ -143,6 +162,12 @@ export function SessionCard({ session }: { session: CashSession }) {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {medio !== 'ALL' && rows.length > 0 && (
+          <div className="flex items-center justify-between border-t border-line px-3 py-2.5 text-table">
+            <span className="text-ink-muted">{rows.length} movimiento(s) en {MEDIO_LABEL[medio]}{filter === 'all' && medio === 'CASH' ? ', sin contar el monto inicial' : ''}</span>
+            <span className="font-medium"><Money v={rowsTotal} sign={filter !== 'sales'} /></span>
           </div>
         )}
       </Panel>
