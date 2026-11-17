@@ -1,42 +1,20 @@
-import { useState, useEffect, useMemo } from 'react';
+// Productos: lista con categorías, filtros guardados en la dirección,
+// selección para acciones masivas e impresión de lista y etiquetas.
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Package, Edit, AlertTriangle, Barcode, Trash2, Printer, X, ArrowUpDown, CheckSquare, Square, Star, FileText, Rocket } from 'lucide-react';
-import JsBarcode from 'jsbarcode';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AlertTriangle, ArrowDownWideNarrow, ArrowUpNarrowWide, Barcode, FileText, Package, Pencil, Plus, Printer, Rocket, Star, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+  Btn, Check, EmptyState, FilterBar, PageHeader, Pagination, RowMenu, StatusBadge, fieldCls, surfaceCls,
+  tableCls, tdCls, thCls, useConfirm,
+} from '@/components/erp';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatCost, cn, looksLikeScannedCode } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { MARC_LOGO_DATA_URI } from '@/assets/marcLogo';
-
-interface Product {
-  id: string;
-  name: string;
-  barcode: string | null;
-  internalCode: string | null;
-  salePrice: number;
-  costPrice: number;
-  currentStock: number;
-  minStock: number;
-  status: string;
-  imageUrl: string | null;
-  isBulk?: boolean;
-  isFavorite?: boolean;
-  storeFeatured?: boolean;
-  category: { id: string; name: string; parent?: { name: string } | null };
-  brand: { name: string } | null;
-}
-
-interface CategoryNode {
-  id: string;
-  name: string;
-  children?: Array<{ id: string; name: string }>;
-}
+import { printPriceList } from './productPrinting';
+import { BarcodeCatalogModal, BulkActionBar, CategoryChipNav, type CategoryNode, type Product } from './ProductParts';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos los estados' },
@@ -44,6 +22,7 @@ const STATUS_OPTIONS = [
   { value: 'INACTIVE', label: 'Inactivo' },
   { value: 'DISCONTINUED', label: 'Descontinuado' },
 ];
+const STATUS_LABEL: Record<string, string> = { ACTIVE: 'Activo', INACTIVE: 'Inactivo', DISCONTINUED: 'Descontinuado' };
 
 const SORT_OPTIONS = [
   { value: 'category', label: 'Categoría' },
@@ -53,579 +32,15 @@ const SORT_OPTIONS = [
   { value: 'createdAt', label: 'Más reciente' },
 ];
 
-/* ─── Selector de categoría (árbol con subcategorías) ────────────────────── */
-function CategoryTreeSelect({ categories, value, onChange, allowEmpty = true, emptyLabel = 'Todas las categorías' }: {
-  categories: CategoryNode[]; value: string; onChange: (id: string) => void;
-  allowEmpty?: boolean; emptyLabel?: string;
-}) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}
-      className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      {allowEmpty && <option value="">{emptyLabel}</option>}
-      {categories.map((c) => (
-        c.children && c.children.length > 0 ? (
-          <optgroup key={c.id} label={c.name}>
-            <option value={c.id}>{c.name} (general)</option>
-            {c.children.map((ch) => <option key={ch.id} value={ch.id}>— {ch.name}</option>)}
-          </optgroup>
-        ) : (
-          <option key={c.id} value={c.id}>{c.name}</option>
-        )
-      ))}
-    </select>
-  );
-}
-
-/* ─── Navegación por categorías (chips generales + subcategorías) ────────── */
-function CategoryChipNav({ categories, categoryId, onSelect }: {
-  categories: CategoryNode[]; categoryId: string; onSelect: (id: string) => void;
-}) {
-  if (categories.length === 0) return null;
-
-  // El id activo puede ser una categoría general o una subcategoría suya —
-  // en ambos casos hay que mostrar expandida la fila de subcategorías del padre.
-  const activeParent = categories.find((c) => c.id === categoryId)
-    ?? categories.find((c) => c.children?.some((ch) => ch.id === categoryId));
-  const subcategories = activeParent?.children ?? [];
-
-  return (
-    <div className="space-y-2 rounded-xl border bg-card p-3">
-      <div className="flex flex-wrap gap-2">
-        <Button variant={!categoryId ? 'default' : 'outline'} size="sm" onClick={() => onSelect('')}>
-          Todas
-        </Button>
-        {categories.map((cat) => (
-          <Button key={cat.id} variant={activeParent?.id === cat.id ? 'default' : 'outline'} size="sm"
-            onClick={() => onSelect(cat.id)}>
-            {cat.name}
-          </Button>
-        ))}
-      </div>
-      {subcategories.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 border-t pt-2">
-          <Button variant={categoryId === activeParent!.id ? 'secondary' : 'ghost'} size="sm" className="h-7 text-xs"
-            onClick={() => onSelect(activeParent!.id)}>
-            Todas
-          </Button>
-          {subcategories.map((sub) => (
-            <Button key={sub.id} variant={categoryId === sub.id ? 'secondary' : 'ghost'} size="sm" className="h-7 text-xs"
-              onClick={() => onSelect(sub.id)}>
-              {sub.name}
-            </Button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Impresión de etiquetas de precio (para pegar en los portaprecios) ───
- * Tarjeta horizontal de ~5.2cm de alto en 3 zonas: logo circular, bloque de
- * nombre/variante con línea verde divisoria, precio en placa azul — y el
- * código de barras al pie con el número aparte en texto plano (no la
- * tipografía de JsBarcode, que se ve desalineada en el número). */
-function barcodeSvgMarkup(value: string): string {
-  // Los códigos de barra reales de los proveedores son EAN-13 (12-13
-  // dígitos) — se renderizan como tal para que salga el patrón correcto.
-  // Los códigos internos (cuando el producto no tiene barcode de fábrica)
-  // no son EAN-13 válido, así que caen a CODE128, que acepta cualquier texto.
-  const opts = { width: 1.7, height: 24, displayValue: false, margin: 0 };
-  if (/^\d{12,13}$/.test(value)) {
-    try {
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      JsBarcode(svg, value, { format: 'EAN13', ...opts });
-      return svg.outerHTML;
-    } catch { /* dígito verificador inválido — cae a CODE128 abajo */ }
-  }
-  try {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    JsBarcode(svg, value, { format: 'CODE128', ...opts });
-    return svg.outerHTML;
-  } catch {
-    return '';
-  }
-}
-
-// La mayoría de productos del catálogo se llaman "Tipo Marca Variante"
-// (ej. "Leche Bonle Protección 390g", "Detergente Ariel 1kg") — separar la
-// primera palabra como nombre grande y el resto como variante reproduce el
-// mismo efecto de "producto" + "presentación" sin un campo nuevo. Se filtra
-// el guión suelto de nombres tipo "Aceite - Beltrán Premium 1L" para que no
-// quede un "-" colgando al inicio del subtítulo.
-function splitProductName(name: string): { title: string; subtitle: string } {
-  const parts = name.trim().split(/\s+/).filter(p => p !== '-');
-  if (parts.length <= 1) return { title: name, subtitle: '' };
-  return { title: parts[0], subtitle: parts.slice(1).join(' ') };
-}
-
-// `win` se recibe ya abierto (ver handlePrint): abrir la ventana recién acá
-// significaba hacerlo después del `await` de generar códigos, es decir fuera
-// del gesto de clic original — en ese caso algunos navegadores (sobre todo
-// en tablets/Android) ya no consideran el `window.print()` posterior como
-// disparado por el usuario y lo ignoran en silencio, obligando a un segundo
-// "Imprimir" manual dentro de la ventana para que recién ahí funcione.
-function printBarcodeCatalog(products: Array<{ name: string; barcode: string; salePrice: number }>, win: Window) {
-  const cards = products.map(p => {
-    const { title, subtitle } = splitProductName(p.name);
-    return `
-    <div class="card">
-      <div class="row">
-        <div class="logo"><img src="${MARC_LOGO_DATA_URI}" /></div>
-        <div class="name-block">
-          <p class="title">${title}</p>
-          ${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}
-        </div>
-        <div class="price-badge">
-          <span class="tag">S/</span>
-          <span class="amount">${Number(p.salePrice).toFixed(2)}</span>
-          <span class="swoosh"></span>
-        </div>
-      </div>
-      <div class="divider"></div>
-      <div class="barcode-block">
-        ${barcodeSvgMarkup(p.barcode)}
-        <span class="barcode-code">${p.barcode}</span>
-      </div>
-    </div>`;
-  }).join('');
-  win.document.write(`<html><head><title>Etiquetas de precio</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
-    <style>
-      * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact; }
-      @page { size: A4; margin: 8mm; }
-      body { font-family: Arial, Helvetica, sans-serif; }
-      .grid { display: flex; flex-wrap: wrap; gap: 4.2mm; }
-      .card {
-        width: 90mm; height: 52mm;
-        border-radius: 3.8mm; overflow: hidden;
-        border: 5px solid #1e3a8a; background: #fff; page-break-inside: avoid;
-        display: flex; flex-direction: column;
-        padding: 3.4mm; gap: 2mm;
-      }
-      /* Sin flex:1 — el alto lo da el contenido, y ahora el contenido más
-         alto de la fila es la placa de precio (a propósito: es lo que más
-         quiere ver el cliente). El código de barras absorbe lo que sobra. */
-      .row { display: flex; align-items: center; gap: 1.8mm; }
-      .logo {
-        width: 70px; height: 70px; border-radius: 50%; overflow: hidden;
-        position: relative; flex-shrink: 0; background: #fff;
-        box-shadow: 0 0 0 3px #fff, 0 0 0 5px #22c55e;
-      }
-      .logo img { position: absolute; top: 0; right: 0; height: 100%; width: auto; }
-      .name-block { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
-      .title {
-        font-size: 27px; font-weight: 900; color: #111827; text-transform: uppercase;
-        line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      }
-      /* Chip azul para la variante/presentación (ej. "390G", "PROTECCIÓN
-         390G") — imita el rótulo tipo "600ML" de la referencia en vez del
-         texto gris plano de antes. */
-      .subtitle {
-        display: inline-block; max-width: 100%; align-self: flex-start;
-        font-size: 11px; font-weight: 800; color: #fff; background: #1e3a8a;
-        text-transform: uppercase; letter-spacing: .02em;
-        padding: 1mm 2.4mm; border-radius: 1.5mm;
-        white-space: nowrap; overflow: hidden;
-      }
-      /* Placa de precio — el elemento más grande de la etiqueta. Bebas Neue
-         es una tipografía condensada (angosta por diseño): a igual tamaño
-         ocupa bastante menos ancho por dígito que Arial, así que el precio
-         puede verse grande sin robarle todo el espacio al nombre. El tag
-         verde "S/" y el subrayado imitan el panel de precio de la
-         referencia (Coca-Cola Zero) en vez del layout "S/ + monto en fila". */
-      .price-badge {
-        flex-shrink: 0; background: #1e3a8a; color: #fff;
-        border-radius: 3mm; padding: 2mm 3.2mm 3mm; min-width: 26mm;
-        display: flex; flex-direction: column; align-items: center;
-        font-family: 'Bebas Neue', Arial, sans-serif;
-      }
-      .price-badge .tag {
-        align-self: flex-end; transform: translateY(-1.5mm);
-        background: #22c55e; color: #fff; font-family: Arial, Helvetica, sans-serif;
-        font-size: 10px; font-weight: 800; text-transform: uppercase;
-        padding: 1mm 2.4mm; border-radius: 1.5mm; margin-bottom: -1mm;
-      }
-      .price-badge .amount { font-size: 64px; font-weight: 400; letter-spacing: .01em; line-height: .85; }
-      .price-badge .swoosh { margin-top: 1.2mm; width: 60%; height: 2.5px; background: #22c55e; border-radius: 2px; }
-      /* Ancho fijado por JS al ancho real de .name-block — así la línea no
-         se mete debajo del logo ni de la placa de precio. */
-      .divider { flex-shrink: 0; height: 3px; background: #22c55e; border-radius: 1.5px; width: 0; }
-      /* Absorbe el espacio vertical restante (flex:1) y empuja su
-         contenido hacia abajo — así no queda como flotando en medio de un
-         hueco. A la izquierda (no ocupa todo el ancho) para que no compita
-         en protagonismo con el nombre y el precio, pero ya no tan angosto
-         como para dejar un vacío grande a la derecha. */
-      .barcode-block {
-        flex: 1; min-height: 0; display: flex; flex-direction: column;
-        align-items: center; justify-content: flex-end;
-        align-self: flex-start; width: 76%;
-      }
-      .barcode-block svg { width: 100%; height: auto; max-height: 10mm; }
-      .barcode-code { font-size: 10px; font-weight: 600; color: #333; letter-spacing: .04em; font-family: 'Courier New', monospace; margin-top: 0.5mm; }
-    </style></head><body>
-    <div class="grid">${cards}</div>
-    <script>
-      // Se espera a que cargue Bebas Neue (fuente del precio) antes de
-      // medir nada — si no, la placa de precio mide su ancho con la
-      // tipografía de respaldo y el ajuste del nombre queda mal calculado
-      // (el precio cambia de ancho apenas la fuente real termina de cargar).
-      function layoutAndPrint() {
-        // El ancho disponible para el nombre depende de cuánto ocupe la
-        // placa de precio (varía según la cantidad de dígitos) — en vez de
-        // niveles fijos por cantidad de letras (que igual se cortaban en
-        // casos límite), se mide el ancho real y se achica la fuente sólo
-        // lo necesario para que el nombre completo siempre quepa entero.
-        // Se mide con canvas (measureText) en vez de leer scrollWidth del
-        // propio <p>: al ser un hijo de un flex column, se estira al ancho
-        // del contenedor (align-items:stretch por defecto), así que su
-        // scrollWidth termina siendo ~ su propio ancho ya estirado, no el
-        // ancho real del texto — compararlo contra sí mismo con ese error
-        // de redondeo hacía que el achicado nunca se detuviera.
-        var measureCanvas = document.createElement('canvas');
-        var measureCtx = measureCanvas.getContext('2d');
-        document.querySelectorAll('.card').forEach(function (card) {
-          var title = card.querySelector('.title');
-          var nameBlock = card.querySelector('.name-block');
-          var maxWidth = nameBlock.getBoundingClientRect().width - 2; // margen de seguridad
-          var text = title.textContent.toUpperCase();
-          var fontSize = 27;
-          function textWidthAt(size) {
-            measureCtx.font = '900 ' + size + 'px Arial, Helvetica, sans-serif';
-            return measureCtx.measureText(text).width;
-          }
-          while (textWidthAt(fontSize) > maxWidth && fontSize > 11) fontSize -= 1;
-          title.style.fontSize = fontSize + 'px';
-
-          // El chip de variante (antes texto gris con line-clamp) ahora es
-          // una sola línea con fondo — se achica igual que el nombre en vez
-          // de recortar con "..." para no perder info como "390G" o
-          // "PROTECCIÓN" en nombres largos.
-          var subtitle = card.querySelector('.subtitle');
-          if (subtitle) {
-            var subMaxWidth = nameBlock.getBoundingClientRect().width - 20; // padding horizontal del chip
-            var subText = subtitle.textContent.toUpperCase();
-            var subSize = 11;
-            function subWidthAt(size) {
-              measureCtx.font = '800 ' + size + 'px Arial, Helvetica, sans-serif';
-              return measureCtx.measureText(subText).width;
-            }
-            while (subWidthAt(subSize) > subMaxWidth && subSize > 7) subSize -= 1;
-            subtitle.style.fontSize = subSize + 'px';
-          }
-
-          var divider = card.querySelector('.divider');
-          var cardBox = card.getBoundingClientRect();
-          var nameBox = nameBlock.getBoundingClientRect();
-          var paddingLeft = parseFloat(getComputedStyle(card).paddingLeft);
-          divider.style.marginLeft = (nameBox.left - cardBox.left - paddingLeft) + 'px';
-          divider.style.width = nameBox.width + 'px';
-        });
-        // Reenfocar justo antes de imprimir: si la ventana perdió el foco
-        // mientras se esperaba la fuente, algunos navegadores ignoran el
-        // print() silenciosamente y hay que volver a pedirlo a mano.
-        window.focus();
-        window.print();
-      }
-      // La fuente ya se precarga desde la app principal antes de abrir esta
-      // ventana (ver useEffect en BarcodeCatalogModal), así que normalmente
-      // ya está en caché y esto resuelve casi al instante — el timeout de
-      // 400ms es sólo un respaldo, no el camino esperado.
-      var fontsReady = (document.fonts && document.fonts.ready) || Promise.resolve();
-      Promise.race([fontsReady, new Promise(function (r) { setTimeout(r, 400); })]).then(layoutAndPrint);
-    </script>
-    </body></html>`);
-  win.document.close();
-}
-
-/* ─── Impresión de lista de precios (A4, para dejar con los cajeros) ────── */
-function printPriceList(products: Array<{
-  name: string; internalCode: string | null; barcode: string | null; salePrice: number;
-  currentStock: number; category: { name: string; parent?: { name: string } | null };
-}>) {
-  const win = window.open('', '_blank', 'width=900,height=1000');
-  if (!win) return;
-  const rows = products.map((p, i) => `
-    <tr class="${i % 2 === 0 ? 'even' : ''}">
-      <td class="code">${p.internalCode ?? p.barcode ?? '—'}</td>
-      <td>${p.name}</td>
-      <td class="muted">${p.category.parent ? `${p.category.parent.name} › ${p.category.name}` : p.category.name}</td>
-      <td class="right price">S/ ${Number(p.salePrice).toFixed(2)}</td>
-      <td class="right">${p.currentStock}</td>
-    </tr>`).join('');
-  const now = new Date().toLocaleString('es-PE', { dateStyle: 'long', timeStyle: 'short' });
-  win.document.write(`<html><head><title>Lista de Precios</title>
-    <style>
-      * { margin:0; padding:0; box-sizing:border-box; }
-      @page { size: A4; margin: 14mm 12mm; }
-      body { font-family: Arial, Helvetica, sans-serif; color:#111; }
-      header { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #111; padding-bottom:8px; margin-bottom:14px; }
-      h1 { font-size:20px; letter-spacing:.02em; }
-      .meta { font-size:11px; color:#555; text-align:right; line-height:1.5; }
-      table { width:100%; border-collapse:collapse; font-size:12px; }
-      thead th { text-align:left; background:#111; color:#fff; padding:7px 8px; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
-      td { padding:5px 8px; border-bottom:1px solid #ddd; }
-      tr.even td { background:#f4f4f4; }
-      tbody tr { page-break-inside: avoid; }
-      .code { font-family: 'Courier New', monospace; font-weight:bold; white-space:nowrap; }
-      .right { text-align:right; }
-      .price { font-weight:bold; }
-      .muted { color:#666; }
-      footer { margin-top:12px; font-size:10px; color:#888; text-align:right; }
-    </style></head><body>
-    <header>
-      <h1>Lista de Precios</h1>
-      <div class="meta">Generado: ${now}<br/>${products.length} producto(s)</div>
-    </header>
-    <table>
-      <thead><tr><th>Código</th><th>Producto</th><th>Categoría</th><th class="right">Precio</th><th class="right">Stock</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <footer>ERP Minimarket</footer>
-    </body></html>`);
-  win.document.close(); win.focus(); win.print();
-}
-
-function BarcodeCatalogModal({ onClose, categories }: { onClose: () => void; categories: CategoryNode[] }) {
-  const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
-  const debouncedSearch = useDebouncedValue(search, 300);
-  const [categoryId, setCategoryId] = useState('');
-  const [onlyMissing, setOnlyMissing] = useState(true);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-
-  // Límite alto para traer TODO el catálogo de una vez — con el tope
-  // anterior (100) la mitad de los productos ni siquiera aparecían acá.
-  const { data: allProducts, isLoading } = useQuery({
-    queryKey: ['products-barcode-catalog'],
-    queryFn: async () => (await api.get<{ data: Product[] }>('/products?limit=3000')).data.data,
-  });
-
-  // Si se elige una categoría general, incluye sus subcategorías (mismo
-  // criterio que el resto del sistema) — si no, casi nunca hay productos
-  // asignados directo a la categoría padre.
-  const selectedCategoryIds = useMemo(() => {
-    if (!categoryId) return null;
-    const node = categories.find(c => c.id === categoryId);
-    const ids = new Set([categoryId, ...(node?.children?.map(c => c.id) ?? [])]);
-    return ids;
-  }, [categoryId, categories]);
-
-  // "Sin código" incluye tanto productos sin barcode como los que quedaron
-  // con un valor inválido (ej. el nombre del producto guardado por error en
-  // el pasado) — ambos casos necesitan que se les genere un código interno
-  // limpio tipo PROxxx.
-  const filtered = (allProducts ?? []).filter(p => {
-    if (onlyMissing && looksLikeScannedCode(p.barcode ?? '')) return false;
-    if (selectedCategoryIds && !selectedCategoryIds.has(p.category.id)) return false;
-    if (debouncedSearch && !p.name.toLowerCase().includes(debouncedSearch.toLowerCase())) return false;
-    return true;
-  });
-
-  const toggle = (id: string) => setSelected(v => {
-    const next = new Set(v);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
-
-  const toggleAll = () => setSelected(v =>
-    v.size === filtered.length ? new Set() : new Set(filtered.map(p => p.id)));
-
-  const generateMutation = useMutation({
-    mutationFn: (productIds: string[]) => api.post<{ data: Array<{ id: string; barcode: string }> }>('/products/generate-barcodes-bulk', { productIds }),
-  });
-
-  // Precarga la fuente del precio apenas se abre el modal (no al imprimir):
-  // así, cuando el usuario recién da clic en "Imprimir", el navegador ya la
-  // tiene en caché y la ventana de impresión no tiene que esperarla.
-  useEffect(() => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap';
-    document.head.appendChild(link);
-    document.fonts?.load('64px "Bebas Neue"').catch(() => {});
-    return () => { document.head.removeChild(link); };
-  }, []);
-
-  const handlePrint = async () => {
-    const chosen = (allProducts ?? []).filter(p => selected.has(p.id));
-    const needCodes = chosen.filter(p => !looksLikeScannedCode(p.barcode ?? '')).map(p => p.id);
-
-    // La ventana se abre AQUÍ, de forma síncrona dentro del clic, en vez de
-    // después del await de abajo — si se abre tras un await, ya no cuenta
-    // como "gesto del usuario" para el navegador, y el window.print() que
-    // dispara sola la ventana más adelante puede ser ignorado en silencio
-    // (de ahí que hiciera falta un segundo "Imprimir" manual para que
-    // recién funcione).
-    const win = window.open('', '_blank', 'width=900,height=950');
-    if (!win) {
-      toast.error('El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.');
-      return;
-    }
-    win.document.write('<title>Generando etiquetas…</title><body style="font-family:Arial,sans-serif;padding:2rem;color:#555">Generando etiquetas…</body>');
-
-    let generated: Array<{ id: string; barcode: string }> = [];
-    if (needCodes.length > 0) {
-      try {
-        generated = (await generateMutation.mutateAsync(needCodes)).data.data;
-        queryClient.invalidateQueries({ queryKey: ['products'] });
-        queryClient.invalidateQueries({ queryKey: ['products-barcode-catalog'] });
-      } catch (err) {
-        win.close();
-        toast.error(getErrorMessage(err));
-        return;
-      }
-    }
-    const codeById = new Map(generated.map(g => [g.id, g.barcode]));
-    const toPrint = chosen.map(p => ({
-      name: p.name,
-      salePrice: p.salePrice,
-      barcode: (looksLikeScannedCode(p.barcode ?? '') ? p.barcode : null) ?? codeById.get(p.id) ?? '',
-    })).filter(p => p.barcode);
-
-    if (toPrint.length === 0) {
-      win.close();
-      toast.error('No hay productos seleccionados con código.');
-      return;
-    }
-    printBarcodeCatalog(toPrint, win);
-    toast.success(`Catálogo generado con ${toPrint.length} producto(s).`);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between border-b p-5">
-          <div>
-            <h2 className="text-lg font-bold flex items-center gap-2"><Barcode className="h-5 w-5 text-primary" />Imprimir catálogo de códigos</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Marca productos sin código real (a granel, o con un código inválido guardado antes) — se les asigna un código interno PROxxx al imprimir.
-            </p>
-          </div>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
-        </div>
-
-        <div className="p-5 space-y-3 border-b">
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <Input startIcon={<Search className="h-4 w-4" />} placeholder="Buscar producto..." value={search} onChange={e => setSearch(e.target.value)} />
-            </div>
-            <CategoryTreeSelect categories={categories} value={categoryId} onChange={setCategoryId} emptyLabel="Todas las categorías" />
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <label className="flex items-center gap-2 cursor-pointer" title="Incluye productos sin código y los que tengan un código inválido (ej. texto en vez de un código real)">
-              <input type="checkbox" checked={onlyMissing} onChange={e => setOnlyMissing(e.target.checked)} className="h-4 w-4 rounded border-input" />
-              Solo pendientes (sin código real)
-            </label>
-            <button onClick={toggleAll} className="text-primary hover:underline">
-              {selected.size === filtered.length && filtered.length > 0 ? 'Deseleccionar todos' : `Seleccionar todos (${filtered.length})`}
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-y-auto flex-1 divide-y">
-          {isLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Cargando productos...</div>
-          ) : filtered.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground text-sm">
-              No hay productos que coincidan.
-              {onlyMissing && <span className="block mt-1">Prueba desmarcar "Solo pendientes" — puede que ya todos tengan código en esta vista.</span>}
-            </div>
-          ) : filtered.map(p => {
-            const hasRealCode = looksLikeScannedCode(p.barcode ?? '');
-            return (
-            <label key={p.id} className="flex items-center gap-3 px-5 py-2.5 cursor-pointer hover:bg-muted/30">
-              <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} className="h-4 w-4 rounded border-input" />
-              <span className="flex-1 text-sm">
-                {p.name}
-                <span className="block text-xs text-muted-foreground">
-                  {p.category.parent ? `${p.category.parent.name} › ${p.category.name}` : p.category.name}
-                </span>
-              </span>
-              {p.isBulk && <Badge variant="secondary" className="text-xs">Granel</Badge>}
-              {hasRealCode ? (
-                <span className="text-xs font-mono text-muted-foreground">{p.barcode}</span>
-              ) : p.barcode ? (
-                <span className="text-xs text-destructive" title={`Valor guardado actualmente: "${p.barcode}"`}>Código inválido — se corregirá</span>
-              ) : (
-                <span className="text-xs text-amber-600">Sin código — se generará</span>
-              )}
-            </label>
-            );
-          })}
-        </div>
-
-        <div className="border-t p-5 flex gap-3 justify-end">
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handlePrint} loading={generateMutation.isPending} disabled={selected.size === 0}>
-            <Printer className="mr-2 h-4 w-4" />Generar e imprimir ({selected.size})
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Paginación (se repite arriba y abajo de la tabla para no obligar a
-     bajar hasta el final cada vez que se quiere cambiar de página) ────────── */
-function PaginationBar({ page, totalPages, onChange }: {
-  page: number; totalPages: number; onChange: (page: number) => void;
-}) {
-  if (totalPages <= 1) return null;
-  return (
-    <div className="flex items-center justify-between rounded-xl border bg-card px-4 py-2.5">
-      <p className="text-sm text-muted-foreground">
-        Página {page} de {totalPages}
-      </p>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onChange(page - 1)}>
-          Anterior
-        </Button>
-        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onChange(page + 1)}>
-          Siguiente
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Barra de acciones masivas ──────────────────────────────────────────── */
-function BulkActionBar({ count, categories, onAssignCategory, onSetStatus, onClear, loading }: {
-  count: number; categories: CategoryNode[];
-  onAssignCategory: (categoryId: string) => void;
-  onSetStatus: (status: string) => void;
-  onClear: () => void;
-  loading: boolean;
-}) {
-  const [bulkCategoryId, setBulkCategoryId] = useState('');
-
-  return (
-    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-xl border bg-primary/5 border-primary/20 px-4 py-3">
-      <span className="text-sm font-semibold" title="La selección se mantiene aunque cambies de página">
-        {count} seleccionado{count !== 1 ? 's' : ''}
-      </span>
-      <div className="flex items-center gap-2">
-        <CategoryTreeSelect categories={categories} value={bulkCategoryId} onChange={setBulkCategoryId}
-          emptyLabel="Asignar categoría..." />
-        <Button size="sm" disabled={!bulkCategoryId || loading} loading={loading}
-          onClick={() => { onAssignCategory(bulkCategoryId); setBulkCategoryId(''); }}>
-          Aplicar
-        </Button>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <Button size="sm" variant="outline" disabled={loading} onClick={() => onSetStatus('ACTIVE')}>Activar</Button>
-        <Button size="sm" variant="outline" disabled={loading} onClick={() => onSetStatus('INACTIVE')}>Desactivar</Button>
-      </div>
-      <Button size="sm" variant="ghost" className="ml-auto" onClick={onClear}>
-        <X className="mr-1.5 h-3.5 w-3.5" />Cancelar selección
-      </Button>
-    </div>
-  );
-}
+const toggleCls = (on: boolean) => cn(
+  'tap inline-flex h-8 items-center gap-1.5 rounded-ctl px-2.5 text-table font-medium transition-colors [&_svg]:size-4',
+  on ? 'bg-ink text-on-ink' : 'text-ink-muted shadow-[inset_0_0_0_1px_hsl(var(--line-strong))] hover:bg-surface-2 hover:text-ink',
+);
 
 export function ProductsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const confirm = useConfirm();
   const { hasMinRole } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
@@ -788,103 +203,84 @@ export function ProductsPage() {
     });
   };
 
+  const toggleParam = (key: string, on: boolean) => setSearchParams((prev) => {
+    const next = new URLSearchParams(prev);
+    if (on) next.delete(key); else next.set(key, 'true');
+    next.set('page', '1');
+    return next;
+  });
+  const pageSize = Number(limit) || 25;
+  const catName = (() => {
+    for (const c of categories ?? []) {
+      if (c.id === categoryId) return c.name;
+      const ch = c.children?.find((x) => x.id === categoryId);
+      if (ch) return `${c.name} › ${ch.name}`;
+    }
+    return '';
+  })();
+  const canEdit = hasMinRole('WAREHOUSE');
+
+  const removeProduct = async (product: Product) => {
+    const r = await confirm({
+      title: `Eliminar "${product.name}"`,
+      description: 'Si el producto ya tiene ventas registradas, se marcará como descontinuado en vez de eliminarse.',
+      confirmLabel: 'Eliminar', tone: 'danger',
+    });
+    if (r.ok) deleteMutation.mutate(product.id);
+  };
+
+  const pager = pagination && pagination.totalPages > 1 && (
+    <div className={surfaceCls}>
+      <Pagination page={page} totalPages={pagination.totalPages} total={pagination.total} pageSize={pageSize} onPage={goToPage} />
+    </div>
+  );
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Productos</h1>
-          <p className="text-sm text-muted-foreground">
-            {pagination ? `${pagination.total} productos en total` : 'Gestión de inventario'}
-          </p>
-        </div>
-        {hasMinRole('WAREHOUSE') && (
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handlePrintPriceList} loading={printingList}
-              title="Lista con código, precio y stock actual — para dejar impresa con los cajeros">
-              <FileText className="mr-2 h-4 w-4" />
-              Imprimir lista de precios
-            </Button>
-            <Button variant="outline" onClick={() => setShowBarcodeCatalog(true)}>
-              <Printer className="mr-2 h-4 w-4" />
-              Imprimir catálogo de códigos
-            </Button>
-            <Link to="/products/new">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Nuevo Producto
-              </Button>
-            </Link>
-          </div>
-        )}
-      </div>
+    <div className="erp flex flex-col gap-4">
+      <PageHeader title="Productos" actions={canEdit && <>
+        <Btn onClick={handlePrintPriceList} loading={printingList} className="hidden sm:inline-flex"
+          title="Lista con código, precio y stock actual, para dejar impresa con los cajeros"><FileText />Imprimir lista de precios</Btn>
+        <Btn onClick={() => setShowBarcodeCatalog(true)} className="hidden sm:inline-flex"><Printer />Imprimir catálogo de códigos</Btn>
+        <Btn variant="primary" onClick={() => navigate('/products/new')}><Plus />Nuevo producto</Btn>
+      </>}>
+        <p className="text-table text-ink-muted">{pagination ? `${pagination.total.toLocaleString('es-PE')} productos en total` : 'Catálogo de productos'}</p>
+      </PageHeader>
 
       {showBarcodeCatalog && <BarcodeCatalogModal onClose={() => setShowBarcodeCatalog(false)} categories={categories ?? []} />}
 
-      {/* Navegación por categorías: chips de categoría general + subcategorías,
-          igual al patrón ya usado en el POS, para no obligar a leer un <select>. */}
+      {/* Categorías generales y sus subcategorías, igual que en el POS. */}
       <CategoryChipNav categories={categories ?? []} categoryId={categoryId} onSelect={(v) => setParam('categoryId', v)} />
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-3">
-        <div className="flex-1 min-w-[220px]">
-          <Input
-            startIcon={<Search className="h-4 w-4" />}
-            placeholder="Buscar por nombre, código de barras o código interno..."
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-        </div>
-        <select value={status} onChange={(e) => setParam('status', e.target.value)}
-          className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <div className="flex items-center gap-1">
-          <select value={sortBy} onChange={(e) => setParam('sortBy', e.target.value)}
-            className="flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <Button variant="outline" size="icon" title={sortOrder === 'asc' ? 'Ascendente' : 'Descendente'}
-            onClick={() => setParam('sortOrder', sortOrder === 'asc' ? 'desc' : 'asc')}>
-            <ArrowUpDown className="h-4 w-4" />
-          </Button>
-        </div>
-        <Button
-          variant={lowStock ? 'default' : 'outline'}
-          onClick={() => {
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              if (lowStock) next.delete('lowStock');
-              else next.set('lowStock', 'true');
-              next.set('page', '1');
-              return next;
-            });
-          }}
-        >
-          <AlertTriangle className="mr-2 h-4 w-4" />
-          Stock Bajo
-        </Button>
-        <Button
-          variant={favorite ? 'default' : 'outline'}
-          className={cn(favorite && 'bg-amber-500 hover:bg-amber-600 border-amber-500 text-black')}
-          onClick={() => {
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              if (favorite) next.delete('favorite');
-              else next.set('favorite', 'true');
-              next.set('page', '1');
-              return next;
-            });
-          }}
-          title="Productos marcados como favoritos para acceso rápido en el POS"
-        >
-          <Star className="mr-2 h-4 w-4" />
-          Favoritos
-        </Button>
-        {(categoryId || status || lowStock || favorite || search) && (
-          <Button variant="ghost" onClick={() => { setSearch(''); setSearchParams({}); }}>
-            <X className="mr-1.5 h-3.5 w-3.5" />Limpiar filtros
-          </Button>
-        )}
+      <div className={surfaceCls}>
+        <FilterBar
+          search={{ value: search, onChange: handleSearch, placeholder: 'Buscar por nombre, código de barras o código interno' }}
+          quick={<>
+            <select aria-label="Estado" value={status} onChange={(e) => setParam('status', e.target.value)} className={cn(fieldCls, 'h-8 w-auto')}>
+              {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <div className="flex items-center gap-1">
+              <span className="pl-1 text-meta text-ink-muted">Ordenar por</span>
+              <select aria-label="Ordenar por" value={sortBy} onChange={(e) => setParam('sortBy', e.target.value)} className={cn(fieldCls, 'h-8 w-auto')}>
+                {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <Btn size="sm" variant="ghost" aria-label={sortOrder === 'asc' ? 'Orden ascendente' : 'Orden descendente'} title={sortOrder === 'asc' ? 'Ascendente' : 'Descendente'}
+                onClick={() => setParam('sortOrder', sortOrder === 'asc' ? 'desc' : 'asc')}>
+                {sortOrder === 'asc' ? <ArrowUpNarrowWide /> : <ArrowDownWideNarrow />}
+              </Btn>
+            </div>
+            <button type="button" aria-pressed={lowStock} className={toggleCls(lowStock)} onClick={() => toggleParam('lowStock', lowStock)}><AlertTriangle />Stock bajo</button>
+            <button type="button" aria-pressed={favorite} className={toggleCls(favorite)} onClick={() => toggleParam('favorite', favorite)}
+              title="Productos marcados como favoritos para acceso rápido en el POS"><Star />Favoritos</button>
+          </>}
+          chips={[
+            ...(search ? [{ key: 'q', label: 'Búsqueda', value: search, onRemove: () => handleSearch('') }] : []),
+            ...(catName ? [{ key: 'cat', label: 'Categoría', value: catName, onRemove: () => setParam('categoryId', '') }] : []),
+            ...(status ? [{ key: 'st', label: 'Estado', value: STATUS_LABEL[status] ?? status, onRemove: () => setParam('status', '') }] : []),
+            ...(lowStock ? [{ key: 'low', label: 'Stock', value: 'Bajo', onRemove: () => toggleParam('lowStock', true) }] : []),
+            ...(favorite ? [{ key: 'fav', label: 'Solo', value: 'Favoritos', onRemove: () => toggleParam('favorite', true) }] : []),
+          ]}
+          onClear={() => { setSearch(''); setSearchParams({}); }}
+        />
       </div>
 
       {selected.size > 0 && (
@@ -898,156 +294,105 @@ export function ProductsPage() {
         />
       )}
 
-      {pagination && <PaginationBar page={page} totalPages={pagination.totalPages} onChange={goToPage} />}
+      {pager}
 
-      {/* Tabla de productos */}
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Cargando productos...</div>
-          ) : products.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 p-12 text-muted-foreground">
-              <Package className="h-12 w-12 opacity-20" />
-              <p>No se encontraron productos</p>
-              {hasMinRole('WAREHOUSE') && (
-                <Link to="/products/new">
-                  <Button size="sm">Crear primer producto</Button>
-                </Link>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="data-table w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium w-8">
-                      <button onClick={toggleSelectAll} title="Seleccionar todos en esta página">
-                        {allOnPageSelected
-                          ? <CheckSquare className="h-4 w-4 text-primary" />
-                          : <Square className="h-4 w-4 text-muted-foreground" />}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium">Producto</th>
-                    <th className="px-4 py-3 text-left font-medium col-md">Categoría</th>
-                    <th className="px-4 py-3 text-right font-medium col-lg">Costo</th>
-                    <th className="px-4 py-3 text-right font-medium">Precio</th>
-                    <th className="px-4 py-3 text-right font-medium">Stock</th>
-                    <th className="px-4 py-3 text-center font-medium col-md">Estado</th>
-                    <th className="px-4 py-3 text-center font-medium">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {products.map((product) => (
-                    <tr key={product.id}
-                      className={cn('hover:bg-muted/30 transition-colors', selected.has(product.id) && 'bg-primary/5')}>
-                      <td className="px-4 py-3">
-                        <button onClick={() => toggleSelect(product.id)}>
-                          {selected.has(product.id)
-                            ? <CheckSquare className="h-4 w-4 text-primary" />
-                            : <Square className="h-4 w-4 text-muted-foreground" />}
-                        </button>
-                      </td>
-                      <td data-label="Producto" className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-muted overflow-hidden">
-                            {product.imageUrl ? (
-                              <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
-                            ) : (
-                              <Package className="h-4 w-4 text-muted-foreground/40" />
-                            )}
+      <div className={cn('overflow-hidden', surfaceCls)}>
+        {isLoading ? (
+          <div className="py-12 text-center text-table text-ink-muted">Cargando productos…</div>
+        ) : products.length === 0 ? (
+          <EmptyState icon={Package} title="No se encontraron productos"
+            action={canEdit && <Btn size="sm" variant="primary" onClick={() => navigate('/products/new')}>Crear producto</Btn>} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className={tableCls}>
+              <thead><tr>
+                <th className={cn(thCls, 'w-8 pr-0')}>
+                  <Check checked={allOnPageSelected} indeterminate={!allOnPageSelected && products.some((p) => selected.has(p.id))}
+                    onChange={toggleSelectAll} label="Seleccionar todos en esta página" />
+                </th>
+                <th className={thCls}>Producto</th>
+                <th className={cn(thCls, 'hidden md:table-cell')}>Categoría</th>
+                <th className={cn(thCls, 'hidden text-right lg:table-cell')}>Costo</th>
+                <th className={cn(thCls, 'text-right')}>Precio</th>
+                <th className={cn(thCls, 'text-right')}>Stock</th>
+                <th className={cn(thCls, 'hidden md:table-cell')}>Estado</th>
+                {canEdit && <th className={cn(thCls, 'w-px')}><span className="sr-only">Acciones</span></th>}
+              </tr></thead>
+              <tbody>
+                {products.map((product) => {
+                  const realCode = looksLikeScannedCode(product.barcode ?? '');
+                  return (
+                    <tr key={product.id} className={cn('hover:bg-surface-2', selected.has(product.id) && 'bg-brand-soft')}>
+                      <td className={cn(tdCls, 'pr-0')}><Check checked={selected.has(product.id)} onChange={() => toggleSelect(product.id)} label={`Seleccionar ${product.name}`} /></td>
+                      <td className={cn(tdCls, 'py-1.5')}>
+                        <div className="flex items-center gap-2.5">
+                          <div className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-ctl bg-ink/[0.05]">
+                            {product.imageUrl ? <img src={product.imageUrl} alt="" className="size-full object-cover" /> : <Package className="size-4 text-ink-muted/50" />}
                           </div>
-                          <div>
-                            <p className="font-medium flex items-center gap-1.5">
-                              {product.name}
-                              {product.isFavorite && <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />}
-                              {product.storeFeatured && <Rocket className="h-3.5 w-3.5 shrink-0 fill-blue-400 text-blue-600" />}
-                            </p>
-                            {product.barcode && (
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <Barcode className="h-3 w-3 text-muted-foreground" />
-                                {looksLikeScannedCode(product.barcode) ? (
-                                  <span className="text-xs font-mono text-muted-foreground">{product.barcode}</span>
-                                ) : (
-                                  <span className="text-xs text-destructive" title={`Valor guardado actualmente: "${product.barcode}"`}>
-                                    Código inválido
-                                  </span>
-                                )}
-                              </div>
-                            )}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 font-medium">
+                              <span className="truncate">{product.name}</span>
+                              {product.isFavorite && <Star className="size-3.5 shrink-0 fill-warn text-warn" aria-label="Favorito" />}
+                              {product.storeFeatured && <Rocket className="size-3.5 shrink-0 text-brand" aria-label="Destacado en la tienda" />}
+                            </div>
+                            {product.barcode && (realCode
+                              ? <div className="font-mono text-meta text-ink-muted">{product.barcode}</div>
+                              : <div className="text-meta text-bad-ink" title={`Valor guardado actualmente: "${product.barcode}"`}>Código inválido</div>)}
+                            <div className="text-meta text-ink-muted md:hidden">{product.category.name}</div>
                           </div>
                         </div>
                       </td>
-                      <td data-label="Categoría" className="px-4 py-3 text-muted-foreground col-md">
-                        {product.category.parent ? (
-                          <span className="flex items-center gap-1">
-                            <span className="text-xs opacity-60">{product.category.parent.name} ›</span>
-                            {product.category.name}
-                          </span>
-                        ) : product.category.name}
+                      <td className={cn(tdCls, 'hidden text-ink-muted md:table-cell')}>
+                        {product.category.parent ? <><span className="text-meta">{product.category.parent.name} › </span>{product.category.name}</> : product.category.name}
                       </td>
-                      <td data-label="Costo" className="px-4 py-3 text-right col-lg">{formatCost(product.costPrice)}</td>
-                      <td data-label="Precio" className="px-4 py-3 text-right font-semibold">{formatCurrency(product.salePrice)}</td>
-                      <td data-label="Stock" className="px-4 py-3 text-right">
-                        <span className={cn(
-                          'font-semibold',
-                          product.currentStock <= 0 ? 'text-destructive' :
-                          product.currentStock <= product.minStock ? 'text-warning' : 'text-foreground',
-                        )}>
-                          {product.currentStock}
-                        </span>
-                        {product.currentStock <= product.minStock && product.currentStock > 0 && (
-                          <AlertTriangle className="ml-1 inline h-3.5 w-3.5 text-warning" />
-                        )}
+                      <td className={cn(tdCls, 'hidden text-right tabular-nums lg:table-cell')}>{formatCost(product.costPrice)}</td>
+                      <td className={cn(tdCls, 'text-right font-semibold tabular-nums')}>{formatCurrency(product.salePrice)}</td>
+                      <td className={cn(tdCls, 'whitespace-nowrap text-right tabular-nums')}>
+                        <span className={cn('font-semibold', product.currentStock <= 0 ? 'text-bad-ink' : product.currentStock <= product.minStock && 'text-warn-ink')}>{product.currentStock}</span>
+                        {product.currentStock <= product.minStock && product.currentStock > 0 && <AlertTriangle className="ml-1 inline size-3.5 text-warn" aria-label="Stock bajo" />}
                       </td>
-                      <td data-label="Estado" className="px-4 py-3 text-center col-md">
-                        <Badge variant={product.status === 'ACTIVE' ? 'success' : 'secondary'}>
-                          {product.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
-                        </Badge>
+                      <td className={cn(tdCls, 'hidden md:table-cell')}>
+                        <StatusBadge tone={product.status === 'ACTIVE' ? 'ok' : 'muted'}>{product.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</StatusBadge>
                       </td>
-                      <td data-label="Acciones" className="px-4 py-3 text-center">
-                        {hasMinRole('WAREHOUSE') && (
-                          <div className="flex justify-center gap-1">
-                            <Button variant="ghost" size="icon-sm"
+                      {canEdit && (
+                        <td className={cn(tdCls, 'px-1')}>
+                          <div className="flex items-center justify-end gap-0.5">
+                            <Btn size="sm" variant="ghost" className="hidden px-2 sm:inline-flex"
+                              aria-label={product.isFavorite ? 'Quitar de favoritos (POS)' : 'Marcar como favorito (POS)'}
                               title={product.isFavorite ? 'Quitar de favoritos (POS)' : 'Marcar como favorito (acceso rápido en POS)'}
                               onClick={() => toggleFavoriteMutation.mutate({ id: product.id, isFavorite: !product.isFavorite })}
                               loading={toggleFavoriteMutation.isPending && toggleFavoriteMutation.variables?.id === product.id}>
-                              <Star className={cn('h-4 w-4', product.isFavorite && 'fill-amber-400 text-amber-500')} />
-                            </Button>
-                            <Button variant="ghost" size="icon-sm"
+                              <Star className={cn(product.isFavorite && 'fill-warn text-warn')} />
+                            </Btn>
+                            <Btn size="sm" variant="ghost" className="hidden px-2 sm:inline-flex"
+                              aria-label={product.storeFeatured ? 'Quitar destacado de la tienda online' : 'Destacar en la tienda online'}
                               title={product.storeFeatured ? 'Quitar destacado de la tienda online' : 'Destacar en la tienda online (aparece primero en su categoría)'}
                               onClick={() => toggleStoreFeaturedMutation.mutate({ id: product.id, storeFeatured: !product.storeFeatured })}
                               loading={toggleStoreFeaturedMutation.isPending && toggleStoreFeaturedMutation.variables?.id === product.id}>
-                              <Rocket className={cn('h-4 w-4', product.storeFeatured && 'fill-blue-400 text-blue-600')} />
-                            </Button>
-                            {!looksLikeScannedCode(product.barcode ?? '') && (
-                              <Button variant="ghost" size="icon-sm" title="Generar código de barras interno"
-                                onClick={() => generateBarcodeMutation.mutate(product.id)}
-                                loading={generateBarcodeMutation.isPending && generateBarcodeMutation.variables === product.id}>
-                                <Barcode className="h-4 w-4" />
-                              </Button>
-                            )}
-                            <Link to={`/products/${product.id}/edit`}>
-                              <Button variant="ghost" size="icon-sm">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </Link>
-                            <Button variant="ghost" size="icon-sm" className="text-destructive"
-                              onClick={() => { if (confirm(`¿Eliminar "${product.name}"?`)) deleteMutation.mutate(product.id); }}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                              <Rocket className={cn(product.storeFeatured && 'text-brand')} />
+                            </Btn>
+                            <Btn size="sm" onClick={() => navigate(`/products/${product.id}/edit`)}><Pencil />Editar</Btn>
+                            <RowMenu label={`Acciones de ${product.name}`} actions={[
+                              { label: product.isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito', icon: Star,
+                                onSelect: () => toggleFavoriteMutation.mutate({ id: product.id, isFavorite: !product.isFavorite }) },
+                              { label: product.storeFeatured ? 'Quitar destacado de la tienda' : 'Destacar en la tienda online', icon: Rocket,
+                                onSelect: () => toggleStoreFeaturedMutation.mutate({ id: product.id, storeFeatured: !product.storeFeatured }) },
+                              ...(!realCode ? [{ label: 'Generar código de barras interno', icon: Barcode, onSelect: () => generateBarcodeMutation.mutate(product.id) }] : []),
+                              { label: 'Eliminar', icon: Trash2, danger: true, separated: true, onSelect: () => removeProduct(product) },
+                            ]} />
                           </div>
-                        )}
-                      </td>
+                        </td>
+                      )}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
-      {pagination && <PaginationBar page={page} totalPages={pagination.totalPages} onChange={goToPage} />}
+      {pager}
     </div>
   );
 }
