@@ -28,6 +28,7 @@ const ComplaintsPage = lazy(() => import('@/modules/complaints/ComplaintsPage').
 const RidersPage = lazy(() => import('@/modules/riders/RidersPage').then((m) => ({ default: m.RidersPage })));
 const TvScreenPage = lazy(() => import('@/modules/tv/TvScreenPage').then((m) => ({ default: m.TvScreenPage })));
 const CashPage = lazy(() => import('@/modules/cash/CashPage').then((m) => ({ default: m.CashPage })));
+const ExpensesPage = lazy(() => import('@/modules/cash/ExpensesPage').then((m) => ({ default: m.ExpensesPage })));
 const UsersPage = lazy(() => import('@/modules/users/UsersPage').then((m) => ({ default: m.UsersPage })));
 const AttendancePage = lazy(() => import('@/modules/attendance/AttendancePage').then((m) => ({ default: m.AttendancePage })));
 const SettingsPage = lazy(() => import('@/modules/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -120,6 +121,7 @@ export default function App() {
           <Route path="purchases" element={<PurchasesPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="cash" element={<CashPage />} />
+          <Route path="expenses" element={<ExpensesPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="administration" element={<AdministrationPage />} />
           <Route path="staff" element={<StaffPage />} />

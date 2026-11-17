@@ -1,6 +1,6 @@
 // Menú principal agrupado. Cada ruta conserva su permiso mínimo (minRole).
 import {
-  BookOpen, Bike, Boxes, Clock, Contact, FolderTree, Home, Landmark, ListChecks, Megaphone, Package, Receipt,
+  Banknote, BookOpen, Bike, Boxes, Clock, Contact, FolderTree, Home, Landmark, ListChecks, Megaphone, Package, Receipt,
   Settings, ShoppingBag, ShoppingCart, Store, Tag, TrendingUp, Tv, UserCheck, Users, Wallet,
 } from 'lucide-react';
 
@@ -25,6 +25,7 @@ export const navGroups: NavGroup[] = [
   ] },
   { label: 'Dinero', items: [
     { path: '/cash', label: 'Caja', icon: Wallet },
+    { path: '/expenses', label: 'Gastos', icon: Banknote, minRole: 'SUPERVISOR' },
     { path: '/reports', label: 'Reportes', icon: TrendingUp, minRole: 'SUPERVISOR' },
     { path: '/administration', label: 'Administración', icon: Landmark, minRole: 'ADMIN' },
   ] },

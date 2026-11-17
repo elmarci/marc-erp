@@ -130,7 +130,7 @@ export class StockHealthService {
           key: 'expenses', tone: 'warning',
           title: `${pendingExpenses._count} gasto${pendingExpenses._count === 1 ? '' : 's'} por pagar ya vencido${pendingExpenses._count === 1 ? '' : 's'}`,
           detail: `S/ ${Number(pendingExpenses._sum.amount ?? 0).toFixed(2)} en total`,
-          link: '/cash?tab=general&section=gastos',
+          link: '/expenses',
         });
       }
       if (overduePurchases._count) {
