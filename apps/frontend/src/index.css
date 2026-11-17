@@ -36,10 +36,13 @@
     --pos-product: 0 0% 100%;
 
     /* ── Fase 5: tokens del rediseño (nombres nuevos, aún no usados por las pantallas) ── */
-    --canvas: 240 5% 96%;        /* fondo de la app */
+    --canvas: 240 6% 93%;        /* fondo de la app: gris claro para que los bloques blancos resalten */
     --surface: 0 0% 100%;        /* superficies */
-    --surface-2: 240 5% 97.5%;   /* hover, filas elegidas */
-    --line: 240 6% 91%;          /* solo entre filas */
+    --surface-2: 240 6% 97%;     /* cabecera de cada bloque, hover */
+    --line: 240 6% 89%;          /* entre filas y bordes de bloques */
+    --nav: 240 7% 12%;           /* menú lateral oscuro */
+    --nav-ink: 240 5% 72%;
+    --brand-on-dark: 128 45% 58%;
     --line-strong: 240 5% 84%;   /* bordes de inputs */
     --ink: 240 6% 10%;
     --ink-muted: 240 4% 40%;     /* 6.0:1 sobre blanco */

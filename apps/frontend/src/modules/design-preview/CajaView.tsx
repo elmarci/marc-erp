@@ -4,26 +4,12 @@
 // Cierre: una sola tabla Esperado / Contado / Diferencia.
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Lock, Plus, Printer, Search } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, FileSpreadsheet, Lock, PackageOpen, Plus, Printer, Search } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
-import { Btn, Field, fieldCls } from './ui';
+import { Btn, Field, PageTabs, Panel, fieldCls } from './ui';
 import { PageHeader } from './ListView';
 
 export type CajaTab = 'hoy' | 'general' | 'cierres' | 'prestamos';
-
-function Tabs({ value, onChange }: { value: CajaTab; onChange: (v: CajaTab) => void }) {
-  const tabs: [CajaTab, string, string?][] = [['hoy', 'Hoy', '1 abierta'], ['general', 'Caja General'], ['cierres', 'Cierres y arqueos'], ['prestamos', 'Préstamos']];
-  return (
-    <div role="tablist" className="flex gap-5 overflow-x-auto border-b border-line">
-      {tabs.map(([k, l, extra]) => (
-        <button key={k} role="tab" aria-selected={value === k} onClick={() => onChange(k)}
-          className={cn('-mb-px shrink-0 border-b-2 pb-2.5 text-table', value === k ? 'border-ink font-medium text-ink' : 'border-transparent text-ink-muted hover:text-ink')}>
-          {l}{extra && <span className="ml-1.5 text-meta text-ink-muted">{extra}</span>}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Money({ v, sign }: { v: number; sign?: boolean }) {
   return (
@@ -45,14 +31,16 @@ const movsSesion = [
 function HoyView({ onSalida, onCerrar }: { onSalida: () => void; onCerrar: () => void }) {
   return (
     <div className="flex flex-col gap-5">
-      <section className="overflow-hidden rounded-srf bg-surface shadow-[0_0_0_1px_hsl(var(--line))]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
+      <section className="overflow-hidden rounded-srf bg-surface shadow-[0_0_0_1px_hsl(var(--line)),0_1px_2px_rgba(0,0,0,.04)]">
+        <header className="flex flex-wrap items-center gap-3 border-b border-line bg-surface-2 px-4 py-3">
           <span className="size-1.5 rounded-full bg-ok" aria-hidden />
           <div className="min-w-0 flex-1">
             <div className="text-body font-medium text-ink">Caja 1</div>
             <div className="text-meta text-ink-muted">Marcial · abierta 7:02 a. m. · inicial S/ 100.00</div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Btn size="sm" variant="ghost" title="Cobrar o devolver garantía de envase"><PackageOpen />Envases</Btn>
+            <Btn size="sm" variant="ghost"><Printer />Imprimir</Btn>
             <Btn size="sm" onClick={onSalida}><ArrowUpRight />Sacar dinero</Btn>
             <Btn size="sm"><ArrowDownLeft />Meter dinero</Btn>
             <Btn size="sm" variant="primary" onClick={onCerrar}><Lock />Cerrar caja</Btn>
@@ -90,16 +78,13 @@ function HoyView({ onSalida, onCerrar }: { onSalida: () => void; onCerrar: () =>
         </div>
       </section>
 
-      <section className="rounded-srf bg-surface shadow-[0_0_0_1px_hsl(var(--line))]">
-        <div className="flex flex-wrap items-center gap-2 px-3 pt-3">
-          <h2 className="mr-auto px-1 text-section font-semibold text-ink">Movimientos de Caja 1</h2>
-          <div className="flex gap-0.5 rounded-ctl bg-ink/[0.04] p-0.5">
+      <Panel title="Movimientos de Caja 1" meta="84 ventas · 3 entradas y salidas" actions={
+          <div className="flex gap-0.5 rounded-ctl bg-ink/[0.05] p-0.5">
             {['Todo', 'Ventas', 'Entradas y salidas'].map((t, i) => (
               <button key={t} className={cn('h-7 rounded-[5px] px-2.5 text-table', i === 0 ? 'bg-surface font-medium text-ink shadow-[0_0_0_1px_hsl(var(--line))]' : 'text-ink-muted')}>{t}</button>
             ))}
-          </div>
-        </div>
-        <table className="mt-2 w-full border-separate border-spacing-0 text-table">
+          </div>}>
+        <table className="w-full border-separate border-spacing-0 text-table">
           <thead>
             <tr className="text-meta text-ink-muted">
               <th className="w-16 border-b border-line px-3 py-2 text-left font-medium">Hora</th>
@@ -120,7 +105,7 @@ function HoyView({ onSalida, onCerrar }: { onSalida: () => void; onCerrar: () =>
           </tbody>
         </table>
         <div className="px-3 py-2.5 text-meta text-ink-muted">Las otras 80 ventas están en Ventas.</div>
-      </section>
+      </Panel>
     </div>
   );
 }
@@ -142,7 +127,12 @@ const movsGeneral = [
 function GeneralView() {
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid gap-px overflow-hidden rounded-srf bg-line shadow-[0_0_0_1px_hsl(var(--line))] sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-srf bg-line shadow-[0_0_0_1px_hsl(var(--line)),0_1px_2px_rgba(0,0,0,.04)] lg:grid-cols-4">
+        <div className="flex flex-col gap-1 bg-ink px-4 py-3.5 text-white">
+          <div className="text-meta text-white/70">Total Caja General</div>
+          <div className="text-kpi font-semibold tabular-nums">S/ 5,245.60</div>
+          <div className="text-meta text-white/70">Efectivo + Yape + Plin</div>
+        </div>
         {cuentas.map((c) => (
           <div key={c.nombre} className="flex flex-col gap-1 bg-surface px-4 py-3.5">
             <div className="flex items-center justify-between text-meta text-ink-muted">
@@ -158,18 +148,17 @@ function GeneralView() {
         ))}
       </div>
 
-      <section className="rounded-srf bg-surface shadow-[0_0_0_1px_hsl(var(--line))]">
+      <Panel title="Movimientos de Caja General" meta="Noviembre 2026" actions={<Btn size="sm" variant="ghost"><FileSpreadsheet />Exportar</Btn>}>
         <div className="flex flex-wrap items-center gap-2 px-3 pt-3">
           <div className="relative w-full sm:w-[240px]">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-muted" />
             <input placeholder="Buscar movimiento" className={cn(fieldCls, 'h-8 pl-8')} />
           </div>
           <div className="flex gap-0.5 rounded-ctl bg-ink/[0.04] p-0.5">
-            {['Todas', 'Efectivo', 'Yape', 'Plin'].map((t, i) => (
+            {['Todas', 'Efectivo', 'Yape', 'Plin', 'Traspasos'].map((t, i) => (
               <button key={t} className={cn('h-7 rounded-[5px] px-2.5 text-table', i === 0 ? 'bg-surface font-medium text-ink shadow-[0_0_0_1px_hsl(var(--line))]' : 'text-ink-muted')}>{t}</button>
             ))}
           </div>
-          <span className="ml-auto text-meta text-ink-muted">Noviembre 2026</span>
         </div>
         <table className="mt-2 w-full border-separate border-spacing-0 text-table">
           <thead>
@@ -194,7 +183,7 @@ function GeneralView() {
           </tbody>
         </table>
         <div className="px-3 py-2.5 text-meta text-ink-muted">Garantías de envase por devolver: S/ 48.00 (no están en el saldo).</div>
-      </section>
+      </Panel>
     </div>
   );
 }
@@ -319,10 +308,10 @@ export function CajaView({ tab, onTab, onSalida, onCerrar }: {
       <PageHeader
         title="Caja"
         actions={tab === 'general'
-          ? <><Btn><ArrowLeftRight />Traspasar</Btn><Btn variant="primary"><Plus />Registrar gasto</Btn></>
-          : <><Btn><Printer />Imprimir arqueo</Btn><Btn><Plus />Abrir otra caja</Btn></>}
+          ? <><Btn><Plus />Depositar</Btn><Btn><ArrowLeftRight />Traspasar</Btn><Btn variant="primary"><Plus />Registrar gasto</Btn></>
+          : <><Btn className="hidden sm:inline-flex"><FileSpreadsheet />Exportar Excel</Btn><Btn><Plus />Abrir caja</Btn></>}
       />
-      <Tabs value={tab} onChange={onTab} />
+      <PageTabs value={tab} onChange={onTab} tabs={[['hoy', 'Cajas activas', 1], ['general', 'Caja General'], ['cierres', 'Historial y arqueos'], ['prestamos', 'Préstamos']]} />
       {tab === 'hoy' && <HoyView onSalida={onSalida} onCerrar={onCerrar} />}
       {tab === 'general' && <GeneralView />}
       {(tab === 'cierres' || tab === 'prestamos') && (

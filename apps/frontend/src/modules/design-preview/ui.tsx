@@ -159,3 +159,35 @@ export function Kbd({ children }: { children: React.ReactNode }) {
     </kbd>
   );
 }
+
+// ── Bloque con cabecera: da "cuerpo" a cada espacio de la pantalla ─────────
+export function Panel({
+  title, meta, actions, children, className,
+}: { title: string; meta?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <section className={cn('overflow-hidden rounded-srf bg-surface shadow-[0_0_0_1px_hsl(var(--line)),0_1px_2px_rgba(0,0,0,.04)]', className)}>
+      <header className="flex min-h-[44px] flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface-2 px-4 py-2">
+        <h2 className="text-body font-semibold text-ink">{title}</h2>
+        {meta && <span className="text-meta text-ink-muted">{meta}</span>}
+        {actions && <div className="ml-auto flex items-center gap-1.5">{actions}</div>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+export function PageTabs<T extends string>({ value, onChange, tabs }: {
+  value: T; onChange: (v: T) => void; tabs: [T, string, React.ReactNode?][];
+}) {
+  return (
+    <div role="tablist" className="flex gap-1 overflow-x-auto rounded-srf bg-surface p-1 shadow-[0_0_0_1px_hsl(var(--line))]">
+      {tabs.map(([k, l, extra]) => (
+        <button key={k} role="tab" aria-selected={value === k} onClick={() => onChange(k)}
+          className={cn('flex h-8 shrink-0 items-center gap-1.5 rounded-ctl px-3 text-table transition-colors',
+            value === k ? 'bg-ink text-white font-medium' : 'text-ink-muted hover:bg-ink/[0.05] hover:text-ink')}>
+          {l}{extra != null && <span className={cn('rounded-full px-1.5 text-[11px] tabular-nums', value === k ? 'bg-white/20' : 'bg-ink/[0.07] text-ink')}>{extra}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}

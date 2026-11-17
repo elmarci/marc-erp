@@ -4,23 +4,24 @@ import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Plus, Trash2 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
-import { Btn, Field, fieldCls } from './ui';
+import { Btn, Field, Panel, fieldCls } from './ui';
+import { ScanBarcode } from 'lucide-react';
 import { PageHeader } from './ListView';
 import { proveedores, type CompraDemo } from './data';
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, meta, children }: { title: string; meta?: string; children: React.ReactNode }) {
   return (
-    <section className="grid gap-x-10 gap-y-4 border-t border-line py-6 first:border-t-0 first:pt-0 lg:grid-cols-[200px_minmax(0,1fr)]">
-      <h2 className="text-section font-semibold text-ink">{title}</h2>
-      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
-    </section>
+    <Panel title={title} meta={meta}>
+      <div className="grid gap-4 p-4 sm:grid-cols-2 lg:px-5 lg:py-5">{children}</div>
+    </Panel>
   );
 }
 
 const lineas = [
-  { producto: 'Yogurt Gloria fresa 1 L', cant: 24, costo: 5.9 },
-  { producto: 'Leche Gloria azul 400 g', cant: 48, costo: 3.65 },
-  { producto: 'Mantequilla Laive 200 g', cant: 12, costo: 7.8 },
+  { producto: 'Yogurt Gloria fresa 1 L', cant: 24, costo: 5.9, vence: '2026-12-10', bono: false },
+  { producto: 'Leche Gloria azul 400 g', cant: 48, costo: 3.65, vence: '2027-05-02', bono: false },
+  { producto: 'Mantequilla Laive 200 g', cant: 12, costo: 7.8, vence: '2027-01-20', bono: false },
+  { producto: 'Yogurt Gloria fresa 1 L', cant: 2, costo: 0, vence: '2026-12-10', bono: true },
 ];
 
 type Pago = 'ahora' | 'credito' | 'pagador';
@@ -61,7 +62,7 @@ export function FormView({ onCancel, pagoInicial = 'ahora' }: { onCancel: () => 
   const [pago, setPago] = useState<Pago>(pagoInicial);
   const [igv, setIgv] = useState(true);
   const [percep, setPercep] = useState(true);
-  const total = lineas.reduce((n, l) => n + l.cant * l.costo, 0);
+  const total = lineas.reduce((n, l) => n + (l.bono ? 0 : l.cant * l.costo), 0);
   const base = total / 1.18;
   const igvMonto = igv ? total - base : 0;
   const percepMonto = percep ? Math.round(total * 0.02 * 100) / 100 : 0;
@@ -69,7 +70,7 @@ export function FormView({ onCancel, pagoInicial = 'ahora' }: { onCancel: () => 
   return (
     <div className="flex flex-col gap-5 pb-20">
       <PageHeader title="Registrar compra" />
-      <div className="rounded-srf bg-surface px-5 py-6 shadow-[0_0_0_1px_hsl(var(--line))] lg:px-8">
+      <div className="flex flex-col gap-4">
         <Section title="Proveedor y documento">
           <Field label="Proveedor">
             <select className={fieldCls} defaultValue={proveedores[5]}>{proveedores.map((p) => <option key={p}>{p}</option>)}</select>
@@ -89,25 +90,37 @@ export function FormView({ onCancel, pagoInicial = 'ahora' }: { onCancel: () => 
           </div>
         </Section>
 
-        <Section title="Productos">
+        <Section title="Productos" meta="3 productos · stock y costo se actualizan al guardar">
           <div className="sm:col-span-2">
-            <table className="w-full border-separate border-spacing-0 text-table">
+            <div className="relative mb-3">
+              <ScanBarcode className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-muted" />
+              <input className={cn(fieldCls, 'pl-8')} placeholder="Buscar por nombre o escanear código de barras" />
+            </div>
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-separate border-spacing-0 text-table">
               <thead>
                 <tr className="text-meta text-ink-muted">
                   <th className="border-b border-line pb-2 text-left font-medium">Producto</th>
                   <th className="w-24 border-b border-line pb-2 text-right font-medium">Cantidad</th>
                   <th className="w-28 border-b border-line pb-2 text-right font-medium">{igv ? 'Costo c/ IGV' : 'Costo'}</th>
+                  <th className="w-36 border-b border-line pb-2 pl-2 text-left font-medium">Vence</th>
+                  <th className="w-24 border-b border-line pb-2 pl-2 text-left font-medium">Lote</th>
                   <th className="hidden w-28 border-b border-line pb-2 text-right font-medium sm:table-cell">Subtotal</th>
                   <th className="w-8 border-b border-line" />
                 </tr>
               </thead>
               <tbody>
-                {lineas.map((l) => (
-                  <tr key={l.producto}>
-                    <td className="h-11 border-b border-line pr-3 text-ink">{l.producto}</td>
+                {lineas.map((l, i) => (
+                  <tr key={i}>
+                    <td className="h-11 border-b border-line pr-3 text-ink">
+                      {l.producto}
+                      {l.bono && <span className="ml-2 rounded-full bg-ink/[0.06] px-2 py-0.5 text-meta text-ink">Bonificación</span>}
+                    </td>
                     <td className="border-b border-line pl-2"><input className={cn(fieldCls, 'h-8 text-right tabular-nums')} defaultValue={l.cant} /></td>
                     <td className="border-b border-line pl-2"><input className={cn(fieldCls, 'h-8 text-right tabular-nums')} defaultValue={l.costo.toFixed(2)} /></td>
-                    <td className="hidden border-b border-line text-right tabular-nums text-ink sm:table-cell">{formatCurrency(l.cant * l.costo)}</td>
+                    <td className="border-b border-line pl-2"><input type="date" className={cn(fieldCls, 'h-8 tabular-nums')} defaultValue={l.vence} aria-label="Vence" /></td>
+                    <td className="border-b border-line pl-2"><input className={cn(fieldCls, 'h-8')} placeholder="Opcional" aria-label="Lote" /></td>
+                    <td className="hidden border-b border-line text-right tabular-nums text-ink sm:table-cell">{l.bono ? 'Gratis' : formatCurrency(l.cant * l.costo)}</td>
                     <td className="border-b border-line text-right">
                       <button className="grid size-7 place-items-center rounded-ctl text-ink-muted hover:bg-ink/[0.06] hover:text-bad-ink" aria-label={`Quitar ${l.producto}`}><Trash2 className="size-4" /></button>
                     </td>
@@ -115,7 +128,8 @@ export function FormView({ onCancel, pagoInicial = 'ahora' }: { onCancel: () => 
                 ))}
               </tbody>
             </table>
-            <Btn size="sm" variant="ghost" className="mt-2 -ml-2"><Plus />Agregar producto</Btn>
+            </div>
+            <p className="mt-2 text-meta text-ink-muted">Cada línea puede marcarse como bonificación (costo 0) o pasar a sacos y peso para productos a granel, como hoy.</p>
           </div>
         </Section>
 
@@ -173,6 +187,10 @@ export function FormView({ onCancel, pagoInicial = 'ahora' }: { onCancel: () => 
               </div>
             </Field>
           </>)}
+        </Section>
+
+        <Section title="Notas">
+          <Field label="Observaciones" className="sm:col-span-2"><input className={fieldCls} placeholder="Opcional" /></Field>
         </Section>
       </div>
 

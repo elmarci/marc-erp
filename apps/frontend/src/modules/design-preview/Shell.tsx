@@ -62,19 +62,19 @@ function NavLinkDemo({ item, active, collapsed, onNavigate }: { item: Item; acti
       aria-current={active ? 'page' : undefined}
       className={cn(
         'tap group relative flex h-8 items-center gap-2.5 rounded-ctl px-2 text-table transition-colors',
-        active ? 'bg-surface font-medium text-ink shadow-[0_0_0_1px_hsl(var(--line))]' : 'text-ink-muted hover:bg-ink/[0.04] hover:text-ink',
+        active ? 'bg-white/[0.09] font-medium text-white' : 'text-nav-ink hover:bg-white/[0.05] hover:text-white',
         collapsed && 'justify-center px-0',
       )}
     >
-      {active && <span className="absolute -left-3 top-1.5 bottom-1.5 w-[3px] rounded-r bg-brand" aria-hidden />}
-      <Icon className={cn('size-4 shrink-0', active ? 'text-brand' : 'text-ink-muted/80 group-hover:text-ink')} />
+      {active && <span className="absolute -left-3 top-1.5 bottom-1.5 w-[3px] rounded-r bg-brand-on-dark" aria-hidden />}
+      <Icon className={cn('size-4 shrink-0', active ? 'text-brand-on-dark' : 'text-nav-ink/80 group-hover:text-white')} />
       {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
       {!collapsed && item.count ? (
-        <span className="min-w-5 rounded-full bg-ink/[0.07] px-1.5 text-center text-[11px] font-medium leading-[18px] tabular-nums text-ink">
+        <span className="min-w-5 rounded-full bg-white/[0.12] px-1.5 text-center text-[11px] font-medium leading-[18px] tabular-nums text-white">
           {item.count}
         </span>
       ) : null}
-      {collapsed && item.count ? <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-ink/50" /> : null}
+      {collapsed && item.count ? <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-white/60" /> : null}
     </a>
   );
 }
@@ -89,17 +89,17 @@ export function Sidebar({ collapsed, onToggle, active, mobileOpen, onCloseMobile
       {mobileOpen && <div className="fixed inset-0 z-30 bg-ink/30 lg:hidden" onClick={onCloseMobile} />}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex flex-col bg-canvas transition-[width,transform] lg:sticky lg:top-0 lg:h-screen lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex flex-col bg-nav transition-[width,transform] lg:sticky lg:top-0 lg:h-screen lg:translate-x-0',
           collapsed ? 'lg:w-[60px]' : 'lg:w-[232px]',
           'w-[260px]',
           mobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full',
         )}
       >
         <div className={cn('flex h-12 items-center gap-2 px-4', collapsed && 'lg:justify-center lg:px-0')}>
-          <div className="grid size-6 place-items-center rounded-[5px] bg-ink text-[11px] font-bold text-white">M</div>
-          {!collapsed && <span className="text-body font-semibold tracking-tight text-ink">MARC</span>}
-          {!collapsed && <span className="ml-auto text-meta text-ink-muted">Minimarket</span>}
-          <button className="ml-1 rounded-ctl p-1 text-ink-muted hover:bg-ink/5 lg:hidden" onClick={onCloseMobile} aria-label="Cerrar menú">
+          <div className="grid size-6 place-items-center rounded-[5px] bg-brand text-[11px] font-bold text-white">M</div>
+          {!collapsed && <span className="text-body font-semibold tracking-tight text-white">MARC</span>}
+          {!collapsed && <span className="ml-auto text-meta text-nav-ink">Minimarket</span>}
+          <button className="ml-1 rounded-ctl p-1 text-nav-ink hover:bg-white/10 lg:hidden" onClick={onCloseMobile} aria-label="Cerrar menú">
             <X className="size-4" />
           </button>
         </div>
@@ -114,16 +114,16 @@ export function Sidebar({ collapsed, onToggle, active, mobileOpen, onCloseMobile
             return (
               <div key={g.label} className="mb-2">
                 {collapsed ? (
-                  <div className="mx-auto my-2 h-px w-5 bg-line-strong" />
+                  <div className="mx-auto my-2 h-px w-5 bg-white/15" />
                 ) : (
                   <button
                     type="button"
                     onClick={() => setClosed((c) => ({ ...c, [g.label]: !c[g.label] }))}
-                    className="flex h-7 w-full items-center gap-1 px-2 text-meta font-medium text-ink-muted hover:text-ink"
+                    className="flex h-7 w-full items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-nav-ink/70 hover:text-white"
                     aria-expanded={!isClosed}
                   >
                     {g.label}
-                    {isClosed && groupCount > 0 && <span className="ml-1 tabular-nums text-ink">{groupCount}</span>}
+                    {isClosed && groupCount > 0 && <span className="ml-1 tabular-nums text-white">{groupCount}</span>}
                     {isClosed ? <ChevronRight className="ml-auto size-3.5" /> : <ChevronDown className="ml-auto size-3.5" />}
                   </button>
                 )}
@@ -143,7 +143,7 @@ export function Sidebar({ collapsed, onToggle, active, mobileOpen, onCloseMobile
           <button
             type="button"
             onClick={onToggle}
-            className={cn('flex h-8 items-center gap-2 rounded-ctl px-2 text-table text-ink-muted hover:bg-ink/[0.04] hover:text-ink', collapsed ? 'mx-auto w-8 justify-center px-0' : 'w-full')}
+            className={cn('flex h-8 items-center gap-2 rounded-ctl px-2 text-table text-nav-ink hover:bg-white/[0.05] hover:text-white', collapsed ? 'mx-auto w-8 justify-center px-0' : 'w-full')}
             aria-label={collapsed ? 'Abrir menú' : 'Achicar menú'}
           >
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
@@ -157,7 +157,7 @@ export function Sidebar({ collapsed, onToggle, active, mobileOpen, onCloseMobile
 
 export function Topbar({ crumbs, onSearch, onMenu }: { crumbs: string[]; onSearch: () => void; onMenu: () => void }) {
   return (
-    <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur-sm lg:px-6">
+    <header className="sticky top-0 z-20 flex h-12 items-center gap-3 border-b border-line bg-surface px-4 lg:px-6">
       <button className="-ml-1 rounded-ctl p-1.5 text-ink-muted hover:bg-ink/5 lg:hidden" onClick={onMenu} aria-label="Abrir menú">
         <Menu className="size-4" />
       </button>

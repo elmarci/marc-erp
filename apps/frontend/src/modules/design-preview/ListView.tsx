@@ -5,10 +5,10 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Download, FileText, ListFilter, MoreHorizontal,
-  Pencil, Plus, RotateCcw, Search, Wallet, X, XCircle, PackageOpen, AlertTriangle,
+  Pencil, Plus, RotateCcw, Search, Wallet, X, XCircle, PackageOpen, AlertTriangle, Sparkles, Send, Truck, Undo2, Printer,
 } from 'lucide-react';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
-import { Btn, Check, StatCard, StatusBadge, fieldCls } from './ui';
+import { Btn, Check, Panel, PageTabs, StatCard, StatusBadge, fieldCls } from './ui';
 import { compras, proveedores, serieCompras, seriePorPagar, type CompraDemo, type Estado } from './data';
 
 export type TableState = 'datos' | 'cargando' | 'vacio' | 'error';
@@ -67,6 +67,7 @@ export function ListView({ tableState, onNew, onVoid }: {
   const [sort, setSort] = useState<{ key: ColKey; dir: 'asc' | 'desc' }>({ key: 'fecha', dir: 'desc' });
   const [selected, setSelected] = useState<Set<string>>(new Set(['3']));
   const [hidden, setHidden] = useState<Set<ColKey>>(new Set());
+  const [tab, setTab] = useState<'orders' | 'payable' | 'settlements' | 'payers' | 'suppliers'>('orders');
 
   const rows = useMemo(() => {
     let r = compras.filter((c) =>
@@ -101,19 +102,23 @@ export function ListView({ tableState, onNew, onVoid }: {
         <PageHeader
           title="Compras"
           actions={<>
-            <Btn variant="secondary"><Download />Exportar</Btn>
+            <Btn variant="secondary" className="hidden sm:inline-flex"><Sparkles />Sugerir pedido</Btn>
+            <Btn variant="secondary"><Send />Nueva orden</Btn>
             <Btn variant="primary" onClick={onNew}><Plus />Registrar compra</Btn>
           </>}
         />
+        <PageTabs value={tab} onChange={setTab} tabs={[
+          ['orders', 'Órdenes de compra'], ['payable', 'Cuentas por pagar', 'S/ 4,945'], ['settlements', 'Liquidaciones'], ['payers', 'Pagadores'], ['suppliers', 'Proveedores'],
+        ]} />
 
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-srf bg-line shadow-[0_0_0_1px_hsl(var(--line))] lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-srf bg-line shadow-[0_0_0_1px_hsl(var(--line)),0_1px_2px_rgba(0,0,0,.04)] lg:grid-cols-4">
           <StatCard label="Comprado en noviembre" value="S/ 10,936.35" delta={12.4} compare="vs. octubre a la fecha" goodWhenUp={false} series={serieCompras} />
           <StatCard label="Por pagar" value="S/ 4,945.70" delta={8.1} compare="vs. hace 7 días" goodWhenUp={false} series={seriePorPagar} />
           <StatCard label="Vencido" value="S/ 2,310.50" delta={-22} compare="vs. hace 7 días" goodWhenUp={false} />
           <StatCard label="Compras registradas" value="38" delta={5.6} compare="vs. octubre a la fecha" />
         </div>
 
-        <section className="flex flex-col rounded-srf bg-surface shadow-[0_0_0_1px_hsl(var(--line))]">
+        <Panel title="Órdenes de compra" meta="38 en noviembre" actions={<Btn size="sm" variant="ghost"><Download />Exportar Excel</Btn>}>
           {/* Barra de filtros */}
           <div className="flex flex-wrap items-center gap-2 px-3 pt-3">
             <div className="relative w-full sm:w-[260px]">
@@ -152,6 +157,12 @@ export function ListView({ tableState, onNew, onVoid }: {
                     <select className={fieldCls} value={mes ?? ''} onChange={(e) => setMes(e.target.value || null)}>
                       <option value="">Todos</option><option>Noviembre 2026</option><option>Octubre 2026</option>
                     </select>
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-table font-medium text-ink">Estado de la orden
+                    <select className={fieldCls}><option>Todos</option><option>Borrador</option><option>Enviada</option><option>Recibida en parte</option><option>Recibida</option><option>Anulada</option></select>
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-table font-medium text-ink">Pagada con
+                    <select className={fieldCls}><option>Cualquier método</option><option>Efectivo</option><option>Yape</option><option>Transferencia</option></select>
                   </label>
                   <label className="flex flex-col gap-1.5 text-table font-medium text-ink">Comprobante
                     <select className={fieldCls} value={comp ?? ''} onChange={(e) => setComp(e.target.value || null)}>
@@ -231,7 +242,7 @@ export function ListView({ tableState, onNew, onVoid }: {
           )}
           <div className={cn('max-h-[520px] overflow-auto', tableState === 'datos' && 'hidden md:block')}>
             <table className="w-full border-separate border-spacing-0 text-table">
-              <thead className="sticky top-0 z-10 bg-surface">
+              <thead className="sticky top-0 z-10 bg-surface-2">
                 <tr>
                   <th className="w-10 border-b border-line py-2 pl-3 pr-1 text-left">
                     <Check checked={allSel} indeterminate={!allSel && someSel} label="Elegir todas"
@@ -306,7 +317,7 @@ export function ListView({ tableState, onNew, onVoid }: {
                           </DropdownMenu.Trigger>
                           <DropdownMenu.Portal>
                             <DropdownMenu.Content align="end" sideOffset={4} className="dp z-50 min-w-[190px] rounded-srf bg-surface p-1 shadow-[0_12px_32px_-8px_rgba(0,0,0,.18),0_0_0_1px_hsl(var(--line))]">
-                              {[{ i: FileText, l: 'Ver detalle' }, { i: Wallet, l: 'Registrar pago' }, { i: Pencil, l: 'Editar comprobante' }].map(({ i: I, l }) => (
+                              {[{ i: FileText, l: 'Ver detalle' }, { i: Truck, l: 'Recibir mercadería' }, { i: Wallet, l: 'Registrar pago' }, { i: Undo2, l: 'Devolución al proveedor' }, { i: Pencil, l: 'Editar comprobante' }, { i: Printer, l: 'Imprimir' }].map(({ i: I, l }) => (
                                 <DropdownMenu.Item key={l} className="flex h-8 cursor-pointer items-center gap-2 rounded-ctl px-2 text-table text-ink outline-none data-[highlighted]:bg-ink/[0.05]">
                                   <I className="size-4 text-ink-muted" />{l}
                                 </DropdownMenu.Item>
@@ -335,7 +346,7 @@ export function ListView({ tableState, onNew, onVoid }: {
               <Btn size="sm" variant="ghost" aria-label="Siguiente"><ChevronRight /></Btn>
             </div>
           </div>
-        </section>
+        </Panel>
       </div>
     </Tooltip.Provider>
   );

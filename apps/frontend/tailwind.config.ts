@@ -60,6 +60,8 @@ const config: Config = {
           foreground: 'hsl(var(--warning-foreground))',
         },
         canvas: 'hsl(var(--canvas))',
+        nav: { DEFAULT: 'hsl(var(--nav))', ink: 'hsl(var(--nav-ink))' },
+        'brand-on-dark': 'hsl(var(--brand-on-dark))',
         surface: { DEFAULT: 'hsl(var(--surface))', 2: 'hsl(var(--surface-2))' },
         line: { DEFAULT: 'hsl(var(--line))', strong: 'hsl(var(--line-strong))' },
         ink: { DEFAULT: 'hsl(var(--ink))', muted: 'hsl(var(--ink-muted))' },

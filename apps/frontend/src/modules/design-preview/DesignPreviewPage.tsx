@@ -6,7 +6,6 @@
 //   ?tabla=cargando|vacio|error   muestra los estados de la tabla
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { cn } from '@/lib/utils';
 import { CommandPalette, Sidebar, Topbar } from './Shell';
 import { ListView, type TableState } from './ListView';
 import { ConfirmDialog, FormView } from './FormView';
@@ -45,8 +44,8 @@ export function DesignPreviewPage() {
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
       />
-      <div className="flex min-w-0 flex-1 flex-col lg:py-2 lg:pr-2">
-        <div className={cn('flex min-h-0 flex-1 flex-col bg-surface lg:rounded-srf lg:shadow-[0_0_0_1px_hsl(var(--line))]')}>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
           <Topbar
             crumbs={vista === 'caja' ? ['Dinero', 'Caja'] : vista === 'lista' ? ['Compras e inventario', 'Compras'] : ['Compras e inventario', 'Compras', 'Registrar compra']}
             onSearch={() => setSearch(true)}
