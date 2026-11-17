@@ -1029,13 +1029,15 @@ export class PurchasesService {
         // Fecha de vencimiento ingresada al recibir — se guarda como lote
         // para poder alertar antes de que se venza (ver Inventario > Alertas).
         if (item.expiryDate) {
-          await tx.batch.create({
-            data: {
-              productId: item.productId,
-              batchNumber: item.batchNumber || null,
-              quantity: item.receivedQty,
-              expiryDate: item.expiryDate,
-            },
+          await inventoryAlertsService.createBatch(tx, {
+            productId: item.productId,
+            batchNumber: item.batchNumber,
+            quantity: item.receivedQty,
+            expiryDate: item.expiryDate,
+            purchaseOrderId: orderId,
+            supplierId: order.supplierId,
+            unitCost: item.isBonus ? 0 : round4(item.unitCost * (await this.orderTaxFactor(order))),
+            userId,
           });
         }
       }
@@ -1277,13 +1279,15 @@ export class PurchasesService {
         });
 
         if (item.expiryDate) {
-          await tx.batch.create({
-            data: {
-              productId: item.productId,
-              batchNumber: item.batchNumber || null,
-              quantity: item.quantity,
-              expiryDate: item.expiryDate,
-            },
+          await inventoryAlertsService.createBatch(tx, {
+            productId: item.productId,
+            batchNumber: item.batchNumber,
+            quantity: item.quantity,
+            expiryDate: item.expiryDate,
+            purchaseOrderId: order.id,
+            supplierId: data.supplierId,
+            unitCost: item.isBonus ? 0 : round4(item.unitCost * (await this.orderTaxFactor({ subtotal, taxAmount }))),
+            userId,
           });
         }
       }
@@ -1462,6 +1466,13 @@ export class PurchasesService {
       // Esa compra ya no existe: el último costo pagado vuelve a ser el de la
       // compra anterior, y los lotes que ella creó no pueden seguir sumando
       // stock que ya no está (quedarían como vencimientos fantasma).
+      // Los lotes que trajo esta compra se vacían (lo que no se vendió).
+      const ownBatches = await tx.batch.findMany({ where: { purchaseOrderId: orderId, quantity: { gt: 0 } } });
+      for (const b of ownBatches) {
+        await inventoryAlertsService.consumeBatch(tx, b, Number(b.quantity), 'PURCHASE_VOID', {
+          referenceType: 'PURCHASE', referenceId: orderId, userId, notes: `Compra ${order.orderNumber} anulada`,
+        });
+      }
       for (const productId of new Set(movements.map((m) => m.productId))) {
         await inventoryAlertsService.refreshLastPurchaseCost(tx, productId);
         await inventoryAlertsService.capBatchesToStock(tx, productId);

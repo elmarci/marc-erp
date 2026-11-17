@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Wallet, Plus, Minus, X, ChevronDown, ChevronUp, TrendingUp,
@@ -1198,7 +1199,9 @@ function TreasuryPanel() {
   const [showTemplate, setShowTemplate] = useState(false);
   const [showReconcile, setShowReconcile] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
-  const [tab, setTab] = useState<'movimientos' | 'gastos' | 'traspasos' | 'prestamos' | 'recurrentes' | 'arqueo'>('movimientos');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<'movimientos' | 'gastos' | 'traspasos' | 'prestamos' | 'recurrentes' | 'arqueo'>(
+    () => (searchParams.get('section') === 'gastos' ? 'gastos' : 'movimientos'));
 
   const { data: depositsOutstanding } = useQuery({
     queryKey: ['bottle-deposits-totals'],
@@ -1532,7 +1535,10 @@ function TreasuryPanel() {
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function CashPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'activas' | 'historial' | 'general'>('activas');
+  // ?tab=general&section=gastos abre directo los gastos (lo usa la campana de avisos).
+  const [urlParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<'activas' | 'historial' | 'general'>(
+    () => (urlParams.get('tab') === 'general' ? 'general' : 'activas'));
   const [showOpenSession, setShowOpenSession] = useState(false);
   const { setCashSession } = usePosStore();
   const { hasMinRole } = useAuthStore();

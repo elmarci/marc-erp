@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, ChevronDown, ChevronUp, CheckCircle, XCircle,
@@ -3604,7 +3605,9 @@ function PurchasesDashboardBar() {
 
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 export function PurchasesPage() {
-  const [tab, setTab] = useState<'orders' | 'payable' | 'suppliers' | 'settlements' | 'payers'>('orders');
+  const [urlParams] = useSearchParams();
+  const [tab, setTab] = useState<'orders' | 'payable' | 'suppliers' | 'settlements' | 'payers'>(
+    () => (urlParams.get('tab') === 'payable' ? 'payable' : 'orders'));
 
   return (
     <div className="space-y-6 animate-fade-in">

@@ -402,6 +402,7 @@ model Supplier {
   supplierProducts SupplierProduct[]
   paymentBatches   SupplierPaymentBatch[]
   supplierReturns  SupplierReturn[]
+  batches          Batch[]
 
   @@index([taxId])
   @@index([businessName])
@@ -638,14 +639,58 @@ model Batch {
   // deja de aparecer en "Por vencer" aunque su fecha ya haya pasado.
   resolvedAt        DateTime? @map("resolved_at")
   resolvedNotes     String?   @map("resolved_notes")
+  // De qué compra y proveedor vino, a qué costo y cuánto entró (Fase 3).
+  // En lotes antiguos o registrados a mano quedan vacíos.
+  purchaseOrderId   String?   @map("purchase_order_id")
+  supplierId        String?   @map("supplier_id")
+  unitCost          Decimal?  @map("unit_cost") @db.Decimal(10, 4)
+  initialQuantity   Decimal?  @map("initial_quantity") @db.Decimal(10, 3)
   createdAt         DateTime  @default(now()) @map("created_at")
 
-  product Product @relation(fields: [productId], references: [id])
+  product       Product         @relation(fields: [productId], references: [id])
+  purchaseOrder PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Supplier?       @relation(fields: [supplierId], references: [id])
+  movements     BatchMovement[]
 
   @@index([productId])
+  @@index([purchaseOrderId])
   @@index([expiryDate])
   @@index([batchNumber])
   @@map("batches")
+}
+
+// Historial de cada lote: cuánto entró, qué venta o ajuste lo bajó y por qué.
+// Permite que al anular una venta la mercadería vuelva al lote del que salió.
+enum BatchMovementType {
+  RECEIVED
+  MANUAL // lote registrado a mano para stock que no tenía fecha
+  SALE
+  SALE_VOID
+  SUPPLIER_RETURN
+  SUPPLIER_RETURN_VOID
+  PURCHASE_VOID
+  RESOLVED // alerta atendida (vendido, merma, ya no aplica)
+  RECONCILE // recorte para que los lotes no sumen más que el stock
+  EDIT // corrección manual de cantidad o fecha
+}
+
+model BatchMovement {
+  id            String            @id @default(uuid())
+  batchId       String            @map("batch_id")
+  type          BatchMovementType
+  quantity      Decimal           @db.Decimal(10, 3) // + entra, − sale
+  quantityAfter Decimal           @map("quantity_after") @db.Decimal(10, 3)
+  referenceType String?           @map("reference_type")
+  referenceId   String?           @map("reference_id")
+  userId        String?           @map("user_id")
+  notes         String?
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  batch Batch @relation(fields: [batchId], references: [id])
+
+  @@index([batchId])
+  @@index([referenceType, referenceId])
+  @@map("batch_movements")
 }
 
 model InventoryMovement {
@@ -798,6 +843,7 @@ model PurchaseOrder {
   payments        SupplierPayment[]
   payerRepayments PayerRepayment[]
   supplierReturns SupplierReturn[]
+  batches         Batch[]
 
   @@index([supplierId])
   @@index([supplierId, docSeries, docNumber])

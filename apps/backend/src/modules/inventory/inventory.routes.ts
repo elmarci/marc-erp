@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { inventoryService } from './inventory.service';
 import { inventoryAlertsService } from './inventory-alerts.service';
 import { ADJUSTMENT_REASON_CODES } from './adjustment-reasons';
-import { authenticate, authorizeMinRole } from '../../middleware/auth';
+import { authenticate, authorizeMinRole, ROLE_HIERARCHY } from '../../middleware/auth';
+import { stockHealthService } from './stock-health.service';
 import { sendExcel } from '../../utils/excel';
 import { limaDateFromParam, limaDateToParam } from '../../utils/timezone';
 
@@ -171,6 +172,43 @@ router.get('/expiry', async (_req: Request, res: Response, next: NextFunction) =
 router.post('/expiry/reconcile', authorizeMinRole('ADMIN'), async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await inventoryAlertsService.reconcileBatches();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// Historial de un lote: de qué compra vino y por dónde salió.
+router.get('/batches/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await inventoryAlertsService.getBatchHistory(req.params.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// Productos con stock que no se venden hace 30, 60 o 90 días.
+router.get('/no-movement', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const raw = Number(req.query.days ?? 30);
+    const days = [30, 60, 90, 180].includes(raw) ? raw : 30;
+    const categoryId = typeof req.query.categoryId === 'string' && req.query.categoryId ? req.query.categoryId : undefined;
+    const data = await stockHealthService.getNoMovement(days, categoryId);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// Hoja de conteo por categoría.
+router.get('/count-sheet', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const categoryId = z.string().min(1).parse(req.query.categoryId);
+    const data = await stockHealthService.getCountSheet(categoryId);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// Avisos del día (campana del ERP).
+router.get('/notices', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const canSeeMoney = ROLE_HIERARCHY[req.user!.role] >= ROLE_HIERARCHY.SUPERVISOR;
+    const data = await stockHealthService.getDailyNotices(canSeeMoney);
     res.json({ success: true, data });
   } catch (err) { next(err); }
 });

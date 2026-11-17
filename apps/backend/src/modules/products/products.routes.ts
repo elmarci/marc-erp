@@ -152,7 +152,7 @@ router.post('/:id/batches', authorizeMinRole('WAREHOUSE'), async (req: Request, 
       expiryDate: z.coerce.date(),
       batchNumber: z.string().max(50).optional().nullable(),
     }).parse(req.body);
-    const batch = await productsService.createBatch(req.params.id, { quantity, expiryDate, batchNumber });
+    const batch = await productsService.createBatch(req.params.id, { quantity, expiryDate, batchNumber, userId: req.user!.sub });
     res.status(201).json({ success: true, data: batch });
   } catch (err) { next(err); }
 });

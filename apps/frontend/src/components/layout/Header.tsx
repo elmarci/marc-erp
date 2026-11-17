@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/services/api';
 import { getInitials, ROLE_LABELS } from '@/lib/utils';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { cn } from '@/lib/utils';
 import { MARK_LABELS, useMyAttendance } from '@/modules/attendance/attendance';
 import {
   DropdownMenu,
@@ -61,10 +63,8 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
             <span className="hidden sm:inline">{MARK_LABELS[pendingMark]}</span>
           </Button>
         )}
-        {/* Notificaciones */}
-        <Button variant="ghost" size="icon" aria-label="Notificaciones">
-          <Bell className="h-5 w-5" />
-        </Button>
+        {/* Avisos del día */}
+        <NoticesBell enabled={!!user} />
 
         {/* Modo oscuro */}
         <Button variant="ghost" size="icon" onClick={toggleDarkMode} aria-label="Cambiar tema">
@@ -104,5 +104,56 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
         </DropdownMenu>
       </div>
     </header>
+  );
+}
+
+interface Notice { key: string; tone: 'danger' | 'warning' | 'info'; title: string; detail: string; link: string }
+
+const TONE_DOT: Record<Notice['tone'], string> = {
+  danger: 'bg-destructive', warning: 'bg-amber-500', info: 'bg-muted-foreground/50',
+};
+
+// Lo que hay que mirar hoy: vencidos, por vencer, stock bajo y (supervisores)
+// pagos atrasados. Se refresca cada 5 minutos.
+function NoticesBell({ enabled }: { enabled: boolean }) {
+  const navigate = useNavigate();
+  const { data } = useQuery({
+    queryKey: ['inv-notices'],
+    queryFn: async () => (await api.get<{ data: { notices: Notice[]; count: number } }>('/inventory/notices')).data.data,
+    enabled,
+    refetchInterval: 5 * 60_000,
+  });
+  const notices = data?.notices ?? [];
+  const urgent = notices.filter((n) => n.tone !== 'info').length;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={`Avisos${notices.length ? ` (${notices.length})` : ''}`} className="relative">
+          <Bell className="h-5 w-5" />
+          {notices.length > 0 && (
+            <span className={cn('absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white',
+              urgent ? 'bg-destructive' : 'bg-muted-foreground')}>
+              {notices.length}
+            </span>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-1.5rem)] p-0">
+        <DropdownMenuLabel className="px-4 py-3">Avisos de hoy</DropdownMenuLabel>
+        <DropdownMenuSeparator className="m-0" />
+        {notices.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Todo en orden por ahora.</p>
+        ) : notices.map((n) => (
+          <DropdownMenuItem key={n.key} onClick={() => navigate(n.link)} className="flex cursor-pointer items-start gap-3 rounded-none px-4 py-3">
+            <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', TONE_DOT[n.tone])} />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium leading-snug">{n.title}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{n.detail}</span>
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
