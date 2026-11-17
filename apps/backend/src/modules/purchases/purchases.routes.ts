@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { purchasesService } from './purchases.service';
+import { purchasesService, SUPPLIER_DOC_TYPES } from './purchases.service';
+import { supplierReturnsService, SUPPLIER_RETURN_REASONS } from './supplier-returns.service';
 import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 import { sendExcel } from '../../utils/excel';
@@ -10,9 +11,18 @@ const router = Router();
 router.use(authenticate);
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Borrador', PENDING_APPROVAL: 'Pend. aprobación', APPROVED: 'Aprobada',
-  SENT: 'Enviada', PARTIALLY_RECEIVED: 'Parcial', RECEIVED: 'Recibida', CANCELLED: 'Cancelada',
+  DRAFT: 'Borrador', PENDING_APPROVAL: 'Pedida', APPROVED: 'Pedida',
+  SENT: 'Pedida', PARTIALLY_RECEIVED: 'Recibida en parte', RECEIVED: 'Recibida', CANCELLED: 'Anulada',
 };
+
+// Comprobante del proveedor (tipo, serie, número, fecha de emisión).
+const docSchema = z.object({
+  docType: z.enum(SUPPLIER_DOC_TYPES).nullable().optional(),
+  docSeries: z.string().max(10).nullable().optional(),
+  docNumber: z.string().max(20).nullable().optional(),
+  docIssueDate: z.coerce.date().nullable().optional(),
+  supplierTaxId: z.string().max(11).nullable().optional(),
+}).optional();
 
 const listFiltersSchema = z.object({
   status: z.string().optional(),
@@ -223,6 +233,68 @@ router.post('/payer-repayment-batches/:batchId/revert', authorizeMinRole('SUPERV
   } catch (err) { next(err); }
 });
 
+/* ─── Devoluciones al proveedor ─────────────────────────────────────────── */
+
+router.get('/returns/reasons', (_req: Request, res: Response) => {
+  res.json({ success: true, data: SUPPLIER_RETURN_REASONS });
+});
+
+router.get('/returns', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const filters = z.object({
+      supplierId: z.string().uuid().optional(),
+      dateFrom: limaDateFromParam,
+      dateTo: limaDateToParam,
+      page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+    }).parse(req.query);
+    const result = await supplierReturnsService.list(filters);
+    res.json({ success: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.post('/returns', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = z.object({
+      purchaseOrderId: z.string().uuid(),
+      settlement: z.enum(['CREDIT_NOTE', 'REFUND', 'REPLACEMENT']),
+      reasonCode: z.string(),
+      items: z.array(z.object({ productId: z.string().uuid(), quantity: z.coerce.number().positive() })).min(1),
+      amount: z.coerce.number().min(0).optional(),
+      refundAccount: z.enum(['CASH', 'YAPE', 'PLIN']).optional(),
+      docSeries: z.string().max(10).nullable().optional(),
+      docNumber: z.string().max(20).nullable().optional(),
+      docIssueDate: z.coerce.date().nullable().optional(),
+      notes: z.string().max(500).nullable().optional(),
+    }).parse(req.body);
+    const ret = await supplierReturnsService.create(req.user!.sub, data);
+    res.status(201).json({ success: true, data: ret });
+  } catch (err) { next(err); }
+});
+
+router.post('/returns/:returnId/void', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { reason } = z.object({ reason: z.string().trim().min(3, 'Escribe el motivo') }).parse(req.body);
+    const ret = await supplierReturnsService.void(req.params.returnId, req.user!.sub, reason);
+    res.json({ success: true, data: ret });
+  } catch (err) { next(err); }
+});
+
+router.get('/:id/returnable', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await supplierReturnsService.getReturnable(req.params.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+router.patch('/:id/document', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const doc = docSchema.unwrap().parse(req.body);
+    const order = await purchasesService.updateDocument(req.params.id, doc);
+    res.json({ success: true, data: order });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const order = await purchasesService.getOrder(req.params.id);
@@ -237,6 +309,7 @@ router.post('/', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Respo
       expectedDate: z.coerce.date().optional(),
       notes: z.string().optional(),
       supplierInvoice: z.string().optional(),
+      doc: docSchema,
       includeTax: z.boolean().default(false),
       items: z.array(z.object({
         productId: z.string().uuid(),
@@ -300,7 +373,7 @@ const paymentSchema = z.object({
 
 router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { items, notes, payment, payerId, payerAmount } = z.object({
+    const { items, notes, payment, payerId, payerAmount, doc } = z.object({
       items: z.array(z.object({
         productId: z.string().uuid(),
         receivedQty: z.coerce.number().min(0),
@@ -313,8 +386,13 @@ router.post('/:id/receive', authorizeMinRole('WAREHOUSE'), async (req: Request, 
       payment: paymentSchema,
       payerId: z.string().uuid().optional(),
       payerAmount: z.coerce.number().positive().optional(),
+      doc: docSchema,
     }).parse(req.body);
 
+    // El comprobante suele llegar con la mercadería.
+    if (doc && (doc.docSeries || doc.docNumber || doc.docType)) {
+      await purchasesService.updateDocument(req.params.id, doc);
+    }
     const receipt = await purchasesService.receiveOrder(
       req.params.id, req.user!.sub, items as Parameters<typeof purchasesService.receiveOrder>[2], notes, payment,
       payerId, payerAmount,
@@ -348,6 +426,7 @@ router.post('/direct', authorizeMinRole('WAREHOUSE'), async (req: Request, res: 
     const data = z.object({
       supplierId: z.string().uuid(),
       documentNumber: z.string().optional(),
+      doc: docSchema,
       date: z.coerce.date().optional(),
       notes: z.string().optional(),
       includeTax: z.boolean().default(false),

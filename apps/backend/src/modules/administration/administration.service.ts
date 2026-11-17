@@ -29,7 +29,7 @@ export class AdministrationService {
     const from = parseLimaDate(`${y}-01-01`, false);
     const to = parseLimaDate(`${y}-12-31`, true);
 
-    const [salesRows, purchaseRows] = await Promise.all([
+    const [salesRows, purchaseRows, returnRows] = await Promise.all([
       prisma.$queryRaw<{ month: string; total: number; tickets: number }[]>`
         SELECT TO_CHAR(s.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', 'YYYY-MM') as month,
                SUM(${NET_SALE_TOTAL})::float as total, COUNT(*)::int as tickets
@@ -46,22 +46,33 @@ export class AdministrationService {
           AND COALESCE(po.received_date, po.created_at) BETWEEN ${from} AND ${to}
         GROUP BY 1
       `,
+      // Notas de crédito y devoluciones de dinero del proveedor bajan lo comprado.
+      prisma.$queryRaw<{ month: string; total: number }[]>`
+        SELECT TO_CHAR(COALESCE(r.doc_issue_date, r.created_at) AT TIME ZONE 'UTC' AT TIME ZONE 'America/Lima', 'YYYY-MM') as month,
+               SUM(r.amount)::float as total
+        FROM supplier_returns r
+        WHERE r.voided_at IS NULL AND r.settlement IN ('CREDIT_NOTE', 'REFUND')
+          AND COALESCE(r.doc_issue_date, r.created_at) BETWEEN ${from} AND ${to}
+        GROUP BY 1
+      `,
     ]);
     const salesBy = new Map(salesRows.map((r) => [r.month, r]));
     const purchasesBy = new Map(purchaseRows.map((r) => [r.month, r]));
+    const returnsBy = new Map(returnRows.map((r) => [r.month, num(r.total)]));
 
     const lastMonth = y === now.year ? now.month : 12;
     const months = [];
     for (let m = 1; m <= lastMonth; m++) {
       const key = `${y}-${pad(m)}`;
       const sales = num(salesBy.get(key)?.total);
-      const purchases = num(purchasesBy.get(key)?.total);
+      const supplierCredits = returnsBy.get(key) ?? 0;
+      const purchases = Math.max(0, num(purchasesBy.get(key)?.total) - supplierCredits);
       months.push({
         month: key,
         isCurrent: y === now.year && m === now.month,
         sales, salesTickets: num(salesBy.get(key)?.tickets),
         salesPercent: percentOf(sales, monthlyLimit), salesStatus: limitStatus(sales, monthlyLimit, alertPercent),
-        purchases, purchaseOrders: num(purchasesBy.get(key)?.orders),
+        purchases, purchaseOrders: num(purchasesBy.get(key)?.orders), supplierCredits,
         purchasesPercent: percentOf(purchases, monthlyLimit), purchasesStatus: limitStatus(purchases, monthlyLimit, alertPercent),
       });
     }
@@ -103,9 +114,10 @@ export class AdministrationService {
         WHERE s.status IN ('COMPLETED', 'PARTIALLY_RETURNED', 'RETURNED')
           AND s.created_at BETWEEN ${range.from} AND ${range.to}
       `,
+      // Gastos por el mes al que corresponden (accrualDate), pagados o por pagar.
       prisma.expense.groupBy({
-        by: ['category'],
-        where: { voidedAt: null, expenseDate: { gte: range.from, lte: range.to } },
+        by: ['categoryId', 'category'],
+        where: { voidedAt: null, accrualDate: { gte: range.from, lte: range.to } },
         _sum: { amount: true }, _count: true,
       }),
       // Mermas: salidas por ajuste con un motivo que es pérdida real.
@@ -146,6 +158,9 @@ export class AdministrationService {
     const grossSales = num(sales[0]?.gross);
     const returns = grossSales - num(sales[0]?.net);
     const expenses = expenseRows.reduce((s, r) => s + num(r._sum.amount), 0);
+    const categoryNames = new Map(
+      (await prisma.expenseCategoryDef.findMany({ select: { id: true, name: true } })).map((c) => [c.id, c.name]),
+    );
     const inventoryLosses = lossRows.reduce((s, r) => s + num(r.value), 0);
     const figures = {
       grossSales, returns, cogs: num(cost[0]?.cost), expenses, inventoryLosses,
@@ -159,7 +174,11 @@ export class AdministrationService {
       itemsWithoutCost: num(cost[0]?.items_without_cost),
       cardCommissionCollected: num(sales[0]?.commission),
       expensesByCategory: expenseRows
-        .map((r) => ({ category: r.category as string, total: num(r._sum.amount), count: r._count }))
+        .map((r) => ({
+          category: r.category as string,
+          name: (r.categoryId && categoryNames.get(r.categoryId)) || null,
+          total: num(r._sum.amount), count: r._count,
+        }))
         .sort((a, b) => b.total - a.total),
       lossesByReason: lossRows
         .map((r) => ({ code: r.code, label: adjustmentReasonLabel(r.code), total: num(r.value), count: r.n }))

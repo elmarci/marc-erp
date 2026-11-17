@@ -1,5 +1,15 @@
 import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
+import { isValidRuc } from '../../utils/supplier-doc';
+
+// RUC de 11 dígitos con dígito verificador correcto, o DNI de 8 dígitos
+// (vendedores de mercado sin RUC).
+function assertTaxId(taxId: string) {
+  if (/^\d{8}$/.test(taxId)) return;
+  if (!isValidRuc(taxId)) {
+    throw new BusinessError('El RUC no es válido: revisa que tenga 11 dígitos y esté bien escrito (o usa un DNI de 8 dígitos).');
+  }
+}
 
 export class SuppliersService {
   async list(filters: { search?: string; page: number; limit: number }) {
@@ -57,6 +67,7 @@ export class SuppliersService {
     paymentTermDays?: number; notes?: string;
   }) {
     if (data.taxId) {
+      assertTaxId(data.taxId);
       const existing = await prisma.supplier.findFirst({ where: { taxId: data.taxId, deletedAt: null } });
       if (existing) throw new BusinessError('Ya existe un proveedor con ese RUC.');
     }
@@ -70,6 +81,8 @@ export class SuppliersService {
   }) {
     await this.get(id);
     if (data.taxId) {
+      const current = await prisma.supplier.findUnique({ where: { id }, select: { taxId: true } });
+      if (current?.taxId !== data.taxId) assertTaxId(data.taxId);
       const existing = await prisma.supplier.findFirst({ where: { taxId: data.taxId, deletedAt: null, NOT: { id } } });
       if (existing) throw new BusinessError('Ya existe un proveedor con ese RUC.');
     }

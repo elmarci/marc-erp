@@ -8,6 +8,26 @@ import { inventoryAlertsService } from '../inventory/inventory-alerts.service';
 import type { Prisma, PurchaseOrderStatus } from '@prisma/client';
 import { getSettingValues } from '../../utils/settings';
 import { purchaseTaxFactor, round4, weightedAverageCost } from '../../utils/costing';
+import {
+  formatDocument, isValidRuc, normalizeDocNumber, normalizeSeries, parseLegacyDocument,
+} from '../../utils/supplier-doc';
+
+export const SUPPLIER_DOC_TYPES = [
+  'FACTURA', 'BOLETA', 'TICKET', 'NOTA_VENTA', 'RECIBO_SERVICIO', 'RECIBO_HONORARIOS', 'OTHER',
+] as const;
+export type SupplierDocTypeValue = typeof SUPPLIER_DOC_TYPES[number];
+
+// Comprobante que entregó el proveedor. `text` es el campo libre de antes
+// ("F001-123"): si no llegan serie y número, se intenta leer de ahí.
+export interface SupplierDocInput {
+  docType?: SupplierDocTypeValue | null;
+  docSeries?: string | null;
+  docNumber?: string | null;
+  docIssueDate?: Date | null;
+  text?: string | null;
+  // RUC para guardar en el proveedor si todavía no lo tiene (factura).
+  supplierTaxId?: string | null;
+}
 
 interface DirectPurchaseItemInput {
   productId: string;
@@ -33,6 +53,80 @@ interface PurchasePaymentInput {
 }
 
 export class PurchasesService {
+  /**
+   * Valida el comprobante y devuelve los campos a guardar en la compra.
+   * Una factura exige serie, número y proveedor con RUC; el mismo
+   * comprobante del mismo proveedor no se puede registrar dos veces.
+   */
+  private async resolveSupplierDoc(
+    tx: Prisma.TransactionClient | typeof prisma,
+    supplierId: string,
+    doc: SupplierDocInput | undefined,
+    excludeOrderId?: string,
+  ) {
+    if (!doc) return {};
+    let series = normalizeSeries(doc.docSeries);
+    let number = normalizeDocNumber(doc.docNumber);
+    let type = doc.docType ?? null;
+    if (!series && !number && doc.text) {
+      const parsed = parseLegacyDocument(doc.text);
+      if (parsed) {
+        series = parsed.series;
+        number = parsed.number;
+        if (!type) type = parsed.series.startsWith('F') ? 'FACTURA' : parsed.series.startsWith('B') ? 'BOLETA' : null;
+      }
+    }
+
+    if (type === 'FACTURA') {
+      if (!series || !number) throw new BusinessError('Para una factura escribe la serie y el número (ej. F001 y 123).');
+      const supplier = await tx.supplier.findUnique({ where: { id: supplierId }, select: { taxId: true } });
+      const newTaxId = doc.supplierTaxId?.trim() || null;
+      if (!isValidRuc(supplier?.taxId)) {
+        if (!newTaxId) {
+          throw new BusinessError(supplier?.taxId
+            ? `El RUC guardado del proveedor (${supplier.taxId}) no es válido. Escribe el RUC correcto de la factura.`
+            : 'Para registrar una factura el proveedor necesita su RUC.');
+        }
+        if (!isValidRuc(newTaxId)) throw new BusinessError('El RUC del proveedor no es válido: revisa los 11 dígitos.');
+        const taken = await tx.supplier.findFirst({ where: { taxId: newTaxId, deletedAt: null, NOT: { id: supplierId } } });
+        if (taken) throw new BusinessError(`Ese RUC ya es del proveedor ${taken.businessName}.`);
+        await tx.supplier.update({ where: { id: supplierId }, data: { taxId: newTaxId } });
+      }
+    }
+
+    if (series && number) {
+      const dup = await tx.purchaseOrder.findFirst({
+        where: {
+          supplierId, docSeries: series, docNumber: number, voidedAt: null,
+          ...(excludeOrderId ? { NOT: { id: excludeOrderId } } : {}),
+        },
+        select: { orderNumber: true },
+      });
+      if (dup) throw new BusinessError(`Ese comprobante ya está registrado en la compra ${dup.orderNumber}.`);
+    }
+
+    const text = formatDocument(series, number) ?? (doc.text?.trim() || null);
+    return {
+      docType: type,
+      docSeries: series,
+      docNumber: number,
+      docIssueDate: doc.docIssueDate ?? null,
+      supplierInvoice: text,
+    };
+  }
+
+  /** Corrige o completa el comprobante de una compra ya registrada. */
+  async updateDocument(orderId: string, doc: SupplierDocInput) {
+    const order = await prisma.purchaseOrder.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundError('Orden de compra');
+    if (order.voidedAt) throw new BusinessError('Esta compra está anulada.');
+    await prisma.$transaction(async (tx) => {
+      const fields = await this.resolveSupplierDoc(tx, order.supplierId, doc, orderId);
+      await tx.purchaseOrder.update({ where: { id: orderId }, data: fields });
+    });
+    return this.getOrder(orderId);
+  }
+
   private async nextOrderNumber(): Promise<string> {
     const count = await prisma.purchaseOrder.count();
     return `OC-${String(count + 1).padStart(6, '0')}`;
@@ -226,6 +320,14 @@ export class PurchasesService {
         },
         payments: { include: { reversedBy: { select: { firstName: true, lastName: true } } }, orderBy: { paidAt: 'desc' } },
         payerRepayments: { include: { reversedBy: { select: { firstName: true, lastName: true } } }, orderBy: { paidAt: 'desc' } },
+        supplierReturns: {
+          include: {
+            items: { include: { product: { select: { id: true, name: true } } } },
+            user: { select: { firstName: true, lastName: true } },
+            voidedBy: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
     if (!order) throw new NotFoundError('Orden de compra');
@@ -237,6 +339,7 @@ export class PurchasesService {
     expectedDate?: Date;
     notes?: string;
     supplierInvoice?: string;
+    doc?: SupplierDocInput;
     includeTax?: boolean;
     items: Array<{ productId: string; orderedQty: number; unitCost: number }>;
   }) {
@@ -252,7 +355,12 @@ export class PurchasesService {
     // el costo unitario ya ES el total pagado, así que el IGV es opcional.
     const taxAmount = data.includeTax ? subtotal * 0.18 : 0;
     const totalAmount = subtotal + taxAmount;
+    const docFields = await this.resolveSupplierDoc(
+      prisma, data.supplierId,
+      data.doc ?? (data.supplierInvoice ? { text: data.supplierInvoice } : undefined),
+    );
 
+    // Flujo simple: la orden nace "Pedida" y se puede recibir de inmediato.
     const order = await prisma.purchaseOrder.create({
       data: {
         orderNumber: await this.nextOrderNumber(),
@@ -260,8 +368,8 @@ export class PurchasesService {
         userId,
         expectedDate: data.expectedDate,
         notes: data.notes,
-        supplierInvoice: data.supplierInvoice,
-        status: 'PENDING_APPROVAL',
+        ...docFields,
+        status: 'SENT',
         subtotal,
         taxAmount,
         totalAmount,
@@ -671,7 +779,7 @@ export class PurchasesService {
    * Cuánto encarece el IGV el costo de las líneas de una compra (1 = nada).
    * Ver purchaseTaxFactor: solo aplica si el IGV es costo para el negocio.
    */
-  private async orderTaxFactor(order: { subtotal: Prisma.Decimal | number; taxAmount: Prisma.Decimal | number }): Promise<number> {
+  async orderTaxFactor(order: { subtotal: Prisma.Decimal | number; taxAmount: Prisma.Decimal | number }): Promise<number> {
     if (!(Number(order.taxAmount) > 0)) return 1;
     const values = await getSettingValues(['purchase_igv_is_cost']);
     return purchaseTaxFactor(Number(order.subtotal), Number(order.taxAmount), values.purchase_igv_is_cost !== 'false');
@@ -833,7 +941,7 @@ export class PurchasesService {
     payerAmount?: number,
   ) {
     const order = await this.getOrder(orderId);
-    if (!['APPROVED', 'SENT', 'PARTIALLY_RECEIVED'].includes(order.status)) {
+    if (!['PENDING_APPROVAL', 'APPROVED', 'SENT', 'PARTIALLY_RECEIVED'].includes(order.status)) {
       throw new BusinessError('Solo se puede recibir mercadería en órdenes aprobadas o enviadas.');
     }
 
@@ -1037,6 +1145,7 @@ export class PurchasesService {
   async createDirectPurchase(userId: string, data: {
     supplierId: string;
     documentNumber?: string;
+    doc?: SupplierDocInput;
     date?: Date;
     notes?: string;
     includeTax?: boolean;
@@ -1096,6 +1205,10 @@ export class PurchasesService {
     })() : null;
 
     const { orderId } = await prisma.$transaction(async (tx) => {
+      const docFields = await this.resolveSupplierDoc(
+        tx, data.supplierId,
+        data.doc ?? (data.documentNumber ? { text: data.documentNumber } : undefined),
+      );
       const order = await tx.purchaseOrder.create({
         data: {
           orderNumber: await this.nextOrderNumber(),
@@ -1103,7 +1216,7 @@ export class PurchasesService {
           userId,
           status: 'RECEIVED',
           receivedDate: now,
-          supplierInvoice: data.documentNumber,
+          ...docFields,
           notes: data.notes,
           subtotal,
           taxAmount,
@@ -1234,6 +1347,10 @@ export class PurchasesService {
     if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
     if (Number(order.payerReimbursedAmount) > 0) {
       throw new BusinessError('Ya se le repuso dinero al pagador de esta compra — no se puede anular automáticamente. Revierte antes la reposición.');
+    }
+    const activeReturns = await prisma.supplierReturn.count({ where: { purchaseOrderId: orderId, voidedAt: null } });
+    if (activeReturns > 0) {
+      throw new BusinessError('Esta compra tiene devoluciones al proveedor. Anula primero esas devoluciones.');
     }
 
     // Se revierte en orden inverso al que se aplicó, para que cada paso
@@ -1373,7 +1490,8 @@ export class PurchasesService {
     if (!order) throw new NotFoundError('Orden de compra');
     if (order.voidedAt) throw new BusinessError('Esta compra ya fue anulada.');
     const hasPayerAmount = Number(order.payerAmount) > 0;
-    if (Number(order.paidAmount) <= 0 && !hasPayerAmount) throw new BusinessError('Esta compra no tiene ningún pago registrado.');
+    const credited = Number(order.creditedAmount);
+    if (Number(order.paidAmount) - credited <= 0.009 && !hasPayerAmount) throw new BusinessError('Esta compra no tiene ningún pago registrado.');
     if (hasPayerAmount && Number(order.payerReimbursedAmount) > 0) {
       throw new BusinessError('Ya se le repuso dinero al pagador de esta compra — no se puede revertir automáticamente. Revierte antes la reposición.');
     }
@@ -1434,7 +1552,9 @@ export class PurchasesService {
       await tx.purchaseOrder.update({
         where: { id: orderId },
         data: {
-          paidAmount: 0, paymentStatus: 'CREDIT',
+          // Las notas de crédito del proveedor no fueron dinero: se mantienen.
+          paidAmount: credited,
+          paymentStatus: credited >= Number(order.totalAmount) - 0.009 ? 'PAID' : credited > 0 ? 'PARTIAL' : 'CREDIT',
           ...(hasPayerAmount ? { payerId: null, payerAmount: 0 } : {}),
         },
       });
