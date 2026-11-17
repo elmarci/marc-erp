@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { ConfirmProvider } from '@/components/erp';
 import { useAuthStore } from '@/stores/authStore';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -58,7 +59,7 @@ function RequirePasswordChange({ children }: { children: React.ReactNode }) {
 export default function App() {
   useOfflineSync();
   return (
-    <>
+    <ConfirmProvider>
       <Toaster position="top-right" richColors closeButton />
       <Suspense fallback={<PageLoading />}>
       <Routes>
@@ -120,6 +121,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
       </Suspense>
-    </>
+    </ConfirmProvider>
   );
 }

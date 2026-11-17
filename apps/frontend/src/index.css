@@ -183,8 +183,9 @@
 
   /* Fase 5: el rediseño usa controles de 32–36 px en PC y sube a 44 px
      solo en pantallas táctiles (clase .tap). */
-  .dp button, .dp [role="button"], .dp a { min-height: 0; min-width: 0; }
-  @media (pointer: coarse) { .dp .tap { min-height: 44px; } }
+  .dp button, .dp [role="button"], .dp a,
+  .erp button, .erp [role="button"], .erp a { min-height: 0; min-width: 0; }
+  @media (pointer: coarse) { .dp .tap, .erp .tap { min-height: 44px; } }
 
   /* Eliminar flash azul en touch */
   * { -webkit-tap-highlight-color: transparent; }

@@ -8,7 +8,9 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CommandPalette, Sidebar, Topbar } from './Shell';
 import { ListView, type TableState } from './ListView';
-import { ConfirmDialog, FormView } from './FormView';
+import { FormView } from './FormView';
+import { ConfirmDialog } from '@/components/erp';
+import { formatCurrency } from '@/lib/utils';
 import { compras, type CompraDemo } from './data';
 import { CajaView, CierreDialog, SalidaSheet, type CajaTab } from './CajaView';
 
@@ -63,7 +65,15 @@ export function DesignPreviewPage() {
       <SalidaSheet open={salida} onOpenChange={setSalida} />
       <CierreDialog open={cierre} onOpenChange={setCierre} />
       <CommandPalette open={search} onOpenChange={setSearch} />
-      <ConfirmDialog compra={toVoid} onOpenChange={(o) => !o && setToVoid(null)} />
+      <ConfirmDialog
+        open={!!toVoid}
+        onOpenChange={(o) => !o && setToVoid(null)}
+        title={`Anular compra ${toVoid?.numero ?? ''}`}
+        description={toVoid && <>Se retiran del stock los {toVoid.items} productos y se borra la deuda de <span className="font-medium tabular-nums text-ink">{formatCurrency(toVoid.saldo || toVoid.total)}</span> con {toVoid.proveedor}.</>}
+        reason={{ label: 'Motivo', defaultValue: 'Me equivoqué de proveedor' }}
+        confirmLabel="Anular compra"
+        onConfirm={() => setToVoid(null)}
+      />
     </div>
   );
 }

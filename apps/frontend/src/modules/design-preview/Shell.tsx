@@ -7,7 +7,7 @@ import {
   ShoppingCart, SlidersHorizontal, Store, Tag, TrendingUp, Tv, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Kbd } from './ui';
+import { Kbd } from '@/components/erp';
 import { proveedores } from './data';
 
 type Icon = React.ComponentType<{ className?: string }>;

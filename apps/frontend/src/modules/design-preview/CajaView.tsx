@@ -3,11 +3,9 @@
 // Caja General: las 3 cuentas por separado, cada una con su arqueo.
 // Cierre: una sola tabla Esperado / Contado / Diferencia.
 import { useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, FileSpreadsheet, Lock, PackageOpen, Plus, Printer, Search } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
-import { Btn, Field, PageTabs, Panel, fieldCls } from './ui';
-import { PageHeader } from './ListView';
+import { Btn, Field, Modal, PageHeader, PageTabs, Panel, Sheet, fieldCls } from '@/components/erp';
 
 export type CajaTab = 'hoy' | 'general' | 'cierres' | 'prestamos';
 
@@ -197,15 +195,9 @@ export function SalidaSheet({ open, onOpenChange }: { open: boolean; onOpenChang
     ['gasto', 'Pagar un gasto', 'Luz, transporte, adelanto…'],
   ];
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/30" />
-        <Dialog.Content className="dp fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] flex-col bg-surface shadow-[0_0_48px_-12px_rgba(0,0,0,.3)]">
-          <div className="border-b border-line px-5 py-4">
-            <Dialog.Title className="text-section font-semibold text-ink">Sacar dinero de Caja 1</Dialog.Title>
-            <Dialog.Description className="text-meta text-ink-muted">Hay S/ 1,066.30 en efectivo.</Dialog.Description>
-          </div>
-          <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
+    <Sheet open={open} onOpenChange={onOpenChange} size="sm" title="Sacar dinero de Caja 1" description="Hay S/ 1,066.30 en efectivo."
+      footer={<><Btn onClick={() => onOpenChange(false)}>Cancelar</Btn><Btn variant="primary">Registrar salida</Btn></>}>
+          <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Para qué">
               {opciones.map(([k, t, d]) => (
                 <button key={k} role="radio" aria-checked={para === k} onClick={() => setPara(k)}
@@ -230,13 +222,7 @@ export function SalidaSheet({ open, onOpenChange }: { open: boolean; onOpenChang
               <Field label="Monto"><input className={cn(fieldCls, 'text-right tabular-nums')} defaultValue="15.00" /></Field>
             </>)}
           </div>
-          <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
-            <Dialog.Close asChild><Btn>Cancelar</Btn></Dialog.Close>
-            <Btn variant="primary">Registrar salida</Btn>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    </Sheet>
   );
 }
 
@@ -249,14 +235,13 @@ export function CierreDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   ];
   const dif = filas.reduce((n, f) => n + f.contado - f.esperado, 0);
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/30" />
-        <Dialog.Content className="dp fixed left-1/2 top-1/2 z-50 w-[calc(100%-32px)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 rounded-srf bg-surface shadow-[0_24px_64px_-16px_rgba(0,0,0,.3),0_0_0_1px_hsl(var(--line))]">
-          <div className="px-5 pb-2 pt-5">
-            <Dialog.Title className="text-section font-semibold text-ink">Cerrar Caja 1</Dialog.Title>
-            <Dialog.Description className="text-meta text-ink-muted">Cuenta el efectivo y confirma lo que llegó por Yape y Plin.</Dialog.Description>
-          </div>
+    <Modal open={open} onOpenChange={onOpenChange} size="sm" title="Cerrar Caja 1" description="Cuenta el efectivo y confirma lo que llegó por Yape y Plin."
+      footer={<>
+        <label className="mr-auto flex items-center gap-2 text-table text-ink"><input type="checkbox" defaultChecked className="accent-[hsl(var(--brand))]" />Pasar el efectivo a Caja General</label>
+        <Btn onClick={() => onOpenChange(false)}>Volver</Btn>
+        <Btn variant="primary">Cerrar caja</Btn>
+      </>}>
+          <div className="-mx-5 -mt-4">
           <table className="w-full border-separate border-spacing-0 text-table">
             <thead>
               <tr className="text-meta text-ink-muted">
@@ -286,17 +271,9 @@ export function CierreDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <span className="size-1.5 rounded-full bg-warn" />
             <span className="text-ink">Faltan <span className="font-medium tabular-nums">{formatCurrency(Math.abs(dif))}</span> en efectivo.</span>
           </div>
-          <div className="px-5 pb-4"><Field label="Nota del cierre"><input className={fieldCls} placeholder="Opcional" /></Field></div>
-          <div className="flex items-center justify-between gap-2 rounded-b-srf bg-surface-2 px-5 py-3">
-            <label className="flex items-center gap-2 text-table text-ink"><input type="checkbox" defaultChecked className="accent-[hsl(var(--brand))]" />Pasar el efectivo a Caja General</label>
-            <div className="flex gap-2">
-              <Dialog.Close asChild><Btn>Volver</Btn></Dialog.Close>
-              <Btn variant="primary">Cerrar caja</Btn>
-            </div>
           </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          <Field label="Nota del cierre"><input className={fieldCls} placeholder="Opcional" /></Field>
+    </Modal>
   );
 }
 

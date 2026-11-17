@@ -1,13 +1,10 @@
 // Plantilla de formulario: secciones con título corto, 2 columnas en PC y
 // barra de acciones fija abajo. Más el diálogo de confirmación.
 import { useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, ScanBarcode, Trash2 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
-import { Btn, Field, Panel, fieldCls } from './ui';
-import { ScanBarcode } from 'lucide-react';
-import { PageHeader } from './ListView';
-import { proveedores, type CompraDemo } from './data';
+import { Btn, Field, PageHeader, Panel, Segmented, Toggle, fieldCls } from '@/components/erp';
+import { proveedores } from './data';
 
 function Section({ title, meta, children }: { title: string; meta?: string; children: React.ReactNode }) {
   return (
@@ -26,28 +23,6 @@ const lineas = [
 
 type Pago = 'ahora' | 'credito' | 'pagador';
 const origenes = ['Efectivo · Caja del día (Caja 1, Marcial)', 'Efectivo · Caja General', 'Yape', 'Transferencia'];
-
-function Segmented<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
-  return (
-    <div className="grid h-9 gap-0.5 rounded-ctl bg-ink/[0.04] p-0.5" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
-      {options.map(([k, label]) => (
-        <button key={k} type="button" onClick={() => onChange(k)}
-          className={cn('truncate rounded-[5px] px-2 text-table', value === k ? 'bg-surface font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,.06),0_0_0_1px_hsl(var(--line))]' : 'text-ink-muted hover:text-ink')}>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)}
-      className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', on ? 'bg-brand' : 'bg-ink/20')}>
-      <span className={cn('absolute top-0.5 size-4 rounded-full bg-white shadow transition-[left]', on ? 'left-[18px]' : 'left-0.5')} />
-    </button>
-  );
-}
 
 function Leg({ monto, origen }: { monto: number; origen: number }) {
   return (
@@ -159,7 +134,7 @@ export function FormView({ onCancel, pagoInicial = 'ahora' }: { onCancel: () => 
 
         <Section title="Pago">
           <div className="sm:col-span-2">
-            <Segmented value={pago} onChange={setPago} options={[['ahora', 'Pagado ahora'], ['credito', 'A crédito con el proveedor'], ['pagador', 'Lo financió un pagador']]} />
+            <Segmented size="md" ariaLabel="Forma de pago" value={pago} onChange={setPago} options={[['ahora', 'Pagado ahora'], ['credito', 'A crédito con el proveedor'], ['pagador', 'Lo financió un pagador']]} />
           </div>
           {pago === 'ahora' && (
             <Field label="Sale de" className="sm:col-span-2">
@@ -209,36 +184,5 @@ export function FormView({ onCancel, pagoInicial = 'ahora' }: { onCancel: () => 
         </div>
       </div>
     </div>
-  );
-}
-
-export function ConfirmDialog({ compra, onOpenChange }: { compra: CompraDemo | null; onOpenChange: (open: boolean) => void }) {
-  const [motivo, setMotivo] = useState('Me equivoqué de proveedor');
-  return (
-    <Dialog.Root open={!!compra} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/30" />
-        <Dialog.Content className="dp fixed left-1/2 top-1/2 z-50 w-[calc(100%-32px)] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-srf bg-surface shadow-[0_24px_64px_-16px_rgba(0,0,0,.3),0_0_0_1px_hsl(var(--line))]">
-          {compra && (
-            <>
-              <div className="flex flex-col gap-2 px-5 pb-4 pt-5">
-                <Dialog.Title className="text-section font-semibold text-ink">Anular compra {compra.numero}</Dialog.Title>
-                <Dialog.Description className="text-body text-ink-muted">
-                  Se retiran del stock los {compra.items} productos y se borra la deuda de{' '}
-                  <span className="font-medium tabular-nums text-ink">{formatCurrency(compra.saldo || compra.total)}</span> con {compra.proveedor}.
-                </Dialog.Description>
-                <Field label="Motivo" className="mt-2">
-                  <input className={fieldCls} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-                </Field>
-              </div>
-              <div className="flex justify-end gap-2 rounded-b-srf bg-surface-2 px-5 py-3">
-                <Dialog.Close asChild><Btn>Volver</Btn></Dialog.Close>
-                <Btn variant="danger" disabled={!motivo.trim()}>Anular compra</Btn>
-              </div>
-            </>
-          )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
   );
 }

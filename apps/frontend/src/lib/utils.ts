@@ -17,6 +17,12 @@ export function formatCurrency(
   return `${symbol} ${num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 }
 
+// Monto con signo para movimientos: "+S/ 50.00" / "−S/ 186.00".
+export function formatSignedCurrency(amount: number, symbol = 'S/'): string {
+  if (!amount) return formatCurrency(0, symbol);
+  return `${amount > 0 ? '+' : '−'}${formatCurrency(Math.abs(amount), symbol)}`;
+}
+
 // Para el costo de un producto: a diferencia del precio de venta (siempre a
 // 2 decimales, como corresponde a soles/céntimos reales), el costo interno
 // necesita hasta 4 decimales — un costo por kilo calculado desde una compra
