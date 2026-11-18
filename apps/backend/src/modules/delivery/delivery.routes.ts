@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { deliveryService } from './delivery.service';
 import { riderAuthMiddleware, requireRiderAuth } from './delivery-auth.routes';
+import { deliveryAuthService } from './delivery-auth.service';
 import { authenticate, authorizeMinRole } from '../../middleware/auth';
 
 const router = Router();
@@ -165,7 +166,7 @@ router.post('/admin/riders', authenticate, authorizeMinRole('SUPERVISOR'), async
     const data = z.object({
       nombre: z.string().min(2),
       telefono: z.string().min(9),
-      pin: z.string().length(4),
+      pin: z.string().regex(/^\d{6}$/, 'El PIN debe tener 6 dígitos.'),
     }).parse(req.body);
     const rider = await deliveryService.createRider(data);
     res.status(201).json({ success: true, data: rider });
@@ -177,7 +178,7 @@ router.patch('/admin/riders/:id', authenticate, authorizeMinRole('SUPERVISOR'), 
     const data = z.object({
       nombre: z.string().min(2).optional(),
       status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
-      pin: z.string().length(4).optional(),
+      pin: z.string().regex(/^\d{6}$/, 'El PIN debe tener 6 dígitos.').optional(),
       motoModelo: z.string().optional(),
       motoPlaca: z.string().optional(),
       motoSoatHasta: z.coerce.date().optional(),
@@ -190,6 +191,41 @@ router.patch('/admin/riders/:id', authenticate, authorizeMinRole('SUPERVISOR'), 
     }).parse(req.body);
     const rider = await deliveryService.updateRider(req.params.id, data);
     res.json({ success: true, data: rider });
+  } catch (err) { next(err); }
+});
+
+// ── Seguridad del ingreso (ERP) ─────────────────────────────────────────────
+
+router.get('/admin/riders/:id/security', authenticate, authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json({ success: true, data: await deliveryAuthService.getSecurity(req.params.id) });
+  } catch (err) { next(err); }
+});
+
+router.post('/admin/riders/:id/activation-code', authenticate, authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json({ success: true, data: await deliveryAuthService.createActivationCode(req.params.id, req.user!.sub) });
+  } catch (err) { next(err); }
+});
+
+router.post('/admin/riders/:id/devices/:deviceId/revoke', authenticate, authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await deliveryAuthService.revokeDevice(req.params.id, req.params.deviceId);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/admin/riders/:id/close-sessions', authenticate, authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await deliveryAuthService.closeSessions(req.params.id);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/admin/riders/:id/unlock', authenticate, authorizeMinRole('SUPERVISOR'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await deliveryAuthService.unlock(req.params.id);
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
