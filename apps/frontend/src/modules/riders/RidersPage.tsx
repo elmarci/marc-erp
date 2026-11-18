@@ -1,7 +1,7 @@
 // Repartidores: alta y edición, activar o desactivar, y pago de liquidaciones.
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ban, Bike, CheckCircle2, Pencil, Plus, Wallet } from 'lucide-react';
+import { Ban, Bike, CheckCircle2, Pencil, Plus, ShieldCheck, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Btn, EmptyState, PageHeader, PageTabs, RowMenu, StatusBadge, surfaceCls, tableCls, tdCls, thCls,
@@ -9,11 +9,13 @@ import {
 import { api, getErrorMessage } from '@/services/api';
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils';
 import { RiderFormModal, type RiderFormValues } from './RiderFormModal';
+import { RiderSecurityModal } from './RiderSecurityModal';
 
 interface Rider {
   id: string; nombre: string; telefono: string; status: string; enServicio: boolean;
   motoModelo: string | null; motoPlaca: string | null; motoSoatHasta: string | null;
   zonas: string[]; lastLocationAt: string | null;
+  celularAutorizado: boolean; bloqueado: boolean;
 }
 
 interface LiquidacionAdmin {
@@ -25,6 +27,7 @@ export function RidersPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'riders' | 'liquidaciones'>('riders');
   const [editing, setEditing] = useState<RiderFormValues | 'new' | null>(null);
+  const [security, setSecurity] = useState<Rider | null>(null);
 
   const { data: riders, isLoading } = useQuery({
     queryKey: ['riders'],
@@ -87,10 +90,16 @@ export function RidersPage() {
                       </td>
                       <td className={cn(tdCls, 'hidden text-ink-muted md:table-cell')}>{r.motoModelo ? `${r.motoModelo} · ${r.motoPlaca ?? 'sin placa'}` : '—'}</td>
                       <td className={tdCls}><StatusBadge tone={r.enServicio ? 'ok' : 'muted'}>{r.enServicio ? 'En servicio' : 'Desconectado'}</StatusBadge></td>
-                      <td className={cn(tdCls, 'hidden sm:table-cell')}><StatusBadge tone={r.status === 'ACTIVE' ? 'ok' : 'bad'}>{r.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</StatusBadge></td>
+                      <td className={cn(tdCls, 'hidden sm:table-cell')}>
+                        <div className="flex flex-wrap gap-1">
+                          <StatusBadge tone={r.status === 'ACTIVE' ? 'ok' : 'bad'}>{r.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</StatusBadge>
+                          {r.bloqueado ? <StatusBadge tone="bad">Bloqueado</StatusBadge> : !r.celularAutorizado && r.status === 'ACTIVE' && <StatusBadge tone="warn">Sin celular</StatusBadge>}
+                        </div>
+                      </td>
                       <td className={cn(tdCls, 'hidden tabular-nums text-meta text-ink-muted lg:table-cell')}>{r.lastLocationAt ? formatDateTime(r.lastLocationAt) : 'Sin registro'}</td>
                       <td className={cn(tdCls, 'px-1')}>
                         <div className="flex items-center justify-end gap-1">
+                          <Btn size="sm" onClick={() => setSecurity(r)}><ShieldCheck />Ingreso</Btn>
                           <Btn size="sm" onClick={() => setEditing(toForm(r))}><Pencil />Editar</Btn>
                           <RowMenu label={`Acciones de ${r.nombre}`} actions={[
                             r.status === 'ACTIVE'
@@ -142,6 +151,8 @@ export function RidersPage() {
           )
         )}
       </div>
+
+      {security && <RiderSecurityModal rider={security} onClose={() => setSecurity(null)} />}
 
       {editing && (
         <RiderFormModal

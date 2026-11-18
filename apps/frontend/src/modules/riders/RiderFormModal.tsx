@@ -35,8 +35,8 @@ export function RiderFormModal({ initial, onClose, onSaved }: RiderFormModalProp
 
   const handleSave = async () => {
     if (!nombre.trim() || !telefono.trim()) { toast.error('Nombre y teléfono son obligatorios.'); return; }
-    if (!editing && !/^\d{4}$/.test(pin)) { toast.error('El PIN debe tener 4 dígitos.'); return; }
-    if (editing && pin && !/^\d{4}$/.test(pin)) { toast.error('El PIN debe tener 4 dígitos.'); return; }
+    if (!editing && !/^\d{6}$/.test(pin)) { toast.error('El PIN debe tener 6 dígitos.'); return; }
+    if (editing && pin && !/^\d{6}$/.test(pin)) { toast.error('El PIN debe tener 6 dígitos.'); return; }
 
     setLoading(true);
     try {
@@ -72,8 +72,8 @@ export function RiderFormModal({ initial, onClose, onSaved }: RiderFormModalProp
       <div className="flex flex-col gap-4">
         <Field label="Nombre completo"><input className={fieldCls} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Luis Ramírez" autoFocus /></Field>
         <Field label="Teléfono"><input className={fieldCls} value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="987654321" disabled={editing} /></Field>
-        <Field label="PIN de acceso (4 dígitos)" hint={editing ? 'Dejar vacío para no cambiarlo' : undefined}>
-          <input className={fieldCls} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="1234" inputMode="numeric" />
+        <Field label="PIN de acceso (6 dígitos)" hint={editing ? 'Dejar vacío para no cambiarlo. Después genera su código en Ingreso.' : 'Luego genera su código en Ingreso para autorizar su celular.'}>
+          <input className={fieldCls} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6 dígitos" inputMode="numeric" />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Modelo de moto"><input className={fieldCls} value={motoModelo} onChange={(e) => setMotoModelo(e.target.value)} placeholder="Honda Wave 110" /></Field>

@@ -40,15 +40,15 @@ export function LocationPermissionPage() {
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 px-8 text-center">
-      <div className="flex h-24 w-24 items-center justify-center rounded-full bg-paper-surface">
-        <MapPin size={44} strokeWidth={1.8} className={denied ? 'text-brand-magenta-500' : 'text-paper-ink-soft'} />
+      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-card shadow-card">
+        <MapPin size={36} strokeWidth={1.8} className={denied ? 'text-bad' : 'text-blue'} />
       </div>
 
       {!denied ? (
         <>
           <div className="flex flex-col items-center gap-1.5">
-            <div className="font-display text-xl font-bold">Necesitamos tu ubicación</div>
-            <div className="max-w-[280px] text-[15px] leading-snug text-paper-ink-soft">
+            <div className="num text-[22px] font-semibold">Necesitamos tu ubicación</div>
+            <div className="max-w-[280px] text-[15px] leading-snug text-ink-soft">
               La usamos solo mientras estás en servicio, para que la tienda sepa dónde estás y pueda avisarte de
               pedidos cerca. Se apaga en cuanto te desactivas.
             </div>
@@ -60,15 +60,15 @@ export function LocationPermissionPage() {
       ) : (
         <>
           <div className="flex flex-col items-center gap-1.5">
-            <div className="font-display text-xl font-bold">No podemos activarte sin ubicación</div>
-            <div className="max-w-[280px] text-[15px] leading-snug text-paper-ink-soft">
+            <div className="num text-[22px] font-semibold">No podemos activarte sin ubicación</div>
+            <div className="max-w-[280px] text-[15px] leading-snug text-ink-soft">
               Sin ubicación no podemos asignarte pedidos ni mostrarle a la tienda por dónde vas. Puedes darle permiso
               desde los ajustes de tu navegador y reintentar.
             </div>
           </div>
           <div className="flex w-full flex-col gap-3">
             <PrimaryButton className="w-full" onClick={requestPermission}>Reintentar</PrimaryButton>
-            <a href="tel:016139900" className="flex items-center justify-center gap-2 text-sm font-semibold text-paper-ink-soft">
+            <a href="tel:930555831" className="flex items-center justify-center gap-2 text-sm font-medium text-ink-soft">
               <Phone size={16} />
               Llamar a la tienda
             </a>

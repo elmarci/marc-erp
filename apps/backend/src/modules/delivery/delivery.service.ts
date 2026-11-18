@@ -346,14 +346,24 @@ export class DeliveryService {
   /* ── Admin ────────────────────────────────────────────────────────────── */
 
   async listRiders() {
-    return prisma.rider.findMany({ orderBy: { createdAt: 'desc' } });
+    const riders = await prisma.rider.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { devices: { where: { revokedAt: null }, select: { id: true } } },
+    });
+    const now = new Date();
+    return riders.map(({ pinHash: _pinHash, devices, ...r }) => ({
+      ...r,
+      celularAutorizado: devices.length > 0,
+      bloqueado: !!r.lockedUntil && r.lockedUntil > now,
+    }));
   }
 
   async createRider(data: { nombre: string; telefono: string; pin: string }) {
     const existing = await prisma.rider.findUnique({ where: { telefono: data.telefono } });
     if (existing) throw new BusinessError('Ya existe un repartidor con ese teléfono.');
     const pinHash = await bcrypt.hash(data.pin, env.BCRYPT_ROUNDS);
-    return prisma.rider.create({ data: { nombre: data.nombre, telefono: data.telefono, pinHash } });
+    const { pinHash: _h, ...rider } = await prisma.rider.create({ data: { nombre: data.nombre, telefono: data.telefono, pinHash, pinLength: 6 } });
+    return rider;
   }
 
   async updateRider(id: string, data: Partial<{
@@ -367,8 +377,11 @@ export class DeliveryService {
     if (!rider) throw new NotFoundError('Repartidor');
     const { pin, ...rest } = data;
     const updateData: Record<string, unknown> = { ...rest };
-    if (pin) updateData.pinHash = await bcrypt.hash(pin, env.BCRYPT_ROUNDS);
-    return prisma.rider.update({ where: { id }, data: updateData });
+    if (pin) Object.assign(updateData, { pinHash: await bcrypt.hash(pin, env.BCRYPT_ROUNDS), pinLength: 6, failedPinAttempts: 0, lockedUntil: null });
+    // Desactivar saca al repartidor de la app al instante.
+    if (data.status === 'INACTIVE' && rider.status !== 'INACTIVE') Object.assign(updateData, { tokenVersion: { increment: 1 }, enServicio: false });
+    const { pinHash: _h, ...saved } = await prisma.rider.update({ where: { id }, data: updateData });
+    return saved;
   }
 
   async getOrderTracking(id: string) {
