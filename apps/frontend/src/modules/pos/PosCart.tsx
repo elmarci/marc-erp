@@ -1,273 +1,18 @@
 import { useRef, useState } from 'react';
-import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, Search, Ticket, Star, PackagePlus, GlassWater, Tv, ChevronRight, ArrowLeft } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Trash2, Plus, Minus, ShoppingCart, UserPlus, X, Tag, PackagePlus, GlassWater, Tv, ChevronRight, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { useConfirm } from '@/components/erp';
 import { usePosStore } from '@/stores/posStore';
 import { formatCurrency, cn } from '@/lib/utils';
-import { api } from '@/services/api';
 import { toast } from 'sonner';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useTvLiveStore } from '@/stores/tvLiveStore';
 import { TvLiveModal } from './TvLiveModal';
 import { useProductCacheStore } from '@/stores/productCacheStore';
 import { ProductThumb } from './ProductThumb';
 import { OfferSuggestions } from './OfferSuggestions';
 import { OffersBrowser } from './OffersBrowser';
-
-interface Customer { id: string; firstName: string; lastName: string | null; phone: string | null; taxId: string | null }
-interface CustomerCoupon { id: string; code: string; discountPercent: number; expiresAt: string }
-
-function formatShortDate(iso: string) {
-  return new Date(iso).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', timeZone: 'America/Lima' });
-}
-
-/* ─── Cupón de descuento del cliente asignado ────────────────────────────── */
-function CouponBanner({ customerId }: { customerId: string }) {
-  const { couponCode, pointsToRedeem, setCoupon } = usePosStore();
-
-  const { data: coupons } = useQuery({
-    queryKey: ['customer-coupons', customerId],
-    queryFn: async () => (await api.get<{ data: CustomerCoupon[] }>(`/coupons?customerId=${customerId}`)).data.data,
-  });
-
-  const available = (coupons ?? []).sort((a, b) => a.expiresAt.localeCompare(b.expiresAt))[0];
-
-  if (couponCode) {
-    return (
-      <div className="flex items-center justify-between border-b bg-success/10 px-4 py-2">
-        <span className="text-xs font-medium text-success flex items-center gap-1.5">
-          <Ticket className="h-3.5 w-3.5" />
-          Cupón {couponCode} aplicado (-{usePosStore.getState().couponDiscountPercent}%)
-        </span>
-        <button onClick={() => setCoupon(null, 0)} className="text-muted-foreground hover:text-destructive">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    );
-  }
-
-  // Excluyente con los puntos: si ya se están canjeando puntos, no ofrecer el cupón.
-  if (!available || pointsToRedeem > 0) return null;
-
-  return (
-    <div className="flex items-center justify-between border-b bg-amber-500/10 px-4 py-2">
-      <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-        <Ticket className="h-3.5 w-3.5" />
-        Cupón {available.discountPercent}% disponible · vence {formatShortDate(available.expiresAt)}
-      </span>
-      <Button size="sm" variant="outline" className="h-6 text-xs px-2"
-        onClick={() => setCoupon(available.code, available.discountPercent)}>
-        Aplicar
-      </Button>
-    </div>
-  );
-}
-
-/* ─── Puntos de fidelización del cliente asignado ────────────────────────── */
-function LoyaltyPointsBanner({ customerId }: { customerId: string }) {
-  const { couponCode, pointsToRedeem, subtotal, setPointsRedemption } = usePosStore();
-
-  const { data: customer } = useQuery({
-    queryKey: ['customer-loyalty', customerId],
-    queryFn: async () => (await api.get<{ data: { loyaltyPoints: number } }>(`/customers/${customerId}`)).data.data,
-  });
-
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => (await api.get<{ data: Array<{ key: string; value: string }> }>('/settings')).data.data,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const pointValue = Number(settings?.find(s => s.key === 'loyalty_point_value')?.value ?? 0.05);
-  const points = customer?.loyaltyPoints ?? 0;
-
-  if (pointsToRedeem > 0) {
-    return (
-      <div className="flex items-center justify-between border-b bg-success/10 px-4 py-2">
-        <span className="text-xs font-medium text-success flex items-center gap-1.5">
-          <Star className="h-3.5 w-3.5" />
-          {pointsToRedeem} puntos canjeados (-{formatCurrency(pointsToRedeem * pointValue)})
-        </span>
-        <button onClick={() => setPointsRedemption(0, 0)} className="text-muted-foreground hover:text-destructive">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    );
-  }
-
-  // Excluyente con el cupón, y no tiene sentido si no hay puntos o no alcanzan para nada.
-  if (couponCode || points <= 0) return null;
-
-  // No se puede canjear más de lo que cubre el subtotal actual.
-  const usablePoints = Math.min(points, Math.floor(subtotal / pointValue));
-  if (usablePoints <= 0) return null;
-
-  return (
-    <div className="flex items-center justify-between border-b bg-amber-500/10 px-4 py-2">
-      <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-        <Star className="h-3.5 w-3.5" />
-        {points} puntos disponibles (equivalen a {formatCurrency(points * pointValue)})
-      </span>
-      <Button size="sm" variant="outline" className="h-6 text-xs px-2"
-        onClick={() => setPointsRedemption(usablePoints, usablePoints * pointValue)}>
-        Canjear
-      </Button>
-    </div>
-  );
-}
-
-/* ─── Venta excepcional de algo fuera de catálogo ────────────────────────── */
-function MiscItemModal({ onAdd, onClose }: {
-  onAdd: (input: { productId: string; description: string; amount: number; quantity: number }) => void;
-  onClose: () => void;
-}) {
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [quantity, setQuantity] = useState('1');
-
-  const { data: miscProductId, isLoading } = useQuery({
-    queryKey: ['pos-misc-item'],
-    queryFn: async () => (await api.get<{ data: { id: string } }>('/products/misc-item')).data.data.id,
-    staleTime: Infinity,
-  });
-
-  const amountNum = parseFloat(amount);
-  const qtyNum = parseInt(quantity, 10);
-  const canSubmit = !!miscProductId && description.trim().length > 0 && amountNum > 0 && qtyNum > 0;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-4">
-          <h3 className="font-semibold flex items-center gap-2"><PackagePlus className="h-4 w-4 text-primary" />Venta excepcional</h3>
-          <button onClick={onClose}><X className="h-4 w-4" /></button>
-        </div>
-        <div className="p-4 space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Para algo que vendiste y no está registrado en el catálogo — se anota en la venta pero no descuenta stock de ningún producto.
-          </p>
-          <div>
-            <label className="mb-1 block text-sm font-medium">¿Qué vendiste?</label>
-            <Input autoFocus value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej: Candado chico" />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Monto (S/)</label>
-              <Input type="number" min={0.01} step={0.10} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Cantidad</label>
-              <Input type="number" min={1} step={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-            </div>
-          </div>
-        </div>
-        <div className="border-t p-4 flex gap-3 justify-end">
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button
-            loading={isLoading}
-            disabled={!canSubmit}
-            onClick={() => onAdd({ productId: miscProductId!, description: description.trim(), amount: amountNum, quantity: qtyNum })}
-          >
-            Agregar
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Identificador rápido para saber a quién devolverle el envase ──────── */
-// No obliga a crear una ficha de cliente — sólo un nombre/apodo/teléfono
-// libre. Quien quiera puede en cambio buscar un cliente ya registrado.
-function DebtorLabelModal({ choice, onConfirm, onSearchCustomer, onClose }: {
-  choice: 'CHARGE' | 'LOAN';
-  onConfirm: (label: string) => void;
-  onSearchCustomer: () => void;
-  onClose: () => void;
-}) {
-  const [label, setLabel] = useState('');
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-4">
-          <h3 className="font-semibold">¿A nombre de quién?</h3>
-          <button onClick={onClose}><X className="h-4 w-4" /></button>
-        </div>
-        <div className="p-4 space-y-3">
-          <p className="text-xs text-muted-foreground">
-            {choice === 'CHARGE'
-              ? 'Para saber a quién devolverle la plata cuando traiga el envase vacío.'
-              : 'Para saber quién queda debiendo el envase.'}
-            {' '}No hace falta que sea un cliente registrado — con un nombre, apodo o teléfono alcanza.
-          </p>
-          <Input autoFocus value={label} onChange={(e) => setLabel(e.target.value)}
-            placeholder="Ej: Juan, casa azul / 987654321"
-            onKeyDown={(e) => { if (e.key === 'Enter' && label.trim()) onConfirm(label.trim()); }} />
-          <button type="button" onClick={onSearchCustomer}
-            className="text-xs text-primary hover:underline">
-            Prefiero buscar un cliente registrado
-          </button>
-        </div>
-        <div className="border-t p-4 flex gap-3 justify-end">
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button disabled={!label.trim()} onClick={() => onConfirm(label.trim())}>Confirmar</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CustomerSearchModal({ onSelect, onClose }: {
-  onSelect: (id: string, name: string) => void;
-  onClose: () => void;
-}) {
-  const [search, setSearch] = useState('');
-  const debouncedSearch = useDebouncedValue(search, 300);
-
-  const { data } = useQuery({
-    queryKey: ['pos-customers', debouncedSearch],
-    queryFn: async () => {
-      const res = await api.get<{ data: Customer[] }>(`/customers?search=${debouncedSearch}&limit=10`);
-      return res.data.data;
-    },
-    enabled: debouncedSearch.length >= 1,
-  });
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-4">
-          <h3 className="font-semibold">Asignar cliente</h3>
-          <button onClick={onClose}><X className="h-4 w-4" /></button>
-        </div>
-        <div className="p-4 space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input autoFocus className="pl-9" placeholder="Buscar por nombre, DNI, teléfono..."
-              value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-          <div className="max-h-60 overflow-y-auto divide-y border rounded-lg">
-            {search.length < 1 && (
-              <p className="py-6 text-center text-sm text-muted-foreground">Escribe para buscar...</p>
-            )}
-            {search.length >= 1 && (!data || data.length === 0) && (
-              <p className="py-6 text-center text-sm text-muted-foreground">Sin resultados</p>
-            )}
-            {(data ?? []).map(c => (
-              <button key={c.id} onClick={() => onSelect(c.id, `${c.firstName} ${c.lastName ?? ''}`.trim())}
-                className="w-full text-left px-4 py-3 hover:bg-muted transition-colors text-sm">
-                <p className="font-medium">{c.firstName} {c.lastName}</p>
-                <p className="text-xs text-muted-foreground">{c.taxId ? `DNI: ${c.taxId} · ` : ''}{c.phone ?? ''}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { CouponBanner, LoyaltyPointsBanner } from './CartBanners';
+import { CustomerSearchModal, DebtorLabelModal, MiscItemSheet } from './CartModals';
 
 interface PosCartProps {
   onCheckout: () => void;
@@ -278,13 +23,14 @@ interface PosCartProps {
 
 export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
   const {
-    items, subtotal, discountAmount, taxAmount, total,
+    items, subtotal, discountAmount, total,
     updateQuantity, removeItem, clearCart, customerId, customerName, setCustomer,
     globalDiscountPercent, globalDiscountAmount, setGlobalDiscount,
-    addItem, setBottleDepositChoice,
+    setBottleDepositChoice,
   } = usePosStore();
 
   const discountRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showMiscItem, setShowMiscItem] = useState(false);
   const [showTv, setShowTv] = useState(false);
@@ -349,7 +95,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
           onClick={() => setShowTv(true)}
           className={cn('relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted lg:h-8 lg:w-8', tvOn ? 'text-primary' : 'text-muted-foreground')}>
           <Tv className="h-[18px] w-[18px] lg:h-4 lg:w-4" />
-          {tvOn && <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-red-500 lg:right-1 lg:top-1" />}
+          {tvOn && <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-bad lg:right-1 lg:top-1" />}
         </button>
         <button title="Vender algo que no está en el catálogo" aria-label="Producto manual"
           onClick={() => setShowMiscItem(true)}
@@ -357,7 +103,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
           <PackagePlus className="h-[18px] w-[18px] lg:h-4 lg:w-4" />
         </button>
         {items.length > 0 && (
-          <button onClick={() => { if (items.length < 3 || window.confirm('¿Vaciar el carrito?')) clearCart(); }}
+          <button onClick={async () => { if (items.length < 3 || (await confirm({ title: 'Vaciar el carrito', description: `Se quitan los ${items.length} productos de esta venta.`, confirmLabel: 'Vaciar' })).ok) clearCart(); }}
             className="h-10 rounded-full px-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive lg:h-8 lg:text-xs">
             Vaciar
           </button>
@@ -410,10 +156,10 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
                     <p className="line-clamp-2 text-sm font-medium leading-snug lg:text-sm">{item.name}</p>
                     <p className="mt-0.5 text-sm text-muted-foreground tabular-nums lg:text-xs">
                       {formatCurrency(item.unitPrice)} c/u
-                      {item.discountAmount > 0 && <span className="ml-2 text-success">− {formatCurrency(item.discountAmount)}</span>}
+                      {item.discountAmount > 0 && <span className="ml-2 text-ok-ink">− {formatCurrency(item.discountAmount)}</span>}
                     </p>
                     {item.autoAdjust && (
-                      <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">Sin stock en el sistema · se ajusta al cobrar</p>
+                      <p className="mt-0.5 text-xs text-warn-ink">Sin stock en el sistema · se ajusta al cobrar</p>
                     )}
                   </div>
                   <button onClick={() => removeItem(item.productId)} aria-label="Eliminar producto"
@@ -467,7 +213,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
                       </p>
                     )}
                     {item.bottleDepositChoice === 'LOAN' && (
-                      <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
+                      <p className="mt-1.5 text-xs text-warn-ink">
                         No se cobra. <strong>{item.bottleDepositDebtorLabel || customerName || 'sin identificar'}</strong> queda debiendo el envase.
                       </p>
                     )}
@@ -517,7 +263,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
             />
-            <span className="ml-auto text-sm font-semibold text-success tabular-nums">
+            <span className="ml-auto text-sm font-semibold text-ok-ink tabular-nums">
               {discountAmount > 0 ? `− ${formatCurrency(discountAmount)}` : ''}
             </span>
           </div>
@@ -525,7 +271,7 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
         {discountAmount > 0 && (
           <div className="mb-1 space-y-0.5 text-sm tabular-nums">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-            <div className="flex justify-between text-success"><span>Descuento</span><span>− {formatCurrency(discountAmount)}</span></div>
+            <div className="flex justify-between text-ok-ink"><span>Descuento</span><span>− {formatCurrency(discountAmount)}</span></div>
           </div>
         )}
         <div className="flex items-baseline justify-between">
@@ -602,28 +348,6 @@ function QtyInput({ value, onCommit }: { value: number; onCommit: (v: string) =>
         if (e.key === 'Escape') { cancelled.current = true; e.currentTarget.blur(); }
       }}
       className="h-9 w-12 bg-transparent text-center text-sm font-semibold tabular-nums outline-none focus:rounded-md focus:bg-background lg:h-7 lg:w-10 lg:text-sm"
-    />
-  );
-}
-
-/** "Producto manual" / venta excepcional: algo que no está en el catálogo. */
-export function MiscItemSheet({ onClose }: { onClose: () => void }) {
-  const addItem = usePosStore((s) => s.addItem);
-  return (
-    <MiscItemModal
-      onAdd={({ productId, description, amount, quantity }) => {
-        // Cada venta excepcional es su propia línea aunque comparta el
-        // mismo producto comodín — un id único evita que dos "Otros" con
-        // descripción/precio distintos se mezclen en una sola línea.
-        addItem({
-          productId: `${productId}#${crypto.randomUUID()}`, name: description, barcode: null, quantity,
-          unitPrice: amount, originalPrice: amount, discountAmount: 0, discountPercent: 0,
-          stock: quantity,
-        });
-        toast.success(`${description} agregado — ${formatCurrency(amount * quantity)}`);
-        onClose();
-      }}
-      onClose={onClose}
     />
   );
 }

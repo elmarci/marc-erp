@@ -815,6 +815,13 @@ model PurchaseOrder {
   subtotal              Decimal               @db.Decimal(12, 2)
   taxAmount             Decimal               @map("tax_amount") @db.Decimal(12, 2)
   totalAmount           Decimal               @map("total_amount") @db.Decimal(12, 2)
+  // Desde la Fase 5, "afecto a IGV" significa que los costos YA traen el IGV:
+  // taxAmount es solo el IGV que va dentro (para llevar la cuenta) y no se
+  // suma al total. En compras antiguas (false) el IGV se sumó encima.
+  igvIncluded           Boolean               @default(false) @map("igv_included")
+  // Percepción cobrada por el proveedor: se le paga (va en totalAmount) pero
+  // no es costo de la mercadería; se lleva aparte.
+  perceptionAmount      Decimal               @default(0) @map("perception_amount") @db.Decimal(12, 2)
   notes                 String?
   // Texto del comprobante tal como se muestra ("F001-000123"). Desde la
   // Fase 2 se arma solo a partir de docSeries/docNumber; en compras antiguas

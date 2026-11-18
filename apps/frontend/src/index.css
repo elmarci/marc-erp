@@ -34,6 +34,29 @@
     --pos-bg: 128 8% 95%;
     --pos-cart: 0 0% 100%;
     --pos-product: 0 0% 100%;
+
+    /* ── Fase 5: tokens del rediseño (nombres nuevos, aún no usados por las pantallas) ── */
+    --canvas: 240 6% 93%;        /* fondo de la app: gris claro para que los bloques blancos resalten */
+    --surface: 0 0% 100%;        /* superficies */
+    --surface-2: 240 6% 97%;     /* cabecera de cada bloque, hover */
+    --line: 240 6% 89%;          /* entre filas y bordes de bloques */
+    --nav: 240 7% 12%;           /* menú lateral oscuro */
+    --nav-ink: 240 5% 72%;
+    --brand-on-dark: 128 45% 58%;
+    --line-strong: 240 5% 84%;   /* bordes de inputs */
+    --ink: 240 6% 10%;
+    --ink-muted: 240 4% 40%;     /* 6.0:1 sobre blanco */
+    --on-ink: 0 0% 100%;         /* texto sobre fondo bg-ink */
+    --brand: 128 57% 32%;        /* verde MARC, mismo tono, 5.0:1 con texto blanco */
+    --brand-hover: 128 58% 27%;
+    --brand-soft: 128 35% 94%;
+    --ok: 170 60% 30%;           /* éxito: verde azulado apagado, distinto de la marca */
+    --warn: 32 90% 40%;
+    --yape: 290 59% 33%;         /* morado de Yape, solo para su QR */
+    --bad: 4 70% 45%;
+    --ok-ink: 170 60% 24%;
+    --warn-ink: 32 90% 30%;
+    --bad-ink: 4 70% 38%;
   }
 
   .dark {
@@ -66,6 +89,26 @@
     --pos-bg: 0 0% 6%;
     --pos-cart: 0 0% 9%;
     --pos-product: 0 0% 11%;
+
+    /* Fase 5 en modo oscuro */
+    --canvas: 0 0% 7%;
+    --surface: 0 0% 10%;
+    --surface-2: 0 0% 12.5%;
+    --line: 0 0% 18%;
+    --line-strong: 0 0% 24%;
+    --nav: 0 0% 5%;
+    --ink: 0 0% 95%;
+    --ink-muted: 0 0% 62%;
+    --on-ink: 0 0% 8%;
+    --brand: 128 50% 40%;
+    --brand-hover: 128 50% 35%;
+    --brand-soft: 128 20% 15%;
+    --ok: 170 50% 45%;
+    --warn: 32 85% 52%;
+    --bad: 4 70% 55%;
+    --ok-ink: 170 50% 60%;
+    --warn-ink: 32 85% 62%;
+    --bad-ink: 4 75% 68%;
   }
 }
 
@@ -159,6 +202,11 @@
   }
   /* Excepción: botones dentro de tablas/badges (visualmente pequeños) */
   .btn-xs { min-height: unset; min-width: unset; }
+
+  /* Fase 5: el rediseño usa controles de 32–36 px en PC y sube a 44 px
+     solo en pantallas táctiles (clase .tap). */
+  .erp button, .erp [role="button"], .erp a { min-height: 0; min-width: 0; }
+  @media (pointer: coarse) { .erp .tap { min-height: 44px; } }
 
   /* Eliminar flash azul en touch */
   * { -webkit-tap-highlight-color: transparent; }

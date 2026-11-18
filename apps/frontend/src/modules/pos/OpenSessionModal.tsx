@@ -1,3 +1,4 @@
+import { BareDialog } from '@/components/erp';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Wallet, X } from 'lucide-react';
@@ -66,8 +67,8 @@ export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+    <BareDialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Abrir caja" align="center"
+      panelClassName="w-full max-w-sm rounded-2xl max-h-[90vh]">
         <div className="flex items-center justify-between p-6 pb-5">
           <div className="flex items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -78,7 +79,7 @@ export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
               <p className="text-xs text-muted-foreground">Ingrese el monto inicial</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar"><X className="h-4 w-4" /></Button>
         </div>
 
         <div className="overflow-y-auto px-6 pb-6 space-y-4">
@@ -135,7 +136,6 @@ export function OpenSessionModal({ onClose, onOpened }: OpenSessionModalProps) {
             Abrir Caja
           </Button>
         </div>
-      </div>
-    </div>
+    </BareDialog>
   );
 }

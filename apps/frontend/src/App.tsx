@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { ConfirmProvider } from '@/components/erp';
 import { useAuthStore } from '@/stores/authStore';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -27,6 +28,7 @@ const ComplaintsPage = lazy(() => import('@/modules/complaints/ComplaintsPage').
 const RidersPage = lazy(() => import('@/modules/riders/RidersPage').then((m) => ({ default: m.RidersPage })));
 const TvScreenPage = lazy(() => import('@/modules/tv/TvScreenPage').then((m) => ({ default: m.TvScreenPage })));
 const CashPage = lazy(() => import('@/modules/cash/CashPage').then((m) => ({ default: m.CashPage })));
+const ExpensesPage = lazy(() => import('@/modules/cash/ExpensesPage').then((m) => ({ default: m.ExpensesPage })));
 const UsersPage = lazy(() => import('@/modules/users/UsersPage').then((m) => ({ default: m.UsersPage })));
 const AttendancePage = lazy(() => import('@/modules/attendance/AttendancePage').then((m) => ({ default: m.AttendancePage })));
 const SettingsPage = lazy(() => import('@/modules/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -57,8 +59,25 @@ function RequirePasswordChange({ children }: { children: React.ReactNode }) {
 export default function App() {
   useOfflineSync();
   return (
-    <>
-      <Toaster position="top-right" richColors closeButton />
+    <ConfirmProvider>
+      <Toaster
+        position="top-right"
+        closeButton
+        toastOptions={{
+          // Avisos sobrios: fondo blanco, texto oscuro y el color solo en el ícono.
+          classNames: {
+            toast: 'erp !rounded-srf !border-0 !bg-surface !text-ink !shadow-[0_12px_32px_-8px_rgba(0,0,0,.18),0_0_0_1px_hsl(var(--line))] !text-table',
+            title: '!font-medium',
+            description: '!text-ink-muted',
+            closeButton: '!border-line !bg-surface !text-ink-muted hover:!text-ink',
+            success: '[&_[data-icon]]:!text-ok',
+            error: '[&_[data-icon]]:!text-bad',
+            warning: '[&_[data-icon]]:!text-warn',
+            info: '[&_[data-icon]]:!text-ink-muted',
+            actionButton: '!bg-ink !text-on-ink',
+          },
+        }}
+      />
       <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -92,6 +111,7 @@ export default function App() {
           <Route path="purchases" element={<PurchasesPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="cash" element={<CashPage />} />
+          <Route path="expenses" element={<ExpensesPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="administration" element={<AdministrationPage />} />
           <Route path="staff" element={<StaffPage />} />
@@ -110,6 +130,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
       </Suspense>
-    </>
+    </ConfirmProvider>
   );
 }

@@ -1,3 +1,5 @@
+// Crear o editar un producto: datos, precios, venta a granel o por paquete,
+// vencimiento, garantía de envase e imagen.
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
@@ -6,10 +8,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { ArrowLeft, Save, Image, Upload, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Btn, Field, Panel, fieldCls, invalidCls } from '@/components/erp';
 import { api, getErrorMessage } from '@/services/api';
+import { cn } from '@/lib/utils';
 
 const schema = z.object({
   name: z.string().min(1, 'Nombre requerido').max(200),
@@ -160,16 +161,21 @@ export function ProductFormPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const isBulk = watch('isBulk');
+  const imageUrl = watch('imageUrl');
+  const num = (bad?: unknown) => cn(fieldCls, 'text-right tabular-nums', !!bad && invalidCls);
+  const checkCls = 'mt-0.5 size-4 shrink-0 accent-[hsl(var(--brand))] disabled:opacity-60';
+  const optionCls = 'flex cursor-pointer items-start gap-3 px-4 py-3';
+
   return (
-    <div className="space-y-6 max-w-2xl animate-fade-in">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <h1 className="text-2xl font-bold">{isEdit ? 'Editar Producto' : 'Nuevo Producto'}</h1>
+    <div className="erp flex max-w-3xl flex-col gap-5">
+      <div className="flex items-center gap-2">
+        <Btn variant="ghost" size="sm" aria-label="Volver" onClick={() => navigate(-1)}><ArrowLeft /></Btn>
+        <h1 className="text-title font-semibold tracking-tight text-ink">{isEdit ? 'Editar producto' : 'Nuevo producto'}</h1>
       </div>
 
       <form
+        className="flex flex-col gap-5"
         onSubmit={handleSubmit((d) => {
           if (d.sellsByPack && (!d.packSize || d.packSize < 2 || !d.packPrice || d.packPrice <= 0)) {
             toast.error('Para vender por paquete indica cuántas unidades trae (mínimo 2) y su precio.');
@@ -179,234 +185,176 @@ export function ProductFormPage() {
         })}
         onKeyDown={(e) => {
           // Un lector de código de barras "escribe" el código y envía Enter.
-          // Sin esto, Enter en cualquier campo (ej. código de barras) enviaría
-          // el formulario antes de terminar de editar los demás campos.
+          // Sin esto, Enter en cualquier campo enviaría el formulario antes
+          // de terminar de editar los demás campos.
           if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
             e.preventDefault();
           }
         }}
       >
-        <Card>
-          <CardHeader><CardTitle>Información del Producto</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Imagen del producto</label>
-              <div className="flex items-center gap-4">
-                <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-dashed bg-muted overflow-hidden shrink-0">
-                  {watch('imageUrl') ? (
-                    <img src={watch('imageUrl')} alt="Producto" className="h-full w-full object-cover" />
-                  ) : (
-                    <Image className="h-6 w-6 text-muted-foreground/40" />
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) imageUploadMutation.mutate(file);
-                      e.target.value = '';
-                    }}
-                  />
-                  <Button type="button" variant="outline" size="sm" loading={imageUploadMutation.isPending}
-                    onClick={() => imageInputRef.current?.click()}>
-                    <Upload className="mr-1.5 h-4 w-4" />{watch('imageUrl') ? 'Cambiar' : 'Subir imagen'}
-                  </Button>
-                  {watch('imageUrl') && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setValue('imageUrl', '')}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
+        <Panel title="Datos del producto" bodyClassName="flex flex-col gap-4 p-4">
+          <div className="flex items-center gap-4">
+            <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-ctl bg-ink/[0.04] shadow-[inset_0_0_0_1px_hsl(var(--line-strong))]">
+              {imageUrl ? <img src={imageUrl} alt="Producto" className="size-full object-cover" /> : <Image className="size-6 text-ink-muted/50" />}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-table font-medium text-ink">Imagen del producto</span>
+              <div className="flex gap-1.5">
+                <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) imageUploadMutation.mutate(file);
+                    e.target.value = '';
+                  }} />
+                <Btn size="sm" loading={imageUploadMutation.isPending} onClick={() => imageInputRef.current?.click()}>
+                  <Upload />{imageUrl ? 'Cambiar' : 'Subir imagen'}
+                </Btn>
+                {imageUrl && <Btn size="sm" variant="ghost" aria-label="Quitar imagen" onClick={() => setValue('imageUrl', '')}><X /></Btn>}
               </div>
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Nombre *</label>
-              <Input {...register('name')} error={errors.name?.message} placeholder="Ej: Coca-Cola 500ml" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Código de Barras</label>
-                <Input {...register('barcode')} placeholder="7750381001450" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Código Interno</label>
-                {isEdit ? (
-                  <Input {...register('internalCode')} placeholder="PRO001" />
+          </div>
+          <Field label="Nombre" required error={errors.name?.message}>
+            <input {...register('name')} className={cn(fieldCls, errors.name && invalidCls)} placeholder="Ej: Coca-Cola 500ml" />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Código de barras">
+              <input {...register('barcode')} className={cn(fieldCls, 'font-mono')} placeholder="7750381001450" />
+            </Field>
+            <Field label="Código interno">
+              {isEdit ? <input {...register('internalCode')} className={cn(fieldCls, 'font-mono')} placeholder="PRO001" />
+                : <div className="flex h-9 items-center rounded-ctl bg-surface-2 px-2.5 text-table text-ink-muted">Se asignará automáticamente (PROxxx)</div>}
+            </Field>
+          </div>
+          <Field label="Categoría" required error={errors.categoryId?.message}>
+            <select {...register('categoryId')} className={cn(fieldCls, errors.categoryId && invalidCls)}>
+              <option value="">Seleccione…</option>
+              {categories?.map((c) => (
+                c.children && c.children.length > 0 ? (
+                  <optgroup key={c.id} label={c.name}>
+                    <option value={c.id}>{c.name} (general)</option>
+                    {c.children.map((ch) => <option key={ch.id} value={ch.id}>— {ch.name}</option>)}
+                  </optgroup>
                 ) : (
-                  <div className="flex h-10 items-center rounded-md border border-dashed bg-muted px-3 text-sm text-muted-foreground">
-                    Se asignará automáticamente (PROxxx)
-                  </div>
-                )}
-              </div>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Categoría *</label>
-              <select {...register('categoryId')} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                <option value="">Seleccione...</option>
-                {categories?.map((c) => (
-                  c.children && c.children.length > 0 ? (
-                    <optgroup key={c.id} label={c.name}>
-                      <option value={c.id}>{c.name} (general)</option>
-                      {c.children.map((ch) => <option key={ch.id} value={ch.id}>— {ch.name}</option>)}
-                    </optgroup>
-                  ) : (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  )
-                ))}
-              </select>
-              {errors.categoryId && <p className="mt-1 text-xs text-destructive">{errors.categoryId.message}</p>}
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Precio Costo *</label>
-                <Input {...register('costPrice')} type="number" step="0.0001" min="0" error={errors.costPrice?.message} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Precio Venta *</label>
-                <Input {...register('salePrice')} type="number" step="0.01" min="0" error={errors.salePrice?.message} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Stock Mínimo</label>
-                <Input {...register('minStock')} type="number" step={watch('isBulk') ? '0.01' : '1'} min="0" />
-              </div>
-            </div>
-            {!isEdit && (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Stock Inicial</label>
-                <Input {...register('currentStock')} type="number" step={watch('isBulk') ? '0.01' : '1'} min="0" />
-              </div>
-            )}
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                )
+              ))}
+            </select>
+          </Field>
+          <Field label="Descripción">
+            <textarea {...register('description')} rows={3} className={cn(fieldCls, 'h-auto resize-none py-2')} />
+          </Field>
+        </Panel>
 
-            {/* Producto a granel */}
-            <div className="rounded-lg border p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <input type="checkbox" id="isBulk" {...register('isBulk')}
-                  className="h-4 w-4 rounded border-input" />
-                <div>
-                  <label htmlFor="isBulk" className="text-sm font-medium cursor-pointer">Producto a granel / peso variable</label>
-                  <p className="text-xs text-muted-foreground">Arroz, azúcar, huevo, aceite a granel, etc. El cajero ingresa el peso/cantidad libremente.</p>
-                </div>
-              </div>
-              {watch('isBulk') && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Unidad de venta</label>
-                  <select {...register('bulkUnit')}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Panel title="Precio y stock" bodyClassName="flex flex-col gap-4 p-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Field label="Precio costo" required error={errors.costPrice?.message}>
+              <input {...register('costPrice')} type="number" step="0.0001" min="0" className={num(errors.costPrice)} />
+            </Field>
+            <Field label="Precio venta" required error={errors.salePrice?.message}>
+              <input {...register('salePrice')} type="number" step="0.01" min="0" className={num(errors.salePrice)} />
+            </Field>
+            <Field label="Stock mínimo">
+              <input {...register('minStock')} type="number" step={isBulk ? '0.01' : '1'} min="0" className={num()} />
+            </Field>
+            {!isEdit && (
+              <Field label="Stock inicial">
+                <input {...register('currentStock')} type="number" step={isBulk ? '0.01' : '1'} min="0" className={num()} />
+              </Field>
+            )}
+          </div>
+          <Field label="Garantía de envase (S/)"
+            hint="Si el cliente no trae su botella vacía, se le cobra esto aparte de la venta (no es ingreso, se le devuelve cuando la traiga). Déjalo en 0 si no maneja envase retornable.">
+            <input {...register('bottleDeposit')} type="number" step="0.10" min="0" className={cn(num(), 'sm:max-w-[200px]')} />
+          </Field>
+        </Panel>
+
+        <Panel title="Cómo se vende y se controla" bodyClassName="divide-y divide-line">
+          <div>
+            <label className={optionCls}>
+              <input type="checkbox" {...register('isBulk')} className={checkCls} />
+              <span>
+                <span className="block text-table font-medium text-ink">Producto a granel / peso variable</span>
+                <span className="block text-meta text-ink-muted">Arroz, azúcar, huevo, aceite a granel, etc. El cajero ingresa el peso/cantidad libremente.</span>
+              </span>
+            </label>
+            {isBulk && (
+              <div className="px-4 pb-3 pl-11">
+                <Field label="Unidad de venta" hint="El precio de venta es por esta unidad. Ej: S/ 3.50 / kg" className="sm:max-w-xs">
+                  <select {...register('bulkUnit')} className={fieldCls}>
                     <option value="kg">kg (kilogramo)</option>
                     <option value="g">g (gramo)</option>
                     <option value="L">L (litro)</option>
                     <option value="ml">ml (mililitro)</option>
                     <option value="unidad">unidad (docena, manojo...)</option>
                   </select>
-                  <p className="text-xs text-muted-foreground mt-1">El precio de venta es por esta unidad. Ej: S/ 3.50 / kg</p>
-                </div>
-              )}
-            </div>
-
-            {/* Control de vencimiento */}
-            <div className="rounded-lg border p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <input type="checkbox" id="trackExpiry" {...register('trackExpiry')}
-                  disabled={expiryForced} className="h-4 w-4 rounded border-input disabled:opacity-60" />
-                <div>
-                  <label htmlFor="trackExpiry" className="text-sm font-medium cursor-pointer">Controla fecha de vencimiento</label>
-                  <p className="text-xs text-muted-foreground">
-                    {expiryForced
-                      ? 'Obligatorio en esta categoría: no se puede recibir una compra de este producto sin fecha de vencimiento.'
-                      : 'Lácteos, embutidos y similares. Al recibir compras de este producto se pedirá la fecha de vencimiento (obligatoria), y aparecerá en Inventario → Vencimientos antes de que se venza.'}
-                  </p>
-                </div>
+                </Field>
               </div>
-            </div>
-
-            {isEdit && (
-              <label className="flex items-start gap-3 rounded-lg border p-4 cursor-pointer">
-                <input type="checkbox" {...register('marginAlertMuted')} className="mt-0.5 h-4 w-4 rounded border-input" />
-                <span>
-                  <span className="block text-sm font-medium">No avisar margen bajo de este producto</span>
-                  <span className="block text-xs text-muted-foreground">
-                    En frutas, verduras y productos por kg el sistema avisa si el último costo de compra deja poco margen.
-                    Actívalo solo si vendes barato a propósito o el costo de compra está en otra unidad que la de venta.
-                  </span>
-                </span>
-              </label>
             )}
+          </div>
 
-            {/* Venta por paquete / caja */}
-            <div className="rounded-lg border p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <input type="checkbox" id="sellsByPack" {...register('sellsByPack')}
-                  disabled={watch('isBulk')} className="h-4 w-4 rounded border-input disabled:opacity-60" />
-                <div>
-                  <label htmlFor="sellsByPack" className="text-sm font-medium cursor-pointer">También se vende por paquete / caja</label>
-                  <p className="text-xs text-muted-foreground">
-                    Cigarros, chicles, galletas por caja... El precio de arriba es el de la unidad; aquí defines el paquete.
-                    En el punto de venta el cajero elige unidad o paquete con un toque, y el stock baja las unidades que trae el paquete.
+          <div>
+            <label className={cn(optionCls, isBulk && 'cursor-not-allowed opacity-70')}>
+              <input type="checkbox" {...register('sellsByPack')} disabled={isBulk} className={checkCls} />
+              <span>
+                <span className="block text-table font-medium text-ink">También se vende por paquete / caja</span>
+                <span className="block text-meta text-ink-muted">
+                  Cigarros, chicles, galletas por caja... El precio de arriba es el de la unidad; aquí defines el paquete.
+                  En el punto de venta el cajero elige unidad o paquete con un toque, y el stock baja las unidades que trae el paquete.
+                </span>
+              </span>
+            </label>
+            {sellsByPack && !isBulk && (
+              <div className="grid grid-cols-2 gap-3 px-4 pb-3 pl-11 sm:grid-cols-4">
+                <Field label="Unidades por paquete" required><input {...register('packSize')} type="number" step="1" min="2" placeholder="Ej: 20" className={num()} /></Field>
+                <Field label="Precio del paquete" required><input {...register('packPrice')} type="number" step="0.01" min="0" placeholder="Ej: 20.00" className={num()} /></Field>
+                <Field label="Se llama"><input {...register('packLabel')} placeholder="Paquete, Caja, Cartón..." className={fieldCls} /></Field>
+                <Field label="Código del paquete"><input {...register('packBarcode')} placeholder="Opcional" className={cn(fieldCls, 'font-mono')} /></Field>
+                <p className="col-span-2 text-meta text-ink-muted sm:col-span-4">
+                  Al escanear el código del paquete en el POS se agrega el paquete. Si el código del producto es el que viene impreso en el paquete, escríbelo aquí también.
+                </p>
+                {packSavings !== null && (
+                  <p className="col-span-2 text-meta text-ink sm:col-span-4">
+                    {packSavings > 0
+                      ? `Comprar el paquete sale S/ ${packSavings.toFixed(2)} más barato que ${packSizeNum} unidades sueltas (S/ ${(unitPriceNum * packSizeNum).toFixed(2)}).`
+                      : packSavings < 0
+                        ? `Ojo: el paquete sale S/ ${Math.abs(packSavings).toFixed(2)} más caro que ${packSizeNum} unidades sueltas.`
+                        : 'El paquete cuesta lo mismo que las unidades sueltas.'}
                   </p>
-                </div>
+                )}
               </div>
-              {sellsByPack && !watch('isBulk') && (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <div>
-                    <label className="mb-1 block text-sm font-medium">Unidades por paquete *</label>
-                    <Input {...register('packSize')} type="number" step="1" min="2" placeholder="Ej: 20" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium">Precio del paquete *</label>
-                    <Input {...register('packPrice')} type="number" step="0.01" min="0" placeholder="Ej: 20.00" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium">Se llama</label>
-                    <Input {...register('packLabel')} placeholder="Paquete, Caja, Cartón..." />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium">Código de barras del paquete</label>
-                    <Input {...register('packBarcode')} placeholder="Opcional" />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Al escanearlo en el POS se agrega el paquete. Si el código del producto es el que viene impreso en el paquete, escríbelo aquí también.
-                    </p>
-                  </div>
-                  {packSavings !== null && (
-                    <p className="col-span-2 text-xs text-muted-foreground sm:col-span-4">
-                      {packSavings > 0
-                        ? `Comprar el paquete sale S/ ${packSavings.toFixed(2)} más barato que ${packSizeNum} unidades sueltas (S/ ${(unitPriceNum * packSizeNum).toFixed(2)}).`
-                        : packSavings < 0
-                          ? `Ojo: el paquete sale S/ ${Math.abs(packSavings).toFixed(2)} más caro que ${packSizeNum} unidades sueltas.`
-                          : 'El paquete cuesta lo mismo que las unidades sueltas.'}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+            )}
+          </div>
 
-            {/* Garantía de envase retornable */}
-            <div className="rounded-lg border p-4 space-y-2">
-              <label className="mb-1 block text-sm font-medium">Garantía de envase (S/)</label>
-              <Input {...register('bottleDeposit')} type="number" step="0.10" min="0" className="max-w-[160px]" />
-              <p className="text-xs text-muted-foreground">
-                Si el cliente no trae su botella vacía, se le cobra esto aparte de la venta (no es ingreso, se le
-                devuelve cuando la traiga). Déjalo en 0 si este producto no maneja envase retornable.
-              </p>
-            </div>
+          <label className={optionCls}>
+            <input type="checkbox" {...register('trackExpiry')} disabled={expiryForced} className={checkCls} />
+            <span>
+              <span className="block text-table font-medium text-ink">Controla fecha de vencimiento</span>
+              <span className="block text-meta text-ink-muted">
+                {expiryForced
+                  ? 'Obligatorio en esta categoría: no se puede recibir una compra de este producto sin fecha de vencimiento.'
+                  : 'Lácteos, embutidos y similares. Al recibir compras de este producto se pedirá la fecha de vencimiento (obligatoria), y aparecerá en Inventario, Vencimientos, antes de que se venza.'}
+              </span>
+            </span>
+          </label>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Descripción</label>
-              <textarea {...register('description')} rows={3}
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => navigate(-1)}>Cancelar</Button>
-              <Button type="submit" loading={mutation.isPending}>
-                <Save className="mr-2 h-4 w-4" />
-                {isEdit ? 'Guardar Cambios' : 'Crear Producto'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          {isEdit && (
+            <label className={optionCls}>
+              <input type="checkbox" {...register('marginAlertMuted')} className={checkCls} />
+              <span>
+                <span className="block text-table font-medium text-ink">No avisar margen bajo de este producto</span>
+                <span className="block text-meta text-ink-muted">
+                  En frutas, verduras y productos por kg el sistema avisa si el último costo de compra deja poco margen.
+                  Actívalo solo si vendes barato a propósito o el costo de compra está en otra unidad que la de venta.
+                </span>
+              </span>
+            </label>
+          )}
+        </Panel>
+
+        <div className="sticky bottom-0 z-10 -mx-1 flex justify-end gap-2 bg-canvas/90 px-1 py-3 backdrop-blur">
+          <Btn onClick={() => navigate(-1)}>Cancelar</Btn>
+          <Btn type="submit" variant="primary" loading={mutation.isPending}><Save />{isEdit ? 'Guardar cambios' : 'Crear producto'}</Btn>
+        </div>
       </form>
     </div>
   );

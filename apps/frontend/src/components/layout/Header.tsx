@@ -1,7 +1,8 @@
-import { useNavigate } from 'react-router-dom';
-import { LogOut, User, Moon, Sun, Bell, Menu, Clock } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { LogOut, User, Moon, Sun, Bell, Menu, Clock, Search } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Btn, Kbd } from '@/components/erp';
+import { findNav } from './nav';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/services/api';
 import { getInitials, ROLE_LABELS } from '@/lib/utils';
@@ -18,9 +19,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
+export function Header({ onMenuClick, onSearchClick }: { onMenuClick?: () => void; onSearchClick?: () => void }) {
   const { user, logout, refreshToken } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
   // Atajo de marcación para quien tiene horario asignado (vendedoras, etc.):
   // lleva a Asistencia, donde confirma y ve sus marcas del día.
   const { data: attendance } = useMyAttendance(!!user);
@@ -48,45 +50,62 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
     setDarkMode((v) => !v);
   };
 
-  return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card/95 backdrop-blur px-3 lg:px-6 sticky top-0 z-10">
-      {/* Botón hamburguesa — solo visible en móvil/tablet */}
-      <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={onMenuClick} aria-label="Menú">
-        <Menu className="h-5 w-5" />
-      </Button>
-      <div className="hidden lg:block" />
+  const { group, item } = findNav(location.pathname);
+  const crumbs = [group?.label, item?.label].filter(Boolean) as string[];
+  const iconBtn = 'tap grid size-8 shrink-0 place-items-center rounded-ctl text-ink-muted hover:bg-ink/[0.06] hover:text-ink';
 
-      <div className="flex items-center gap-2">
+  return (
+    <header className="erp sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 lg:px-6">
+      {/* Botón del menú: solo en celular/tablet */}
+      <button type="button" className={cn(iconBtn, '-ml-1 lg:hidden')} onClick={onMenuClick} aria-label="Menú">
+        <Menu className="size-4" />
+      </button>
+      <nav aria-label="Ruta" className="hidden min-w-0 items-center gap-1.5 text-table sm:flex">
+        {crumbs.map((c, i) => (
+          <span key={i} className="flex min-w-0 items-center gap-1.5">
+            {i > 0 && <span className="text-ink-muted/50">/</span>}
+            <span className={cn('truncate', i === crumbs.length - 1 ? 'font-medium text-ink' : 'text-ink-muted')}>{c}</span>
+          </span>
+        ))}
+      </nav>
+
+      <button
+        type="button"
+        onClick={onSearchClick}
+        className="tap ml-auto flex h-8 min-w-0 flex-1 items-center gap-2 rounded-ctl bg-ink/[0.04] px-2.5 text-table text-ink-muted hover:bg-ink/[0.07] sm:w-[240px] sm:flex-none"
+      >
+        <Search className="size-4 shrink-0" />
+        <span className="flex-1 truncate text-left">Buscar</span>
+        <Kbd className="hidden sm:inline-flex">Ctrl K</Kbd>
+      </button>
+
+      <div className="flex shrink-0 items-center gap-1">
         {pendingMark && (
-          <Button variant={pendingMark === 'CHECK_IN' ? 'default' : 'outline'} size="sm" onClick={() => navigate('/attendance')}>
-            <Clock className="h-4 w-4 sm:mr-1.5" />
+          <Btn size="sm" variant={pendingMark === 'CHECK_IN' ? 'primary' : 'secondary'} onClick={() => navigate('/attendance')}>
+            <Clock />
             <span className="hidden sm:inline">{MARK_LABELS[pendingMark]}</span>
-          </Button>
+          </Btn>
         )}
         {/* Avisos del día */}
-        <NoticesBell enabled={!!user} />
+        <NoticesBell enabled={!!user} btnCls={iconBtn} />
 
         {/* Modo oscuro */}
-        <Button variant="ghost" size="icon" onClick={toggleDarkMode} aria-label="Cambiar tema">
-          {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        </Button>
+        <button type="button" className={iconBtn} onClick={toggleDarkMode} aria-label="Cambiar tema">
+          {darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}
+        </button>
 
         {/* Usuario */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 px-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+            <button type="button" className="tap flex h-8 items-center gap-2 rounded-ctl pl-1 pr-1 hover:bg-ink/[0.06] sm:pr-2" aria-label="Mi cuenta">
+              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-ink/[0.08] text-[11px] font-semibold text-ink">
                 {user ? getInitials(user.firstName, user.lastName) : '?'}
-              </div>
-              <div className="hidden text-left sm:block">
-                <p className="text-sm font-medium leading-none">
-                  {user?.firstName} {user?.lastName}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {user?.role ? ROLE_LABELS[user.role] ?? user.role : ''}
-                </p>
-              </div>
-            </Button>
+              </span>
+              <span className="hidden text-left leading-tight md:block">
+                <span className="block text-table font-medium text-ink">{user?.firstName} {user?.lastName}</span>
+                <span className="block text-[11px] text-ink-muted">{user?.role ? ROLE_LABELS[user.role] ?? user.role : ''}</span>
+              </span>
+            </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>Mi cuenta</DropdownMenuLabel>
@@ -110,12 +129,12 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
 interface Notice { key: string; tone: 'danger' | 'warning' | 'info'; title: string; detail: string; link: string }
 
 const TONE_DOT: Record<Notice['tone'], string> = {
-  danger: 'bg-destructive', warning: 'bg-amber-500', info: 'bg-muted-foreground/50',
+  danger: 'bg-bad', warning: 'bg-warn', info: 'bg-ink-muted/50',
 };
 
 // Lo que hay que mirar hoy: vencidos, por vencer, stock bajo y (supervisores)
 // pagos atrasados. Se refresca cada 5 minutos.
-function NoticesBell({ enabled }: { enabled: boolean }) {
+function NoticesBell({ enabled, btnCls }: { enabled: boolean; btnCls: string }) {
   const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ['inv-notices'],
@@ -129,15 +148,15 @@ function NoticesBell({ enabled }: { enabled: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={`Avisos${notices.length ? ` (${notices.length})` : ''}`} className="relative">
-          <Bell className="h-5 w-5" />
+        <button type="button" aria-label={`Avisos${notices.length ? ` (${notices.length})` : ''}`} className={cn(btnCls, 'relative')}>
+          <Bell className="size-4" />
           {notices.length > 0 && (
-            <span className={cn('absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white',
-              urgent ? 'bg-destructive' : 'bg-muted-foreground')}>
+            <span className={cn('absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums text-white ring-2 ring-surface',
+              urgent ? 'bg-bad' : 'bg-ink-muted')}>
               {notices.length}
             </span>
           )}
-        </Button>
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-1.5rem)] p-0">
         <DropdownMenuLabel className="px-4 py-3">Avisos de hoy</DropdownMenuLabel>

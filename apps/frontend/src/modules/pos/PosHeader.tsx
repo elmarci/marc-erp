@@ -86,7 +86,7 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
         {pendingOfflineSales > 0 && (
           <div
             title="Ventas hechas sin conexión, pendientes de subir al servidor"
-            className="flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+            className="flex items-center gap-1.5 rounded-full bg-warn/15 px-2.5 py-1 text-xs font-medium text-warn-ink">
             <UploadCloud className="h-3.5 w-3.5" />
             {pendingOfflineSales} pendiente{pendingOfflineSales !== 1 ? 's' : ''}
           </div>
@@ -121,7 +121,7 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
           <DropdownMenuTrigger asChild>
             <button aria-label="Más opciones" className="relative -mr-1 flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-muted sm:hidden">
               <MoreVertical className="h-5 w-5" />
-              {heldCount > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-black">{heldCount}</span>}
+              {heldCount > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-warn px-1 text-[10px] font-bold text-white">{heldCount}</span>}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
@@ -130,9 +130,9 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="h-11 gap-3" onSelect={() => setShowHeld(true)}>
-              <PauseCircle className="h-4 w-4 text-amber-500" />
+              <PauseCircle className="h-4 w-4 text-warn" />
               <span className="flex-1">Ventas en espera</span>
-              {heldCount > 0 && <span className="rounded-full bg-amber-500/20 px-2 text-xs font-bold text-amber-700 dark:text-amber-400">{heldCount}</span>}
+              {heldCount > 0 && <span className="rounded-full bg-warn/20 px-2 text-xs font-bold text-warn-ink">{heldCount}</span>}
             </DropdownMenuItem>
             <DropdownMenuItem className="h-11 gap-3" onSelect={() => setShowPrinter(true)}>
               <Printer className="h-4 w-4" />

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Flashlight, FlashlightOff, ScanLine, ZoomIn } from 'lucide-react';
+import { Check, X, Flashlight, FlashlightOff, ScanLine, ZoomIn } from 'lucide-react';
+import { BareDialog } from '@/components/erp';
 import { cn, formatCurrency } from '@/lib/utils';
 import { usePosStore } from '@/stores/posStore';
-import { useProductCacheStore } from '@/stores/productCacheStore';
+import { errFeedback, isPlausible, okFeedback, resolveInCatalog } from './scanHelpers';
 
 /**
  * Escáner de códigos de barra con la cámara del celular, pensado para vender
@@ -51,60 +52,6 @@ interface CameraScannerProps {
 export function isCameraScanSupported() {
   return typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
 }
-
-/* ─── Validación y normalización ─────────────────────────────────────────── */
-
-/** Dígito verificador GTIN (EAN-8, UPC-A, EAN-13). */
-function gtinValid(code: string): boolean {
-  const digits = code.split('').map(Number);
-  const check = digits.pop()!;
-  let sum = 0;
-  digits.reverse().forEach((d, i) => { sum += d * (i % 2 === 0 ? 3 : 1); });
-  return (10 - (sum % 10)) % 10 === check;
-}
-
-function isPlausible(code: string): boolean {
-  if (code.length < 3 || code.length > 40) return false;
-  if (/^\d+$/.test(code) && [8, 12, 13].includes(code.length)) return gtinValid(code);
-  return /^[\x20-\x7e]+$/.test(code);
-}
-
-/** UPC-A (12) y EAN-13 con 0 adelante son el mismo código: usa el que tenga el catálogo. */
-function resolveInCatalog(code: string): { code: string; known: boolean; name?: string; price?: number } {
-  const cache = useProductCacheStore.getState();
-  const variants = [code];
-  if (/^\d{12}$/.test(code)) variants.push('0' + code);
-  if (/^0\d{12}$/.test(code)) variants.push(code.slice(1));
-  for (const v of variants) {
-    const p = cache.findByBarcode(v);
-    if (p) {
-      const price = p.matchedPack && p.packPrice != null ? Number(p.packPrice) : Number(p.salePrice);
-      return { code: v, known: true, name: p.matchedPack ? `${p.name} (${p.packLabel || 'paquete'})` : p.name, price };
-    }
-  }
-  return { code, known: false };
-}
-
-/* ─── Sonidos ────────────────────────────────────────────────────────────── */
-
-let audioCtx: AudioContext | null = null;
-function tone(freq: number, ms: number, type: OscillatorType = 'square') {
-  try {
-    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    audioCtx ??= new Ctx();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    gain.gain.value = 0.08;
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + ms / 1000);
-  } catch { /* sin audio no es crítico */ }
-}
-const okFeedback = () => { tone(1760, 90); try { navigator.vibrate?.(50); } catch { /* */ } };
-const errFeedback = () => { tone(220, 260, 'sawtooth'); try { navigator.vibrate?.([80, 60, 80]); } catch { /* */ } };
 
 /* ─── Componente ─────────────────────────────────────────────────────────── */
 
@@ -330,14 +277,9 @@ export function CameraScanner({ onDetected, onClose, onCheckout }: CameraScanner
     } catch { setZoomRange(null); }
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-black text-white">
+    <BareDialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Escanear con la cámara" align="full"
+      panelClassName="h-full w-full bg-black text-white shadow-none">
       <div className="relative flex-1 overflow-hidden">
         <video ref={videoRef} playsInline muted className="absolute inset-0 h-full w-full object-cover" />
 
@@ -346,9 +288,9 @@ export function CameraScanner({ onDetected, onClose, onCheckout }: CameraScanner
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3">
             <div ref={guideRef} className={cn(
               'relative h-36 w-[82%] max-w-md rounded-2xl border-4 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] transition-colors',
-              flash === 'ok' ? 'border-green-400 bg-green-400/25' : flash === 'error' ? 'border-red-500 bg-red-500/25' : 'border-white/90',
+              flash === 'ok' ? 'border-ok bg-ok/25' : flash === 'error' ? 'border-bad bg-bad/25' : 'border-white/90',
             )}>
-              <div className="absolute inset-x-3 top-1/2 h-0.5 -translate-y-1/2 bg-red-500/80" />
+              <div className="absolute inset-x-3 top-1/2 h-0.5 -translate-y-1/2 bg-bad/80" />
             </div>
             <p className="rounded-full bg-black/50 px-3 py-1 text-xs text-white/90">
               Código dentro del recuadro, a unos 15–20 cm
@@ -357,7 +299,7 @@ export function CameraScanner({ onDetected, onClose, onCheckout }: CameraScanner
         )}
 
         {/* Barra superior */}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 bg-black/50 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <button onClick={onClose} aria-label="Cerrar escáner"
             className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 active:bg-black/80">
             <X className="h-6 w-6" />
@@ -374,7 +316,7 @@ export function CameraScanner({ onDetected, onClose, onCheckout }: CameraScanner
             )}
             {torchAvailable && (
               <button onClick={toggleTorch} aria-label="Linterna"
-                className={cn('flex h-12 w-12 items-center justify-center rounded-full', torchOn ? 'bg-amber-400 text-black' : 'bg-black/50')}>
+                className={cn('flex h-12 w-12 items-center justify-center rounded-full', torchOn ? 'bg-warn text-white' : 'bg-black/50')}>
                 {torchOn ? <FlashlightOff className="h-5 w-5" /> : <Flashlight className="h-5 w-5" />}
               </button>
             )}
@@ -386,9 +328,9 @@ export function CameraScanner({ onDetected, onClose, onCheckout }: CameraScanner
         )}
         {error && (
           <div className="absolute inset-0 flex items-center justify-center p-6">
-            <div className="max-w-sm rounded-2xl bg-white p-5 text-center text-sm text-gray-900">
+            <div className="max-w-sm rounded-2xl bg-surface p-5 text-center text-sm text-ink">
               <p className="mb-4">{error}</p>
-              <button onClick={onClose} className="w-full rounded-xl bg-gray-900 py-3 font-semibold text-white">Cerrar</button>
+              <button onClick={onClose} className="w-full rounded-xl bg-ink py-3 font-semibold text-on-ink">Cerrar</button>
             </div>
           </div>
         )}
@@ -398,16 +340,16 @@ export function CameraScanner({ onDetected, onClose, onCheckout }: CameraScanner
       <div className="space-y-2 bg-black p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className={cn(
           'flex min-h-[44px] items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm',
-          last?.kind === 'error' ? 'bg-red-500/20 text-red-200' : 'bg-white/10',
+          last?.kind === 'error' ? 'bg-bad/25 text-white' : 'bg-white/10',
         )}>
           {last == null && <span className="text-white/70">Apunta al código. Cada producto se suma solo al carrito.</span>}
           {last?.kind === 'ok' && (
             <>
-              <span className="min-w-0 truncate font-semibold">✓ {last.name}</span>
+              <span className="flex min-w-0 items-center gap-1.5 font-semibold"><Check className="size-4 shrink-0" /><span className="truncate">{last.name}</span></span>
               {last.price != null && <span className="shrink-0 font-bold">{formatCurrency(last.price)}</span>}
             </>
           )}
-          {last?.kind === 'error' && <span className="min-w-0 truncate">✕ No registrado: <span className="font-mono">{last.code}</span></span>}
+          {last?.kind === 'error' && <span className="flex min-w-0 items-center gap-1.5"><X className="size-4 shrink-0" /><span className="truncate">No registrado: <span className="font-mono">{last.code}</span></span></span>}
         </div>
         <div className="flex gap-2">
           <button onClick={onClose}
@@ -417,12 +359,12 @@ export function CameraScanner({ onDetected, onClose, onCheckout }: CameraScanner
           </button>
           {onCheckout && (
             <button onClick={onCheckout} disabled={cartCount === 0}
-              className="h-14 flex-1 rounded-xl bg-green-500 text-lg font-bold text-white active:bg-green-600 disabled:opacity-40">
+              className="h-14 flex-1 rounded-xl bg-brand text-lg font-bold text-white active:bg-brand/90 disabled:opacity-40">
               Cobrar
             </button>
           )}
         </div>
       </div>
-    </div>
+    </BareDialog>
   );
 }

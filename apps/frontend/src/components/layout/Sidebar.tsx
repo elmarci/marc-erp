@@ -1,81 +1,72 @@
-import { NavLink } from 'react-router-dom';
+// Menú lateral oscuro, agrupado y con grupos plegables. Respeta los permisos
+// por rol y muestra el contador de alertas de inventario.
+import { useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  LayoutDashboard,
-  ShoppingCart,
-  Package,
-  Receipt,
-  Users,
-  TrendingUp, Landmark, Contact,
-  Wallet,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  ShoppingBag,
-  UserCheck,
-  Boxes,
-  Tag,
-  Store,
-  FolderTree,
-  Bell,
-  Bike,
-  Tv,
-  Clock,
-  BookOpen,
-  ListChecks,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
-import { Button } from '@/components/ui/button';
 import { api } from '@/services/api';
+import { homeItem, visibleGroups, type NavItem } from './nav';
 
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  /** Solo en celular/tablet: cierra el menú. */
+  onClose?: () => void;
 }
 
-interface NavItem {
-  path: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  minRole?: string;
+const CLOSED_KEY = 'nav:closed-groups';
+function readClosed(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(CLOSED_KEY) ?? '{}'); } catch { return {}; }
 }
 
-const navItems: NavItem[] = [
-  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/pos', label: 'Punto de Venta', icon: ShoppingCart },
-  { path: '/sales', label: 'Ventas', icon: Receipt },
-  { path: '/products', label: 'Productos', icon: Package },
-  { path: '/customers', label: 'Clientes', icon: UserCheck },
-  { path: '/purchases', label: 'Compras', icon: ShoppingBag, minRole: 'WAREHOUSE' },
-  { path: '/inventory', label: 'Inventario', icon: Boxes, minRole: 'WAREHOUSE' },
-  { path: '/cash', label: 'Caja', icon: Wallet },
-  { path: '/attendance', label: 'Asistencia', icon: Clock },
-  { path: '/store-orders', label: 'Pedidos Online', icon: Store, minRole: 'CASHIER' },
-  { path: '/store-options', label: 'Opciones Tienda', icon: ListChecks, minRole: 'SUPERVISOR' },
-  { path: '/complaints', label: 'Libro de Reclamaciones', icon: BookOpen, minRole: 'SUPERVISOR' },
-  { path: '/riders', label: 'Repartidores', icon: Bike, minRole: 'SUPERVISOR' },
-  { path: '/tv', label: 'Pantalla TV', icon: Tv, minRole: 'SUPERVISOR' },
-  { path: '/offers', label: 'Ofertas', icon: Tag, minRole: 'SUPERVISOR' },
-  { path: '/notifications', label: 'Notificaciones', icon: Bell, minRole: 'SUPERVISOR' },
-  { path: '/reports', label: 'Reportes', icon: TrendingUp, minRole: 'SUPERVISOR' },
-  { path: '/staff', label: 'Personal', icon: Contact, minRole: 'ADMIN' },
-  { path: '/administration', label: 'Administración', icon: Landmark, minRole: 'ADMIN' },
-  { path: '/users', label: 'Usuarios', icon: Users, minRole: 'ADMIN' },
-  { path: '/categories', label: 'Categorías', icon: FolderTree, minRole: 'ADMIN' },
-  { path: '/settings', label: 'Configuración', icon: Settings, minRole: 'ADMIN' },
-];
+interface Badge { total: number; urgent: boolean }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
-  const { hasMinRole } = useAuthStore();
-
-  const visibleItems = navItems.filter((item) =>
-    item.minRole ? hasMinRole(item.minRole) : true,
+function Item({ item, collapsed, badge }: { item: NavItem; collapsed: boolean; badge?: Badge }) {
+  const Icon = item.icon;
+  return (
+    <NavLink
+      to={item.path}
+      title={collapsed ? item.label : undefined}
+      className={({ isActive }) => cn(
+        'tap group relative flex h-8 items-center gap-2.5 rounded-ctl px-2 text-table transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-on-dark/60',
+        isActive ? 'bg-white/[0.09] font-medium text-white' : 'text-nav-ink hover:bg-white/[0.05] hover:text-white',
+        collapsed && 'lg:justify-center lg:px-0',
+      )}
+    >
+      {({ isActive }) => (<>
+        {isActive && <span className="absolute -left-3 bottom-1.5 top-1.5 w-[3px] rounded-r bg-brand-on-dark" aria-hidden />}
+        <Icon className={cn('size-4 shrink-0', isActive ? 'text-brand-on-dark' : 'text-nav-ink/80 group-hover:text-white')} />
+        <span className={cn('min-w-0 flex-1 truncate', collapsed && 'lg:hidden')}>{item.label}</span>
+        {badge && badge.total > 0 && (
+          <span
+            title="Alertas de inventario: stock bajo, margen bajo, por vencer y stock sin fecha"
+            className={cn(
+              'min-w-5 rounded-full px-1.5 text-center text-[11px] font-medium leading-[18px] tabular-nums text-white',
+              badge.urgent ? 'bg-bad' : 'bg-white/[0.14]',
+              collapsed && 'lg:hidden',
+            )}
+          >
+            {badge.total}
+          </span>
+        )}
+        {collapsed && badge && badge.total > 0 && (
+          <span className={cn('absolute right-1.5 top-1.5 hidden size-1.5 rounded-full lg:block', badge.urgent ? 'bg-bad' : 'bg-white/60')} />
+        )}
+      </>)}
+    </NavLink>
   );
+}
+
+export function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) {
+  const { hasMinRole } = useAuthStore();
+  const { pathname } = useLocation();
+  const groups = visibleGroups(hasMinRole);
+  const [closed, setClosed] = useState<Record<string, boolean>>(readClosed);
 
   // Contador de alertas de inventario (stock bajo, margen bajo, por vencer y
-  // stock sin fecha) para que se vea desde cualquier pantalla, sin tener que
-  // abrir Inventario a revisar.
+  // stock sin fecha) para que se vea desde cualquier pantalla.
   const canSeeInventory = hasMinRole('WAREHOUSE');
   const { data: alertsSummary } = useQuery({
     queryKey: ['inv-alerts-summary'],
@@ -83,94 +74,70 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     enabled: canSeeInventory,
     refetchInterval: 60000,
   });
-  const badgeFor = (path: string) => (path === '/inventory' && canSeeInventory ? alertsSummary : undefined);
+  const badgeFor = (path: string): Badge | undefined =>
+    path === '/inventory' && canSeeInventory && alertsSummary
+      ? { total: alertsSummary.total, urgent: alertsSummary.expired > 0 }
+      : undefined;
+
+  const toggleGroup = (label: string) => setClosed((c) => {
+    const next = { ...c, [label]: !c[label] };
+    try { localStorage.setItem(CLOSED_KEY, JSON.stringify(next)); } catch { /* sin espacio */ }
+    return next;
+  });
 
   return (
-    <aside
-      className={cn(
-        'flex h-full flex-col border-r bg-card transition-all duration-200 overflow-hidden',
-        collapsed ? 'w-16' : 'w-64',
-      )}
-    >
-      {/* Logo */}
-      <div className={cn(
-        'flex h-14 items-center border-b px-3 shrink-0',
-        collapsed ? 'justify-center' : 'justify-between',
-      )}>
-        {!collapsed && (
-          <img src="/logo-light.png" alt="MARC" className="h-8 w-auto max-w-[120px] object-contain" />
-        )}
-        {collapsed && (
-          <img src="/logo-light.png" alt="MARC" className="h-7 w-7 object-contain" />
-        )}
-        {!collapsed && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onToggle}
-            aria-label="Colapsar menú"
-            className="hidden lg:flex"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+    <div className={cn('erp flex h-full flex-col bg-nav', collapsed ? 'w-[260px] lg:w-[60px]' : 'w-[260px] lg:w-[232px]')}>
+      <div className={cn('flex h-12 shrink-0 items-center gap-2 px-4', collapsed && 'lg:justify-center lg:px-0')}>
+        <div className="grid size-6 shrink-0 place-items-center rounded-[5px] bg-brand text-[11px] font-bold text-white" aria-hidden>M</div>
+        <span className={cn('text-body font-semibold tracking-tight text-white', collapsed && 'lg:hidden')}>MARC</span>
+        <span className={cn('ml-auto text-meta text-nav-ink', collapsed && 'lg:hidden')}>Minimarket</span>
+        {onClose && (
+          <button type="button" className="tap ml-1 grid size-7 place-items-center rounded-ctl text-nav-ink hover:bg-white/10 lg:hidden" onClick={onClose} aria-label="Cerrar menú">
+            <X className="size-4" />
+          </button>
         )}
       </div>
 
-      {/* Toggle expand (solo en desktop collapsed) */}
-      {collapsed && (
-        <button
-          onClick={onToggle}
-          className="hidden lg:flex h-8 w-full items-center justify-center border-b hover:bg-accent transition-colors"
-          aria-label="Expandir menú"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      )}
-
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto scroll-touch py-2">
-        <ul className="space-y-0.5 px-2">
-          {visibleItems.map((item) => (
-            <li key={item.path}>
-              <NavLink
-                to={item.path}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
-                    'hover:bg-accent hover:text-accent-foreground',
-                    // Área táctil mínima 44px
-                    'min-h-[44px]',
-                    isActive
-                      ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
-                      : 'text-muted-foreground',
-                    collapsed && 'justify-center px-2',
-                  )
-                }
-                title={collapsed ? item.label : undefined}
+      <nav className="flex-1 overflow-y-auto px-3 pb-3 scroll-touch" aria-label="Menú principal">
+        <div className="mb-3"><Item item={homeItem} collapsed={collapsed} /></div>
+        {groups.map((g) => {
+          const hasActive = g.items.some((i) => pathname === i.path || pathname.startsWith(i.path + '/'));
+          const isClosed = !!closed[g.label] && !hasActive;
+          const groupCount = g.items.reduce((n, i) => n + (badgeFor(i.path)?.total ?? 0), 0);
+          return (
+            <div key={g.label} className="mb-2">
+              {collapsed && <div className="mx-auto my-2 hidden h-px w-5 bg-white/15 lg:block" />}
+              <button
+                type="button"
+                onClick={() => toggleGroup(g.label)}
+                className={cn('flex h-7 w-full items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-nav-ink/70 hover:text-white', collapsed && 'lg:hidden')}
+                aria-expanded={!isClosed}
               >
-                <span className="relative shrink-0">
-                  <item.icon className="h-5 w-5" />
-                  {collapsed && !!badgeFor(item.path)?.total && (
-                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-card" />
-                  )}
-                </span>
-                {!collapsed && <span className="flex-1">{item.label}</span>}
-                {!collapsed && !!badgeFor(item.path)?.total && (
-                  <span
-                    title="Alertas de inventario: stock bajo, margen bajo, por vencer y stock sin fecha"
-                    className={cn(
-                      'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold text-white',
-                      (badgeFor(item.path)?.expired ?? 0) > 0 ? 'bg-destructive' : 'bg-amber-500',
-                    )}
-                  >
-                    {badgeFor(item.path)?.total}
-                  </span>
-                )}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+                {g.label}
+                {isClosed && groupCount > 0 && <span className="ml-1 tabular-nums text-white">{groupCount}</span>}
+                {isClosed ? <ChevronRight className="ml-auto size-3.5" /> : <ChevronDown className="ml-auto size-3.5" />}
+              </button>
+              {/* En menú achicado se ven siempre todos los íconos. */}
+              <div className={cn('flex-col gap-px', isClosed ? (collapsed ? 'hidden lg:flex' : 'hidden') : 'flex')}>
+                {g.items.map((i) => <Item key={i.path} item={i} collapsed={collapsed} badge={badgeFor(i.path)} />)}
+              </div>
+            </div>
+          );
+        })}
       </nav>
-    </aside>
+
+      <div className={cn('hidden px-3 pb-3 lg:block', collapsed && 'px-0')}>
+        <button
+          type="button"
+          onClick={onToggle}
+          className={cn('flex h-8 items-center gap-2 rounded-ctl px-2 text-table text-nav-ink hover:bg-white/[0.05] hover:text-white', collapsed ? 'mx-auto w-8 justify-center px-0' : 'w-full')}
+          aria-label={collapsed ? 'Abrir menú' : 'Achicar menú'}
+          title={collapsed ? 'Abrir menú' : undefined}
+        >
+          {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          {!collapsed && 'Achicar menú'}
+        </button>
+      </div>
+    </div>
   );
 }

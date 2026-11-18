@@ -97,6 +97,8 @@ router.get('/export', async (req: Request, res: Response, next: NextFunction) =>
       { header: 'Ítems', key: 'items', width: 8 },
       { header: 'Subtotal', key: 'subtotal', width: 12 },
       { header: 'IGV', key: 'taxAmount', width: 10 },
+      { header: 'IGV incluido', key: 'igvIncluded', width: 12 },
+      { header: 'Percepción', key: 'perceptionAmount', width: 12 },
       { header: 'Total', key: 'totalAmount', width: 12 },
       { header: 'Factura proveedor', key: 'supplierInvoice', width: 18 },
       { header: 'Registrado por', key: 'user', width: 20 },
@@ -110,6 +112,8 @@ router.get('/export', async (req: Request, res: Response, next: NextFunction) =>
       items: o._count.items,
       subtotal: Number(o.subtotal),
       taxAmount: Number(o.taxAmount),
+      igvIncluded: Number(o.taxAmount) > 0 ? (o.igvIncluded ? 'Sí' : 'No, sumado') : '',
+      perceptionAmount: Number(o.perceptionAmount),
       totalAmount: Number(o.totalAmount),
       supplierInvoice: o.supplierInvoice ?? '',
       user: `${o.user.firstName} ${o.user.lastName}`,
@@ -311,6 +315,7 @@ router.post('/', authorizeMinRole('SUPERVISOR'), async (req: Request, res: Respo
       supplierInvoice: z.string().optional(),
       doc: docSchema,
       includeTax: z.boolean().default(false),
+      perceptionAmount: z.coerce.number().min(0).max(100000).optional(),
       items: z.array(z.object({
         productId: z.string().uuid(),
         orderedQty: z.coerce.number().positive(),
@@ -430,6 +435,7 @@ router.post('/direct', authorizeMinRole('WAREHOUSE'), async (req: Request, res: 
       date: z.coerce.date().optional(),
       notes: z.string().optional(),
       includeTax: z.boolean().default(false),
+      perceptionAmount: z.coerce.number().min(0).max(100000).optional(),
       items: z.array(z.object({
         productId: z.string().uuid(),
         quantity: z.coerce.number().positive(),

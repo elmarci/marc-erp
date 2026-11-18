@@ -1,13 +1,17 @@
+// Configuración del negocio: datos y logo, portada de la tienda, cupones,
+// puntos, régimen, comisión de tarjeta, margen bajo y ticket. Cada bloque
+// guarda los cambios pendientes de toda la página.
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Settings, Save, Image, Trash2, Upload, Video, Film } from 'lucide-react';
+import { Film, Image, Save, Trash2, Upload, Video } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Btn, Field, PageHeader, Panel, fieldCls } from '@/components/erp';
 import { api, getErrorMessage, API_ORIGIN } from '@/services/api';
+import { cn } from '@/lib/utils';
 import { useRef, useState } from 'react';
 
 interface Setting { key: string; value: string; label: string; group: string; type: string }
+
+const checkCls = 'size-4 rounded-[4px] accent-[hsl(var(--brand))]';
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -95,349 +99,151 @@ export function SettingsPage() {
   const heroPosterUrl = settings?.find((s) => s.key === 'store_hero_poster_url')?.value;
   const heroPosterSrc = heroPosterUrl ? (heroPosterUrl.startsWith('http') ? heroPosterUrl : `${API_ORIGIN}${heroPosterUrl}`) : null;
 
+  const set = (key: string, value: string) => setValues((prev) => ({ ...prev, [key]: value }));
+  const dirty = Object.keys(values).length > 0;
+  const saveBtn = (
+    <div className="flex justify-end border-t border-line pt-3">
+      <Btn variant="primary" onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending} disabled={!dirty}>
+        <Save />Guardar Cambios
+      </Btn>
+    </div>
+  );
+  const loading = <div className="py-4 text-center text-table text-ink-muted">Cargando…</div>;
+  const field = (st: Setting, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
+    st.type === 'boolean' ? (
+      <label key={st.key} className="flex cursor-pointer items-center gap-2.5">
+        <input type="checkbox" className={checkCls} defaultChecked={st.value === 'true'}
+          onChange={(e) => set(st.key, e.target.checked ? 'true' : 'false')} />
+        <span className="text-table font-medium text-ink">{st.label}</span>
+      </label>
+    ) : (
+      <Field key={st.key} label={st.label}>
+        <input {...props} className={cn(fieldCls, props.type === 'number' && 'max-w-[200px] text-right tabular-nums', props.className)}
+          defaultValue={st.value} onChange={(e) => set(st.key, e.target.value)} />
+      </Field>
+    )
+  );
+  const desc = (t: React.ReactNode) => <p className="text-table text-ink-muted">{t}</p>;
+  const media = (src: string | null, kind: 'img' | 'video', wide: boolean) => (
+    <div className={cn('flex shrink-0 items-center justify-center overflow-hidden rounded-ctl border border-dashed border-line-strong bg-surface-2', wide ? 'h-20 w-36' : 'h-16 w-32')}>
+      {src ? (kind === 'video'
+        ? <video src={src} className="size-full object-cover" muted loop autoPlay playsInline />
+        : <img src={src} alt="" className={cn('size-full', wide ? 'object-cover' : 'object-contain')} />)
+        : kind === 'video' ? <Film className="size-6 text-ink-muted/40" /> : <Image className="size-6 text-ink-muted/40" />}
+    </div>
+  );
+  const fileInput = (ref: React.RefObject<HTMLInputElement>, accept: string, onFile: (f: File) => void) => (
+    <input ref={ref} type="file" accept={accept} className="hidden"
+      onChange={(e) => { const file = e.target.files?.[0]; if (file) onFile(file); e.target.value = ''; }} />
+  );
+  const body = 'flex flex-col gap-4 p-4';
+
   return (
-    <div className="space-y-6 max-w-2xl animate-fade-in">
-      <div className="flex items-center gap-2">
-        <Settings className="h-6 w-6" />
-        <h1 className="text-2xl font-bold">Configuración</h1>
-      </div>
+    <div className="erp flex max-w-2xl flex-col gap-5">
+      <PageHeader title="Configuración" />
 
-      <Card>
-        <CardHeader><CardTitle>Datos del Negocio</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Logo (aparece en el ticket de venta)</label>
-            <div className="flex items-center gap-4">
-              <div className="flex h-16 w-32 items-center justify-center rounded-lg border border-dashed bg-muted overflow-hidden">
-                {logoSrc ? (
-                  <img src={logoSrc} alt="Logo" className="h-full w-full object-contain" />
-                ) : (
-                  <Image className="h-6 w-6 text-muted-foreground/40" />
-                )}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) logoMutation.mutate(file);
-                    e.target.value = '';
-                  }}
-                />
-                <Button type="button" variant="outline" size="sm" loading={logoMutation.isPending}
-                  onClick={() => logoInputRef.current?.click()}>
-                  <Upload className="mr-1.5 h-4 w-4" />{logoSrc ? 'Cambiar' : 'Subir logo'}
-                </Button>
-                {logoSrc && (
-                  <Button type="button" variant="ghost" size="sm" loading={deleteLogoMutation.isPending}
-                    onClick={() => deleteLogoMutation.mutate()}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
+      <Panel title="Datos del Negocio" bodyClassName={body}>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-table font-medium text-ink">Logo (aparece en el ticket de venta)</span>
+          <div className="flex items-center gap-4">
+            {media(logoSrc, 'img', false)}
+            <div className="flex gap-2">
+              {fileInput(logoInputRef, 'image/png,image/jpeg,image/webp', (f) => logoMutation.mutate(f))}
+              <Btn size="sm" loading={logoMutation.isPending} onClick={() => logoInputRef.current?.click()}>
+                <Upload />{logoSrc ? 'Cambiar' : 'Subir logo'}
+              </Btn>
+              {logoSrc && (
+                <Btn size="sm" variant="ghost" aria-label="Quitar logo" loading={deleteLogoMutation.isPending} onClick={() => deleteLogoMutation.mutate()}><Trash2 /></Btn>
+              )}
             </div>
           </div>
-          {isLoading ? (
-            <div className="text-center text-muted-foreground py-4">Cargando...</div>
-          ) : businessSettings.map((s) => (
-            <div key={s.key}>
-              <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
-              <Input
-                defaultValue={s.value}
-                onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
-              />
-            </div>
-          ))}
-          <div className="flex justify-end pt-2">
-            <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
-              disabled={Object.keys(values).length === 0}>
-              <Save className="mr-2 h-4 w-4" />Guardar Cambios
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+        {isLoading ? loading : businessSettings.map((st) => field(st))}
+        {saveBtn}
+      </Panel>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Portada de la Tienda Online</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Video corto (MP4/WEBM, máx. 25MB) que se reproduce de fondo en el inicio de la tienda. Si no
-            hay video, se usa la imagen de portada como respaldo mientras carga o si el navegador no la soporta.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Video de portada</label>
-            <div className="flex items-center gap-4">
-              <div className="flex h-20 w-36 items-center justify-center rounded-lg border border-dashed bg-muted overflow-hidden shrink-0">
-                {heroVideoSrc ? (
-                  <video src={heroVideoSrc} className="h-full w-full object-cover" muted loop autoPlay playsInline />
-                ) : (
-                  <Film className="h-6 w-6 text-muted-foreground/40" />
-                )}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  ref={heroVideoInputRef}
-                  type="file"
-                  accept="video/mp4,video/webm"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) heroVideoMutation.mutate(file);
-                    e.target.value = '';
-                  }}
-                />
-                <Button type="button" variant="outline" size="sm" loading={heroVideoMutation.isPending}
-                  onClick={() => heroVideoInputRef.current?.click()}>
-                  <Video className="mr-1.5 h-4 w-4" />{heroVideoSrc ? 'Cambiar' : 'Subir video'}
-                </Button>
-                {heroVideoSrc && (
-                  <Button type="button" variant="ghost" size="sm" loading={removeHeroVideoMutation.isPending}
-                    onClick={() => removeHeroVideoMutation.mutate()}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
+      <Panel title="Portada de la Tienda Online" bodyClassName={body}>
+        {desc(<>Video corto (MP4/WEBM, máx. 25MB) que se reproduce de fondo en el inicio de la tienda. Si no
+          hay video, se usa la imagen de portada como respaldo mientras carga o si el navegador no la soporta.</>)}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-table font-medium text-ink">Video de portada</span>
+          <div className="flex items-center gap-4">
+            {media(heroVideoSrc, 'video', true)}
+            <div className="flex gap-2">
+              {fileInput(heroVideoInputRef, 'video/mp4,video/webm', (f) => heroVideoMutation.mutate(f))}
+              <Btn size="sm" loading={heroVideoMutation.isPending} onClick={() => heroVideoInputRef.current?.click()}>
+                <Video />{heroVideoSrc ? 'Cambiar' : 'Subir video'}
+              </Btn>
+              {heroVideoSrc && (
+                <Btn size="sm" variant="ghost" aria-label="Quitar video" loading={removeHeroVideoMutation.isPending} onClick={() => removeHeroVideoMutation.mutate()}><Trash2 /></Btn>
+              )}
             </div>
           </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Imagen de respaldo</label>
-            <div className="flex items-center gap-4">
-              <div className="flex h-20 w-36 items-center justify-center rounded-lg border border-dashed bg-muted overflow-hidden shrink-0">
-                {heroPosterSrc ? (
-                  <img src={heroPosterSrc} alt="Portada" className="h-full w-full object-cover" />
-                ) : (
-                  <Image className="h-6 w-6 text-muted-foreground/40" />
-                )}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  ref={heroPosterInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) heroPosterMutation.mutate(file);
-                    e.target.value = '';
-                  }}
-                />
-                <Button type="button" variant="outline" size="sm" loading={heroPosterMutation.isPending}
-                  onClick={() => heroPosterInputRef.current?.click()}>
-                  <Upload className="mr-1.5 h-4 w-4" />{heroPosterSrc ? 'Cambiar' : 'Subir imagen'}
-                </Button>
-              </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-table font-medium text-ink">Imagen de respaldo</span>
+          <div className="flex items-center gap-4">
+            {media(heroPosterSrc, 'img', true)}
+            <div className="flex gap-2">
+              {fileInput(heroPosterInputRef, 'image/png,image/jpeg,image/webp', (f) => heroPosterMutation.mutate(f))}
+              <Btn size="sm" loading={heroPosterMutation.isPending} onClick={() => heroPosterInputRef.current?.click()}>
+                <Upload />{heroPosterSrc ? 'Cambiar' : 'Subir imagen'}
+              </Btn>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Cupones de Descuento</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Cuando una venta con cliente asignado supera el monto mínimo, se genera e imprime
-            automáticamente un cupón de descuento % para la próxima compra de ese cliente.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {isLoading ? (
-            <div className="text-center text-muted-foreground py-4">Cargando...</div>
-          ) : couponSettings.map((s) => (
-            <div key={s.key}>
-              <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
-              <Input
-                type="number"
-                defaultValue={s.value}
-                onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
-              />
-            </div>
-          ))}
-          <div className="flex justify-end pt-2">
-            <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
-              disabled={Object.keys(values).length === 0}>
-              <Save className="mr-2 h-4 w-4" />Guardar Cambios
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Panel title="Cupones de Descuento" bodyClassName={body}>
+        {desc(<>Cuando una venta con cliente asignado supera el monto mínimo, se genera e imprime
+          automáticamente un cupón de descuento % para la próxima compra de ese cliente.</>)}
+        {isLoading ? loading : couponSettings.map((st) => field(st, { type: 'number' }))}
+        {saveBtn}
+      </Panel>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Puntos de Fidelización</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Los clientes ganan puntos en cada compra con cliente asignado, canjeables por descuento
-            en una compra futura (excluyente con los cupones — solo uno de los dos por venta).
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {isLoading ? (
-            <div className="text-center text-muted-foreground py-4">Cargando...</div>
-          ) : loyaltySettings.map((s) => (
-            <div key={s.key}>
-              <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
-              <Input
-                type="number" step="0.01"
-                defaultValue={s.value}
-                onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
-              />
-            </div>
-          ))}
-          <div className="flex justify-end pt-2">
-            <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
-              disabled={Object.keys(values).length === 0}>
-              <Save className="mr-2 h-4 w-4" />Guardar Cambios
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Panel title="Puntos de Fidelización" bodyClassName={body}>
+        {desc(<>Los clientes ganan puntos en cada compra con cliente asignado, canjeables por descuento
+          en una compra futura (excluyente con los cupones: solo uno de los dos por venta).</>)}
+        {isLoading ? loading : loyaltySettings.map((st) => field(st, { type: 'number', step: '0.01' }))}
+        {saveBtn}
+      </Panel>
 
       {adminSettings.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle>Régimen tributario y costos</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            {adminSettings.map((s) =>
-              s.type === 'boolean' ? (
-                <label key={s.key} className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-input"
-                    defaultChecked={s.value === 'true'}
-                    onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.checked ? 'true' : 'false' }))}
-                  />
-                  <span className="text-sm font-medium">{s.label}</span>
-                </label>
-              ) : (
-                <div key={s.key}>
-                  <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
-                  <Input
-                    type="number" step="1" min={0}
-                    defaultValue={s.value}
-                    onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
-                  />
-                </div>
-              ),
-            )}
-            <div className="flex justify-end pt-2">
-              <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
-                disabled={Object.keys(values).length === 0}>
-                <Save className="mr-2 h-4 w-4" />Guardar Cambios
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <Panel title="Régimen tributario y costos" bodyClassName={body}>
+          {adminSettings.map((st) => field(st, { type: 'number', step: '1', min: 0 }))}
+          {saveBtn}
+        </Panel>
       )}
 
       {cardCommissionSetting && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Pagos con Tarjeta (POS Izipay)</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Comisión que se le suma al cliente cuando paga con tarjeta de débito o crédito (incluye IGV).
-              Se calcula sobre la parte pagada con tarjeta, se redondea al céntimo y se imprime en el ticket.
-              Efectivo, Yape, Plin, transferencia y fiado no llevan comisión.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">{cardCommissionSetting.label}</label>
-              <Input
-                type="number" step="0.01" min="0" max="100" className="max-w-[160px]"
-                defaultValue={cardCommissionSetting.value}
-                onChange={(e) => setValues((prev) => ({ ...prev, [cardCommissionSetting.key]: e.target.value }))}
-              />
-            </div>
-            <div className="flex justify-end pt-2">
-              <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
-                disabled={Object.keys(values).length === 0}>
-                <Save className="mr-2 h-4 w-4" />Guardar Cambios
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <Panel title="Pagos con Tarjeta (POS Izipay)" bodyClassName={body}>
+          {desc(<>Comisión que se le suma al cliente cuando paga con tarjeta de débito o crédito (incluye IGV).
+            Se calcula sobre la parte pagada con tarjeta, se redondea al céntimo y se imprime en el ticket.
+            Efectivo, Yape, Plin, transferencia y fiado no llevan comisión.</>)}
+          {field(cardCommissionSetting, { type: 'number', step: '0.01', min: '0', max: '100' })}
+          {saveBtn}
+        </Panel>
       )}
 
       {marginSetting && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Alerta de Margen Bajo</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              En frutas, verduras y productos a granel el costo cambia seguido. Si el último costo de compra
-              deja menos que este margen contra el precio de venta, aparece una alerta en Inventario para que
-              actualices el precio (el sistema nunca lo cambia solo).
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">{marginSetting.label}</label>
-              <Input
-                type="number" step="0.10" min="0" className="max-w-[160px]"
-                defaultValue={marginSetting.value}
-                onChange={(e) => setValues((prev) => ({ ...prev, [marginSetting.key]: e.target.value }))}
-              />
-            </div>
-            <div className="flex justify-end pt-2">
-              <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
-                disabled={Object.keys(values).length === 0}>
-                <Save className="mr-2 h-4 w-4" />Guardar Cambios
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <Panel title="Alerta de Margen Bajo" bodyClassName={body}>
+          {desc(<>En frutas, verduras y productos a granel el costo cambia seguido. Si el último costo de compra
+            deja menos que este margen contra el precio de venta, aparece una alerta en Inventario para que
+            actualices el precio (el sistema nunca lo cambia solo).</>)}
+          {field(marginSetting, { type: 'number', step: '0.10', min: '0' })}
+          {saveBtn}
+        </Panel>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Ticket de Venta</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Qué información se imprime en el ticket que recibe el cliente.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {isLoading ? (
-            <div className="text-center text-muted-foreground py-4">Cargando...</div>
-          ) : receiptSettings.map((s) =>
-            s.type === 'boolean' ? (
-              <label key={s.key} className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-input"
-                  defaultChecked={s.value === 'true'}
-                  onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.checked ? 'true' : 'false' }))}
-                />
-                <span className="text-sm font-medium">{s.label}</span>
-              </label>
-            ) : (
-              <div key={s.key}>
-                <label className="mb-1.5 block text-sm font-medium">{s.label}</label>
-                <Input
-                  defaultValue={s.value}
-                  onChange={(e) => setValues((prev) => ({ ...prev, [s.key]: e.target.value }))}
-                />
-              </div>
-            ),
-          )}
-          <div className="flex justify-end pt-2">
-            <Button onClick={() => updateMutation.mutate(values)} loading={updateMutation.isPending}
-              disabled={Object.keys(values).length === 0}>
-              <Save className="mr-2 h-4 w-4" />Guardar Cambios
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Panel title="Ticket de Venta" bodyClassName={body}>
+        {desc('Qué información se imprime en el ticket que recibe el cliente.')}
+        {isLoading ? loading : receiptSettings.map((st) => field(st))}
+        {saveBtn}
+      </Panel>
 
-      <Card>
-        <CardHeader><CardTitle>Credenciales de Acceso</CardTitle></CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Para cambiar su contraseña, use la opción en el menú de usuario en la esquina superior derecha.
-          </p>
-        </CardContent>
-      </Card>
+      <Panel title="Credenciales de Acceso" bodyClassName="p-4">
+        {desc('Para cambiar su contraseña, use la opción en el menú de usuario en la esquina superior derecha.')}
+      </Panel>
     </div>
   );
 }

@@ -2,9 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Mail, Printer } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
+import { Btn, EmptyState, PageHeader, Segmented, StatusBadge, fieldCls, surfaceCls } from '@/components/erp'
 import { api, getErrorMessage } from '@/services/api'
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 
@@ -48,6 +46,8 @@ function sheetText(c: Complaint) {
   ].filter(Boolean).join('\n')
 }
 
+const openMail = (href: string) => { window.location.href = href }
+
 function ComplaintCard({ c }: { c: Complaint }) {
   const queryClient = useQueryClient()
   const [response, setResponse] = useState('')
@@ -60,24 +60,25 @@ function ComplaintCard({ c }: { c: Complaint }) {
     onError: (err) => toast.error(getErrorMessage(err)),
   })
   const left = daysLeft(c.dueAt)
+  const kindLabel = c.kind === 'RECLAMO' ? 'reclamo' : 'queja'
 
   return (
-    <Card className="p-4 space-y-3">
+    <article className={cn('flex flex-col gap-3 p-4', surfaceCls)}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">N.º {c.code}</span>
-        <Badge variant={c.kind === 'RECLAMO' ? 'default' : 'secondary'}>{c.kind === 'RECLAMO' ? 'Reclamo' : 'Queja'}</Badge>
+        <span className="font-mono text-table font-semibold text-ink">N.º {c.code}</span>
+        <StatusBadge tone="neutral">{c.kind === 'RECLAMO' ? 'Reclamo' : 'Queja'}</StatusBadge>
         {c.status === 'RESPONDIDO'
-          ? <Badge variant="outline" className="border-green-600 text-green-700">Respondido</Badge>
-          : <Badge variant="outline" className={cn(left <= 3 ? 'border-red-600 text-red-700' : 'border-amber-500 text-amber-700')}>
+          ? <StatusBadge tone="ok">Respondido</StatusBadge>
+          : <StatusBadge tone={left <= 3 ? 'bad' : 'warn'}>
               {left >= 0 ? `Responder en ${left} día${left === 1 ? '' : 's'}` : `Vencido hace ${-left} día${left === -1 ? '' : 's'}`}
-            </Badge>}
-        <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(c.createdAt)}</span>
+            </StatusBadge>}
+        <span className="ml-auto text-meta tabular-nums text-ink-muted">{formatDateTime(c.createdAt)}</span>
       </div>
 
-      <div className="grid gap-1 text-sm sm:grid-cols-2">
-        <p><b>{c.consumerName}</b> · {c.docType} {c.docNumber}</p>
-        <p>{c.phone} · {c.email}</p>
-        <p className="sm:col-span-2 text-muted-foreground">{c.address}</p>
+      <div className="grid gap-1 text-table text-ink sm:grid-cols-2">
+        <p><span className="font-medium">{c.consumerName}</span> · {c.docType} {c.docNumber}</p>
+        <p className="tabular-nums">{c.phone} · {c.email}</p>
+        <p className="text-ink-muted sm:col-span-2">{c.address}</p>
         {c.isMinor && <p className="sm:col-span-2">Menor de edad · apoderado: {c.guardianName}</p>}
         <p className="sm:col-span-2">
           {c.itemType === 'PRODUCTO' ? 'Producto' : 'Servicio'}: {c.itemDescription}
@@ -85,71 +86,68 @@ function ComplaintCard({ c }: { c: Complaint }) {
           {c.orderNumber && <> · pedido {c.orderNumber}</>}
         </p>
       </div>
-      <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1">
-        <p><b>Detalle:</b> {c.detail}</p>
-        <p><b>Solicita:</b> {c.request}</p>
+      <div className="flex flex-col gap-1 rounded-ctl bg-surface-2 p-3 text-table text-ink">
+        <p><span className="font-medium">Detalle:</span> {c.detail}</p>
+        <p><span className="font-medium">Solicita:</span> {c.request}</p>
       </div>
 
       {c.status === 'RESPONDIDO' ? (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm space-y-1">
-          <p className="text-xs text-green-800">Respondido el {c.respondedAt && formatDateTime(c.respondedAt)}</p>
+        <div className="flex flex-col gap-2 rounded-ctl border border-line p-3 text-table text-ink">
+          <p className="text-meta text-ok-ink">Respondido el {c.respondedAt && formatDateTime(c.respondedAt)}</p>
           <p className="whitespace-pre-wrap">{c.response}</p>
-          <a className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline"
-            href={mailto(c, `Estimado(a) ${c.consumerName}:\n\n${c.response}\n\n---\n${sheetText(c)}\n\nAtentamente,\nTiendas Marc`, `Respuesta a su ${c.kind === 'RECLAMO' ? 'reclamo' : 'queja'} N.º ${c.code}`)}>
-            <Mail className="h-4 w-4" />Enviar respuesta por correo
-          </a>
+          <div>
+            <Btn size="sm" onClick={() => openMail(mailto(c, `Estimado(a) ${c.consumerName}:\n\n${c.response}\n\n---\n${sheetText(c)}\n\nAtentamente,\nTiendas Marc`, `Respuesta a su ${kindLabel} N.º ${c.code}`))}>
+              <Mail />Enviar respuesta por correo
+            </Btn>
+          </div>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           <textarea value={response} onChange={(e) => setResponse(e.target.value)} rows={4} maxLength={3000}
+            aria-label={`Respuesta a la hoja ${c.code}`}
             placeholder="Escribe la respuesta: qué se revisó y qué solución se ofrece."
-            className="w-full rounded-md border border-input bg-background p-3 text-sm" />
+            className={cn(fieldCls, 'h-auto py-2')} />
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" disabled={response.trim().length < 10 || respond.isPending} onClick={() => respond.mutate()}>
+            <Btn size="sm" variant="primary" disabled={response.trim().length < 10} loading={respond.isPending} onClick={() => respond.mutate()}>
               Guardar respuesta
-            </Button>
-            <a className="inline-flex items-center gap-1.5 rounded-md border px-3 text-sm h-9"
-              href={mailto(c, `Estimado(a) ${c.consumerName}:\n\nRecibimos su ${c.kind === 'RECLAMO' ? 'reclamo' : 'queja'}. Le enviamos copia de la hoja registrada. Le responderemos en un plazo máximo de 15 días hábiles.\n\n---\n${sheetText(c)}\n\nAtentamente,\nTiendas Marc`, `Copia de su hoja de reclamación N.º ${c.code}`)}>
-              <Mail className="h-4 w-4" />Enviar copia al cliente
-            </a>
+            </Btn>
+            <Btn size="sm" onClick={() => openMail(mailto(c, `Estimado(a) ${c.consumerName}:\n\nRecibimos su ${kindLabel}. Le enviamos copia de la hoja registrada. Le responderemos en un plazo máximo de 15 días hábiles.\n\n---\n${sheetText(c)}\n\nAtentamente,\nTiendas Marc`, `Copia de su hoja de reclamación N.º ${c.code}`))}>
+              <Mail />Enviar copia al cliente
+            </Btn>
           </div>
         </div>
       )}
-    </Card>
+    </article>
   )
 }
 
+type Filter = 'PENDIENTE' | 'RESPONDIDO' | 'ALL'
+
 export function ComplaintsPage() {
-  const [filter, setFilter] = useState<'PENDIENTE' | 'RESPONDIDO' | ''>('PENDIENTE')
+  const [filter, setFilter] = useState<Filter>('PENDIENTE')
   const { data, isLoading } = useQuery({
     queryKey: ['store-complaints', filter],
-    queryFn: async () => (await api.get<{ data: Complaint[] }>('/store/admin/complaints', { params: filter ? { status: filter } : {} })).data.data,
+    queryFn: async () => (await api.get<{ data: Complaint[] }>('/store/admin/complaints', { params: filter !== 'ALL' ? { status: filter } : {} })).data.data,
     refetchInterval: 60000,
   })
   const rows = data ?? []
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <BookOpen className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold">Libro de Reclamaciones</h1>
-          <p className="text-sm text-muted-foreground">Hojas registradas en la tienda online. Plazo de respuesta: 15 días hábiles.</p>
-        </div>
-        <Button variant="outline" size="sm" className="ml-auto" onClick={() => window.print()}>
-          <Printer className="mr-1.5 h-4 w-4" />Imprimir
-        </Button>
+    <div className="erp flex flex-col gap-5">
+      <PageHeader title="Libro de Reclamaciones" actions={<Btn onClick={() => window.print()}><Printer />Imprimir</Btn>}>
+        <p className="text-table text-ink-muted">Hojas registradas en la tienda online. Plazo de respuesta: 15 días hábiles.</p>
+      </PageHeader>
+      <div>
+        <Segmented ariaLabel="Filtrar hojas" className="inline-flex" value={filter} onChange={(v) => setFilter(v as Filter)}
+          options={[['PENDIENTE', 'Por responder'], ['RESPONDIDO', 'Respondidas'], ['ALL', 'Todas']]} />
       </div>
-      <div className="flex gap-2">
-        {([['PENDIENTE', 'Por responder'], ['RESPONDIDO', 'Respondidas'], ['', 'Todas']] as const).map(([v, label]) => (
-          <Button key={v} size="sm" variant={filter === v ? 'default' : 'outline'} onClick={() => setFilter(v)}>{label}</Button>
-        ))}
-      </div>
-      {isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      {isLoading && <p className="text-table text-ink-muted">Cargando…</p>}
       {!isLoading && rows.length === 0 && (
-        <Card className="p-8 text-center text-sm text-muted-foreground">No hay hojas {filter === 'PENDIENTE' ? 'por responder' : filter === 'RESPONDIDO' ? 'respondidas' : 'registradas'}.</Card>
+        <div className={surfaceCls}>
+          <EmptyState icon={BookOpen} title={`No hay hojas ${filter === 'PENDIENTE' ? 'por responder' : filter === 'RESPONDIDO' ? 'respondidas' : 'registradas'}.`} />
+        </div>
       )}
-      <div className="space-y-3">{rows.map((c) => <ComplaintCard key={c.id} c={c} />)}</div>
+      <div className="flex flex-col gap-3">{rows.map((c) => <ComplaintCard key={c.id} c={c} />)}</div>
     </div>
   )
 }

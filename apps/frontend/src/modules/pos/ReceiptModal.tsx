@@ -1,65 +1,20 @@
+import { BareDialog } from '@/components/erp';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { X, Printer, Mic, Bluetooth, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
-import { api, API_ORIGIN } from '@/services/api';
+import { API_ORIGIN } from '@/services/api';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
 import { splitProductNameAndUnit, normalizeUnit, formatQty } from './receiptFormat';
 import { useBtPrinter, isBluetoothPrintSupported } from './bluetoothPrinter';
 import { buildTicketEscpos } from './ticketEscpos';
 import { connectPrinterWithFeedback } from './BtPrinterPanel';
+import { printTicketHtml, QR_SIZE_PX, useBusinessSettings, type ReceiptData } from './receiptShared';
 
-interface ReceiptItem {
-  productName: string;
-  quantity: number;
-  unitPrice: number;
-  subtotal: number;
-  // "kg"/"g"/"l"/"ml"/"und" — ausente sólo en ventas de antes de este campo
-  // (ver sales.service.ts/store.service.ts, que lo derivan del producto).
-  unit?: string;
-}
-
-interface ReceiptPayment {
-  method: string;
-  amount: number;
-  // Comisión de tarjeta sobre este pago — en el ticket el pago se muestra
-  // por lo realmente cobrado (amount + commissionAmount).
-  commissionAmount?: number;
-}
-
-interface GeneratedCoupon {
-  code: string;
-  discountPercent: number;
-  expiresAt: string;
-}
-
-export interface ReceiptData {
-  saleNumber: string;
-  createdAt: string;
-  cashierName: string;
-  customerName?: string | null;
-  documentType: string;
-  notes?: string | null;
-  items: ReceiptItem[];
-  subtotal: number;
-  discountAmount: number;
-  taxAmount: number;
-  totalAmount: number;
-  // Comisión por pago con tarjeta, aparte de totalAmount. commissionPercent
-  // ausente = se usa la tasa vigente en Configuración.
-  commissionAmount?: number;
-  commissionPercent?: number;
-  payments: ReceiptPayment[];
-  change?: number;
-  generatedCoupon?: GeneratedCoupon | null;
-  pointsEarned?: number;
-  pointsRedeemed?: number;
-  offlinePending?: boolean;
-}
+export type { ReceiptData } from './receiptShared';
 
 interface ReceiptModalProps {
   data: ReceiptData;
@@ -70,38 +25,6 @@ interface ReceiptModalProps {
   // Texto del botón grande de cierre en celular ("Nueva venta" en el POS).
   closeLabel?: string;
 }
-
-interface Setting { key: string; value: string }
-
-function useBusinessSettings() {
-  const { data } = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => (await api.get<{ data: Setting[] }>('/settings')).data.data,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const get = (key: string, fallback = '') => data?.find((s) => s.key === key)?.value || fallback;
-
-  return {
-    loaded: !!data,
-    businessName: get('business_name', 'ERP MINIMARKET'),
-    ruc: get('business_ruc'),
-    address: get('business_address'),
-    phone: get('business_phone'),
-    // La versión "print" es blanco/negro puro (sin grises) — en térmica sale
-    // nítida. Si el logo se subió antes de tener esta versión, usamos la de color.
-    logoUrl: get('business_logo_print_url') || get('business_logo_url'),
-    footer: get('receipt_footer', '¡Gracias por su compra!'),
-    storeUrl: get('store_url'),
-    printerWidthMm: Number(get('printer_width', '80')) || 80,
-    showPoints: get('receipt_show_points', 'true') !== 'false',
-    showCoupon: get('receipt_show_coupon', 'true') !== 'false',
-    showQr: get('receipt_show_qr', 'true') !== 'false',
-    cardCommissionPercent: Number(get('card_commission_percent', '3.5')) || 0,
-  };
-}
-
-const QR_SIZE_PX = 120;
 
 export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'Cerrar' }: ReceiptModalProps) {
   const printRef = useRef<HTMLDivElement>(null);
@@ -121,77 +44,10 @@ export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'C
 
   const handlePrint = () => {
     const content = printRef.current?.innerHTML;
-    if (!content) return;
-
-    // Impresión vía iframe oculto: evita la ventana emergente adicional que
-    // exigía confirmar la impresión dos veces, y fija el tamaño de página al
-    // ancho real del rollo térmico (sin desperdiciar hoja A4/carta).
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) { document.body.removeChild(iframe); return; }
-
-    const widthMm = s.printerWidthMm;
-    // Las impresoras térmicas reservan un margen físico no imprimible a cada
-    // lado, y ese margen suele ser más ancho de lo que el driver reporta.
-    // Vamos conservadores (nominal - 14mm) para no seguir comiéndonos los
-    // costados; si sobra papel en blanco es preferible a recortar texto.
-    const printableWidthMm = Math.max(widthMm - 14, 36);
-    doc.open();
-    doc.write(`
-      <html><head><title>Ticket ${data.saleNumber}</title>
-      <style>
-        @page { size: ${widthMm}mm auto; margin: 0; }
-        * {
-          margin: 0; padding: 0; box-sizing: border-box;
-          /* Térmica = blanco/negro puro. Cualquier gris (color, antialiasing
-             de texto/imágenes) se difumina al tratar de simular tonos con
-             puntos — de ahí el efecto "borroso". Todo a negro sólido. */
-          color: #000 !important;
-          -webkit-font-smoothing: none;
-          text-rendering: optimizeSpeed;
-        }
-        html, body { width: ${widthMm}mm; }
-        body {
-          font-family: 'Courier New', monospace; font-size: 11px; padding: 0;
-          -webkit-print-color-adjust: exact; print-color-adjust: exact;
-          /* Un trazo delgado es casi todo borde antialiaseado — el driver
-             térmico lo difumina. En negrita el trazo tiene más negro sólido
-             y sale nítido, así que todo el ticket va en negrita. */
-          font-weight: 700;
-        }
-        .ticket { width: ${printableWidthMm}mm; margin: 0 auto; }
-        img { max-width: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
-        .center { text-align: center; }
-        .bold { font-weight: 700; }
-        .line { border-top: 2px solid #000; margin: 8px 0; }
-        .row { display: flex; justify-content: space-between; }
-        .total-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
-      </style></head>
-      <body><div class="ticket">${content}</div></body></html>
-    `);
-    doc.close();
-
-    const cleanup = () => { if (iframe.parentNode) document.body.removeChild(iframe); };
-    iframe.contentWindow?.addEventListener('afterprint', cleanup);
-    // Respaldo por si el navegador no dispara afterprint (algunos WebViews)
-    setTimeout(cleanup, 5000);
-
-    iframe.onload = () => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-    };
+    if (content) printTicketHtml(content, s.printerWidthMm, data.saleNumber);
   };
 
   // ── Impresora Bluetooth (ESC/POS) ──
-  const btStatus = useBtPrinter(st => st.status);
   const btSupported = isBluetoothPrintSupported();
   const [btBusy, setBtBusy] = useState(false);
 
@@ -268,8 +124,8 @@ export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'C
   const timeStr = date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
-      <div className="flex max-h-[100dvh] w-full max-w-sm flex-col rounded-t-2xl bg-card shadow-2xl sm:rounded-2xl">
+    <BareDialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Ticket de venta"
+      panelClassName="max-h-[100dvh] w-full max-w-sm rounded-t-2xl sm:rounded-2xl">
         <div className="flex items-center justify-between gap-2 border-b p-3 sm:p-4">
           <h2 className="font-bold text-lg"><span className="sm:hidden">Ticket</span><span className="hidden sm:inline">Ticket de Venta</span></h2>
           <div className="flex gap-2">
@@ -291,15 +147,15 @@ export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'C
                 <Printer className="h-4 w-4" />
               </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={onClose}>
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar">
               <X className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
         {data.offlinePending && (
-          <div className="bg-amber-500/15 text-amber-700 dark:text-amber-400 text-xs font-medium px-4 py-2 text-center border-b border-amber-500/20">
-            ⚠ Sin conexión — esta venta se guardó localmente y se sincronizará sola cuando vuelva el internet.
+          <div className="bg-warn/15 text-warn-ink text-xs font-medium px-4 py-2 text-center border-b border-warn/20">
+            Sin conexión — esta venta se guardó localmente y se sincronizará sola cuando vuelva el internet.
           </div>
         )}
 
@@ -335,8 +191,8 @@ export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'C
               </div>
             )}
             {data.notes?.startsWith('Pedido web') && (
-              <div className="row" style={{ display: 'flex', justifyContent: 'space-between', color: '#166534', fontWeight: 'bold' }}>
-                <span>Canal:</span><span>🌐 Venta Online</span>
+              <div className="row" style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                <span>Canal:</span><span>Venta Online</span>
               </div>
             )}
             {/* Espacio arriba (separa del bloque anterior) pero nada abajo —
@@ -460,7 +316,7 @@ export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'C
 
             {s.showPoints && Number(data.pointsEarned) > 0 && (
               <p className="center bold" style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '11px', marginTop: '2px' }}>
-                ⭐ Ganaste {data.pointsEarned} puntos de fidelización
+                Ganaste {data.pointsEarned} puntos de fidelización
               </p>
             )}
 
@@ -495,7 +351,6 @@ export function ReceiptModal({ data, onClose, autoPrint = false, closeLabel = 'C
         <div className="border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:hidden">
           <Button className="h-12 w-full text-base font-bold" onClick={onClose}>{closeLabel}</Button>
         </div>
-      </div>
-    </div>
+    </BareDialog>
   );
 }

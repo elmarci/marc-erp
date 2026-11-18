@@ -1,11 +1,10 @@
+// Notificaciones push a clientes de la tienda online: enviar ahora o
+// programar, con destino (ofertas, catálogo, inicio o un producto).
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Bell, Send, Clock, X, Users, Search, Package } from 'lucide-react'
+import { Bell, Clock, Package, Search, Send, Users, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
+import { Btn, EmptyState, Field, PageHeader, Panel, Segmented, StatusBadge, fieldCls, useConfirm } from '@/components/erp'
 import { api, getErrorMessage } from '@/services/api'
 import { formatDateTime, cn } from '@/lib/utils'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
@@ -40,6 +39,7 @@ interface ProductOption { id: string; name: string; salePrice: number; imageUrl:
 
 export function NotificationsPage() {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const [mode, setMode] = useState<'now' | 'later'>('now')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -105,166 +105,118 @@ export function NotificationsPage() {
 
   const pending = (notifications ?? []).filter(n => !n.sentAt)
   const sent = (notifications ?? []).filter(n => n.sentAt)
+  const cancel = async (n: ScheduledNotification) => {
+    const r = await confirm({ title: `Cancelar «${n.title}»`, description: 'La notificación programada no se enviará.', confirmLabel: 'Cancelar envío' })
+    if (r.ok) cancelMutation.mutate(n.id)
+  }
+  const thumb = (p: ProductOption) => p.imageUrl
+    ? <img src={p.imageUrl} alt="" className="size-6 rounded-[4px] object-cover" />
+    : <Package className="size-4 text-ink-muted" />
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Notificaciones</h1>
-          <p className="text-sm text-muted-foreground">Avisa a tus clientes lo que quieras, cuando quieras — no sólo ofertas automáticas</p>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Users className="h-4 w-4" />
-          {subscriberCount ?? '—'} suscritos a avisos
-        </div>
-      </div>
+    <div className="erp flex flex-col gap-5">
+      <PageHeader title="Notificaciones" actions={
+        <span className="inline-flex items-center gap-1.5 text-table text-ink-muted"><Users className="size-4" />{subscriberCount ?? '—'} suscritos a avisos</span>
+      }>
+        <p className="text-table text-ink-muted">Avisa a tus clientes lo que quieras, cuando quieras, no sólo ofertas automáticas</p>
+      </PageHeader>
 
-      <Card>
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Título <span className="text-muted-foreground font-normal">({title.length}/65)</span></label>
-              <Input value={title} onChange={e => setTitle(e.target.value.slice(0, 65))}
-                placeholder="Ej: Bajó el pollo 🐔" maxLength={65} />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Mensaje <span className="text-muted-foreground font-normal">({body.length}/180)</span></label>
-              <textarea value={body} onChange={e => setBody(e.target.value.slice(0, 180))} rows={3} maxLength={180}
-                placeholder="Ej: S/ 6.50 el kg, pídelo ahora por la app y recibe en 20min contra entrega."
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
-            </div>
+      <Panel title="Nueva notificación" bodyClassName="p-4">
+        <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-4">
+          <Field label={`Título (${title.length}/65)`}>
+            <input className={fieldCls} value={title} onChange={e => setTitle(e.target.value.slice(0, 65))} placeholder="Ej: Bajó el pollo" maxLength={65} />
+          </Field>
+          <Field label={`Mensaje (${body.length}/180)`}>
+            <textarea value={body} onChange={e => setBody(e.target.value.slice(0, 180))} rows={3} maxLength={180}
+              placeholder="Ej: S/ 6.50 el kg, pídelo ahora por la app y recibe en 20min contra entrega."
+              className={cn(fieldCls, 'h-auto py-2')} />
+          </Field>
 
-            <div className="flex flex-wrap gap-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Al tocarla, abre</label>
-                <select value={url} onChange={e => { setUrl(e.target.value); setSelectedProduct(null); setProductSearch('') }}
-                  className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                  {URL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+          <div className="flex flex-wrap items-end gap-4">
+            <Field label="Al tocarla, abre">
+              <select className={fieldCls} value={url} onChange={e => { setUrl(e.target.value); setSelectedProduct(null); setProductSearch('') }}>
+                {URL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-table font-medium text-ink">¿Cuándo?</span>
+              <Segmented ariaLabel="Cuándo enviar" size="md" value={mode} onChange={setMode} options={[['now', 'Ahora'], ['later', 'Programar']]} />
+            </div>
+            {mode === 'later' && (
+              <Field label="Fecha y hora">
+                <input type="datetime-local" className={fieldCls} value={scheduledAt} min={nowForInput()} onChange={e => setScheduledAt(e.target.value)} />
+              </Field>
+            )}
+          </div>
+
+          {url === '__product__' && (
+            selectedProduct ? (
+              <div className="flex max-w-sm items-center gap-2 rounded-ctl bg-surface-2 px-3 py-2 text-table">
+                {thumb(selectedProduct)}
+                <span className="flex-1 font-medium text-ink">{selectedProduct.name}</span>
+                <Btn size="sm" variant="ghost" aria-label="Cambiar producto" onClick={() => { setSelectedProduct(null); setProductSearch('') }}><X /></Btn>
               </div>
-
-              {url === '__product__' && (
-                <div className="w-full basis-full">
-                  {selectedProduct ? (
-                    <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                      {selectedProduct.imageUrl ? (
-                        <img src={selectedProduct.imageUrl} alt="" className="h-6 w-6 rounded object-cover" />
-                      ) : (
-                        <Package className="h-4 w-4 text-muted-foreground" />
-                      )}
-                      <span className="flex-1 font-medium">{selectedProduct.name}</span>
-                      <button type="button" onClick={() => { setSelectedProduct(null); setProductSearch('') }}
-                        className="text-muted-foreground hover:text-foreground" aria-label="Cambiar producto">
-                        <X className="h-3.5 w-3.5" />
+            ) : (
+              <div className="relative max-w-sm">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-muted" />
+                <input className={cn(fieldCls, 'pl-8')} value={productSearch} onChange={e => setProductSearch(e.target.value)}
+                  aria-label="Buscar producto" placeholder="Busca el producto (ej: huevo)..." />
+                {debouncedProductSearch.length >= 2 && (productResults?.length ?? 0) > 0 && (
+                  <div className="absolute z-10 mt-1 w-full divide-y divide-line rounded-ctl bg-surface shadow-[0_0_0_1px_hsl(var(--line)),0_8px_24px_-8px_rgba(0,0,0,.2)]">
+                    {productResults!.map(p => (
+                      <button key={p.id} type="button" onClick={() => { setSelectedProduct(p); setProductSearch('') }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-table hover:bg-surface-2">
+                        {thumb(p)}<span className="flex-1 truncate">{p.name}</span>
                       </button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <Input startIcon={<Search className="h-4 w-4" />} value={productSearch}
-                        onChange={e => setProductSearch(e.target.value)}
-                        placeholder="Busca el producto (ej: huevo)..." className="max-w-sm" />
-                      {debouncedProductSearch.length >= 2 && (productResults?.length ?? 0) > 0 && (
-                        <div className="absolute z-10 mt-1 max-w-sm w-full rounded-md border bg-popover shadow-md divide-y">
-                          {productResults!.map(p => (
-                            <button key={p.id} type="button" onClick={() => { setSelectedProduct(p); setProductSearch('') }}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted">
-                              {p.imageUrl ? (
-                                <img src={p.imageUrl} alt="" className="h-6 w-6 rounded object-cover" />
-                              ) : (
-                                <Package className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              <span className="flex-1 truncate">{p.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {debouncedProductSearch.length >= 2 && productResults?.length === 0 && (
-                        <p className="mt-1 text-xs text-muted-foreground">Ningún producto coincide.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">¿Cuándo?</label>
-                <div className="flex rounded-lg bg-muted p-1 text-sm font-medium">
-                  <button type="button" onClick={() => setMode('now')}
-                    className={cn('flex-1 rounded-md px-4 py-1.5 transition-colors', mode === 'now' ? 'bg-background shadow-sm' : 'text-muted-foreground')}>
-                    Ahora
-                  </button>
-                  <button type="button" onClick={() => setMode('later')}
-                    className={cn('flex-1 rounded-md px-4 py-1.5 transition-colors', mode === 'later' ? 'bg-background shadow-sm' : 'text-muted-foreground')}>
-                    Programar
-                  </button>
-                </div>
+                    ))}
+                  </div>
+                )}
+                {debouncedProductSearch.length >= 2 && productResults?.length === 0 && (
+                  <p className="mt-1 text-meta text-ink-muted">Ningún producto coincide.</p>
+                )}
               </div>
+            )
+          )}
 
-              {mode === 'later' && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium">Fecha y hora</label>
-                  <Input type="datetime-local" value={scheduledAt} min={nowForInput()} onChange={e => setScheduledAt(e.target.value)} />
-                </div>
-              )}
-            </div>
-
-            <Button type="submit" disabled={sendMutation.isPending}>
-              {mode === 'now' ? <Send className="mr-2 h-4 w-4" /> : <Clock className="mr-2 h-4 w-4" />}
+          <div>
+            <Btn type="submit" variant="primary" loading={sendMutation.isPending}>
+              {!sendMutation.isPending && (mode === 'now' ? <Send /> : <Clock />)}
               {sendMutation.isPending ? 'Enviando...' : mode === 'now' ? 'Enviar ahora' : 'Programar envío'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+            </Btn>
+          </div>
+        </form>
+      </Panel>
 
       {pending.length > 0 && (
-        <Card>
-          <CardContent className="pt-6">
-            <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wide">Programadas</h2>
-            <div className="space-y-2">
-              {pending.map(n => (
-                <div key={n.id} className="flex items-start justify-between gap-3 rounded-lg border p-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{n.title}</p>
-                    <p className="text-sm text-muted-foreground line-clamp-2">{n.body}</p>
-                    <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
-                      <Clock className="h-3 w-3" />{formatDateTime(n.scheduledAt)}
-                    </p>
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={() => cancelMutation.mutate(n.id)} aria-label="Cancelar">
-                    <X className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
+        <Panel title="Programadas" meta={String(pending.length)} bodyClassName="divide-y divide-line">
+          {pending.map(n => (
+            <div key={n.id} className="flex items-start justify-between gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-table font-medium text-ink">{n.title}</p>
+                <p className="line-clamp-2 text-table text-ink-muted">{n.body}</p>
+                <p className="mt-1 flex items-center gap-1 text-meta tabular-nums text-ink-muted"><Clock className="size-3" />{formatDateTime(n.scheduledAt)}</p>
+              </div>
+              <Btn size="sm" variant="ghost" aria-label={`Cancelar ${n.title}`} onClick={() => cancel(n)}><X /></Btn>
             </div>
-          </CardContent>
-        </Card>
+          ))}
+        </Panel>
       )}
 
-      <Card>
-        <CardContent className="pt-6">
-          <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wide">Historial</h2>
-          {isLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Cargando...</div>
-          ) : sent.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground flex flex-col items-center gap-2">
-              <Bell className="h-8 w-8 text-muted-foreground/50" />
-              Todavía no se envió ninguna notificación manual.
+      <Panel title="Historial" bodyClassName="divide-y divide-line">
+        {isLoading ? (
+          <div className="py-8 text-center text-table text-ink-muted">Cargando…</div>
+        ) : sent.length === 0 ? (
+          <EmptyState icon={Bell} title="Todavía no se envió ninguna notificación manual." />
+        ) : sent.map(n => (
+          <div key={n.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-table font-medium text-ink">{n.title}</p>
+              <p className="line-clamp-2 text-table text-ink-muted">{n.body}</p>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {sent.map(n => (
-                <div key={n.id} className="flex items-start justify-between gap-3 rounded-lg border p-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{n.title}</p>
-                    <p className="text-sm text-muted-foreground line-clamp-2">{n.body}</p>
-                  </div>
-                  <Badge variant="success" className="shrink-0">Enviada {formatDateTime(n.sentAt)}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            <StatusBadge tone="ok" className="shrink-0">Enviada {formatDateTime(n.sentAt!)}</StatusBadge>
+          </div>
+        ))}
+      </Panel>
     </div>
   )
 }

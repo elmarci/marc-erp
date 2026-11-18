@@ -1,17 +1,13 @@
+// Ventas: historial con filtros guardados en la dirección, resumen del
+// periodo y la pestaña de garantías de envase.
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowDown, ArrowUp, ArrowUpDown, FileSpreadsheet, Receipt } from 'lucide-react';
 import {
-  Receipt, Search, Eye, FileSpreadsheet, X, ArrowUpDown, ArrowUp, ArrowDown,
-  TrendingUp, Wallet, Percent, HandCoins, GlassWater,
-} from 'lucide-react';
-import {
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
-} from 'recharts';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+  Btn, EmptyState, FilterBar, PageHeader, PageTabs, Pagination, Panel, Segmented, StatCard, StatGrid, StatusBadge,
+  fieldCls, surfaceCls, tableCls, tdCls, thCls, type Tone,
+} from '@/components/erp';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/authStore';
 import { cn, formatCurrency, formatDateTime, STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/utils';
@@ -40,11 +36,10 @@ interface Cashier { id: string; firstName: string; lastName: string }
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   BOLETA: 'Boleta', FACTURA: 'Factura', NOTA_VENTA: 'Nota de venta', TICKET: 'Ticket',
 };
+const CREDIT_LABELS: Record<string, string> = { false: 'Solo al contado', true: 'Solo fiado' };
 
-const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
-const STATUS_COLORS: Record<string, string> = {
-  COMPLETED: 'bg-success', CANCELLED: 'bg-destructive', RETURNED: 'bg-warning', PARTIALLY_RETURNED: 'bg-amber-400',
-};
+export const SALE_STATUS_TONE: Record<string, Tone> = { COMPLETED: 'ok', CANCELLED: 'bad', RETURNED: 'warn', PARTIALLY_RETURNED: 'warn' };
+const STATUS_BAR: Record<string, string> = { COMPLETED: 'bg-ok', CANCELLED: 'bg-bad', RETURNED: 'bg-warn', PARTIALLY_RETURNED: 'bg-warn' };
 
 const PRESETS = [
   { label: 'Hoy', days: 0 },
@@ -60,8 +55,11 @@ function limaDateStr(date: Date): string {
 
 type SortField = 'createdAt' | 'totalAmount' | 'saleNumber';
 
+const selCls = cn(fieldCls, 'h-8');
+
 export function SalesPage() {
   // Cajero/vendedor y almacén: solo sus ventas del día (el backend lo fuerza igual).
+  const navigate = useNavigate();
   const limited = useAuthStore((st) => st.hasRole('CASHIER', 'WAREHOUSE'));
   const [searchParams, setSearchParams] = useSearchParams();
   const page = parseInt(searchParams.get('page') ?? '1');
@@ -161,17 +159,18 @@ export function SalesPage() {
     staleTime: 5 * 60_000,
   });
 
-  const toggleSort = (field: SortField) => {
-    if (sortBy === field) setParam('sortOrder', sortOrder === 'desc' ? 'asc' : 'desc', false);
-    else { setParam('sortBy', field, false); setParam('sortOrder', 'desc', false); }
-  };
+  // Un solo cambio de dirección: dos setParam seguidos se pisaban y al elegir
+  // otra columna no cambiaba el orden.
+  const toggleSort = (field: SortField) => setSearchParams((prev) => {
+    const next = new URLSearchParams(prev);
+    if (sortBy === field) next.set('sortOrder', sortOrder === 'desc' ? 'asc' : 'desc');
+    else { next.set('sortBy', field); next.set('sortOrder', 'desc'); }
+    return next;
+  });
 
   const sortIcon = (field: SortField) => sortBy !== field
-    ? <ArrowUpDown className="h-3 w-3 opacity-30" />
-    : sortOrder === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />;
-
-  const statusVariant = (s: string) =>
-    s === 'COMPLETED' ? 'success' : s === 'CANCELLED' ? 'destructive' : 'warning';
+    ? <ArrowUpDown className="size-3 opacity-40" />
+    : sortOrder === 'desc' ? <ArrowDown className="size-3" /> : <ArrowUp className="size-3" />;
 
   const exportUrl = () => `/sales/export?${(() => {
     const p = new URLSearchParams(filterParams);
@@ -181,338 +180,195 @@ export function SalesPage() {
 
   const totalStatusCount = summary?.byStatus.reduce((s, x) => s + x.count, 0) ?? 0;
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{limited ? 'Ventas de hoy' : 'Ventas'}</h1>
-          {!limited && <p className="text-sm text-muted-foreground">Historial, filtros avanzados y reportes de ventas</p>}
-        </div>
-        <div className="flex gap-2">
-          {pageTab === 'historial' && !limited && (
-            <Button variant="outline" onClick={() => downloadExcel(exportUrl(), 'ventas.xlsx')}>
-              <FileSpreadsheet className="mr-2 h-4 w-4" />Exportar Excel
-            </Button>
-          )}
-          <Link to="/pos"><Button><Receipt className="mr-2 h-4 w-4" />Nueva Venta</Button></Link>
-        </div>
-      </div>
+  const sales = data?.data ?? [];
+  const cashierName = (cashiers ?? []).find((c) => c.id === cashierId);
+  const advancedCount = [status, paymentMethod, documentType, cashierId, isCredit, minTotal, maxTotal].filter(Boolean).length;
+  const maxMethod = Math.max(1, ...(summary?.byPaymentMethod ?? []).map((m) => m.total));
+  const sortTh = (field: SortField, label: string, right = false) => (
+    <button type="button" onClick={() => toggleSort(field)} className={cn('inline-flex items-center gap-1 hover:text-ink', right && 'ml-auto')}>
+      {label}{sortIcon(field)}
+    </button>
+  );
+  const openSale = (id: string) => navigate(`/sales/${id}`);
 
-      {/* Historial de ventas vs. seguimiento de envases retornables — este
-          último no depende de que la caja esté abierta, así que vive acá y
-          no en Caja. */}
-      <div className="flex gap-1 border-b">
-        {([['historial', 'Historial', Receipt], ['envases', 'Envases', GlassWater]] as const).map(([key, label, Icon]) => (
-          <button key={key} onClick={() => setPageTab(key)}
-            className={cn('flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
-              pageTab === key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
-            <Icon className="h-3.5 w-3.5" />{label}
-          </button>
-        ))}
-      </div>
+  return (
+    <div className="erp flex flex-col gap-5">
+      <PageHeader title={limited ? 'Ventas de hoy' : 'Ventas'} actions={<>
+        {pageTab === 'historial' && !limited && (
+          <Btn className="hidden sm:inline-flex" onClick={() => downloadExcel(exportUrl(), 'ventas.xlsx')}><FileSpreadsheet />Exportar Excel</Btn>
+        )}
+        <Btn variant="primary" onClick={() => navigate('/pos')}><Receipt />Nueva venta</Btn>
+      </>}>
+        {!limited && <p className="text-table text-ink-muted">Historial, filtros y resumen de ventas</p>}
+      </PageHeader>
+
+      {/* Envases: no depende de que la caja esté abierta, así que vive acá. */}
+      <PageTabs value={pageTab} onChange={setPageTab} tabs={[['historial', 'Historial'], ['envases', 'Envases']]} />
 
       {pageTab === 'envases' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <GlassWater className="h-4 w-4 text-primary" />Garantía de envase
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Cobrar o devolver garantías, y ver quién debe traer un envase o a quién devolverle plata.
-            </p>
-          </CardHeader>
-          <CardContent className="max-w-xl">
-            <BottleDepositManager />
-          </CardContent>
-        </Card>
+        <Panel title="Garantía de envase" bodyClassName="p-4">
+          <p className="mb-3 text-table text-ink-muted">Cobrar o devolver garantías, y ver quién debe traer un envase o a quién devolverle plata.</p>
+          <div className="max-w-xl"><BottleDepositManager /></div>
+        </Panel>
       )}
 
-      {pageTab === 'historial' && (
-      <>
-      {limited && (
-        <p className="text-sm text-muted-foreground">Ventas de hoy de la tienda. Filtra por pago, cliente o cajero, y abre cada una para reimprimir el ticket o hacer una devolución.</p>
-      )}
-      {!limited && (
-      <>
-      {/* KPI cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Total vendido</p>
-              <TrendingUp className="h-4 w-4 text-success" />
-            </div>
-            <p className="text-2xl font-bold mt-1">{formatCurrency(summary?.total)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{summary?.count ?? 0} venta(s)</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Ticket promedio</p>
-              <Wallet className="h-4 w-4 text-primary" />
-            </div>
-            <p className="text-2xl font-bold mt-1">{formatCurrency(summary?.average)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">por venta completada</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Descuentos aplicados</p>
-              <Percent className="h-4 w-4 text-amber-500" />
-            </div>
-            <p className="text-2xl font-bold mt-1">{formatCurrency(summary?.discounts)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">en el período filtrado</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">Ventas fiadas</p>
-              <HandCoins className="h-4 w-4 text-orange-500" />
-            </div>
-            <p className="text-2xl font-bold mt-1">{formatCurrency(summary?.creditTotal)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{summary?.creditCount ?? 0} venta(s) a crédito</p>
-          </CardContent>
-        </Card>
-      </div>
+      {pageTab === 'historial' && (<>
+        {limited && (
+          <p className="text-table text-ink-muted">Ventas de hoy de la tienda. Filtra por pago, cliente o cajero, y abre cada una para reimprimir el ticket o hacer una devolución.</p>
+        )}
+        {!limited && (<>
+          <StatGrid cols={4}>
+            <StatCard label="Total vendido" value={formatCurrency(summary?.total)} hint={`${summary?.count ?? 0} venta(s)`} />
+            <StatCard label="Ticket promedio" value={formatCurrency(summary?.average)} hint="por venta completada" />
+            <StatCard label="Descuentos aplicados" value={formatCurrency(summary?.discounts)} hint="en el periodo filtrado" />
+            <StatCard label="Ventas fiadas" value={formatCurrency(summary?.creditTotal)} hint={`${summary?.creditCount ?? 0} venta(s) a crédito`} />
+          </StatGrid>
 
-      {/* Charts */}
-      {summary && (summary.byPaymentMethod.length > 0 || totalStatusCount > 0) && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {summary.byPaymentMethod.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle className="text-base">Métodos de pago</CardTitle></CardHeader>
-              <CardContent>
-                <div className="flex items-center">
-                  <ResponsiveContainer width={150} height={150}>
-                    <PieChart>
-                      <Pie data={summary.byPaymentMethod} dataKey="total" nameKey="method"
-                        cx="50%" cy="50%" innerRadius={42} outerRadius={70}>
-                        {summary.byPaymentMethod.map((_, i) => (
-                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex-1 space-y-2 text-sm ml-2">
-                    {summary.byPaymentMethod.map((m, i) => (
-                      <div key={m.method} className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                          <span className="truncate">{PAYMENT_METHOD_LABELS[m.method] ?? m.method}</span>
-                        </div>
-                        <span className="font-semibold shrink-0">{formatCurrency(m.total)}</span>
+          {summary && (summary.byPaymentMethod.length > 0 || totalStatusCount > 0) && (
+            <div className="grid gap-5 lg:grid-cols-2">
+              {summary.byPaymentMethod.length > 0 && (
+                <Panel title="Métodos de pago" bodyClassName="flex flex-col gap-2.5 p-4">
+                  {summary.byPaymentMethod.map((m) => (
+                    <div key={m.method} className="text-table">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span>{PAYMENT_METHOD_LABELS[m.method] ?? m.method}<span className="ml-1.5 text-meta text-ink-muted">{m.count}</span></span>
+                        <span className="font-semibold tabular-nums">{formatCurrency(m.total)}</span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {totalStatusCount > 0 && (
-            <Card>
-              <CardHeader><CardTitle className="text-base">Estado de las ventas</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {summary.byStatus.map((s) => {
-                  const pct = totalStatusCount > 0 ? (s.count / totalStatusCount) * 100 : 0;
-                  return (
-                    <div key={s.status}>
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span>{STATUS_LABELS[s.status] ?? s.status}</span>
-                        <span className="text-muted-foreground">{s.count} ({pct.toFixed(0)}%)</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted overflow-hidden">
-                        <div className={cn('h-full rounded-full', STATUS_COLORS[s.status] ?? 'bg-primary')} style={{ width: `${pct}%` }} />
+                      <div className="h-1.5 overflow-hidden rounded-full bg-ink/[0.07]">
+                        <div className="h-full rounded-full bg-brand" style={{ width: `${(m.total / maxMethod) * 100}%` }} />
                       </div>
                     </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      </>
-      )}
-
-      {/* Filters — cajero/vendedor también filtra, pero siempre dentro del día */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[220px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Buscar por N° venta, cliente, documento o cajero..."
-                value={search} onChange={(e) => handleSearch(e.target.value)} />
-            </div>
-            {!limited && (<>
-            <div className="flex gap-1 rounded-lg border p-1">
-              {PRESETS.map((p, i) => (
-                <button key={p.label} type="button"
-                  onClick={() => setSearchParams((prev) => {
-                    const next = new URLSearchParams(prev);
-                    next.set('preset', String(i)); next.delete('dateFrom'); next.delete('dateTo'); next.set('page', '1');
-                    return next;
+                  ))}
+                </Panel>
+              )}
+              {totalStatusCount > 0 && (
+                <Panel title="Estado de las ventas" bodyClassName="flex flex-col gap-2.5 p-4">
+                  {summary.byStatus.map((st) => {
+                    const pct = totalStatusCount > 0 ? (st.count / totalStatusCount) * 100 : 0;
+                    return (
+                      <div key={st.status} className="text-table">
+                        <div className="mb-1 flex items-center justify-between">
+                          <span>{STATUS_LABELS[st.status] ?? st.status}</span>
+                          <span className="tabular-nums text-ink-muted">{st.count} ({pct.toFixed(0)}%)</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-ink/[0.07]">
+                          <div className={cn('h-full rounded-full', STATUS_BAR[st.status] ?? 'bg-brand')} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
                   })}
-                  className={cn('px-3 py-1.5 text-xs rounded-md transition-colors',
-                    preset === i && !dateFrom && !dateTo ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
-                  {p.label}
-                </button>
-              ))}
+                </Panel>
+              )}
             </div>
-            <Input type="date" value={dateFrom} onChange={(e) => setParam('dateFrom', e.target.value)} className="w-40" title="Desde" />
-            <Input type="date" value={dateTo} onChange={(e) => setParam('dateTo', e.target.value)} className="w-40" title="Hasta" />
-            </>)}
-          </div>
+          )}
+        </>)}
 
-          <div className="flex flex-wrap items-center gap-3">
-            <select value={status} onChange={(e) => setParam('status', e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <option value="">Todos los estados</option>
-              <option value="COMPLETED">Completada</option>
-              <option value="CANCELLED">Anulada</option>
-              <option value="RETURNED">Devuelta</option>
-              <option value="PARTIALLY_RETURNED">Dev. parcial</option>
-            </select>
+        <div className={cn('overflow-hidden', surfaceCls)}>
+          <FilterBar
+            search={{ value: search, onChange: handleSearch, placeholder: 'Buscar por N° venta, cliente, documento o cajero' }}
+            quick={!limited && <>
+              <Segmented ariaLabel="Periodo" value={dateFrom || dateTo ? '' : String(preset)}
+                onChange={(v) => setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('preset', v); next.delete('dateFrom'); next.delete('dateTo'); next.set('page', '1');
+                  return next;
+                })}
+                options={PRESETS.map((p, i) => [String(i), p.label] as const)} />
+              <input type="date" aria-label="Desde" title="Desde" value={dateFrom} onChange={(e) => setParam('dateFrom', e.target.value)} className={cn(selCls, 'w-auto')} />
+              <input type="date" aria-label="Hasta" title="Hasta" value={dateTo} onChange={(e) => setParam('dateTo', e.target.value)} className={cn(selCls, 'w-auto')} />
+            </>}
+            advancedCount={advancedCount}
+            advanced={<>
+              <select aria-label="Estado" value={status} onChange={(e) => setParam('status', e.target.value)} className={selCls}>
+                <option value="">Todos los estados</option>
+                <option value="COMPLETED">Completada</option>
+                <option value="CANCELLED">Anulada</option>
+                <option value="RETURNED">Devuelta</option>
+                <option value="PARTIALLY_RETURNED">Dev. parcial</option>
+              </select>
+              <select aria-label="Método de pago" value={paymentMethod} onChange={(e) => setParam('paymentMethod', e.target.value)} className={selCls}>
+                <option value="">Todos los métodos de pago</option>
+                {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <select aria-label="Tipo de documento" value={documentType} onChange={(e) => setParam('documentType', e.target.value)} className={selCls}>
+                <option value="">Todo tipo de documento</option>
+                {Object.entries(DOCUMENT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <select aria-label="Cajero" value={cashierId} onChange={(e) => setParam('cashierId', e.target.value)} className={selCls}>
+                <option value="">Todos los cajeros</option>
+                {(cashiers ?? []).map((c) => <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>)}
+              </select>
+              <select aria-label="Contado o fiado" value={isCredit} onChange={(e) => setParam('isCredit', e.target.value)} className={selCls}>
+                <option value="">Al contado y fiado</option>
+                <option value="false">Solo al contado</option>
+                <option value="true">Solo fiado</option>
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <input type="number" inputMode="decimal" aria-label="Monto mínimo" placeholder="Monto mín." value={minTotal} onChange={(e) => setParam('minTotal', e.target.value)} className={cn(selCls, 'text-right tabular-nums')} />
+                <input type="number" inputMode="decimal" aria-label="Monto máximo" placeholder="Monto máx." value={maxTotal} onChange={(e) => setParam('maxTotal', e.target.value)} className={cn(selCls, 'text-right tabular-nums')} />
+              </div>
+            </>}
+            chips={[
+              ...(search ? [{ key: 'q', label: 'Búsqueda', value: search, onRemove: () => handleSearch('') }] : []),
+              ...(status ? [{ key: 'st', label: 'Estado', value: STATUS_LABELS[status] ?? status, onRemove: () => setParam('status', '') }] : []),
+              ...(paymentMethod ? [{ key: 'pm', label: 'Pago', value: PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod, onRemove: () => setParam('paymentMethod', '') }] : []),
+              ...(documentType ? [{ key: 'doc', label: 'Documento', value: DOCUMENT_TYPE_LABELS[documentType] ?? documentType, onRemove: () => setParam('documentType', '') }] : []),
+              ...(cashierId ? [{ key: 'caj', label: 'Cajero', value: cashierName ? `${cashierName.firstName} ${cashierName.lastName}` : '…', onRemove: () => setParam('cashierId', '') }] : []),
+              ...(isCredit ? [{ key: 'cr', label: 'Venta', value: CREDIT_LABELS[isCredit], onRemove: () => setParam('isCredit', '') }] : []),
+              ...(minTotal ? [{ key: 'min', label: 'Desde', value: `S/ ${minTotal}`, onRemove: () => setParam('minTotal', '') }] : []),
+              ...(maxTotal ? [{ key: 'max', label: 'Hasta', value: `S/ ${maxTotal}`, onRemove: () => setParam('maxTotal', '') }] : []),
+            ]}
+            onClear={hasFilters ? clearFilters : undefined}
+          />
 
-            <select value={paymentMethod} onChange={(e) => setParam('paymentMethod', e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <option value="">Todos los métodos de pago</option>
-              {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-
-            <select value={documentType} onChange={(e) => setParam('documentType', e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <option value="">Todo tipo de documento</option>
-              {Object.entries(DOCUMENT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-
-            <select value={cashierId} onChange={(e) => setParam('cashierId', e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <option value="">Todos los cajeros</option>
-              {(cashiers ?? []).map((c) => <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>)}
-            </select>
-
-            <select value={isCredit} onChange={(e) => setParam('isCredit', e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <option value="">Al contado y fiado</option>
-              <option value="false">Solo al contado</option>
-              <option value="true">Solo fiado</option>
-            </select>
-
-            <Input type="number" inputMode="decimal" placeholder="Monto mín." value={minTotal}
-              onChange={(e) => setParam('minTotal', e.target.value)} className="w-28" />
-            <Input type="number" inputMode="decimal" placeholder="Monto máx." value={maxTotal}
-              onChange={(e) => setParam('maxTotal', e.target.value)} className="w-28" />
-
-            {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                <X className="mr-1 h-3.5 w-3.5" />Limpiar
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Cargando ventas...</div>
-          ) : (data?.data ?? []).length === 0 ? (
-            <div className="flex flex-col items-center gap-3 p-12 text-muted-foreground">
-              <Receipt className="h-12 w-12 opacity-20" />
-              <p>{hasFilters ? 'Ninguna venta coincide con los filtros aplicados' : 'No hay ventas registradas'}</p>
-            </div>
+            <div className="py-12 text-center text-table text-ink-muted">Cargando ventas…</div>
+          ) : sales.length === 0 ? (
+            <EmptyState icon={Receipt} title={hasFilters ? 'Ninguna venta coincide con los filtros aplicados' : 'No hay ventas registradas'} />
           ) : (
             <div className="overflow-x-auto">
-              <table className="data-table w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium">
-                      <button type="button" onClick={() => toggleSort('saleNumber')} className="flex items-center gap-1 hover:text-foreground">
-                        Número {sortIcon('saleNumber')}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium col-md">Cajero</th>
-                    <th className="px-4 py-3 text-left font-medium col-lg">Cliente</th>
-                    <th className="px-4 py-3 text-left font-medium col-md">Documento</th>
-                    <th className="px-4 py-3 text-left font-medium col-lg">Pago</th>
-                    <th className="px-4 py-3 text-right font-medium">
-                      <button type="button" onClick={() => toggleSort('totalAmount')} className="flex items-center gap-1 ml-auto hover:text-foreground">
-                        Total {sortIcon('totalAmount')}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium">Estado</th>
-                    <th className="px-4 py-3 text-left font-medium col-md">
-                      <button type="button" onClick={() => toggleSort('createdAt')} className="flex items-center gap-1 hover:text-foreground">
-                        Fecha {sortIcon('createdAt')}
-                      </button>
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {(data?.data ?? []).map((sale) => (
-                    <tr key={sale.id} className="hover:bg-muted/30">
-                      <td data-label="Número" className="px-4 py-3 font-mono text-xs font-medium">
-                        {sale.saleNumber}
-                        {sale.isCredit && <Badge variant="warning" className="ml-2 text-[10px]">Fiado</Badge>}
+              <table className={tableCls}>
+                <thead><tr>
+                  <th className={thCls}>{sortTh('saleNumber', 'Número')}</th>
+                  <th className={cn(thCls, 'hidden md:table-cell')}>Cajero</th>
+                  <th className={cn(thCls, 'hidden lg:table-cell')}>Cliente</th>
+                  <th className={cn(thCls, 'hidden md:table-cell')}>Documento</th>
+                  <th className={cn(thCls, 'hidden lg:table-cell')}>Pago</th>
+                  <th className={cn(thCls, 'text-right')}>{sortTh('totalAmount', 'Total', true)}</th>
+                  <th className={thCls}>Estado</th>
+                  <th className={cn(thCls, 'hidden sm:table-cell')}>{sortTh('createdAt', 'Fecha')}</th>
+                </tr></thead>
+                <tbody>
+                  {sales.map((sale) => (
+                    <tr key={sale.id} tabIndex={0} aria-label={`Ver venta ${sale.saleNumber}`} onClick={() => openSale(sale.id)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSale(sale.id); } }}
+                      className="cursor-pointer hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none">
+                      <td className={cn(tdCls, 'py-1.5')}>
+                        <div className="flex items-center gap-1.5 font-mono text-meta font-medium text-ink">
+                          {sale.saleNumber}{sale.isCredit && <StatusBadge tone="warn" className="font-sans">Fiado</StatusBadge>}
+                        </div>
+                        <div className="text-meta text-ink-muted sm:hidden">{formatDateTime(sale.createdAt)}</div>
                       </td>
-                      <td data-label="Cajero" className="px-4 py-3 col-md">{sale.cashier.firstName} {sale.cashier.lastName}</td>
-                      <td data-label="Cliente" className="px-4 py-3 text-muted-foreground col-lg">
+                      <td className={cn(tdCls, 'hidden md:table-cell')}>{sale.cashier.firstName} {sale.cashier.lastName}</td>
+                      <td className={cn(tdCls, 'hidden text-ink-muted lg:table-cell')}>
                         {sale.customer ? (sale.customer.businessName || `${sale.customer.firstName} ${sale.customer.lastName}`) : '—'}
                       </td>
-                      <td data-label="Documento" className="px-4 py-3 col-md text-muted-foreground text-xs">
-                        {DOCUMENT_TYPE_LABELS[sale.documentType] ?? sale.documentType}
-                      </td>
-                      <td data-label="Pago" className="px-4 py-3 col-lg">
-                        <div className="flex flex-wrap gap-1">
-                          {sale.payments.map((p, i) => (
-                            <Badge key={i} variant="secondary" className="text-[10px] font-normal">
-                              {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
-                            </Badge>
-                          ))}
-                        </div>
-                      </td>
-                      <td data-label="Total" className="px-4 py-3 text-right font-semibold">{formatCurrency(sale.totalAmount)}</td>
-                      <td data-label="Estado" className="px-4 py-3 text-center">
-                        <Badge variant={statusVariant(sale.status) as 'success' | 'destructive' | 'warning'}>
-                          {STATUS_LABELS[sale.status] ?? sale.status}
-                        </Badge>
-                      </td>
-                      <td data-label="Fecha" className="px-4 py-3 text-muted-foreground text-xs col-md">{formatDateTime(sale.createdAt)}</td>
-                      <td data-label="Acciones" className="px-4 py-3 text-center">
-                        <Link to={`/sales/${sale.id}`}>
-                          <Button variant="ghost" size="icon-sm"><Eye className="h-4 w-4" /></Button>
-                        </Link>
-                      </td>
+                      <td className={cn(tdCls, 'hidden text-ink-muted md:table-cell')}>{DOCUMENT_TYPE_LABELS[sale.documentType] ?? sale.documentType}</td>
+                      <td className={cn(tdCls, 'hidden text-ink-muted lg:table-cell')}>{sale.payments.map((p) => PAYMENT_METHOD_LABELS[p.method] ?? p.method).join(' + ')}</td>
+                      <td className={cn(tdCls, 'text-right font-semibold tabular-nums')}>{formatCurrency(sale.totalAmount)}</td>
+                      <td className={tdCls}><StatusBadge tone={SALE_STATUS_TONE[sale.status] ?? 'neutral'}>{STATUS_LABELS[sale.status] ?? sale.status}</StatusBadge></td>
+                      <td className={cn(tdCls, 'hidden whitespace-nowrap text-meta text-ink-muted sm:table-cell')}>{formatDateTime(sale.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {data?.pagination && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            {data.pagination.total} venta(s) — Página {page} de {Math.max(1, data.pagination.totalPages)}
-          </p>
-          {data.pagination.totalPages > 1 && (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Anterior</Button>
-              <Button variant="outline" size="sm" disabled={page >= data.pagination.totalPages} onClick={() => setPage(page + 1)}>Siguiente</Button>
-            </div>
+          {data?.pagination && data.pagination.total > 0 && (
+            <Pagination page={page} totalPages={data.pagination.totalPages} total={data.pagination.total} pageSize={25} onPage={setPage} />
           )}
         </div>
-      )}
-      </>
-      )}
+      </>)}
     </div>
   );
 }

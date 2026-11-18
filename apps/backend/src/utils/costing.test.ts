@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { purchaseTaxFactor, round2, round4, weightedAverageCost } from './costing';
+import { purchaseTaxFactor, purchaseTotals, round2, round4, weightedAverageCost } from './costing';
 
 describe('weightedAverageCost', () => {
   it('promedia el stock existente con lo que entra', () => {
@@ -37,5 +37,27 @@ describe('redondeos', () => {
   it('redondea a 2 y 4 decimales sin errores de punto flotante', () => {
     expect(round2(1.005)).toBe(1.01);
     expect(round4(2.36 * 1.18)).toBe(2.7848);
+  });
+});
+
+describe('Fase 5: IGV dentro del costo y percepción aparte', () => {
+  it('afecto a IGV: el total es la suma de las líneas y el IGV es lo que va dentro', () => {
+    const t = purchaseTotals(118, { igvIncluded: true });
+    expect(t).toEqual({ subtotal: 118, taxAmount: 18, totalAmount: 118 });
+  });
+  it('la percepción se suma a lo que se paga, no al IGV', () => {
+    const t = purchaseTotals(118, { igvIncluded: true, perception: 2.36 });
+    expect(t).toEqual({ subtotal: 118, taxAmount: 18, totalAmount: 120.36 });
+  });
+  it('compras antiguas: el IGV se sigue sumando encima', () => {
+    expect(purchaseTotals(100, { legacyTaxRatio: 0.18 })).toEqual({ subtotal: 100, taxAmount: 18, totalAmount: 118 });
+  });
+  it('sin IGV: total = líneas', () => {
+    expect(purchaseTotals(50.5, {})).toEqual({ subtotal: 50.5, taxAmount: 0, totalAmount: 50.5 });
+  });
+  it('costo con IGV dentro: factor 1 si el IGV es costo; sin IGV si se recupera', () => {
+    expect(purchaseTaxFactor(118, 18, true, true)).toBe(1);
+    expect(purchaseTaxFactor(118, 18, false, true)).toBeCloseTo(1 / 1.18, 10);
+    expect(purchaseTaxFactor(100, 18, true, false)).toBeCloseTo(1.18, 10);
   });
 });

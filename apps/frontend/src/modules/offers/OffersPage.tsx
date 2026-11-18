@@ -1,561 +1,27 @@
-import { useRef, useState } from 'react'
+// Ofertas y promociones: lista, activar o pausar, rendimiento por oferta,
+// crear, editar y eliminar.
+import { Fragment, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Tag, Eye, EyeOff, Trash2, TrendingUp, ShoppingCart, DollarSign, Image, Video, Upload } from 'lucide-react'
+import { Eye, EyeOff, Pencil, Plus, Tag, Trash2, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Btn, EmptyState, PageHeader, RowMenu, StatCard, StatGrid, StatusBadge, surfaceCls, tableCls, tdCls, thCls, useConfirm,
+} from '@/components/erp'
 import { api, getErrorMessage } from '@/services/api'
-import { formatCurrency, formatDateTime, todayLimaDateString, cn } from '@/lib/utils'
-import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { formatCurrency, todayLimaDateString, cn } from '@/lib/utils'
+import { OfferModal } from './OfferModal'
+import { DAY_LABELS, TYPE_LABELS, offerValueText, type Offer } from './offerTypes'
 
-interface Offer {
-  id: string; name: string; description: string | null; type: string; value: number
-  valueType: 'PERCENTAGE' | 'FIXED' | null
-  buyQuantity: number | null; getQuantity: number | null
-  startTime: string | null; endTime: string | null; daysOfWeek: number[]
-  startDate: string; endDate: string | null; isActive: boolean; showInStore: boolean
-  storeBadge: string | null; storeImage: string | null; storeVideo: string | null; storeFullDesign: boolean; priority: number
-  products: Array<{
-    quantity?: number; asPack?: boolean
-    product: {
-      id: string; name: string; imageUrl: string | null; salePrice?: number
-      packSize?: number | null; packPrice?: number | string | null; packLabel?: string | null
-    }
-  }>
-}
-
-interface Product {
-  id: string; name: string; salePrice: number
-  packSize?: number | null; packPrice?: number | string | null; packLabel?: string | null
-}
-
-// Un producto entra a la oferta por unidad o, si tiene paquete/caja configurado
-// (cajetilla, caja...), por ese paquete: el precio, la cantidad y el stock de la
-// promo se calculan con el paquete como unidad de venta.
-interface SelItem {
-  productId: string; name: string; asPack: boolean; salePrice: number
-  packSize: number | null; packPrice: number | null; packLabel: string | null
-}
-
-const hasPackCfg = (p: { packSize?: number | null; packPrice?: number | string | null }) =>
-  !!p.packSize && p.packSize >= 2 && p.packPrice != null && Number(p.packPrice) > 0
-
-const toSel = (p: Product, asPack: boolean): SelItem => ({
-  productId: p.id, name: p.name, asPack, salePrice: Number(p.salePrice ?? 0),
-  packSize: p.packSize ?? null, packPrice: p.packPrice != null ? Number(p.packPrice) : null, packLabel: p.packLabel ?? null,
-})
-
-const presentationLabel = (i: SelItem) => (i.asPack ? `${i.packLabel || 'Paquete'} x${i.packSize}` : 'Unidad')
-const priceOf = (i: SelItem) => (i.asPack ? (i.packPrice ?? 0) : i.salePrice)
-
-// Resultados de búsqueda: cada producto con paquete ofrece dos filas, unidad y paquete.
-function ProductResults({ products, allowPack, onPick }: {
-  products: Product[]; allowPack: boolean; onPick: (p: Product, asPack: boolean) => void
-}) {
-  return (
-    <div className="absolute z-10 w-full mt-1 border rounded-lg bg-popover shadow divide-y max-h-48 overflow-y-auto">
-      {products.map(p => (
-        <div key={p.id}>
-          <button type="button" onClick={() => onPick(p, false)}
-            className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between">
-            <span>{p.name}</span>
-            <span className="text-muted-foreground">{formatCurrency(p.salePrice)}</span>
-          </button>
-          {allowPack && hasPackCfg(p) && (
-            <button type="button" onClick={() => onPick(p, true)}
-              className="w-full text-left pl-7 pr-3 py-1.5 text-xs hover:bg-muted flex justify-between text-primary bg-primary/5">
-              <span>{p.packLabel || 'Paquete'} x{p.packSize} de {p.name}</span>
-              <span className="font-semibold">{formatCurrency(Number(p.packPrice))}</span>
-            </button>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  PERCENTAGE_DISCOUNT: 'Descuento %', FIXED_DISCOUNT: 'Descuento S/',
-  BUY_X_GET_Y: '2×1 / Lleva más', BUNDLE_PRICE: 'Precio paquete (mismo producto)',
-  COMBO: 'Combo (productos distintos)', HAPPY_HOUR: 'Hora feliz',
-}
-
-const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-
-function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => void }) {
-  const queryClient = useQueryClient()
-  const [form, setForm] = useState({
-    name: offer?.name ?? '',
-    description: offer?.description ?? '',
-    type: offer?.type ?? 'PERCENTAGE_DISCOUNT',
-    value: String(offer?.value ?? ''),
-    valueType: offer?.valueType ?? 'PERCENTAGE',
-    buyQuantity: String(offer?.buyQuantity ?? 2),
-    getQuantity: String(offer?.getQuantity ?? 3),
-    startTime: offer?.startTime ?? '14:00',
-    endTime: offer?.endTime ?? '18:00',
-    daysOfWeek: offer?.daysOfWeek ?? ([] as number[]),
-    startDate: offer?.startDate ? offer.startDate.split('T')[0] : todayLimaDateString(),
-    endDate: offer?.endDate ? offer.endDate.split('T')[0] : '',
-    isActive: offer?.isActive ?? true,
-    showInStore: offer?.showInStore ?? true,
-    storeBadge: offer?.storeBadge ?? '',
-    storeImage: offer?.storeImage ?? '',
-    storeVideo: offer?.storeVideo ?? '',
-    storeFullDesign: offer?.storeFullDesign ?? false,
-    priority: String(offer?.priority ?? 0),
-    items: offer && offer.type !== 'COMBO'
-      ? offer.products.map(p => toSel({ id: p.product.id, name: p.product.name, salePrice: Number(p.product.salePrice ?? 0), packSize: p.product.packSize, packPrice: p.product.packPrice, packLabel: p.product.packLabel }, !!p.asPack))
-      : ([] as SelItem[]),
-    comboItems: offer?.type === 'COMBO'
-      ? offer.products.map(p => ({
-        ...toSel({ id: p.product.id, name: p.product.name, salePrice: Number(p.product.salePrice ?? 0), packSize: p.product.packSize, packPrice: p.product.packPrice, packLabel: p.product.packLabel }, !!p.asPack),
-        quantity: p.quantity ?? 1,
-      }))
-      : ([] as Array<SelItem & { quantity: number }>),
-  })
-  const [productSearch, setProductSearch] = useState('')
-  const debouncedProductSearch = useDebouncedValue(productSearch, 300)
-  const bannerImageInputRef = useRef<HTMLInputElement>(null)
-  const bannerVideoInputRef = useRef<HTMLInputElement>(null)
-
-  const bannerImageMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const body = new FormData()
-      body.append('image', file)
-      return api.post<{ data: { imageUrl: string } }>('/settings/upload-banner-image', body, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-    },
-    onSuccess: (res) => setForm(v => ({ ...v, storeImage: res.data.data.imageUrl })),
-    onError: (err) => toast.error(getErrorMessage(err)),
-  })
-
-  const bannerVideoMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const body = new FormData()
-      body.append('video', file)
-      return api.post<{ data: { videoUrl: string } }>('/settings/upload-video', body, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-    },
-    onSuccess: (res) => setForm(v => ({ ...v, storeVideo: res.data.data.videoUrl })),
-    onError: (err) => toast.error(getErrorMessage(err)),
-  })
-
-  const { data: products } = useQuery({
-    queryKey: ['products-offer-search', debouncedProductSearch],
-    queryFn: async () => (await api.get<{ data: Product[] }>(`/products?q=${debouncedProductSearch}&limit=10`)).data.data,
-    enabled: debouncedProductSearch.length >= 2,
-  })
-
-  const isPack = form.type === 'BUY_X_GET_Y' || form.type === 'BUNDLE_PRICE'
-  const isCombo = form.type === 'COMBO'
-  const isHappyHour = form.type === 'HAPPY_HOUR'
-
-  const comboSum = form.comboItems.reduce((s, i) => s + priceOf(i) * i.quantity, 0)
-
-  const mutation = useMutation({
-    mutationFn: () => {
-      const payload: Record<string, unknown> = {
-        ...form,
-        value: form.type === 'BUY_X_GET_Y' ? 0 : Number(form.value),
-        priority: Number(form.priority),
-        endDate: form.endDate || undefined,
-      }
-      if (isPack) {
-        payload.buyQuantity = Number(form.buyQuantity)
-        payload.getQuantity = Number(form.getQuantity)
-      } else {
-        delete payload.buyQuantity; delete payload.getQuantity
-      }
-      if (isHappyHour) {
-        payload.valueType = form.valueType
-        payload.startTime = form.startTime
-        payload.endTime = form.endTime
-        payload.daysOfWeek = form.daysOfWeek
-      } else {
-        delete payload.valueType; delete payload.startTime; delete payload.endTime; delete payload.daysOfWeek
-      }
-      if (isCombo) {
-        payload.comboItems = form.comboItems.map(i => ({ productId: i.productId, quantity: i.quantity, asPack: i.asPack }))
-        delete payload.productIds; delete payload.packProductIds
-      } else {
-        payload.productIds = form.items.map(i => i.productId)
-        payload.packProductIds = form.items.filter(i => i.asPack).map(i => i.productId)
-        delete payload.comboItems
-      }
-      delete payload.items
-      return offer ? api.put(`/promotions/${offer.id}`, payload) : api.post('/promotions', payload)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['offers'] })
-      toast.success(offer ? 'Oferta actualizada.' : 'Oferta creada.')
-      onClose()
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  })
-
-  // Elegir un producto ya agregado cambia su presentación (unidad ↔ paquete):
-  // en una misma oferta un producto entra de una sola forma.
-  const addProduct = (p: Product, asPack = false) => {
-    setForm(v => ({
-      ...v,
-      items: v.items.some(i => i.productId === p.id)
-        ? v.items.map(i => i.productId === p.id ? toSel(p, asPack) : i)
-        : [...v.items, toSel(p, asPack)],
-    }))
-    setProductSearch('')
-  }
-  const addComboProduct = (p: Product, asPack = false) => {
-    setForm(v => ({
-      ...v,
-      comboItems: v.comboItems.some(i => i.productId === p.id)
-        ? v.comboItems.map(i => i.productId === p.id ? { ...toSel(p, asPack), quantity: i.quantity } : i)
-        : [...v.comboItems, { ...toSel(p, asPack), quantity: 1 }],
-    }))
-    setProductSearch('')
-  }
-  const setItemPack = (productId: string, asPack: boolean) =>
-    setForm(v => ({ ...v, items: v.items.map(i => i.productId === productId ? { ...i, asPack } : i) }))
-  const setComboPack = (productId: string, asPack: boolean) =>
-    setForm(v => ({ ...v, comboItems: v.comboItems.map(i => i.productId === productId ? { ...i, asPack } : i) }))
-  const updateComboQty = (productId: string, quantity: number) =>
-    setForm(v => ({ ...v, comboItems: v.comboItems.map(i => i.productId === productId ? { ...i, quantity } : i) }))
-  const removeComboProduct = (productId: string) =>
-    setForm(v => ({ ...v, comboItems: v.comboItems.filter(i => i.productId !== productId) }))
-  const removeProduct = (id: string) => setForm(v => ({ ...v, items: v.items.filter(x => x.productId !== id) }))
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setForm(v => ({ ...v, [k]: e.target.value }))
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-xl rounded-2xl bg-card shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between border-b p-5">
-          <h2 className="text-lg font-bold">{offer ? 'Editar oferta' : 'Nueva oferta'}</h2>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
-        </div>
-        <div className="overflow-y-auto p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className="mb-1 block text-sm font-medium">Nombre de la oferta *</label>
-              <Input value={form.name} onChange={set('name')} placeholder="Ej: 20% en bebidas" />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Tipo de descuento</label>
-              <select value={form.type} onChange={set('type')}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </div>
-            {!isPack && !isHappyHour && !isCombo && (
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Valor {form.type === 'PERCENTAGE_DISCOUNT' ? '(%)' : '(S/)'}
-                </label>
-                <Input type="number" min={0} value={form.value} onChange={set('value')} placeholder="20" />
-              </div>
-            )}
-            {isCombo && (
-              <div>
-                <label className="mb-1 block text-sm font-medium">Precio total del combo (S/)</label>
-                <Input type="number" min={0} step={0.1} value={form.value} onChange={set('value')} placeholder="4.30" />
-              </div>
-            )}
-            {form.type === 'BUNDLE_PRICE' && (
-              <div>
-                <label className="mb-1 block text-sm font-medium">Precio del paquete (S/)</label>
-                <Input type="number" min={0} step={0.1} value={form.value} onChange={set('value')} placeholder="9.00" />
-              </div>
-            )}
-            {form.type === 'BUY_X_GET_Y' && (
-              <>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Paga (unidades)</label>
-                  <Input type="number" min={1} value={form.buyQuantity} onChange={set('buyQuantity')} placeholder="2" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Se lleva (unidades)</label>
-                  <Input type="number" min={1} value={form.getQuantity} onChange={set('getQuantity')} placeholder="3" />
-                </div>
-              </>
-            )}
-            {form.type === 'BUNDLE_PRICE' && (
-              <div>
-                <label className="mb-1 block text-sm font-medium">Unidades por paquete</label>
-                <Input type="number" min={1} value={form.getQuantity} onChange={set('getQuantity')} placeholder="2" />
-              </div>
-            )}
-            {isHappyHour && (
-              <>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Tipo de valor</label>
-                  <select value={form.valueType} onChange={set('valueType')}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <option value="PERCENTAGE">Porcentaje (%)</option>
-                    <option value="FIXED">Monto fijo (S/)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">
-                    Valor {form.valueType === 'PERCENTAGE' ? '(%)' : '(S/)'}
-                  </label>
-                  <Input type="number" min={0} value={form.value} onChange={set('value')} placeholder="20" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Hora inicio</label>
-                  <Input type="time" value={form.startTime} onChange={set('startTime')} />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Hora fin</label>
-                  <Input type="time" value={form.endTime} onChange={set('endTime')} />
-                </div>
-                <div className="col-span-2">
-                  <label className="mb-1 block text-sm font-medium">Días (ninguno = todos los días)</label>
-                  <div className="flex flex-wrap gap-2">
-                    {DAY_LABELS.map((label, idx) => (
-                      <button key={idx} type="button"
-                        onClick={() => setForm(v => ({
-                          ...v,
-                          daysOfWeek: v.daysOfWeek.includes(idx) ? v.daysOfWeek.filter(d => d !== idx) : [...v.daysOfWeek, idx],
-                        }))}
-                        className={cn('px-2.5 py-1 rounded-md text-xs font-medium border',
-                          form.daysOfWeek.includes(idx) ? 'bg-primary text-primary-foreground border-primary' : 'bg-background')}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-            <div>
-              <label className="mb-1 block text-sm font-medium">Fecha inicio *</label>
-              <Input type="date" value={form.startDate} onChange={set('startDate')} />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Fecha fin (opcional)</label>
-              <Input type="date" value={form.endDate} onChange={set('endDate')} />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Badge en tienda</label>
-              <Input value={form.storeBadge} onChange={set('storeBadge')} placeholder="OFERTA, 2×1, HOY SOLO..." />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Prioridad (mayor = arriba)</label>
-              <Input type="number" value={form.priority} onChange={set('priority')} />
-            </div>
-            <div className="col-span-2">
-              <label className="mb-1 block text-sm font-medium">Descripción</label>
-              <Input value={form.description} onChange={set('description')} placeholder="Descripción visible en la tienda..." />
-            </div>
-          </div>
-
-          {/* Toggles */}
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={form.isActive}
-                onChange={e => setForm(v => ({ ...v, isActive: e.target.checked }))}
-                className="h-4 w-4 rounded" />
-              <span className="text-sm">Activa</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={form.showInStore}
-                onChange={e => setForm(v => ({ ...v, showInStore: e.target.checked }))}
-                className="h-4 w-4 rounded" />
-              <span className="text-sm">Mostrar en tienda online</span>
-            </label>
-          </div>
-
-          {form.showInStore && (
-            <div className="space-y-3 rounded-lg border p-3">
-              <p className="text-sm font-medium">Banner del carrusel de ofertas</p>
-              <p className="text-xs text-muted-foreground -mt-2">
-                Si subes un video, se reproduce en el carrusel en lugar de la imagen (más llamativo). La imagen
-                queda como respaldo si el navegador no puede reproducir el video.
-              </p>
-              <p className="text-xs text-muted-foreground -mt-2">
-                La imagen se muestra completa, sin recortarla — cualquier proporción funciona. Para que se vea
-                "a pantalla completa" sin franjas de fondo, usa un formato horizontal ancho (ej. 1200×675px, 16:9).
-              </p>
-              <div className="flex flex-wrap gap-4">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Imagen</label>
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-16 w-24 items-center justify-center rounded-lg border border-dashed bg-muted overflow-hidden shrink-0">
-                      {form.storeImage ? (
-                        <img src={form.storeImage} alt="Banner" className="h-full w-full object-cover" />
-                      ) : (
-                        <Image className="h-5 w-5 text-muted-foreground/40" />
-                      )}
-                    </div>
-                    <input ref={bannerImageInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-                      onChange={e => { const f = e.target.files?.[0]; if (f) bannerImageMutation.mutate(f); e.target.value = '' }} />
-                    <Button type="button" variant="outline" size="sm" loading={bannerImageMutation.isPending}
-                      onClick={() => bannerImageInputRef.current?.click()}>
-                      <Upload className="mr-1.5 h-3.5 w-3.5" />{form.storeImage ? 'Cambiar' : 'Subir'}
-                    </Button>
-                  </div>
-                  {form.storeImage && (
-                    <label className="mt-2 flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={form.storeFullDesign}
-                        onChange={e => setForm(v => ({ ...v, storeFullDesign: e.target.checked }))}
-                        className="h-4 w-4 rounded" />
-                      <span className="text-xs text-muted-foreground">
-                        Es un diseño ya armado (flyer con texto y precio) — no superponer título/badge/precio
-                      </span>
-                    </label>
-                  )}
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Video (opcional)</label>
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-16 w-24 items-center justify-center rounded-lg border border-dashed bg-muted overflow-hidden shrink-0">
-                      {form.storeVideo ? (
-                        <video src={form.storeVideo} className="h-full w-full object-cover" muted loop autoPlay playsInline />
-                      ) : (
-                        <Video className="h-5 w-5 text-muted-foreground/40" />
-                      )}
-                    </div>
-                    <input ref={bannerVideoInputRef} type="file" accept="video/mp4,video/webm" className="hidden"
-                      onChange={e => { const f = e.target.files?.[0]; if (f) bannerVideoMutation.mutate(f); e.target.value = '' }} />
-                    <div className="flex flex-col gap-1">
-                      <Button type="button" variant="outline" size="sm" loading={bannerVideoMutation.isPending}
-                        onClick={() => bannerVideoInputRef.current?.click()}>
-                        <Upload className="mr-1.5 h-3.5 w-3.5" />{form.storeVideo ? 'Cambiar' : 'Subir'}
-                      </Button>
-                      {form.storeVideo && (
-                        <button type="button" className="text-xs text-muted-foreground hover:text-destructive"
-                          onClick={() => setForm(v => ({ ...v, storeVideo: '' }))}>
-                          Quitar video
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Products */}
-          {isCombo ? (
-            <div>
-              <label className="mb-1 block text-sm font-medium">Productos del combo * (mínimo 2 distintos)</label>
-              <p className="mb-1.5 text-xs text-muted-foreground">
-                Todos deben estar en el carrito juntos para que se aplique el precio del combo.
-              </p>
-              <div className="relative mb-2">
-                <Input placeholder="Buscar producto..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
-                {products && products.length > 0 && productSearch.length >= 2 && (
-                  <ProductResults products={products} allowPack onPick={addComboProduct} />
-                )}
-              </div>
-              <div className="space-y-1.5">
-                {form.comboItems.map(i => (
-                  <div key={i.productId} className="flex items-center justify-between gap-2 rounded-lg border p-2">
-                    <span className="text-sm flex-1">
-                      {i.name}
-                      {hasPackCfg(i) && (
-                        <span className="ml-2 inline-flex overflow-hidden rounded-md border text-[11px] align-middle">
-                          <button type="button" onClick={() => setComboPack(i.productId, false)}
-                            className={cn('px-1.5 py-0.5', !i.asPack ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Unidad</button>
-                          <button type="button" onClick={() => setComboPack(i.productId, true)}
-                            className={cn('px-1.5 py-0.5 border-l', i.asPack ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
-                            {i.packLabel || 'Paquete'} x{i.packSize}
-                          </button>
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{formatCurrency(priceOf(i))} c/u</span>
-                    <Input type="number" min={1} value={i.quantity}
-                      onChange={e => updateComboQty(i.productId, Math.max(1, Number(e.target.value)))}
-                      className="h-8 w-16 text-center" />
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8"
-                      onClick={() => removeComboProduct(i.productId)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              {form.comboItems.length > 0 && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Suma por separado: <span className="line-through">{formatCurrency(comboSum)}</span>
-                  {' '}→ Combo: <span className="font-bold text-success">{formatCurrency(Number(form.value) || 0)}</span>
-                  {comboSum > 0 && Number(form.value) > 0 && (
-                    <> (ahorro {formatCurrency(comboSum - Number(form.value))})</>
-                  )}
-                </p>
-              )}
-            </div>
-          ) : (
-            <div>
-              <label className="mb-1 block text-sm font-medium">Productos en la oferta *</label>
-              <p className="mb-1.5 text-xs text-muted-foreground">
-                Sin productos elegidos, la oferta no aparece ni se puede aplicar en el POS.
-              </p>
-              <div className="relative mb-2">
-                <Input placeholder="Buscar producto..." value={productSearch} onChange={e => setProductSearch(e.target.value)} />
-                {products && products.length > 0 && productSearch.length >= 2 && (
-                  <ProductResults products={products} allowPack={!isHappyHour} onPick={addProduct} />
-                )}
-              </div>
-              <div className="space-y-1.5">
-                {form.items.map(i => (
-                  <div key={i.productId} className="flex items-center justify-between gap-2 rounded-lg border p-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm">{i.name}</p>
-                      <p className="text-xs text-muted-foreground">{presentationLabel(i)} · {formatCurrency(priceOf(i))}</p>
-                    </div>
-                    {hasPackCfg(i) && !isHappyHour && (
-                      <span className="inline-flex overflow-hidden rounded-md border text-[11px]">
-                        <button type="button" onClick={() => setItemPack(i.productId, false)}
-                          className={cn('px-2 py-1', !i.asPack ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>Unidad</button>
-                        <button type="button" onClick={() => setItemPack(i.productId, true)}
-                          className={cn('px-2 py-1 border-l', i.asPack ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
-                          {i.packLabel || 'Paquete'} x{i.packSize}
-                        </button>
-                      </span>
-                    )}
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeProduct(i.productId)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              {form.items.some(i => i.asPack) && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Las ofertas sobre paquetes/cajas se aplican solo en el punto de venta (no se muestran en la tienda online).
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-        <div className="border-t p-5 flex gap-3 justify-end">
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={
-            !form.name ||
-            (!isCombo && form.items.length === 0) ||
-            (isCombo && (form.comboItems.length < 2 || !form.value)) ||
-            (form.type === 'PERCENTAGE_DISCOUNT' && !form.value) ||
-            (form.type === 'FIXED_DISCOUNT' && !form.value) ||
-            (form.type === 'BUNDLE_PRICE' && (!form.value || !form.getQuantity)) ||
-            (form.type === 'BUY_X_GET_Y' && (!form.buyQuantity || !form.getQuantity)) ||
-            (isHappyHour && (!form.value || !form.startTime || !form.endTime))
-          }>
-            {offer ? 'Guardar cambios' : 'Crear oferta'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
+// startDate/endDate se guardan a medianoche UTC representando el día de Lima:
+// se leen en UTC para no correrlos un día.
+const dateUTC = (d: string) => new Date(d).toLocaleDateString('es-PE', { timeZone: 'UTC' })
 
 export function OffersPage() {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const [showModal, setShowModal] = useState(false)
   const [editOffer, setEditOffer] = useState<Offer | undefined>()
-  const [viewPerf, setViewPerf] = useState<string | null>(null) // offer ID con panel rendimiento abierto
+  const [viewPerf, setViewPerf] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['offers'],
@@ -574,130 +40,111 @@ export function OffersPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   })
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Ofertas y Promociones</h1>
-          <p className="text-sm text-muted-foreground">Gestiona las ofertas del ERP y la tienda online</p>
-        </div>
-        <Button onClick={() => { setEditOffer(undefined); setShowModal(true) }}>
-          <Plus className="mr-2 h-4 w-4" />Nueva Oferta
-        </Button>
-      </div>
+  const remove = async (offer: Offer) => {
+    const r = await confirm({ title: `Eliminar la oferta "${offer.name}"`, confirmLabel: 'Eliminar', tone: 'danger' })
+    if (r.ok) deleteMutation.mutate(offer.id)
+  }
+  const edit = (offer: Offer) => { setEditOffer(offer); setShowModal(true) }
+  const offers = data ?? []
 
-      <Card>
-        {isLoading ? <div className="py-12 text-center text-muted-foreground">Cargando...</div> : (
+  return (
+    <div className="erp flex flex-col gap-5">
+      <PageHeader title="Ofertas y promociones"
+        actions={<Btn variant="primary" onClick={() => { setEditOffer(undefined); setShowModal(true) }}><Plus />Nueva oferta</Btn>}>
+        <p className="text-table text-ink-muted">Ofertas del punto de venta y la tienda online</p>
+      </PageHeader>
+
+      <div className={cn('overflow-hidden', surfaceCls)}>
+        {isLoading ? <div className="py-12 text-center text-table text-ink-muted">Cargando…</div>
+          : offers.length === 0 ? <EmptyState icon={Tag} title="No hay ofertas creadas aún" /> : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b bg-muted/50 text-left">
-                <th className="px-4 py-3 font-medium">Oferta</th>
-                <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium text-right">Valor</th>
-                <th className="px-4 py-3 font-medium">Vigencia</th>
-                <th className="px-4 py-3 font-medium text-center">En tienda</th>
-                <th className="px-4 py-3 font-medium text-center">Estado</th>
-                <th className="px-4 py-3" />
+            <table className={tableCls}>
+              <thead><tr>
+                <th className={thCls}>Oferta</th>
+                <th className={cn(thCls, 'hidden md:table-cell')}>Tipo</th>
+                <th className={cn(thCls, 'text-right')}>Valor</th>
+                <th className={cn(thCls, 'hidden sm:table-cell')}>Vigencia</th>
+                <th className={cn(thCls, 'hidden lg:table-cell')}>Tienda</th>
+                <th className={thCls}>Estado</th>
+                <th className={cn(thCls, 'w-px')}><span className="sr-only">Acciones</span></th>
               </tr></thead>
-              <tbody className="divide-y">
-                {(data ?? []).map(offer => (
-                  <tr key={offer.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{offer.name}</p>
-                      {offer.storeBadge && <Badge variant="outline" className="text-xs mt-0.5">{offer.storeBadge}</Badge>}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{TYPE_LABELS[offer.type] ?? offer.type}</td>
-                    <td className="px-4 py-3 text-right font-semibold">
-                      {offer.type === 'PERCENTAGE_DISCOUNT' ? `${offer.value}%` :
-                       offer.type === 'BUNDLE_PRICE' ? `${offer.getQuantity ?? '?'} x ${formatCurrency(offer.value)}` :
-                       offer.type === 'BUY_X_GET_Y' ? `Paga ${offer.buyQuantity ?? '?'}, lleva ${offer.getQuantity ?? '?'}` :
-                       offer.type === 'HAPPY_HOUR' ? (offer.valueType === 'FIXED' ? formatCurrency(offer.value) : `${offer.value}%`) :
-                       offer.type === 'COMBO' ? `${offer.products.length} productos = ${formatCurrency(offer.value)}` :
-                       formatCurrency(offer.value)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {offer.type === 'HAPPY_HOUR' && offer.startTime && (
-                        <p className="font-medium text-foreground">
-                          {offer.startTime}–{offer.endTime} {offer.daysOfWeek.length > 0 ? offer.daysOfWeek.map(d => DAY_LABELS[d]).join(',') : 'Todos los días'}
-                        </p>
-                      )}
-                      {/* startDate/endDate se guardan como fecha (sin hora) en UTC medianoche
-                          representando el día calendario de Lima — hay que leerlos en UTC, no
-                          en hora de Lima, o se corren un día para atrás. */}
-                      <p>{new Date(offer.startDate).toLocaleDateString('es-PE', { timeZone: 'UTC' })}</p>
-                      {offer.endDate && <p>→ {new Date(offer.endDate).toLocaleDateString('es-PE', { timeZone: 'UTC' })}</p>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {offer.showInStore
-                        ? <Eye className="h-4 w-4 text-success mx-auto" />
-                        : <EyeOff className="h-4 w-4 text-muted-foreground mx-auto" />}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button onClick={() => toggleMutation.mutate(offer.id)}>
-                        <Badge variant={offer.isActive ? 'success' : 'secondary'}>
-                          {offer.isActive ? 'Activa' : 'Inactiva'}
-                        </Badge>
-                      </button>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => { setEditOffer(offer); setShowModal(true) }}>Editar</Button>
-                        <Button variant="ghost" size="sm" onClick={() => setViewPerf(viewPerf === offer.id ? null : offer.id)}
-                          title="Ver rendimiento">
-                          <TrendingUp className="h-4 w-4 text-primary" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive"
-                          onClick={() => { if (confirm('¿Eliminar esta oferta?')) deleteMutation.mutate(offer.id) }}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
+              <tbody>
+                {offers.map((offer) => (
+                  <Fragment key={offer.id}>
+                    <tr className="hover:bg-surface-2">
+                      <td className={cn(tdCls, 'py-1.5')}>
+                        <div className="font-medium">{offer.name}</div>
+                        <div className="flex flex-wrap items-center gap-1.5 text-meta text-ink-muted">
+                          {offer.storeBadge && <span className="rounded-[3px] bg-ink/[0.06] px-1 font-medium text-ink">{offer.storeBadge}</span>}
+                          <span className="md:hidden">{TYPE_LABELS[offer.type] ?? offer.type}</span>
+                        </div>
+                      </td>
+                      <td className={cn(tdCls, 'hidden text-ink-muted md:table-cell')}>{TYPE_LABELS[offer.type] ?? offer.type}</td>
+                      <td className={cn(tdCls, 'text-right font-semibold tabular-nums')}>{offerValueText(offer)}</td>
+                      <td className={cn(tdCls, 'hidden text-meta text-ink-muted sm:table-cell')}>
+                        {offer.type === 'HAPPY_HOUR' && offer.startTime && (
+                          <div className="font-medium text-ink">
+                            {offer.startTime}–{offer.endTime} {offer.daysOfWeek.length > 0 ? offer.daysOfWeek.map((d) => DAY_LABELS[d]).join(',') : 'Todos los días'}
+                          </div>
+                        )}
+                        <div className="tabular-nums">{dateUTC(offer.startDate)}{offer.endDate ? ` al ${dateUTC(offer.endDate)}` : ''}</div>
+                      </td>
+                      <td className={cn(tdCls, 'hidden lg:table-cell')}>
+                        {offer.showInStore
+                          ? <span className="inline-flex items-center gap-1 text-meta text-ink"><Eye className="size-4 text-ok" />Visible</span>
+                          : <span className="inline-flex items-center gap-1 text-meta text-ink-muted"><EyeOff className="size-4" />Oculta</span>}
+                      </td>
+                      <td className={tdCls}>
+                        <button type="button" onClick={() => toggleMutation.mutate(offer.id)} title={offer.isActive ? 'Pausar oferta' : 'Activar oferta'}
+                          aria-label={offer.isActive ? `Pausar ${offer.name}` : `Activar ${offer.name}`}>
+                          <StatusBadge tone={offer.isActive ? 'ok' : 'muted'}>{offer.isActive ? 'Activa' : 'Inactiva'}</StatusBadge>
+                        </button>
+                      </td>
+                      <td className={cn(tdCls, 'px-1')}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Btn size="sm" onClick={() => edit(offer)}><Pencil />Editar</Btn>
+                          <RowMenu label={`Acciones de ${offer.name}`} actions={[
+                            { label: viewPerf === offer.id ? 'Ocultar rendimiento' : 'Ver rendimiento', icon: TrendingUp, onSelect: () => setViewPerf(viewPerf === offer.id ? null : offer.id) },
+                            { label: offer.isActive ? 'Pausar' : 'Activar', icon: offer.isActive ? EyeOff : Eye, onSelect: () => toggleMutation.mutate(offer.id) },
+                            { label: 'Eliminar', icon: Trash2, danger: true, separated: true, onSelect: () => remove(offer) },
+                          ]} />
+                        </div>
+                      </td>
+                    </tr>
+                    {viewPerf === offer.id && (
+                      <tr>
+                        <td colSpan={7} className="border-b border-line bg-surface-2 px-4 py-4">
+                          <p className="mb-3 text-table font-medium text-ink">Rendimiento de «{offer.name}»</p>
+                          <OfferPerformance offer={offer} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
-                {/* Filas de rendimiento — separadas para evitar JSX inválido dentro del map */}
-                {viewPerf && (data ?? []).filter(o => o.id === viewPerf).map(offer => (
-                  <tr key={`${offer.id}-perf`}>
-                    <td colSpan={7} className="bg-muted/20 px-6 py-4">
-                      <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4" />Rendimiento de "{offer.name}"
-                      </p>
-                      <OfferPerformance offer={offer} />
-                    </td>
-                  </tr>
-                ))}
-                {(data ?? []).length === 0 && (
-                  <tr><td colSpan={7} className="py-12 text-center">
-                    <Tag className="h-10 w-10 mx-auto mb-2 text-muted-foreground opacity-30" />
-                    <p className="text-muted-foreground">No hay ofertas creadas aún</p>
-                  </td></tr>
-                )}
               </tbody>
             </table>
           </div>
         )}
-      </Card>
+      </div>
 
       {showModal && <OfferModal offer={editOffer} onClose={() => setShowModal(false)} />}
     </div>
   )
 }
 
-/* ─── Panel de Rendimiento de Ofertas ───────────────────────────────────── */
+/* ─── Rendimiento: ventas de los productos de la oferta en su vigencia ──── */
 function OfferPerformance({ offer }: { offer: Offer }) {
   const { data } = useQuery({
     queryKey: ['offer-performance', offer.id],
     queryFn: async () => {
-      // Buscar ventas que incluyan productos de esta oferta en su período
       const from = offer.startDate.split('T')[0]
       const to = offer.endDate ? offer.endDate.split('T')[0] : todayLimaDateString()
-      const productIds = offer.products.map(p => p.product.id)
+      const productIds = offer.products.map((p) => p.product.id)
       if (!productIds.length) return null
-
-      // Traemos top-products filtrando por fecha de la oferta
       const res = await api.get<{ data: Array<{ product_id: string; name: string; quantity: number; revenue: number; transactions: number }> }>(
-        `/reports/top-products?from=${from}&to=${to}&limit=100`
+        `/reports/top-products?from=${from}&to=${to}&limit=100`,
       )
-      const offerProducts = res.data.data.filter(p => productIds.includes(p.product_id))
+      const offerProducts = res.data.data.filter((p) => productIds.includes(p.product_id))
       const totalRevenue = offerProducts.reduce((s, p) => s + p.revenue, 0)
       const totalQty = offerProducts.reduce((s, p) => s + p.quantity, 0)
       const totalTx = offerProducts.reduce((s, p) => s + p.transactions, 0)
@@ -707,53 +154,38 @@ function OfferPerformance({ offer }: { offer: Offer }) {
   })
 
   if (!data) return (
-    <div className="text-center py-6 text-muted-foreground text-sm">
-      {!offer.products.length ? 'No hay productos asignados a esta oferta' : 'Cargando rendimiento...'}
-    </div>
+    <p className="py-4 text-center text-table text-ink-muted">
+      {!offer.products.length ? 'No hay productos asignados a esta oferta' : 'Cargando rendimiento…'}
+    </p>
   )
 
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Período: {data.from} → {data.to}
-      </p>
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { icon: DollarSign, label: 'Ingresos generados', value: formatCurrency(data.totalRevenue), color: 'text-success' },
-          { icon: ShoppingCart, label: 'Unidades vendidas', value: String(Math.round(data.totalQty)), color: 'text-primary' },
-          { icon: TrendingUp, label: 'Transacciones', value: String(data.totalTx), color: 'text-foreground' },
-        ].map(k => (
-          <div key={k.label} className="bg-muted/50 rounded-xl p-3 text-center">
-            <k.icon className={`h-4 w-4 mx-auto mb-1 ${k.color}`} />
-            <p className={`font-bold text-lg ${k.color}`}>{k.value}</p>
-            <p className="text-xs text-muted-foreground">{k.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Tabla por producto */}
+    <div className="flex flex-col gap-3">
+      <p className="text-meta text-ink-muted">Periodo: {data.from} al {data.to}</p>
+      <StatGrid cols={3}>
+        <StatCard label="Ingresos generados" value={formatCurrency(data.totalRevenue)} />
+        <StatCard label="Unidades vendidas" value={String(Math.round(data.totalQty))} />
+        <StatCard label="Transacciones" value={String(data.totalTx)} />
+      </StatGrid>
       {data.offerProducts.length > 0 ? (
-        <table className="w-full text-sm">
-          <thead><tr className="border-b text-left">
-            <th className="py-2 font-medium">Producto</th>
-            <th className="py-2 font-medium text-right">Uds.</th>
-            <th className="py-2 font-medium text-right">Ingresos</th>
+        <table className={cn(tableCls, 'rounded-ctl bg-surface')}>
+          <thead><tr>
+            <th className={thCls}>Producto</th>
+            <th className={cn(thCls, 'text-right')}>Uds.</th>
+            <th className={cn(thCls, 'text-right')}>Ingresos</th>
           </tr></thead>
-          <tbody className="divide-y">
-            {data.offerProducts.map(p => (
+          <tbody>
+            {data.offerProducts.map((p) => (
               <tr key={p.product_id}>
-                <td className="py-2 font-medium">{p.name}</td>
-                <td className="py-2 text-right">{Math.round(p.quantity)}</td>
-                <td className="py-2 text-right text-success font-medium">{formatCurrency(p.revenue)}</td>
+                <td className={cn(tdCls, 'font-medium')}>{p.name}</td>
+                <td className={cn(tdCls, 'text-right tabular-nums')}>{Math.round(p.quantity)}</td>
+                <td className={cn(tdCls, 'text-right font-medium tabular-nums')}>{formatCurrency(p.revenue)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : (
-        <p className="text-center text-sm text-muted-foreground py-4">
-          Sin ventas registradas de los productos de esta oferta en el período
-        </p>
+        <p className="py-3 text-center text-table text-ink-muted">Sin ventas registradas de los productos de esta oferta en el periodo</p>
       )}
     </div>
   )

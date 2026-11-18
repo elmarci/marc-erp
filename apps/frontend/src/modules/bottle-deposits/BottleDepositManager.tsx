@@ -1,9 +1,9 @@
+// Garantía de envase: cobrar, devolver y ver quién debe envases.
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Btn, Field, Segmented, fieldCls } from '@/components/erp';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, PAYMENT_METHOD_LABELS, cn } from '@/lib/utils';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -39,13 +39,14 @@ function DebtorPicker({ debtor, onSelect, onClear }: {
     enabled: debouncedSearch.length >= 1 && open,
   });
 
+  const linkCls = 'text-meta font-medium text-brand hover:underline';
   if (debtor) {
     return (
-      <div className="flex items-center justify-between rounded-md border bg-primary/5 px-3 py-2">
-        <span className="text-sm font-medium text-primary">
+      <div className="flex items-center justify-between rounded-ctl bg-brand-soft px-3 py-1.5">
+        <span className="text-table font-medium text-ink">
           {debtor.displayName}{debtor.customerId ? '' : ' (sin registrar)'}
         </span>
-        <button onClick={onClear} className="text-muted-foreground hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
+        <Btn size="sm" variant="ghost" aria-label="Quitar persona" onClick={onClear}><X /></Btn>
       </div>
     );
   }
@@ -54,23 +55,23 @@ function DebtorPicker({ debtor, onSelect, onClear }: {
     return (
       <div className="relative">
         <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Buscar cliente por nombre, DNI, teléfono..."
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-muted" />
+          <input className={cn(fieldCls, 'pl-8')} aria-label="Buscar cliente" placeholder="Buscar cliente por nombre, DNI, teléfono..."
             value={search} onChange={e => { setSearch(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} />
         </div>
         {open && search.length >= 1 && (
-          <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto divide-y rounded-md border bg-card shadow-lg">
-            {(data ?? []).length === 0 && <p className="p-3 text-center text-xs text-muted-foreground">Sin resultados</p>}
+          <div className="absolute z-10 mt-1 max-h-48 w-full divide-y divide-line overflow-y-auto rounded-ctl bg-surface shadow-[0_0_0_1px_hsl(var(--line)),0_8px_24px_-8px_rgba(0,0,0,.2)]">
+            {(data ?? []).length === 0 && <p className="p-3 text-center text-meta text-ink-muted">Sin resultados</p>}
             {(data ?? []).map(c => (
               <button key={c.id} type="button"
                 onClick={() => { onSelect({ customerId: c.id, displayName: `${c.firstName} ${c.lastName ?? ''}`.trim() }); setSearch(''); setOpen(false); }}
-                className="w-full px-3 py-2 text-left text-sm hover:bg-muted">
-                {c.firstName} {c.lastName} {c.phone ? <span className="text-xs text-muted-foreground">· {c.phone}</span> : null}
+                className="w-full px-3 py-2 text-left text-table hover:bg-surface-2">
+                {c.firstName} {c.lastName} {c.phone ? <span className="text-meta text-ink-muted">· {c.phone}</span> : null}
               </button>
             ))}
           </div>
         )}
-        <button type="button" onClick={() => setMode('label')} className="mt-1 text-xs text-primary hover:underline">
+        <button type="button" onClick={() => setMode('label')} className={cn(linkCls, 'mt-1')}>
           Prefiero sólo poner un nombre
         </button>
       </div>
@@ -79,15 +80,12 @@ function DebtorPicker({ debtor, onSelect, onClear }: {
 
   return (
     <div>
-      <Input value={label} onChange={e => setLabel(e.target.value)} placeholder="Nombre, apodo o teléfono (opcional)"
+      <input className={fieldCls} aria-label="Nombre de la persona" value={label} onChange={e => setLabel(e.target.value)} placeholder="Nombre, apodo o teléfono (opcional)"
         onKeyDown={e => { if (e.key === 'Enter' && label.trim()) onSelect({ debtorLabel: label.trim(), displayName: label.trim() }); }} />
       <div className="mt-1 flex items-center justify-between">
-        <button type="button" onClick={() => setMode('search')} className="text-xs text-primary hover:underline">
-          Buscar cliente registrado
-        </button>
+        <button type="button" onClick={() => setMode('search')} className={linkCls}>Buscar cliente registrado</button>
         {label.trim() && (
-          <button type="button" onClick={() => onSelect({ debtorLabel: label.trim(), displayName: label.trim() })}
-            className="text-xs font-medium text-primary hover:underline">
+          <button type="button" onClick={() => onSelect({ debtorLabel: label.trim(), displayName: label.trim() })} className={linkCls}>
             Usar "{label.trim()}"
           </button>
         )}
@@ -180,126 +178,96 @@ export function BottleDepositManager({ cashSessionId, onClose }: { cashSessionId
   const canSubmit = !!productId && Number(quantity) > 0 && (action === 'charge' || Number(quantity) <= (outstandingQty ?? 0));
 
   return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <Button size="sm" className="flex-1" variant={action === 'charge' ? 'default' : 'outline'}
-          onClick={() => setAction('charge')}>Cobrar</Button>
-        <Button size="sm" className="flex-1" variant={action === 'return' ? 'success' : 'outline'}
-          onClick={() => setAction('return')}>Devolver</Button>
-        <Button size="sm" className="flex-1" variant={action === 'debtors' ? 'default' : 'outline'}
-          onClick={() => setAction('debtors')}><Users className="mr-1 h-3.5 w-3.5" />Quién debe</Button>
-      </div>
+    <div className="flex flex-col gap-3">
+      <Segmented ariaLabel="Acción de envases" size="md" value={action} onChange={setAction}
+        options={[['charge', 'Cobrar'], ['return', 'Devolver'], ['debtors', <span key="d" className="inline-flex items-center gap-1"><Users className="size-3.5" />Quién debe</span>]]} />
 
       {action === 'debtors' ? (
-        <div className="divide-y border rounded-lg max-h-72 overflow-y-auto">
+        <div className="max-h-72 divide-y divide-line overflow-y-auto rounded-ctl border border-line">
           {(debtors ?? []).length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nadie debe envases por ahora.</p>
+            <p className="py-6 text-center text-table text-ink-muted">Nadie debe envases por ahora.</p>
           )}
           {(debtors ?? []).map(d => (
-            <div key={`${d.customerId ?? d.debtorLabel}:${d.productId}`} className="flex items-center justify-between gap-2 px-3 py-2.5">
+            <div key={`${d.customerId ?? d.debtorLabel}:${d.productId}`} className="flex items-center justify-between gap-2 px-3 py-2">
               <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{d.debtorName}</p>
-                <p className="text-xs text-muted-foreground truncate">
+                <p className="truncate text-table font-medium text-ink">{d.debtorName}</p>
+                <p className="truncate text-meta text-ink-muted">
                   {d.productName} · debe {d.outstandingQty}
                   {d.outstandingAmount > 0 ? ` · a favor ${formatCurrency(d.outstandingAmount)}` : ' · sin dinero de por medio'}
                 </p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => startReturnFor(d)}>Devolver</Button>
+              <Btn size="sm" onClick={() => startReturnFor(d)}>Devolver</Btn>
             </div>
           ))}
         </div>
       ) : (
         <>
-          <div>
-            <label className="mb-1 block text-sm font-medium">¿A nombre de quién? (opcional)</label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-table font-medium text-ink">¿A nombre de quién? (opcional)</span>
             <DebtorPicker
               debtor={debtor}
               onSelect={(d) => { setDebtor(d); setReturnAmountTouched(false); }}
               onClear={() => { setDebtor(null); setReturnAmountTouched(false); }}
             />
             {action === 'return' && !debtor && (
-              <p className="mt-1 text-xs text-muted-foreground">Sin identificar, se descuenta del total pendiente del producto.</p>
+              <p className="text-meta text-ink-muted">Sin identificar, se descuenta del total pendiente del producto.</p>
             )}
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">Producto (envase)</label>
-            <select value={productId} onChange={e => { setProductId(e.target.value); setQuantity('1'); setReturnAmountTouched(false); }}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Field label="Producto (envase)" hint={action === 'charge' && (data ?? []).length === 0
+            ? 'Ningún producto tiene garantía configurada. Agrégala editando el producto (campo "Garantía de envase").' : undefined}>
+            <select className={fieldCls} value={productId} onChange={e => { setProductId(e.target.value); setQuantity('1'); setReturnAmountTouched(false); }}>
               <option value="">Seleccionar...</option>
               {(data ?? []).filter(p => action === 'charge' || (debtor ? true : p.outstandingQty > 0)).map(p => (
                 <option key={p.productId} value={p.productId}>
-                  {p.name} — S/{p.depositAmount.toFixed(2)}/u
+                  {p.name} · S/{p.depositAmount.toFixed(2)}/u
                 </option>
               ))}
             </select>
-            {action === 'charge' && (data ?? []).length === 0 && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Ningún producto tiene garantía configurada — agrégala editando el producto (campo "Garantía de envase").
-              </p>
-            )}
-          </div>
+          </Field>
 
           {action === 'charge' && (
-            <div className="flex gap-2">
-              <Button size="sm" className="flex-1" variant={paid ? 'default' : 'outline'} onClick={() => setPaid(true)}>
-                Dejó garantía
-              </Button>
-              <Button size="sm" className="flex-1" variant={!paid ? 'default' : 'outline'} onClick={() => setPaid(false)}>
-                Presté sin garantía
-              </Button>
-            </div>
+            <Segmented ariaLabel="¿Dejó garantía?" size="md" value={paid ? 'paid' : 'loan'} onChange={(v) => setPaid(v === 'paid')}
+              options={[['paid', 'Dejó garantía'], ['loan', 'Presté sin garantía']]} />
           )}
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Cantidad</label>
-              <Input type="number" min={1} max={action === 'return' ? outstandingQty : undefined} step={1}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Cantidad" hint={action === 'return' && productId ? `Pendiente: ${outstandingQty}` : undefined}>
+              <input type="number" className={cn(fieldCls, 'text-right tabular-nums')} min={1} max={action === 'return' ? outstandingQty : undefined} step={1}
                 value={quantity} onChange={e => { setQuantity(e.target.value); setReturnAmountTouched(false); }} />
-              {action === 'return' && productId && (
-                <p className="mt-1 text-xs text-muted-foreground">Pendiente: {outstandingQty}</p>
-              )}
-            </div>
+            </Field>
             {(action === 'charge' ? paid : finalReturnAmount > 0) && (
-              <div>
-                <label className="mb-1 block text-sm font-medium">Método</label>
-                <select value={method} onChange={e => setMethod(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Field label="Método">
+                <select className={fieldCls} value={method} onChange={e => setMethod(e.target.value)}>
                   {Object.entries(PAYMENT_METHOD_LABELS).filter(([k]) => k !== 'CREDIT').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
-              </div>
+              </Field>
             )}
           </div>
 
           {action === 'charge' && product && (
-            <p className="text-sm text-right font-bold">
-              {paid ? `A cobrar: ${formatCurrency(chargeAmount)}` : 'No se cobra nada — queda como préstamo'}
+            <p className="text-right text-table font-semibold tabular-nums text-ink">
+              {paid ? `A cobrar: ${formatCurrency(chargeAmount)}` : 'No se cobra nada, queda como préstamo'}
             </p>
           )}
 
           {action === 'return' && product && (
-            <div>
-              <label className="mb-1 block text-sm font-medium">Monto a devolver (S/)</label>
-              <Input type="number" min={0} max={outstandingAmount} step={0.10}
+            <Field label="Monto a devolver (S/)" hint={`A favor: ${formatCurrency(outstandingAmount)}. Poné 0 si esos envases se prestaron sin cobrar.`}>
+              <input type="number" className={cn(fieldCls, 'text-right tabular-nums')} min={0} max={outstandingAmount} step={0.10}
                 value={returnAmountTouched ? returnAmount : suggestedReturnAmount.toFixed(2)}
                 onChange={e => { setReturnAmount(e.target.value); setReturnAmountTouched(true); }} />
-              <p className="mt-1 text-xs text-muted-foreground">
-                A favor: {formatCurrency(outstandingAmount)} — poné 0 si esos envases se prestaron sin cobrar.
-              </p>
-            </div>
+            </Field>
           )}
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">Notas (opcional)</label>
-            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ej: ticket #123..." />
-          </div>
+          <Field label="Notas (opcional)">
+            <input className={fieldCls} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ej: ticket #123..." />
+          </Field>
 
-          <div className="flex gap-3 justify-end pt-2 border-t">
-            {onClose && <Button variant="outline" onClick={onClose}>Cancelar</Button>}
-            {!onClose && <Button variant="outline" onClick={resetForm}>Limpiar</Button>}
-            <Button onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!canSubmit}>
+          <div className="flex justify-end gap-2 border-t border-line pt-3">
+            {onClose ? <Btn onClick={onClose}>Cancelar</Btn> : <Btn onClick={resetForm}>Limpiar</Btn>}
+            <Btn variant="primary" onClick={() => mutation.mutate()} loading={mutation.isPending} disabled={!canSubmit}>
               Confirmar
-            </Button>
+            </Btn>
           </div>
         </>
       )}

@@ -1,3 +1,4 @@
+import { netSalesByMethod } from '../../utils/session-sales';
 import { prisma } from '../../database/client';
 import { NotFoundError, BusinessError } from '../../utils/errors';
 import { emitEvent } from '../../config/socket';
@@ -65,8 +66,8 @@ export class CashService {
       include: {
         cashRegister: true,
         sales: {
-          where: { status: 'COMPLETED' },
-          include: { payments: true },
+          where: { status: { not: 'CANCELLED' } },
+          include: { payments: true, returns: { select: { totalAmount: true, refundMethod: true } } },
         },
         movements: true,
       },
@@ -74,12 +75,10 @@ export class CashService {
 
     if (!session) throw new NotFoundError('Sesión de caja activa');
 
-    const expectedForMethod = (method: string) => session.sales.reduce((sum, sale) => {
-      const payments = sale.payments
-        .filter((p) => p.method === method)
-        .reduce((s, p) => s + Number(p.amount), 0);
-      return sum + payments;
-    }, 0);
+    // Mismo cálculo que el resumen de la sesión (ventas no anuladas menos
+    // devoluciones), para que el esperado del cierre sea el que se ve en pantalla.
+    const { byMethod } = netSalesByMethod(session.sales);
+    const expectedForMethod = (method: string) => byMethod[method] ?? 0;
 
     // Calcular total esperado
     const cashSales = expectedForMethod('CASH');
@@ -162,6 +161,7 @@ export class CashService {
         sales: {
           include: {
             payments: true,
+            returns: { select: { totalAmount: true, refundMethod: true } },
             _count: { select: { items: true } },
           },
           orderBy: { createdAt: 'desc' },
@@ -227,8 +227,9 @@ export class CashService {
   async getSessionSummary(sessionId: string) {
     const session = await this.getSession(sessionId);
 
-    const salesByMethod: Record<string, number> = {};
-    let totalSales = 0;
+    // Ventas netas por medio: sin anuladas y restando devoluciones.
+    const { byMethod: salesByMethod, refundsByMethod } = netSalesByMethod(session.sales);
+    const totalSales = Math.round(Object.values(salesByMethod).reduce((a, v) => a + v, 0) * 100) / 100;
     let totalTransactions = 0;
     // Comisión de tarjeta cobrada al cliente — va aparte de las ventas para
     // que "Total ventas" siga siendo solo productos.
@@ -240,8 +241,6 @@ export class CashService {
       totalTransactions++;
       for (const payment of sale.payments) {
         const method = payment.method;
-        salesByMethod[method] = (salesByMethod[method] ?? 0) + Number(payment.amount);
-        totalSales += Number(payment.amount);
         const commission = Number(payment.commissionAmount ?? 0);
         if (commission > 0) {
           commissionsByMethod[method] = (commissionsByMethod[method] ?? 0) + commission;
@@ -292,6 +291,7 @@ export class CashService {
         totalTransactions,
         totalSales,
         salesByMethod,
+        refundsByMethod,
         commissionsByMethod,
         cardCommissions,
         totalWithdrawals,

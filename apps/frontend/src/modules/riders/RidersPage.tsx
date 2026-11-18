@@ -1,12 +1,13 @@
+// Repartidores: alta y edición, activar o desactivar, y pago de liquidaciones.
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bike, Plus, Edit, Ban, CheckCircle2, Wallet } from 'lucide-react';
+import { Ban, Bike, CheckCircle2, Pencil, Plus, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import {
+  Btn, EmptyState, PageHeader, PageTabs, RowMenu, StatusBadge, surfaceCls, tableCls, tdCls, thCls,
+} from '@/components/erp';
 import { api, getErrorMessage } from '@/services/api';
-import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { cn, formatCurrency, formatDateTime } from '@/lib/utils';
 import { RiderFormModal, type RiderFormValues } from './RiderFormModal';
 
 interface Rider {
@@ -49,158 +50,98 @@ export function RidersPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const toForm = (r: Rider): RiderFormValues => ({
+    id: r.id, nombre: r.nombre, telefono: r.telefono,
+    motoModelo: r.motoModelo ?? '', motoPlaca: r.motoPlaca ?? '',
+    motoSoatHasta: r.motoSoatHasta ? r.motoSoatHasta.slice(0, 10) : '',
+    zonas: r.zonas.join(', '),
+  });
+  const loadingRow = <div className="py-12 text-center text-table text-ink-muted">Cargando…</div>;
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Repartidores</h1>
-        {tab === 'riders' && (
-          <Button onClick={() => setEditing('new')}><Plus className="mr-2 h-4 w-4" />Nuevo repartidor</Button>
+    <div className="erp flex flex-col gap-5">
+      <PageHeader title="Repartidores"
+        actions={tab === 'riders' && <Btn variant="primary" onClick={() => setEditing('new')}><Plus />Nuevo repartidor</Btn>} />
+
+      <PageTabs value={tab} onChange={setTab} tabs={[['riders', 'Repartidores'], ['liquidaciones', 'Liquidaciones pendientes']]} />
+
+      <div className={cn('overflow-hidden', surfaceCls)}>
+        {tab === 'riders' ? (
+          isLoading ? loadingRow : (riders ?? []).length === 0 ? <EmptyState icon={Bike} title="No hay repartidores registrados" /> : (
+            <div className="overflow-x-auto">
+              <table className={tableCls}>
+                <thead><tr>
+                  <th className={thCls}>Repartidor</th>
+                  <th className={cn(thCls, 'hidden md:table-cell')}>Moto</th>
+                  <th className={thCls}>En servicio</th>
+                  <th className={cn(thCls, 'hidden sm:table-cell')}>Estado</th>
+                  <th className={cn(thCls, 'hidden lg:table-cell')}>Última ubicación</th>
+                  <th className={cn(thCls, 'w-px')}><span className="sr-only">Acciones</span></th>
+                </tr></thead>
+                <tbody>
+                  {(riders ?? []).map((r) => (
+                    <tr key={r.id} className="hover:bg-surface-2">
+                      <td className={cn(tdCls, 'py-1.5')}>
+                        <div className="font-medium">{r.nombre}</div>
+                        <div className="text-meta tabular-nums text-ink-muted">{r.telefono}</div>
+                      </td>
+                      <td className={cn(tdCls, 'hidden text-ink-muted md:table-cell')}>{r.motoModelo ? `${r.motoModelo} · ${r.motoPlaca ?? 'sin placa'}` : '—'}</td>
+                      <td className={tdCls}><StatusBadge tone={r.enServicio ? 'ok' : 'muted'}>{r.enServicio ? 'En servicio' : 'Desconectado'}</StatusBadge></td>
+                      <td className={cn(tdCls, 'hidden sm:table-cell')}><StatusBadge tone={r.status === 'ACTIVE' ? 'ok' : 'bad'}>{r.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</StatusBadge></td>
+                      <td className={cn(tdCls, 'hidden tabular-nums text-meta text-ink-muted lg:table-cell')}>{r.lastLocationAt ? formatDateTime(r.lastLocationAt) : 'Sin registro'}</td>
+                      <td className={cn(tdCls, 'px-1')}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Btn size="sm" onClick={() => setEditing(toForm(r))}><Pencil />Editar</Btn>
+                          <RowMenu label={`Acciones de ${r.nombre}`} actions={[
+                            r.status === 'ACTIVE'
+                              ? { label: 'Desactivar', icon: Ban, danger: true, onSelect: () => toggleStatusMutation.mutate({ id: r.id, status: 'INACTIVE' }) }
+                              : { label: 'Activar', icon: CheckCircle2, onSelect: () => toggleStatusMutation.mutate({ id: r.id, status: 'ACTIVE' }) },
+                          ]} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : (
+          loadingLiq ? loadingRow : (liquidaciones ?? []).length === 0 ? <EmptyState icon={Wallet} title="No hay liquidaciones pendientes de pago" /> : (
+            <div className="overflow-x-auto">
+              <table className={tableCls}>
+                <thead><tr>
+                  <th className={thCls}>Repartidor</th>
+                  <th className={cn(thCls, 'hidden md:table-cell')}>Pedidos</th>
+                  <th className={cn(thCls, 'hidden sm:table-cell')}>Método</th>
+                  <th className={cn(thCls, 'text-right')}>Monto</th>
+                  <th className={cn(thCls, 'hidden lg:table-cell')}>Solicitado</th>
+                  <th className={cn(thCls, 'w-px')}><span className="sr-only">Acción</span></th>
+                </tr></thead>
+                <tbody>
+                  {(liquidaciones ?? []).map((l) => (
+                    <tr key={l.id} className="hover:bg-surface-2">
+                      <td className={cn(tdCls, 'py-1.5')}>
+                        <div className="font-medium">{l.riderNombre}</div>
+                        <div className="text-meta tabular-nums text-ink-muted">{l.riderTelefono}</div>
+                      </td>
+                      <td className={cn(tdCls, 'hidden text-meta text-ink-muted md:table-cell')}>{l.pedidos.join(', ')}</td>
+                      <td className={cn(tdCls, 'hidden sm:table-cell')}><StatusBadge tone="neutral">{l.metodo}</StatusBadge></td>
+                      <td className={cn(tdCls, 'text-right font-semibold tabular-nums')}>{formatCurrency(l.monto)}</td>
+                      <td className={cn(tdCls, 'hidden tabular-nums text-meta text-ink-muted lg:table-cell')}>{formatDateTime(l.fecha)}</td>
+                      <td className={cn(tdCls, 'px-2')}>
+                        <Btn size="sm" variant="primary" loading={pagarMutation.isPending && pagarMutation.variables === l.id}
+                          disabled={pagarMutation.isPending} onClick={() => pagarMutation.mutate(l.id)}>
+                          Confirmar pago
+                        </Btn>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
       </div>
-
-      <div className="flex gap-2 border-b">
-        <button
-          onClick={() => setTab('riders')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === 'riders' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}`}
-        >
-          Repartidores
-        </button>
-        <button
-          onClick={() => setTab('liquidaciones')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === 'liquidaciones' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}`}
-        >
-          Liquidaciones pendientes
-        </button>
-      </div>
-
-      {tab === 'riders' ? (
-        <Card>
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="p-8 text-center text-muted-foreground">Cargando...</div>
-            ) : (riders ?? []).length === 0 ? (
-              <div className="flex flex-col items-center gap-3 p-12 text-muted-foreground">
-                <Bike className="h-12 w-12 opacity-20" />
-                <p>No hay repartidores registrados</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="px-4 py-3 text-left font-medium">Repartidor</th>
-                      <th className="px-4 py-3 text-left font-medium">Moto</th>
-                      <th className="px-4 py-3 text-center font-medium">En servicio</th>
-                      <th className="px-4 py-3 text-center font-medium">Estado</th>
-                      <th className="px-4 py-3 text-left font-medium">Última ubicación</th>
-                      <th className="px-4 py-3 text-center font-medium">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {(riders ?? []).map((r) => (
-                      <tr key={r.id} className="hover:bg-muted/30">
-                        <td className="px-4 py-3">
-                          <p className="font-medium">{r.nombre}</p>
-                          <p className="text-xs text-muted-foreground">{r.telefono}</p>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {r.motoModelo ? `${r.motoModelo} · ${r.motoPlaca ?? 'sin placa'}` : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge variant={r.enServicio ? 'success' : 'secondary'}>
-                            {r.enServicio ? 'En servicio' : 'Desconectado'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge variant={r.status === 'ACTIVE' ? 'success' : 'destructive'}>
-                            {r.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">
-                          {r.lastLocationAt ? formatDateTime(r.lastLocationAt) : 'Sin registro'}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex justify-center gap-1">
-                            <Button
-                              variant="ghost" size="icon-sm"
-                              onClick={() => setEditing({
-                                id: r.id, nombre: r.nombre, telefono: r.telefono,
-                                motoModelo: r.motoModelo ?? '', motoPlaca: r.motoPlaca ?? '',
-                                motoSoatHasta: r.motoSoatHasta ? r.motoSoatHasta.slice(0, 10) : '',
-                                zonas: r.zonas.join(', '),
-                              })}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost" size="icon-sm"
-                              className={r.status === 'ACTIVE' ? 'text-destructive' : 'text-emerald-600'}
-                              onClick={() => toggleStatusMutation.mutate({ id: r.id, status: r.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' })}
-                            >
-                              {r.status === 'ACTIVE' ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            {loadingLiq ? (
-              <div className="p-8 text-center text-muted-foreground">Cargando...</div>
-            ) : (liquidaciones ?? []).length === 0 ? (
-              <div className="flex flex-col items-center gap-3 p-12 text-muted-foreground">
-                <Wallet className="h-12 w-12 opacity-20" />
-                <p>No hay liquidaciones pendientes de pago</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="px-4 py-3 text-left font-medium">Repartidor</th>
-                      <th className="px-4 py-3 text-left font-medium">Pedidos</th>
-                      <th className="px-4 py-3 text-center font-medium">Método</th>
-                      <th className="px-4 py-3 text-right font-medium">Monto</th>
-                      <th className="px-4 py-3 text-left font-medium">Solicitado</th>
-                      <th className="px-4 py-3 text-center font-medium">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {(liquidaciones ?? []).map((l) => (
-                      <tr key={l.id} className="hover:bg-muted/30">
-                        <td className="px-4 py-3">
-                          <p className="font-medium">{l.riderNombre}</p>
-                          <p className="text-xs text-muted-foreground">{l.riderTelefono}</p>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{l.pedidos.join(', ')}</td>
-                        <td className="px-4 py-3 text-center"><Badge variant="secondary">{l.metodo}</Badge></td>
-                        <td className="px-4 py-3 text-right font-bold">{formatCurrency(l.monto)}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{formatDateTime(l.fecha)}</td>
-                        <td className="px-4 py-3 text-center">
-                          <Button
-                            size="sm"
-                            loading={pagarMutation.isPending}
-                            onClick={() => pagarMutation.mutate(l.id)}
-                          >
-                            Confirmar pago
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {editing && (
         <RiderFormModal
