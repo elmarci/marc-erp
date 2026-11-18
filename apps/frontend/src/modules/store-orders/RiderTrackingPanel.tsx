@@ -62,49 +62,49 @@ export function RiderTrackingPanel({ orderId }: { orderId: string }) {
     return () => { socket.disconnect() }
   }, [data?.rider?.id, data?.order.orderNumber, orderId, queryClient])
 
-  if (isLoading || !data) return <div className="text-sm text-muted-foreground py-3">Cargando seguimiento...</div>
-  if (!data.rider) return <div className="text-sm text-muted-foreground py-3">Todavía no hay un repartidor asignado.</div>
+  if (isLoading || !data) return <div className="text-table text-ink-muted py-3">Cargando seguimiento...</div>
+  if (!data.rider) return <div className="text-table text-ink-muted py-3">Todavía no hay un repartidor asignado.</div>
 
   const pos = livePos ?? (data.rider.lastLat != null && data.rider.lastLng != null
     ? { lat: data.rider.lastLat, lng: data.rider.lastLng }
     : null)
 
   return (
-    <div className="space-y-3 rounded-xl border bg-background p-4">
+    <div className="space-y-3 rounded-ctl border border-line bg-surface p-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-bold">{data.rider.nombre}</p>
-          <p className="text-xs text-muted-foreground">{data.rider.telefono}</p>
+          <p className="text-table font-semibold text-ink">{data.rider.nombre}</p>
+          <p className="text-meta text-ink-muted">{data.rider.telefono}</p>
         </div>
-        <a href={`tel:${data.rider.telefono}`} className="text-xs font-medium text-primary hover:underline">Llamar</a>
+        <a href={`tel:${data.rider.telefono}`} className="text-meta font-medium text-brand hover:underline">Llamar</a>
       </div>
 
       {pos ? (
-        <div className="h-48 overflow-hidden rounded-lg">
+        <div className="h-48 overflow-hidden rounded-ctl">
           <MapContainer center={[pos.lat, pos.lng]} zoom={14} style={{ height: '100%', width: '100%' }} attributionControl={false}>
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <Marker position={[pos.lat, pos.lng]} icon={riderIcon()} />
           </MapContainer>
         </div>
       ) : (
-        <div className="flex h-24 items-center justify-center gap-2 rounded-lg bg-muted text-sm text-muted-foreground">
-          <MapPin className="h-4 w-4" />Todavía no reportó su ubicación.
+        <div className="flex h-24 items-center justify-center gap-2 rounded-ctl bg-surface-2 text-table text-ink-muted">
+          <MapPin className="size-4" />Todavía no reportó su ubicación.
         </div>
       )}
       {data.rider.lastLocationAt && (
-        <p className="text-xs text-muted-foreground">Última actualización: {formatDateTime(data.rider.lastLocationAt)}</p>
+        <p className="text-meta text-ink-muted">Última actualización: {formatDateTime(data.rider.lastLocationAt)}</p>
       )}
 
       <div>
-        <p className="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">Línea de tiempo</p>
+        <p className="mb-1.5 text-meta font-medium text-ink-muted">Línea de tiempo</p>
         <div className="space-y-1.5">
           {data.events.map((e) => (
-            <div key={e.id} className="flex items-center justify-between text-xs">
+            <div key={e.id} className="flex items-center justify-between text-meta">
               <span>{EVENT_LABELS[e.type] ?? e.type}</span>
-              <span className="text-muted-foreground">{formatDateTime(e.createdAt)}</span>
+              <span className="text-ink-muted">{formatDateTime(e.createdAt)}</span>
             </div>
           ))}
-          {data.events.length === 0 && <p className="text-xs text-muted-foreground">Sin eventos todavía.</p>}
+          {data.events.length === 0 && <p className="text-meta text-ink-muted">Sin eventos todavía.</p>}
         </div>
       </div>
     </div>

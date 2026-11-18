@@ -1,236 +1,26 @@
+// Pedidos de la tienda online: lista con filtro por estado, aviso sonoro de
+// pedidos nuevos, confirmar (genera la venta), avanzar estado, verificar
+// pago, seguimiento del repartidor y cancelar.
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShoppingBag, CheckCircle, XCircle, Clock, Truck, Package, Receipt, ExternalLink, Bell, BellOff, Bike, MapPinned } from 'lucide-react'
+import { Bell, BellOff, Bike, CheckCircle, ChevronDown, ExternalLink, MapPin, MapPinned, Receipt, ShoppingBag, Store, Truck } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
+import { useNavigate } from 'react-router-dom'
+import { io } from 'socket.io-client'
+import { Btn, EmptyState, PageHeader, Pagination, Segmented, StatusBadge, surfaceCls, useConfirm } from '@/components/erp'
 import { api, getErrorMessage } from '@/services/api'
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
-import { io } from 'socket.io-client'
 import { useAuthStore } from '@/stores/authStore'
 import { RiderTrackingPanel } from './RiderTrackingPanel'
-
-interface StoreOrder {
-  id: string; orderNumber: string; customerName: string; customerPhone: string
-  deliveryType: string; address: string | null; district: string | null
-  status: string; paymentMethod: string; paymentStatus: string
-  subtotal: number; deliveryCost: number; total: number; createdAt: string; notes: string | null
-  saleId: string | null
-  latitude: number | null; longitude: number | null
-  riderId: string | null; deliveryStatus: string | null; rider: { id: string; nombre: string } | null
-  packageTamano: string; packageTipo: string; packagePesoKg: number; packageFragil: boolean
-  items: Array<{ id: string; name: string; quantity: number; unitPrice: number; subtotal: number; unitsPerSale?: number; options?: string | null }>
-}
-
-const DELIVERY_STATUS_LABELS: Record<string, string> = {
-  ASIGNADO: 'Asignado — camino a recoger', RECOGIDO: 'Recogido', EN_CAMINO: 'En camino', ENTREGADO: 'Entregado',
-}
-
-function PackageEditor({ order }: { order: StoreOrder }) {
-  const queryClient = useQueryClient()
-  const mutation = useMutation({
-    mutationFn: (data: Partial<{ packageTamano: string; packageTipo: string; packagePesoKg: number; packageFragil: boolean }>) =>
-      api.patch(`/store/admin/orders/${order.id}/paquete`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['store-orders'] }),
-    onError: (err) => toast.error(getErrorMessage(err)),
-  })
-
-  return (
-    <div className="rounded-xl border bg-background p-4">
-      <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-        Paquete para el biker (para que organice su mochila)
-      </p>
-      <div className="flex flex-wrap gap-3 text-sm">
-        <select value={order.packageTamano} onChange={(e) => mutation.mutate({ packageTamano: e.target.value })}
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm">
-          <option value="chico">Chico</option>
-          <option value="mediano">Mediano</option>
-          <option value="grande">Grande</option>
-        </select>
-        <select value={order.packageTipo} onChange={(e) => mutation.mutate({ packageTipo: e.target.value })}
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm">
-          <option value="bolsa">Bolsa</option>
-          <option value="caja">Caja</option>
-          <option value="bulto">Bulto</option>
-        </select>
-        <input type="number" step="0.1" min="0" value={order.packagePesoKg}
-          onChange={(e) => mutation.mutate({ packagePesoKg: parseFloat(e.target.value) || 0 })}
-          className="h-9 w-24 rounded-md border border-input bg-background px-2 text-sm" />
-        <label className="flex items-center gap-1.5 text-sm">
-          <input type="checkbox" checked={order.packageFragil}
-            onChange={(e) => mutation.mutate({ packageFragil: e.target.checked })}
-            className="h-4 w-4 rounded border-input" />
-          Frágil
-        </label>
-      </div>
-    </div>
-  )
-}
-
-interface CashSession { id: string; cashRegister: { name: string } }
-
-const STATUS_CONFIG: Record<string, { label: string; variant: string; icon: React.ElementType }> = {
-  PENDING: { label: 'Pendiente', variant: 'secondary', icon: Clock },
-  CONFIRMED: { label: 'Confirmado', variant: 'default', icon: CheckCircle },
-  PREPARING: { label: 'Preparando', variant: 'default', icon: Package },
-  READY: { label: 'Listo', variant: 'success', icon: CheckCircle },
-  DELIVERED: { label: 'Entregado', variant: 'success', icon: Truck },
-  CANCELLED: { label: 'Cancelado', variant: 'destructive', icon: XCircle },
-}
-
-const NEXT_STATUS: Record<string, string> = {
-  CONFIRMED: 'PREPARING', PREPARING: 'READY', READY: 'DELIVERED',
-}
-
-const PAYMENT_LABELS: Record<string, string> = { YAPE: 'Yape', PLIN: 'Plin', CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape contra entrega', CARD_CONTRAENTREGA: 'Tarjeta contra entrega (POS)' }
-const PAYMENT_EMOJIS: Record<string, string> = { YAPE: '💜', PLIN: '💚', CASH: '💵', YAPE_CONTRAENTREGA: '💜', CARD_CONTRAENTREGA: '💳' }
-// Se cobran recién al entregar — nunca quedan "pago pendiente de verificar"
-// como sí pasa con un Yape/Plin pagado por adelantado.
-const PAYS_ON_DELIVERY = new Set(['CASH', 'YAPE_CONTRAENTREGA', 'CARD_CONTRAENTREGA'])
-
-// Notification system - requires explicit user activation
-let audioUnlocked = false
-let audioCtx: AudioContext | null = null
-
-function beep() {
-  if (!audioUnlocked || !audioCtx) return
-  try {
-    if (audioCtx.state === 'suspended') audioCtx.resume()
-    const times = [0, 0.2, 0.4]
-    times.forEach(t => {
-      const osc = audioCtx!.createOscillator()
-      const gain = audioCtx!.createGain()
-      osc.connect(gain); gain.connect(audioCtx!.destination)
-      osc.frequency.value = 880; osc.type = 'sine'
-      gain.gain.setValueAtTime(0.5, audioCtx!.currentTime + t)
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx!.currentTime + t + 0.15)
-      osc.start(audioCtx!.currentTime + t)
-      osc.stop(audioCtx!.currentTime + t + 0.15)
-    })
-  } catch { /* ignore */ }
-}
-
-function activateNotifications(): boolean {
-  try {
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-    audioCtx = new AC()
-    audioUnlocked = true
-    // Test beep
-    beep()
-    // Request browser notifications
-    if ('Notification' in window && Notification.permission !== 'granted') {
-      Notification.requestPermission()
-    }
-    return true
-  } catch { return false }
-}
-
-function showBrowserNotif(title: string, body: string) {
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, { body, icon: '/favicon.ico', requireInteraction: true })
-  }
-}
-
-// Browser notification
-function showBrowserNotification(title: string, body: string) {
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, { body, icon: '/favicon.ico' })
-  } else if ('Notification' in window && Notification.permission !== 'denied') {
-    Notification.requestPermission().then(p => {
-      if (p === 'granted') new Notification(title, { body })
-    })
-  }
-}
-
-function ConfirmOrderModal({ order, onClose, onConfirmed }: {
-  order: StoreOrder; onClose: () => void; onConfirmed: (saleNumber: string) => void
-}) {
-  const queryClient = useQueryClient()
-  const [selectedSession, setSelectedSession] = useState('')
-
-  const { data: registers } = useQuery({
-    queryKey: ['cash-registers'],
-    queryFn: async () => (await api.get<{ data: Array<{ id: string; name: string; sessions: CashSession[] }> }>('/cash/registers')).data.data,
-  })
-
-  const openSessions = (registers ?? []).flatMap(r =>
-    r.sessions.map(s => ({ id: s.id, name: r.name }))
-  )
-
-  const mutation = useMutation({
-    mutationFn: () => api.post(`/store/admin/orders/${order.id}/confirm`, { cashSessionId: selectedSession }),
-    onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['store-orders'] })
-      queryClient.invalidateQueries({ queryKey: ['sales'] })
-      const { saleNumber, stockWarnings } = res.data.data as { saleNumber: string; stockWarnings?: string[] }
-      toast.success(`✅ Pedido confirmado. Venta ${saleNumber} generada.`)
-      // El sistema no tenía stock suficiente: se ajustó solo, pero hay que
-      // revisar el físico (p. ej. dos clientes pidieron la última unidad).
-      for (const w of stockWarnings ?? []) toast.warning(`Stock: ${w}`, { duration: 15000 })
-      onConfirmed(saleNumber)
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  })
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl">
-        <div className="p-6 space-y-5">
-          <div>
-            <h2 className="text-lg font-bold">Confirmar pedido {order.orderNumber}</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Esto creará una venta en el ERP, descontará stock y sumará a la caja.
-            </p>
-          </div>
-
-          {/* Order summary */}
-          <div className="bg-muted/50 rounded-xl p-4 space-y-2 text-sm">
-            <p className="font-medium">{order.customerName} · {order.customerPhone}</p>
-            <p className="text-muted-foreground">{order.deliveryType === 'DELIVERY' ? `🚚 Delivery — ${order.address}` : '🏪 Recojo en tienda'}</p>
-            <p className="text-muted-foreground">{PAYMENT_EMOJIS[order.paymentMethod]} {PAYMENT_LABELS[order.paymentMethod]}</p>
-            <div className="border-t pt-2 flex justify-between font-bold">
-              <span>Total</span>
-              <span className="text-success">{formatCurrency(order.total)}</span>
-            </div>
-          </div>
-
-          {/* Cash session selector */}
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              ¿En qué caja se registra? *
-            </label>
-            {openSessions.length === 0 ? (
-              <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 text-sm text-destructive">
-                ⚠️ No hay cajas abiertas. Abre una caja primero en el módulo Caja.
-              </div>
-            ) : (
-              <select value={selectedSession} onChange={e => setSelectedSession(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <option value="">Selecciona una caja...</option>
-                {openSessions.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
-
-        <div className="border-t p-5 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" loading={mutation.isPending}
-            disabled={!selectedSession || openSessions.length === 0}
-            onClick={() => mutation.mutate()}>
-            <CheckCircle className="mr-2 h-4 w-4" />Confirmar y generar venta
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
+import {
+  ConfirmOrderModal, DELIVERY_STATUS_LABELS, NEXT_STATUS, PAYMENT_LABELS, PAYS_ON_DELIVERY, PackageEditor, STATUS_CONFIG,
+  activateNotifications, audioUnlocked, beep, showBrowserNotif, type StoreOrder,
+} from './orderParts'
 
 export function StoreOrdersPage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const confirm = useConfirm()
   const [statusFilter, setStatusFilter] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -242,7 +32,7 @@ export function StoreOrdersPage() {
     const ok = activateNotifications()
     if (ok) {
       setNotifEnabled(true)
-      toast.success('🔔 Notificaciones activadas. Recibirás sonido y alertas con cada pedido.')
+      toast.success('Notificaciones activadas. Recibirás sonido y alertas con cada pedido.')
     } else {
       toast.error('No se pudo activar. Intenta desde un navegador moderno.')
     }
@@ -267,11 +57,11 @@ export function StoreOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ['store-orders'] })
       if (audioUnlocked) beep()
       showBrowserNotif(
-        '🛒 Nuevo pedido online',
-        `${order.orderNumber} — ${order.customerName} — S/ ${order.total.toFixed(2)} — ${PAYMENT_LABELS[order.paymentMethod]}`
+        'Nuevo pedido online',
+        `${order.orderNumber} · ${order.customerName} · S/ ${order.total.toFixed(2)} · ${PAYMENT_LABELS[order.paymentMethod]}`
       )
       toast.success(
-        `🛒 Nuevo pedido: ${order.orderNumber} — ${order.customerName} — S/ ${order.total.toFixed(2)}`,
+        `Nuevo pedido: ${order.orderNumber} · ${order.customerName} · S/ ${order.total.toFixed(2)}`,
         { duration: 10000, action: { label: 'Ver', onClick: () => { setStatusFilter('PENDING'); setPage(1) } } }
       )
     })
@@ -286,212 +76,149 @@ export function StoreOrdersPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   })
 
+  const cancelOrder = async (order: StoreOrder) => {
+    const r = await confirm({ title: `¿Cancelar el pedido ${order.orderNumber}?`, confirmLabel: 'Cancelar pedido' })
+    if (r.ok) updateMutation.mutate({ id: order.id, status: 'CANCELLED' })
+  }
+
   const orders = data?.data ?? []
   const pendingCount = orders.filter(o => o.status === 'PENDING').length
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            Pedidos Online
-            {pendingCount > 0 && (
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-destructive text-white text-xs font-bold animate-pulse">
-                {pendingCount}
-              </span>
-            )}
-          </h1>
-          <p className="text-sm text-muted-foreground">Pedidos de la tienda online · Confirmar genera venta y descuenta stock</p>
-        </div>
-        {!notifEnabled ? (
-          <Button onClick={handleActivateNotifications} variant="outline" className="gap-2 border-amber-500 text-amber-500 hover:bg-amber-500/10">
-            <BellOff className="h-4 w-4" />Activar notificaciones
-          </Button>
-        ) : (
-          <div className="flex items-center gap-2 text-sm text-success">
-            <Bell className="h-4 w-4" />Notificaciones activas
-          </div>
-        )}
-      </div>
+    <div className="erp flex flex-col gap-5">
+      <PageHeader title={<span className="flex items-center gap-2">Pedidos Online
+        {pendingCount > 0 && <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-bad px-1.5 text-meta font-semibold text-white">{pendingCount}</span>}
+      </span>} actions={notifEnabled
+        ? <span className="inline-flex items-center gap-1.5 text-table text-ok-ink"><Bell className="size-4" />Notificaciones activas</span>
+        : <Btn onClick={handleActivateNotifications}><BellOff />Activar notificaciones</Btn>}>
+        <p className="text-table text-ink-muted">Pedidos de la tienda online · Confirmar genera venta y descuenta stock</p>
+      </PageHeader>
 
       {!notifEnabled && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-center gap-3">
-          <Bell className="h-5 w-5 text-amber-500 shrink-0" />
-          <div>
-            <p className="text-sm font-semibold text-amber-500">Activa las notificaciones para no perderte ningún pedido</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Recibirás sonido y alerta del sistema operativo aunque tengas otra pestaña abierta</p>
+        <div className="flex flex-wrap items-center gap-3 rounded-srf border border-line bg-surface p-3 shadow-[inset_3px_0_0_hsl(var(--warn))]">
+          <Bell className="size-5 shrink-0 text-warn-ink" />
+          <div className="min-w-0 flex-1">
+            <p className="text-table font-semibold text-ink">Activa las notificaciones para no perderte ningún pedido</p>
+            <p className="text-meta text-ink-muted">Recibirás sonido y alerta del sistema operativo aunque tengas otra pestaña abierta</p>
           </div>
-          <Button size="sm" onClick={handleActivateNotifications} className="shrink-0 bg-amber-500 hover:bg-amber-400 text-black ml-auto">
-            Activar ahora
-          </Button>
+          <Btn size="sm" variant="primary" onClick={handleActivateNotifications}>Activar ahora</Btn>
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex gap-2 flex-wrap">
-        {[['', 'Todos'], ...Object.entries(STATUS_CONFIG).map(([k, v]) => [k, v.label])].map(([val, label]) => (
-          <button key={val} onClick={() => { setStatusFilter(val); setPage(1) }}
-            className={cn('px-4 py-2 rounded-full text-sm font-medium transition-colors',
-              statusFilter === val ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80')}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <Card>
-        {isLoading ? <div className="py-12 text-center text-muted-foreground">Cargando...</div> : (
-          <div className="divide-y">
+      <div className={cn('overflow-hidden', surfaceCls)}>
+        <div className="border-b border-line p-2">
+          <Segmented ariaLabel="Filtrar por estado" value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1) }}
+            options={[['', 'Todos'], ...Object.entries(STATUS_CONFIG).map(([k, v]) => [k, v.label] as const)]} />
+        </div>
+        {isLoading ? <div className="py-12 text-center text-table text-ink-muted">Cargando…</div> : (
+          <div className="divide-y divide-line">
             {orders.map(order => {
               const cfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.PENDING
-              const StatusIcon = cfg.icon
               const nextStatus = NEXT_STATUS[order.status]
               const nextCfg = nextStatus ? STATUS_CONFIG[nextStatus] : null
               const isPending = order.status === 'PENDING'
+              const open = expandedId === order.id
 
               return (
                 <div key={order.id}>
-                  <div
-                    className={cn('flex items-center gap-4 p-4 cursor-pointer transition-colors',
-                      isPending ? 'bg-amber-500/5 hover:bg-amber-500/10 border-l-4 border-amber-500' : 'hover:bg-muted/30')}
-                    onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}>
+                  <button type="button" aria-expanded={open}
+                    className={cn('flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2',
+                      isPending && 'shadow-[inset_3px_0_0_hsl(var(--warn))]')}
+                    onClick={() => setExpandedId(open ? null : order.id)}>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold">{order.orderNumber}</span>
-                        <Badge variant={cfg.variant as never} className="text-xs">
-                          <StatusIcon className="mr-1 h-3 w-3" />{cfg.label}
-                        </Badge>
-                        {order.saleId && (
-                          <span className="text-xs bg-success/10 text-success border border-success/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Receipt className="h-3 w-3" />Venta generada
-                          </span>
-                        )}
-                        {order.paymentStatus === 'PENDING' && !PAYS_ON_DELIVERY.has(order.paymentMethod) && (
-                          <Badge variant="destructive" className="text-xs">Pago pendiente</Badge>
-                        )}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-mono text-table font-semibold text-ink">{order.orderNumber}</span>
+                        <StatusBadge tone={cfg.tone}>{cfg.label}</StatusBadge>
+                        {order.saleId && <StatusBadge tone="ok"><Receipt className="size-3" />Venta generada</StatusBadge>}
+                        {order.paymentStatus === 'PENDING' && !PAYS_ON_DELIVERY.has(order.paymentMethod) && <StatusBadge tone="bad">Pago pendiente</StatusBadge>}
                         {order.rider && (
-                          <span className="text-xs bg-blue-500/10 text-blue-600 border border-blue-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Bike className="h-3 w-3" />{order.rider.nombre} · {DELIVERY_STATUS_LABELS[order.deliveryStatus ?? ''] ?? order.deliveryStatus}
-                          </span>
+                          <StatusBadge tone="neutral"><Bike className="size-3" />{order.rider.nombre} · {DELIVERY_STATUS_LABELS[order.deliveryStatus ?? ''] ?? order.deliveryStatus}</StatusBadge>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        {order.customerName} · {order.customerPhone} · {formatDateTime(order.createdAt)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {order.deliveryType === 'DELIVERY' ? `🚚 Delivery${order.district ? ` - ${order.district}` : ''}` : '🏪 Recojo'} ·
-                        {PAYMENT_EMOJIS[order.paymentMethod]} {PAYMENT_LABELS[order.paymentMethod]}
+                      <p className="mt-0.5 text-table text-ink-muted">{order.customerName} · {order.customerPhone} · {formatDateTime(order.createdAt)}</p>
+                      <p className="flex items-center gap-1 text-meta text-ink-muted">
+                        {order.deliveryType === 'DELIVERY'
+                          ? <><Truck className="size-3.5" />Delivery{order.district ? ` · ${order.district}` : ''}</>
+                          : <><Store className="size-3.5" />Recojo</>}
+                        {' · '}{PAYMENT_LABELS[order.paymentMethod]}
                       </p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-bold text-lg">{formatCurrency(order.total)}</p>
-                      <p className="text-xs text-muted-foreground">{order.items.length} prod.</p>
-                      {order.items.some(i => i.options) && (
-                        <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Con opciones</p>
-                      )}
+                    <div className="shrink-0 text-right">
+                      <p className="text-section font-semibold tabular-nums text-ink">{formatCurrency(order.total)}</p>
+                      <p className="text-meta text-ink-muted">{order.items.length} prod.</p>
+                      {order.items.some(i => i.options) && <p className="text-meta font-semibold text-warn-ink">Con opciones</p>}
                     </div>
-                  </div>
+                    <ChevronDown className={cn('size-4 shrink-0 text-ink-muted transition-transform', open && 'rotate-180')} />
+                  </button>
 
-                  {expandedId === order.id && (
-                    <div className="bg-muted/20 px-6 py-4 space-y-4">
-                      {/* Items */}
+                  {open && (
+                    <div className="flex flex-col gap-4 bg-surface-2 px-4 py-4 sm:px-6">
                       <div>
-                        <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Productos pedidos</p>
-                        <div className="space-y-1">
+                        <p className="mb-2 text-meta font-medium text-ink-muted">Productos pedidos</p>
+                        <div className="flex flex-col gap-1">
                           {order.items.map(item => (
-                            <div key={item.id} className="flex justify-between gap-3 text-sm">
+                            <div key={item.id} className="flex justify-between gap-3 text-table">
                               <div className="min-w-0">
-                                <span className="text-muted-foreground">{item.name} ×{Number(item.quantity)}</span>
+                                <span className="text-ink">{item.name} ×{Number(item.quantity)}</span>
                                 {(item.unitsPerSale ?? 1) > 1 && (
-                                  <span className="ml-1.5 text-xs text-muted-foreground">({Number(item.quantity) * (item.unitsPerSale ?? 1)} und.)</span>
+                                  <span className="ml-1.5 text-meta text-ink-muted">({Number(item.quantity) * (item.unitsPerSale ?? 1)} und.)</span>
                                 )}
                                 {/* Opción elegida por el cliente: es dato de despacho, va resaltada. */}
                                 {item.options && (
-                                  <span className="mt-0.5 block w-fit rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
-                                    {item.options}
-                                  </span>
+                                  <span className="mt-0.5 block w-fit rounded-[4px] bg-warn/15 px-1.5 py-0.5 text-meta font-semibold text-warn-ink">{item.options}</span>
                                 )}
                               </div>
-                              <span className="shrink-0">{formatCurrency(item.subtotal)}</span>
+                              <span className="shrink-0 tabular-nums">{formatCurrency(item.subtotal)}</span>
                             </div>
                           ))}
-                          <div className="flex justify-between text-sm font-bold border-t pt-1 mt-1">
+                          <div className="mt-1 flex justify-between border-t border-line pt-1 text-table font-semibold">
                             <span>Total</span>
-                            <span className="text-success">{formatCurrency(order.total)}</span>
+                            <span className="tabular-nums">{formatCurrency(order.total)}</span>
                           </div>
                         </div>
                       </div>
 
                       {order.address && (
-                        <p className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
-                          📍 {order.address}, {order.district}
+                        <p className="flex flex-wrap items-center gap-2 text-table text-ink-muted">
+                          <MapPin className="size-4" />{order.address}, {order.district}
                           {order.latitude != null && order.longitude != null && (
-                            <a href={`https://www.google.com/maps?q=${order.latitude},${order.longitude}`}
-                              target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-primary hover:underline text-xs font-medium">
-                              <ExternalLink className="h-3 w-3" />Ver ubicación GPS del cliente
+                            <a href={`https://www.google.com/maps?q=${order.latitude},${order.longitude}`} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-meta font-medium text-brand hover:underline">
+                              <ExternalLink className="size-3" />Ver ubicación GPS del cliente
                             </a>
                           )}
                         </p>
                       )}
-                      {order.notes && (
-                        <p className="text-sm text-muted-foreground italic">"{order.notes}"</p>
-                      )}
+                      {order.notes && <p className="text-table italic text-ink-muted">"{order.notes}"</p>}
 
-                      {order.deliveryType === 'DELIVERY' && !['DELIVERED', 'CANCELLED'].includes(order.status) && (
-                        <PackageEditor order={order} />
-                      )}
+                      {order.deliveryType === 'DELIVERY' && !['DELIVERED', 'CANCELLED'].includes(order.status) && <PackageEditor order={order} />}
 
-                      {/* Actions */}
-                      <div className="flex gap-2 flex-wrap pt-1">
-                        {/* CONFIRM = create sale */}
+                      <div className="flex flex-wrap gap-2">
                         {isPending && (
-                          <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground"
-                            onClick={() => setConfirmingOrder(order)}>
-                            <CheckCircle className="mr-1.5 h-4 w-4" />Confirmar → Generar venta
-                          </Button>
+                          <Btn size="sm" variant="primary" onClick={() => setConfirmingOrder(order)}><CheckCircle />Confirmar y generar venta</Btn>
                         )}
-
-                        {/* Progress order status (after confirmed) — el paso a DELIVERED
-                            lo cierra el biker desde su app una vez que hay un repartidor
-                            asignado, el admin ya no lo puede pisar a mano. */}
+                        {/* El paso a DELIVERED lo cierra el biker desde su app una vez que hay un
+                            repartidor asignado; el admin ya no lo puede pisar a mano. */}
                         {nextCfg && nextStatus && !isPending && !(nextStatus === 'DELIVERED' && order.riderId && order.deliveryStatus !== 'ENTREGADO') && (
-                          <Button size="sm" variant="outline"
-                            onClick={() => updateMutation.mutate({ id: order.id, status: nextStatus })}
-                            loading={updateMutation.isPending}>
+                          <Btn size="sm" loading={updateMutation.isPending} onClick={() => updateMutation.mutate({ id: order.id, status: nextStatus })}>
                             Avanzar a: {nextCfg.label}
-                          </Button>
+                          </Btn>
                         )}
-
                         {order.riderId && (
-                          <Button size="sm" variant="outline"
-                            onClick={() => setTrackingOpenId(trackingOpenId === order.id ? null : order.id)}>
-                            <MapPinned className="mr-1.5 h-4 w-4" />
-                            {trackingOpenId === order.id ? 'Ocultar seguimiento' : 'Ver seguimiento'}
-                          </Button>
+                          <Btn size="sm" onClick={() => setTrackingOpenId(trackingOpenId === order.id ? null : order.id)}>
+                            <MapPinned />{trackingOpenId === order.id ? 'Ocultar seguimiento' : 'Ver seguimiento'}
+                          </Btn>
                         )}
-
-                        {/* Verify payment */}
                         {!PAYS_ON_DELIVERY.has(order.paymentMethod) && order.paymentStatus === 'PENDING' && (
-                          <Button size="sm" variant="outline"
-                            onClick={() => updateMutation.mutate({ id: order.id, paymentStatus: 'VERIFIED' })}>
-                            ✓ Verificar pago {PAYMENT_LABELS[order.paymentMethod]}
-                          </Button>
+                          <Btn size="sm" onClick={() => updateMutation.mutate({ id: order.id, paymentStatus: 'VERIFIED' })}>
+                            <CheckCircle />Verificar pago {PAYMENT_LABELS[order.paymentMethod]}
+                          </Btn>
                         )}
-
-                        {/* View sale */}
                         {order.saleId && (
-                          <a href={`/sales/${order.saleId}`}
-                            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-muted">
-                            <ExternalLink className="h-3.5 w-3.5" />Ver venta
-                          </a>
+                          <Btn size="sm" variant="ghost" onClick={() => navigate(`/sales/${order.saleId}`)}><ExternalLink />Ver venta</Btn>
                         )}
-
-                        {/* Cancel */}
                         {!['CANCELLED', 'DELIVERED'].includes(order.status) && (
-                          <Button size="sm" variant="destructive" className="ml-auto"
-                            onClick={() => { if (confirm('¿Cancelar este pedido?')) updateMutation.mutate({ id: order.id, status: 'CANCELLED' }) }}>
-                            Cancelar
-                          </Button>
+                          <Btn size="sm" variant="danger" className="ml-auto" onClick={() => cancelOrder(order)}>Cancelar</Btn>
                         )}
                       </div>
 
@@ -502,33 +229,17 @@ export function StoreOrdersPage() {
               )
             })}
 
-            {orders.length === 0 && (
-              <div className="py-16 text-center">
-                <ShoppingBag className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-30" />
-                <p className="text-muted-foreground">No hay pedidos online {statusFilter ? 'con este estado' : 'aún'}</p>
-              </div>
-            )}
+            {orders.length === 0 && <EmptyState icon={ShoppingBag} title={`No hay pedidos online ${statusFilter ? 'con este estado' : 'aún'}`} />}
           </div>
         )}
 
         {data && data.pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>Total: {data.pagination.total}</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
-              <span className="self-center">{page} / {data.pagination.totalPages}</span>
-              <Button variant="outline" size="sm" disabled={page === data.pagination.totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
-            </div>
-          </div>
+          <Pagination page={page} totalPages={data.pagination.totalPages} total={data.pagination.total} pageSize={20} onPage={setPage} />
         )}
-      </Card>
+      </div>
 
       {confirmingOrder && (
-        <ConfirmOrderModal
-          order={confirmingOrder}
-          onClose={() => setConfirmingOrder(null)}
-          onConfirmed={() => setConfirmingOrder(null)}
-        />
+        <ConfirmOrderModal order={confirmingOrder} onClose={() => setConfirmingOrder(null)} onConfirmed={() => setConfirmingOrder(null)} />
       )}
     </div>
   )
