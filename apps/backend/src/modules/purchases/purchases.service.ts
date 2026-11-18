@@ -283,6 +283,7 @@ export class PurchasesService {
       include: {
         purchaseOrder: { select: { orderNumber: true, totalAmount: true, supplierInvoice: true } },
         user: { select: { firstName: true, lastName: true } },
+        cashSession: { select: { cashRegister: { select: { name: true } } } },
       },
       orderBy: { paidAt: 'asc' },
     });
@@ -291,7 +292,9 @@ export class PurchasesService {
     let grandTotal = 0;
     for (const p of payments) {
       const amount = Number(p.amount);
-      totalsByMethod[p.method] = (totalsByMethod[p.method] ?? 0) + amount;
+      // El efectivo se separa: caja del día (CASH_DAY) o Caja General (CASH).
+      const key = p.method === 'CASH' && p.cashSessionId ? 'CASH_DAY' : p.method;
+      totalsByMethod[key] = (totalsByMethod[key] ?? 0) + amount;
       grandTotal += amount;
     }
 
@@ -302,6 +305,7 @@ export class PurchasesService {
         paidAt: p.paidAt,
         amount: Number(p.amount),
         method: p.method,
+        cashRegisterName: p.cashSession?.cashRegister.name ?? null,
         reference: p.reference,
         notes: p.notes,
         orderNumber: p.purchaseOrder.orderNumber,
@@ -331,8 +335,8 @@ export class PurchasesService {
           include: { items: true },
           orderBy: { createdAt: 'desc' },
         },
-        payments: { include: { reversedBy: { select: { firstName: true, lastName: true } } }, orderBy: { paidAt: 'desc' } },
-        payerRepayments: { include: { reversedBy: { select: { firstName: true, lastName: true } } }, orderBy: { paidAt: 'desc' } },
+        payments: { include: { reversedBy: { select: { firstName: true, lastName: true } }, cashSession: { select: { cashRegister: { select: { name: true } } } }, }, orderBy: { paidAt: 'desc' } },
+        payerRepayments: { include: { reversedBy: { select: { firstName: true, lastName: true } }, cashSession: { select: { cashRegister: { select: { name: true } } } }, }, orderBy: { paidAt: 'desc' } },
         supplierReturns: {
           include: {
             items: { include: { product: { select: { id: true, name: true } } } },
@@ -465,7 +469,7 @@ export class PurchasesService {
       await tx.supplierPayment.create({
         data: {
           purchaseOrderId: orderId, userId, amount: leg.amount, method: leg.method as never,
-          reference: extra?.reference, notes: extra?.notes ?? description,
+          reference: extra?.reference, notes: extra?.notes ?? description, cashSessionId: cashSession?.id ?? null,
         },
       });
     }
@@ -559,13 +563,15 @@ export class PurchasesService {
       });
 
       const byOrder = new Map<string, number>();
+      const rowsByLeg = new Map<number, string[]>();
       for (const a of allocations) {
-        await tx.supplierPayment.create({
+        const row = await tx.supplierPayment.create({
           data: {
             purchaseOrderId: a.orderId, userId, amount: a.amount,
             method: legs[a.legIndex].method as never, reference, notes, batchId: batch.id,
           },
         });
+        rowsByLeg.set(a.legIndex, [...(rowsByLeg.get(a.legIndex) ?? []), row.id]);
         byOrder.set(a.orderId, (byOrder.get(a.orderId) ?? 0) + a.amount);
       }
 
@@ -595,6 +601,7 @@ export class PurchasesService {
               referenceType: 'PURCHASE_PAYMENT_BATCH', referenceId: batch.id,
             },
           });
+          await tx.supplierPayment.updateMany({ where: { id: { in: rowsByLeg.get(legIndex) ?? [] } }, data: { cashSessionId: cashSession.id } });
         } else {
           await treasuryService.recordMovementInTx(
             tx, 'WITHDRAWAL', legAmount, description, userId, 'PURCHASE_PAYMENT_BATCH', batch.id, methodToAccount(leg.method),
@@ -676,6 +683,7 @@ export class PurchasesService {
           purchaseOrder: { select: { orderNumber: true } },
           user: { select: { firstName: true, lastName: true } },
           reversedBy: { select: { firstName: true, lastName: true } },
+          cashSession: { select: { cashRegister: { select: { name: true } } } },
         },
       }),
     ]);
@@ -707,6 +715,7 @@ export class PurchasesService {
       recentPayments: recentPayments.map((p) => ({
         id: p.id, paidAt: p.paidAt, amount: Number(p.amount), method: p.method,
         reference: p.reference, notes: p.notes, batchId: p.batchId,
+        cashRegisterName: p.cashSession?.cashRegister.name ?? null,
         orderNumber: p.purchaseOrder.orderNumber,
         user: `${p.user.firstName} ${p.user.lastName}`,
         reversedAt: p.reversedAt, reversalReason: p.reversalReason,
@@ -1965,13 +1974,15 @@ export class PurchasesService {
       });
 
       const byOrder = new Map<string, number>();
+      const rowsByLeg = new Map<number, string[]>();
       for (const a of allocations) {
-        await tx.payerRepayment.create({
+        const row = await tx.payerRepayment.create({
           data: {
             payerId, purchaseOrderId: a.orderId, userId, amount: a.amount,
             method: legs[a.legIndex].method as never, reference, notes, batchId: batch.id,
           },
         });
+        rowsByLeg.set(a.legIndex, [...(rowsByLeg.get(a.legIndex) ?? []), row.id]);
         byOrder.set(a.orderId, (byOrder.get(a.orderId) ?? 0) + a.amount);
       }
 
@@ -2002,6 +2013,7 @@ export class PurchasesService {
               referenceType: 'PAYER_REPAYMENT_BATCH', referenceId: batch.id,
             },
           });
+          await tx.payerRepayment.updateMany({ where: { id: { in: rowsByLeg.get(legIndex) ?? [] } }, data: { cashSessionId: cashSession.id } });
         } else {
           await treasuryService.recordMovementInTx(
             tx, 'WITHDRAWAL', legAmount, description, userId, 'PAYER_REPAYMENT_BATCH', batch.id, methodToAccount(leg.method),
@@ -2034,6 +2046,7 @@ export class PurchasesService {
           purchaseOrder: { select: { orderNumber: true } },
           user: { select: { firstName: true, lastName: true } },
           reversedBy: { select: { firstName: true, lastName: true } },
+          cashSession: { select: { cashRegister: { select: { name: true } } } },
         },
       }),
       payerLedgerService.getBalance(payerId),
@@ -2066,6 +2079,7 @@ export class PurchasesService {
       recentRepayments: recentRepayments.map((p) => ({
         id: p.id, paidAt: p.paidAt, amount: Number(p.amount), method: p.method,
         reference: p.reference, notes: p.notes, batchId: p.batchId,
+        cashRegisterName: p.cashSession?.cashRegister.name ?? null,
         orderNumber: p.purchaseOrder.orderNumber,
         user: `${p.user.firstName} ${p.user.lastName}`,
         reversedAt: p.reversedAt, reversalReason: p.reversalReason,

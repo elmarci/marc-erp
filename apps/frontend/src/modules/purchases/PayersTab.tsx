@@ -9,7 +9,7 @@ import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils';
 import { PayAmountModal } from './PayModals';
 import { AgingRow } from './PayableTab';
-import { PAYMENT_METHOD_LABELS, Payer } from './types';
+import { paidMethodLabel, Payer } from './types';
 
 export interface PayerDebt {
   orderId: string; orderNumber: string; date: string; supplierName: string;
@@ -17,7 +17,7 @@ export interface PayerDebt {
   agingBucket: '0-15' | '16-30' | '31-60' | '60+';
 }
 export interface PaymentHistoryRow {
-  id: string; paidAt: string; amount: number; method: string;
+  id: string; paidAt: string; amount: number; method: string; cashRegisterName?: string | null;
   reference: string | null; notes: string | null; batchId: string | null; orderNumber: string; user: string;
   reversedAt: string | null; reversalReason: string | null; reversedBy: string | null;
 }
@@ -88,7 +88,7 @@ export function NewPayerModal({ onClose, onCreated }: { onClose: () => void; onC
 // en vez de una fila repetida por cada orden que tocó.
 export function groupRepaymentBatches(rows: PaymentHistoryRow[]) {
   const map = new Map<string, {
-    key: string; paidAt: string; amount: number; method: string; reference: string | null; user: string; orders: string[];
+    key: string; paidAt: string; amount: number; methods: string[]; reference: string | null; user: string; orders: string[];
     allReversed: boolean; reversedAt: string | null; reversalReason: string | null; reversedBy: string | null;
   }>();
   for (const r of rows) {
@@ -96,11 +96,14 @@ export function groupRepaymentBatches(rows: PaymentHistoryRow[]) {
     const existing = map.get(key);
     if (existing) {
       existing.amount += r.amount;
-      existing.orders.push(r.orderNumber);
+      if (!existing.orders.includes(r.orderNumber)) existing.orders.push(r.orderNumber);
+      // Un mismo pago puede salir de varias formas (ej. caja del día y Caja General).
+      const label = paidMethodLabel(r.method, r.cashRegisterName);
+      if (!existing.methods.includes(label)) existing.methods.push(label);
       existing.allReversed = existing.allReversed && !!r.reversedAt;
     } else {
       map.set(key, {
-        key, paidAt: r.paidAt, amount: r.amount, method: r.method, reference: r.reference, user: r.user, orders: [r.orderNumber],
+        key, paidAt: r.paidAt, amount: r.amount, methods: [paidMethodLabel(r.method, r.cashRegisterName)], reference: r.reference, user: r.user, orders: [r.orderNumber],
         allReversed: !!r.reversedAt, reversedAt: r.reversedAt, reversalReason: r.reversalReason, reversedBy: r.reversedBy,
       });
     }
@@ -133,7 +136,7 @@ export function RepaymentHistoryTable({ batches, canRevert, onRevert, revertingK
           {batches.map((b) => (
             <tr key={b.key} className={cn(b.allReversed && 'opacity-60')}>
               <td className="py-2 text-ink-muted">{formatDateTime(b.paidAt)}</td>
-              <td className="py-2">{PAYMENT_METHOD_LABELS[b.method] ?? b.method}{b.reference ? ` (${b.reference})` : ''}</td>
+              <td className="py-2">{b.methods.join(' + ')}{b.reference ? ` (${b.reference})` : ''}</td>
               <td className="py-2 text-meta text-ink-muted">{b.orders.join(', ')}</td>
               <td className={cn('py-2 text-right font-semibold tabular-nums', b.allReversed ? 'text-ink-muted line-through' : 'text-ok-ink')}>
                 {formatCurrency(b.amount)}

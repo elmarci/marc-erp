@@ -11,10 +11,10 @@ import { printThermalHtml } from '@/lib/printThermal';
 import { PayAmountModal } from './PayModals';
 import { AgingRow } from './PayableTab';
 import { PaymentHistoryRow, RepaymentHistoryTable, groupRepaymentBatches } from './PayersTab';
-import { ACCOUNTING_STATE_LABELS, ACCOUNTING_STATE_TONE, AccountingState, PAYMENT_METHOD_LABELS, Supplier } from './types';
+import { ACCOUNTING_STATE_LABELS, ACCOUNTING_STATE_TONE, AccountingState, PAYMENT_METHOD_LABELS, paidMethodLabel, Supplier } from './types';
 
 export interface SettlementPayment {
-  id: string; paidAt: string; amount: number; method: string;
+  id: string; paidAt: string; amount: number; method: string; cashRegisterName?: string | null;
   reference: string | null; notes: string | null;
   orderNumber: string; orderTotal: number; supplierInvoice: string | null; user: string;
 }
@@ -35,7 +35,13 @@ export function printSettlement(s: Settlement, dateFrom: string, dateTo: string)
       <td>${PAYMENT_METHOD_LABELS[p.method] ?? p.method}</td>
       <td style="text-align:right">${formatCurrency(p.amount)}</td>
     </tr>`).join('');
-  const methodRows = Object.entries(s.totalsByMethod)
+  // Para el proveedor da igual de qué caja salió: el efectivo va junto.
+  const merged: Record<string, number> = {};
+  for (const [m, amt] of Object.entries(s.totalsByMethod)) {
+    const k = m === 'CASH_DAY' ? 'CASH' : m;
+    merged[k] = (merged[k] ?? 0) + amt;
+  }
+  const methodRows = Object.entries(merged)
     .map(([m, amt]) => `<div class="row"><span>${PAYMENT_METHOD_LABELS[m] ?? m}</span><span>${formatCurrency(amt)}</span></div>`)
     .join('');
   printThermalHtml('Liquidación de Pagos', `
@@ -272,7 +278,7 @@ export function SettlementsTab() {
                           <td className="px-4 py-2">{formatDateTime(p.paidAt)}</td>
                           <td className="px-4 py-2">{p.orderNumber}</td>
                           <td className="px-4 py-2">{p.supplierInvoice ?? '—'}</td>
-                          <td className="px-4 py-2">{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</td>
+                          <td className="px-4 py-2">{paidMethodLabel(p.method, p.cashRegisterName)}</td>
                           <td className="px-4 py-2">{p.reference ?? '—'}</td>
                           <td className="px-4 py-2">{p.user}</td>
                           <td className="px-4 py-2 text-right font-semibold tabular-nums">{formatCurrency(p.amount)}</td>
@@ -284,7 +290,7 @@ export function SettlementsTab() {
                 <div className="flex flex-wrap items-center justify-end gap-6 border-t pt-4 text-body">
                   {Object.entries(settlement.totalsByMethod).map(([m, amt]) => (
                     <span key={m} className="text-ink-muted tabular-nums">
-                      {PAYMENT_METHOD_LABELS[m] ?? m}: <span className="font-semibold text-ink">{formatCurrency(amt)}</span>
+                      {m === 'CASH' ? 'Efectivo · Caja General' : paidMethodLabel(m)}: <span className="font-semibold text-ink">{formatCurrency(amt)}</span>
                     </span>
                   ))}
                   <span className="text-section font-semibold tabular-nums">
