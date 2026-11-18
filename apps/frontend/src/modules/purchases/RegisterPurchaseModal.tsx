@@ -402,5 +402,3 @@ export function RegisterPurchaseModal({ onClose, onCreated }: { onClose: () => v
     </Modal>
   );
 }
-
-/* ─── New Purchase Order Modal ──────────────────────────────────────────── */
