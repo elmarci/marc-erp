@@ -257,18 +257,18 @@ export function BulkActionBar({ count, categories, onAssignCategory, onSetStatus
 }) {
   const [bulkCategoryId, setBulkCategoryId] = useState('');
   return (
-    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-srf bg-ink px-3 py-2 text-on-ink">
+    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-srf bg-brand px-3 py-2 text-white">
       <span className="text-table font-medium" title="La selección se mantiene aunque cambies de página">
         {count} seleccionado{count !== 1 ? 's' : ''}
       </span>
       <div className="flex items-center gap-1.5">
         <CategoryTreeSelect categories={categories} value={bulkCategoryId} onChange={setBulkCategoryId} emptyLabel="Asignar categoría…" />
-        <Btn size="sm" variant="primary" disabled={!bulkCategoryId || loading} loading={loading}
+        <Btn size="sm" disabled={!bulkCategoryId || loading} loading={loading}
           onClick={() => { onAssignCategory(bulkCategoryId); setBulkCategoryId(''); }}>Aplicar</Btn>
       </div>
       <Btn size="sm" disabled={loading} onClick={() => onSetStatus('ACTIVE')}>Activar</Btn>
       <Btn size="sm" disabled={loading} onClick={() => onSetStatus('INACTIVE')}>Desactivar</Btn>
-      <Btn size="sm" variant="ghost" className="ml-auto text-on-ink/80 hover:bg-on-ink/10 hover:text-on-ink" onClick={onClear}><X />Cancelar selección</Btn>
+      <Btn size="sm" variant="ghost" className="ml-auto text-white/80 hover:bg-white/10 hover:text-white" onClick={onClear}><X />Cancelar selección</Btn>
     </div>
   );
 }

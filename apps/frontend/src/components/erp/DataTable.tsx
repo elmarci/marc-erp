@@ -183,7 +183,7 @@ export function DataTable<T>(p: DataTableProps<T>) {
   return (
     <Tooltip.Provider>
       {selectable && selRows.length > 0 && p.bulkActions && (
-        <div className="mx-3 mb-2 flex min-h-9 flex-wrap items-center gap-2 rounded-ctl bg-ink px-3 py-1 text-table text-on-ink [&_button]:text-on-ink">
+        <div className="mx-3 mb-2 flex min-h-9 flex-wrap items-center gap-2 rounded-ctl bg-brand px-3 py-1 text-table text-white [&_button]:text-white">
           <span className="tabular-nums">{selRows.length} {selRows.length === 1 ? 'elegida' : 'elegidas'}</span>
           <span className="mx-1 h-4 w-px bg-on-ink/20" />
           {p.bulkActions(selRows, clear)}

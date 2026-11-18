@@ -1,5 +1,11 @@
 import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+// Los tamaños de letra propios (text-table, text-body...) deben contar como
+// tamaño y no como color: si no, cn('text-table', 'text-ink') borraba el tamaño.
+const twMerge = extendTailwindMerge({
+  extend: { classGroups: { 'font-size': [{ text: ['meta', 'table', 'body', 'section', 'title', 'kpi'] }] } },
+});
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 

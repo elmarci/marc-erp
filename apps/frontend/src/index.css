@@ -4,111 +4,138 @@
 
 @layer base {
   :root {
-    /* ── MARC Branding: Verde + Negro ── */
-    --background: 0 0% 98%;
-    --foreground: 0 0% 8%;
+    /* ── MARC: colores del logo. Azul #235AB7, azul oscuro #0D4AA1,
+       verde limón #4AAC03 y blanco. ── */
+    --background: 216 33% 96%;
+    --foreground: 220 40% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 8%;
+    --card-foreground: 220 40% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 8%;
-    --primary: 128 58% 38%;           /* Verde MARC */
+    --popover-foreground: 220 40% 12%;
+    --primary: 218 68% 43%;           /* azul MARC */
     --primary-foreground: 0 0% 100%;
-    --secondary: 128 15% 93%;
-    --secondary-foreground: 0 0% 15%;
-    --muted: 0 0% 94%;
-    --muted-foreground: 0 0% 45%;
-    --accent: 128 15% 90%;
-    --accent-foreground: 128 58% 28%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 218 45% 95%;
+    --secondary-foreground: 218 60% 25%;
+    --muted: 216 30% 94%;
+    --muted-foreground: 218 12% 42%;
+    --accent: 218 60% 95%;
+    --accent-foreground: 218 68% 38%;
+    --destructive: 4 72% 48%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 88%;
-    --input: 0 0% 88%;
-    --ring: 128 58% 38%;
+    --border: 216 22% 88%;
+    --input: 216 22% 84%;
+    --ring: 218 68% 43%;
     --radius: 0.5rem;
-    --success: 128 58% 38%;           /* Verde MARC = éxito */
+    --success: 95 97% 31%;            /* verde limón MARC = éxito */
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 48%;
+    --warning: 36 92% 46%;
     --warning-foreground: 0 0% 100%;
-    --info: 210 80% 52%;
+    --info: 210 80% 48%;
     --info-foreground: 0 0% 100%;
-    --pos-bg: 128 8% 95%;
+    --pos-bg: 216 33% 95%;
     --pos-cart: 0 0% 100%;
     --pos-product: 0 0% 100%;
 
-    /* ── Fase 5: tokens del rediseño (nombres nuevos, aún no usados por las pantallas) ── */
-    --canvas: 240 6% 93%;        /* fondo de la app: gris claro para que los bloques blancos resalten */
-    --surface: 0 0% 100%;        /* superficies */
-    --surface-2: 240 6% 97%;     /* cabecera de cada bloque, hover */
-    --line: 240 6% 89%;          /* entre filas y bordes de bloques */
-    --nav: 240 7% 12%;           /* menú lateral oscuro */
-    --nav-ink: 240 5% 72%;
-    --brand-on-dark: 128 45% 58%;
-    --line-strong: 240 5% 84%;   /* bordes de inputs */
-    --ink: 240 6% 10%;
-    --ink-muted: 240 4% 40%;     /* 6.0:1 sobre blanco */
-    --on-ink: 0 0% 100%;         /* texto sobre fondo bg-ink */
-    --brand: 128 57% 32%;        /* verde MARC, mismo tono, 5.0:1 con texto blanco */
-    --brand-hover: 128 58% 27%;
-    --brand-soft: 128 35% 94%;
-    --ok: 170 60% 30%;           /* éxito: verde azulado apagado, distinto de la marca */
+    /* Tokens del rediseño */
+    --canvas: 216 33% 95%;       /* fondo celeste muy claro para que lo blanco resalte */
+    --surface: 0 0% 100%;
+    --surface-2: 216 40% 98%;
+    --line: 216 25% 89%;
+    --line-strong: 216 18% 81%;
+    --nav: 216 86% 24%;          /* menú lateral azul MARC oscuro */
+    --nav-ink: 214 45% 84%;
+    --brand-on-dark: 95 80% 52%; /* verde limón sobre azul */
+    --ink: 220 40% 12%;
+    --ink-muted: 218 12% 40%;
+    --on-ink: 0 0% 100%;
+    --brand: 218 68% 43%;        /* azul del logo, 6.4:1 con texto blanco */
+    --brand-hover: 215 85% 34%;  /* azul oscuro del logo */
+    --brand-soft: 218 75% 95%;
+    --lime: 95 97% 31%;          /* verde limón del logo para cobrar y éxito */
+    --lime-hover: 95 97% 26%;
+    --lime-soft: 95 70% 93%;
+    --ok: 95 90% 29%;
     --warn: 32 90% 40%;
-    --yape: 290 59% 33%;         /* morado de Yape, solo para su QR */
-    --bad: 4 70% 45%;
-    --ok-ink: 170 60% 24%;
+    --yape: 290 59% 33%;
+    --bad: 4 72% 46%;
+    --ok-ink: 95 90% 22%;
     --warn-ink: 32 90% 30%;
-    --bad-ink: 4 70% 38%;
+    --bad-ink: 4 72% 38%;
   }
 
   .dark {
-    /* ── MARC Dark: Negro profundo + Verde ── */
-    --background: 0 0% 7%;
-    --foreground: 0 0% 95%;
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 95%;
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 95%;
-    --primary: 128 58% 45%;           /* Verde MARC más brillante en dark */
+    --background: 220 30% 7%;
+    --foreground: 216 20% 94%;
+    --card: 220 26% 11%;
+    --card-foreground: 216 20% 94%;
+    --popover: 220 26% 11%;
+    --popover-foreground: 216 20% 94%;
+    --primary: 218 75% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 16%;
-    --secondary-foreground: 0 0% 90%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 55%;
-    --accent: 128 20% 15%;
-    --accent-foreground: 128 58% 55%;
-    --destructive: 0 62.8% 40%;
+    --secondary: 220 22% 17%;
+    --secondary-foreground: 216 20% 90%;
+    --muted: 220 22% 15%;
+    --muted-foreground: 216 12% 62%;
+    --accent: 218 35% 18%;
+    --accent-foreground: 218 80% 75%;
+    --destructive: 4 65% 45%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 128 58% 45%;
-    --success: 128 58% 45%;
+    --border: 220 20% 19%;
+    --input: 220 20% 22%;
+    --ring: 218 75% 60%;
+    --success: 95 75% 42%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 55%;
+    --warning: 36 92% 55%;
     --warning-foreground: 0 0% 8%;
     --info: 210 80% 60%;
     --info-foreground: 0 0% 100%;
-    --pos-bg: 0 0% 6%;
-    --pos-cart: 0 0% 9%;
-    --pos-product: 0 0% 11%;
+    --pos-bg: 220 30% 7%;
+    --pos-cart: 220 26% 10%;
+    --pos-product: 220 26% 12%;
 
-    /* Fase 5 en modo oscuro */
-    --canvas: 0 0% 7%;
-    --surface: 0 0% 10%;
-    --surface-2: 0 0% 12.5%;
-    --line: 0 0% 18%;
-    --line-strong: 0 0% 24%;
-    --nav: 0 0% 5%;
-    --ink: 0 0% 95%;
-    --ink-muted: 0 0% 62%;
-    --on-ink: 0 0% 8%;
-    --brand: 128 50% 40%;
-    --brand-hover: 128 50% 35%;
-    --brand-soft: 128 20% 15%;
-    --ok: 170 50% 45%;
+    --canvas: 220 30% 7%;
+    --surface: 220 26% 10.5%;
+    --surface-2: 220 24% 13%;
+    --line: 220 20% 18%;
+    --line-strong: 220 18% 25%;
+    --nav: 218 60% 13%;
+    --nav-ink: 214 30% 75%;
+    --ink: 216 20% 94%;
+    --ink-muted: 216 12% 64%;
+    --on-ink: 220 40% 8%;
+    --brand: 218 70% 52%;
+    --brand-hover: 218 70% 46%;
+    --brand-soft: 218 40% 17%;
+    --lime: 95 75% 38%;
+    --lime-hover: 95 75% 33%;
+    --lime-soft: 95 40% 14%;
+    --ok: 95 70% 45%;
     --warn: 32 85% 52%;
     --bad: 4 70% 55%;
-    --ok-ink: 170 50% 60%;
+    --ok-ink: 95 65% 62%;
     --warn-ink: 32 85% 62%;
     --bad-ink: 4 75% 68%;
+  }
+
+  /* Contenido sobre la barra azul (menú lateral y cabecera del POS): los
+     mismos componentes se ven en blanco sobre azul. */
+  .on-brand {
+    --foreground: 0 0% 100%;
+    --card: 216 86% 24%;
+    --card-foreground: 0 0% 100%;
+    --muted: 216 50% 32%;
+    --muted-foreground: 214 45% 86%;
+    --accent: 216 50% 32%;
+    --accent-foreground: 0 0% 100%;
+    --border: 216 35% 42%;
+    --ring: 95 80% 52%;
+    --success: 95 80% 55%;
+    --primary: 95 97% 31%;
+    --primary-foreground: 0 0% 100%;
+    --ink: 0 0% 100%;
+    --ink-muted: 214 45% 86%;
+    --warn-ink: 40 100% 75%;
+    color: hsl(var(--foreground));
   }
 }
 
@@ -128,7 +155,7 @@
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-muted;
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
@@ -357,3 +384,7 @@
     .overflow-x-auto { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   }
 }
+
+/* Barra de desplazamiento del menú azul: fina y del mismo tono. */
+.nav-scroll { scrollbar-width: thin; scrollbar-color: hsl(0 0% 100% / 0.22) transparent; }
+.nav-scroll::-webkit-scrollbar-thumb { background: hsl(0 0% 100% / 0.22); }

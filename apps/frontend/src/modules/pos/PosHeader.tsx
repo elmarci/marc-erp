@@ -46,14 +46,15 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
   }, []);
 
   return (
-    <div className="box-content flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-card px-2 pt-[env(safe-area-inset-top)] sm:h-12 sm:px-4">
+    <div className="on-brand box-content flex h-14 shrink-0 items-center justify-between gap-2 bg-nav px-2 pt-[env(safe-area-inset-top)] sm:h-12 sm:px-4">
       {/* Izquierda */}
       <div className="flex min-w-0 items-center gap-1 sm:gap-3">
-        <Button variant="ghost" size="sm" onClick={onExitPos} aria-label="Salir del punto de venta" className="gap-1.5 px-2 text-muted-foreground">
+        <Button variant="ghost" size="sm" onClick={onExitPos} aria-label="Salir del punto de venta" className="gap-1.5 px-2 text-muted-foreground hover:bg-white/10 hover:text-white">
           <ArrowLeft className="h-5 w-5 sm:h-4 sm:w-4" />
           <span className="hidden sm:inline">Salir</span>
         </Button>
         <div className="hidden h-4 w-px bg-border sm:block" />
+        <img src="/marc-mark.png" alt="" className="hidden size-8 shrink-0 sm:block" aria-hidden />
         <span className="truncate text-lg font-semibold sm:text-base"><span className="sm:hidden">Nueva venta</span><span className="hidden sm:inline">Punto de Venta</span></span>
       </div>
 
@@ -77,7 +78,7 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
         </div>
 
         {/* Estado online: en celular solo se avisa cuando NO hay conexión */}
-        <div className={cn('items-center gap-1.5 text-xs', isOnline ? 'hidden text-success sm:flex' : 'flex text-destructive')}>
+        <div className={cn('items-center gap-1.5 text-xs', isOnline ? 'hidden text-success sm:flex' : 'flex rounded-full bg-bad px-2 py-1 text-white')}>
           {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
           <span className="hidden sm:inline">{isOnline ? 'En línea' : 'Sin conexión'}</span>
         </div>
@@ -98,11 +99,11 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
             'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
             cashSessionId
               ? 'text-muted-foreground'
-              : 'bg-destructive/15 text-destructive cursor-pointer hover:bg-destructive/25',
+              : 'bg-bad text-white cursor-pointer hover:bg-bad-ink',
           )}
           onClick={!cashSessionId ? onOpenSession : undefined}
         >
-          <div className={cn('h-1.5 w-1.5 rounded-full', cashSessionId ? 'bg-success' : 'bg-destructive')} />
+          <div className={cn('h-1.5 w-1.5 rounded-full', cashSessionId ? 'bg-success' : 'bg-white')} />
           {cashSessionId
             ? 'Caja abierta'
             : <><span className="sm:hidden">Abrir caja</span><span className="hidden sm:inline">Caja cerrada — Abrir</span></>}
@@ -119,7 +120,7 @@ export function PosHeader({ onExitPos, onOpenSession, onHeldResumed }: PosHeader
         {/* Menú ⋮ (solo celular) */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button aria-label="Más opciones" className="relative -mr-1 flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-muted sm:hidden">
+            <button aria-label="Más opciones" className="relative -mr-1 flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/10 sm:hidden">
               <MoreVertical className="h-5 w-5" />
               {heldCount > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-warn px-1 text-[10px] font-bold text-white">{heldCount}</span>}
             </button>

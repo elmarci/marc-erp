@@ -37,7 +37,7 @@ export function FilterBar({
             <Popover.Trigger asChild>
               <Btn size="sm" variant="ghost">
                 <ListFilter />Más filtros
-                {!!advancedCount && <span className="rounded-full bg-ink px-1.5 text-[11px] text-on-ink tabular-nums">{advancedCount}</span>}
+                {!!advancedCount && <span className="rounded-full bg-brand px-1.5 text-[11px] text-white tabular-nums">{advancedCount}</span>}
               </Btn>
             </Popover.Trigger>
             <Popover.Portal>
