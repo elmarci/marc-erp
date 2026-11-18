@@ -62,7 +62,7 @@ export function Header({ onMenuClick, onSearchClick }: { onMenuClick?: () => voi
       </button>
       <nav aria-label="Ruta" className="hidden min-w-0 items-center gap-1.5 text-table sm:flex">
         {crumbs.map((c, i) => (
-          <span key={c} className="flex min-w-0 items-center gap-1.5">
+          <span key={i} className="flex min-w-0 items-center gap-1.5">
             {i > 0 && <span className="text-ink-muted/50">/</span>}
             <span className={cn('truncate', i === crumbs.length - 1 ? 'font-medium text-ink' : 'text-ink-muted')}>{c}</span>
           </span>
