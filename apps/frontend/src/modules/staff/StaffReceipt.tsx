@@ -1,11 +1,11 @@
 // Constancia de pago (imprimir, WhatsApp, anular) e historial del trabajador.
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Plus, HandCoins, Wallet, Pencil, History, Printer, MessageCircle, UserRound } from 'lucide-react';
+import { Printer, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { Btn, Modal, Segmented as ErpSegmented, fieldCls, surfaceCls } from '@/components/erp';
+import { Btn, fieldCls } from '@/components/erp';
 import { api, getErrorMessage } from '@/services/api';
-import { cn, formatCurrency, formatDate, PAYMENT_METHOD_LABELS, todayLimaDateString } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 
 import {
   type Employee, type Payment, type Benefits, KIND_LABEL, n, name, periodLabel, employeeTag, Sheet, Field, invalidate,

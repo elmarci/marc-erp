@@ -1,9 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, X, ScanBarcode, BookOpen } from 'lucide-react';
+import { ScanBarcode } from 'lucide-react';
 import { toast } from 'sonner';
-import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { MoneyInput } from '@/components/ui/money-input';
 import { api, getErrorMessage } from '@/services/api';
 import { formatCurrency, formatCost, cn, looksLikeScannedCode, todayLimaDateString } from '@/lib/utils';
@@ -11,7 +9,7 @@ import { notifyMarginAlerts, type MarginAlert } from '@/lib/marginAlerts';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { SupplierDocFields, emptyDoc, docPayload, docProblem, type SupplierDoc } from './SupplierDocuments';
 import { PaymentLeg, PaymentLegsEditor, PaymentStatusPicker, legsMatch } from './payment';
-import { Btn, Field, Modal, Panel, Segmented, StatusBadge, Toggle, fieldCls, invalidCls } from '@/components/erp';
+import { Btn, Field, Modal, Panel, Segmented, Toggle, fieldCls } from '@/components/erp';
 import { OrderDetail, Payer, Product, Supplier, SupplierCatalogItem } from './types';
 import { DirectLineRow, SupplierCatalogPicker, useLineFocus, type DirectLine } from './purchaseLines';
 

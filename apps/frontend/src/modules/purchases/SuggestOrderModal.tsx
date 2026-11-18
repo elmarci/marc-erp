@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Sparkles, ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal, Btn } from '@/components/erp';
 import { Input } from '@/components/ui/input';
@@ -129,7 +129,7 @@ export function SuggestOrderModal({ onClose, onCreated }: { onClose: () => void;
                         <p>{item.name}</p>
                         {item.source && (
                           <p className="text-meta text-ink-muted">
-                            {item.source === 'preferred' ? '★ Proveedor preferido' : item.source === 'cheapest' ? 'Precio más bajo' : 'Proveedor asignado'}
+                            {item.source === 'preferred' ? 'Proveedor preferido' : item.source === 'cheapest' ? 'Precio más bajo' : 'Proveedor asignado'}
                             {item.alternatives > 1 && ` · ${item.alternatives} proveedores lo venden`}
                           </p>
                         )}

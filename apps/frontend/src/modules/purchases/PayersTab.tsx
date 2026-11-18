@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Btn, Modal, StatusBadge, surfaceCls, useConfirm } from '@/components/erp';
 import { Input } from '@/components/ui/input';

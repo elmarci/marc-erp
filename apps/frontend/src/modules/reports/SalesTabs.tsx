@@ -2,12 +2,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { TrendingUp, Package, Trophy, Wallet, DollarSign, PiggyBank } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { PageHeader, PageTabs, StatusBadge, fieldCls } from '@/components/erp';
+import { StatusBadge, fieldCls } from '@/components/erp';
 import { Card, CardContent, CardHeader, CardTitle } from './reportsUi';
 import { api } from '@/services/api';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
@@ -101,7 +99,7 @@ export function SalesTab() {
                     <XAxis dataKey="period" tick={{ fontSize: 12 }} />
                     <YAxis tickFormatter={(v: number) => `S/ ${v.toFixed(0)}`} tick={{ fontSize: 12 }} width={80} />
                     <Tooltip formatter={(v: number) => [formatCurrency(v), 'Ventas']} />
-                    <Bar dataKey="total" fill="#23802f" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="total" fill="hsl(var(--brand))" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -153,7 +151,7 @@ export function SalesTab() {
                       <XAxis type="number" tickFormatter={(v: number) => `S/ ${v.toFixed(0)}`} tick={{ fontSize: 11 }} />
                       <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} width={100} />
                       <Tooltip formatter={(v: number) => [formatCurrency(v), 'Total']} />
-                      <Bar dataKey="total" fill="#23802f" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="total" fill="hsl(var(--brand))" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -213,8 +211,8 @@ export function InventoryTab() {
                 <YAxis tickFormatter={(v: number) => `S/ ${v.toFixed(0)}`} tick={{ fontSize: 12 }} width={80} />
                 <Tooltip formatter={(v: number) => formatCurrency(v)} />
                 <Legend />
-                <Bar dataKey="cost_value" name="Al costo" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="sale_value" name="Al precio venta" fill="#23802f" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="cost_value" name="Al costo" fill="hsl(var(--ink-muted) / 0.5)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="sale_value" name="Al precio venta" fill="hsl(var(--brand))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -366,7 +364,7 @@ export function TopProductsTab() {
                     <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={120}
                       tickFormatter={(v: string) => v.length > 18 ? v.slice(0, 18) + '…' : v} />
                     <Tooltip formatter={(v: number) => [`${Number(v).toFixed(0)} unidades`, 'Vendidas']} />
-                    <Bar dataKey="quantity" fill="#23802f" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="quantity" fill="hsl(var(--brand))" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

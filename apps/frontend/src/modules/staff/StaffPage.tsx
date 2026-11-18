@@ -1,10 +1,9 @@
 // Personal: trabajadores (sueldo, adelantos, pagos) y pagos del mes.
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Plus, HandCoins, Wallet, Pencil, History, Printer, MessageCircle, UserRound } from 'lucide-react';
-import { toast } from 'sonner';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Plus, HandCoins, Wallet, Pencil, History, UserRound } from 'lucide-react';
 import { Btn, PageHeader, PageTabs, StatCard, StatGrid, fieldCls } from '@/components/erp';
-import { api, getErrorMessage } from '@/services/api';
+import { api } from '@/services/api';
 import { cn, formatCurrency, formatDate, PAYMENT_METHOD_LABELS, todayLimaDateString } from '@/lib/utils';
 
 import {

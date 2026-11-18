@@ -1,11 +1,7 @@
 // Piezas compartidas de Personal: tipos, etiquetas y controles.
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Plus, HandCoins, Wallet, Pencil, History, Printer, MessageCircle, UserRound } from 'lucide-react';
-import { toast } from 'sonner';
-import { Btn, Modal, Segmented as ErpSegmented, fieldCls, surfaceCls } from '@/components/erp';
-import { api, getErrorMessage } from '@/services/api';
-import { cn, formatCurrency, formatDate, PAYMENT_METHOD_LABELS, todayLimaDateString } from '@/lib/utils';
+import { useQueryClient } from '@tanstack/react-query';
+import { Modal, Segmented as ErpSegmented } from '@/components/erp';
+import { cn, formatCurrency, PAYMENT_METHOD_LABELS } from '@/lib/utils';
 
 /* ─── Tipos ─────────────────────────────────────────────────────────────── */
 export type EmploymentType = 'INFORMAL' | 'PLANILLA';

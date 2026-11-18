@@ -1,7 +1,7 @@
 import { Btn, Modal as ErpModal } from '@/components/erp';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PackageX, X } from 'lucide-react';
+import { PackageX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';

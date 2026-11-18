@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, PackageCheck, X, ScanBarcode } from 'lucide-react';
+import { Search, PackageCheck, ScanBarcode } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal, Btn } from '@/components/erp';
 import { Input } from '@/components/ui/input';

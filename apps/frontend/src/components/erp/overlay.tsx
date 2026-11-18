@@ -89,15 +89,16 @@ export function Sheet({ open, onOpenChange, title, description, children, footer
 /**
  * Ventana sin marco propio, para pantallas táctiles (POS): la capa ocupa toda
  * la pantalla y `panelClassName` decide la forma (hoja desde abajo en celular,
- * centrada en PC, o pantalla completa). Mismo comportamiento que Modal: Esc y
+ * centrada en PC, o pantalla completa). Mantiene el área táctil de 44 px (no
+ * lleva la clase .erp). Mismo comportamiento que Modal: Esc y
  * foco atrapado. Al abrir, el foco queda en la ventana (no en su primer botón)
  * para que un Enter del lector de barras no active nada por accidente.
  */
 export function BareDialog({
-  open, onOpenChange, title, children, panelClassName, dismissOnBackdrop, keepOpen, z = 'z-50', align = 'sheet',
+  open, onOpenChange, title, children, panelClassName, dismissOnBackdrop, keepOpen, align = 'sheet',
 }: {
   open: boolean; onOpenChange: (open: boolean) => void; title: string; children: React.ReactNode;
-  panelClassName?: string; dismissOnBackdrop?: boolean; keepOpen?: boolean; z?: 'z-50' | 'z-[60]' | 'z-[70]';
+  panelClassName?: string; dismissOnBackdrop?: boolean; keepOpen?: boolean;
   /** sheet: abajo en celular y centrada desde sm; center: siempre centrada; full: toda la pantalla. */
   align?: 'sheet' | 'center' | 'full';
 }) {
@@ -105,7 +106,7 @@ export function BareDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className={cn('fixed inset-0 bg-ink/40 data-[state=open]:animate-in data-[state=open]:fade-in-0', z)} />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/40 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <Dialog.Content
           aria-describedby={undefined}
           onOpenAutoFocus={(e) => {
@@ -115,7 +116,7 @@ export function BareDialog({
           }}
           onEscapeKeyDown={keepOpen ? (e) => e.preventDefault() : undefined}
           onPointerDown={dismissOnBackdrop ? (e) => { if (e.target === e.currentTarget) onOpenChange(false); } : undefined}
-          className={cn('erp fixed inset-0 flex justify-center outline-none', z, pos)}
+          className={cn('fixed inset-0 z-50 flex justify-center outline-none', pos)}
         >
           <Dialog.Title className="sr-only">{title}</Dialog.Title>
           <div className={cn('flex flex-col bg-surface', shadowCls, panelClassName)}>{children}</div>

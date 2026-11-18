@@ -34,7 +34,6 @@ const AttendancePage = lazy(() => import('@/modules/attendance/AttendancePage').
 const SettingsPage = lazy(() => import('@/modules/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const StaffPage = lazy(() => import('@/modules/staff/StaffPage').then((m) => ({ default: m.StaffPage })));
 const AdministrationPage = lazy(() => import('@/modules/administration/AdministrationPage').then((m) => ({ default: m.AdministrationPage })));
-const DesignPreviewPage = lazy(() => import('@/modules/design-preview/DesignPreviewPage').then((m) => ({ default: m.DesignPreviewPage })));
 const CategoriesPage = lazy(() => import('@/modules/categories/CategoriesPage').then((m) => ({ default: m.CategoriesPage })));
 
 function PageLoading() {
@@ -87,15 +86,6 @@ export default function App() {
           element={
             <RequireAuth>
               <ChangePasswordPage />
-            </RequireAuth>
-          }
-        />
-        {/* Temporal (Fase 5): concepto del rediseño con datos de ejemplo. */}
-        <Route
-          path="/design-preview"
-          element={
-            <RequireAuth>
-              <DesignPreviewPage />
             </RequireAuth>
           }
         />

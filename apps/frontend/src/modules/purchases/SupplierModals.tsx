@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, X, BookOpen, Star, Trash2 } from 'lucide-react';
+import { Search, X, Star, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Btn, Modal, useConfirm } from '@/components/erp';
 import { Input } from '@/components/ui/input';

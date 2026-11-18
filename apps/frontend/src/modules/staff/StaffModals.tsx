@@ -1,11 +1,10 @@
 // Ventanas de Personal: ficha del trabajador, adelanto y pago.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Plus, HandCoins, Wallet, Pencil, History, Printer, MessageCircle, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
-import { Btn, Modal, Segmented as ErpSegmented, fieldCls, surfaceCls } from '@/components/erp';
+import { Btn, fieldCls } from '@/components/erp';
 import { api, getErrorMessage } from '@/services/api';
-import { cn, formatCurrency, formatDate, PAYMENT_METHOD_LABELS, todayLimaDateString } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, todayLimaDateString } from '@/lib/utils';
 
 import {
   type EmploymentType, type Regime, type Freq, type Pension, type Kind, type Employee, type Preview, FREQ_LABEL, FREQ_PER, KIND_LABEL, METHODS, n, name, periodLabel, employeeTag, Sheet, Field, Segmented, Check, Row, invalidate,

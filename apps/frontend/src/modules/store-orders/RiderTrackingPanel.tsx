@@ -27,7 +27,7 @@ const EVENT_LABELS: Record<string, string> = {
 function riderIcon() {
   return L.divIcon({
     className: '',
-    html: `<div style="width:32px;height:32px;border-radius:9999px;background:#2460b4;border:2px solid white;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.35)">
+    html: `<div style="width:32px;height:32px;border-radius:9999px;background:hsl(var(--ink));border:2px solid white;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.35)">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="5" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M5 17h4l3-7h5"/><path d="M12 10l2 4h5l-2-4h-3"/><path d="M9 7h3"/>
       </svg>

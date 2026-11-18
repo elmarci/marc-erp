@@ -1,16 +1,12 @@
 // Reportes: margen, utilidad neta y cuentas por cobrar.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-} from 'recharts';
-import { TrendingUp, Package, Trophy, Wallet, DollarSign, PiggyBank } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Link } from 'react-router-dom';
-import { PageHeader, PageTabs, StatusBadge, fieldCls } from '@/components/erp';
+import { fieldCls } from '@/components/erp';
 import { Card, CardContent, CardHeader, CardTitle } from './reportsUi';
 import { api } from '@/services/api';
-import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import { formatCurrency, cn } from '@/lib/utils';
 
 import { MarginReport, NetProfitReport, EXPENSE_CATEGORY_LABELS, PRESETS, getDateRange } from './reportsShared';
 
@@ -94,9 +90,9 @@ export function MarginTab() {
                     <YAxis tickFormatter={(v: number) => `S/ ${v.toFixed(0)}`} tick={{ fontSize: 12 }} width={80} />
                     <Tooltip formatter={(v: number, name: string) => [formatCurrency(v), name === 'revenue' ? 'Ingresos' : name === 'cost' ? 'Costo' : 'Utilidad']} />
                     <Legend formatter={(v: string) => v === 'revenue' ? 'Ingresos' : v === 'cost' ? 'Costo' : 'Utilidad'} />
-                    <Bar dataKey="revenue" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="cost" fill="#c08a2b" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="margin" fill="#23802f" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="revenue" fill="hsl(var(--ink-muted) / 0.5)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="cost" fill="hsl(var(--warn))" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="margin" fill="hsl(var(--brand))" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
