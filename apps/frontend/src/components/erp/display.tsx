@@ -152,5 +152,5 @@ export function EmptyState({ icon: Icon, title, action, className }: {
 
 // ── Tablas a mano (cuando DataTable no encaja, p. ej. filas que se abren) ──
 export const tableCls = 'w-full border-separate border-spacing-0 text-table text-ink';
-export const thCls = 'h-9 whitespace-nowrap border-b border-line bg-surface-2 px-3 text-left text-meta font-medium text-ink-muted';
+export const thCls = 'relative h-9 whitespace-nowrap border-b border-line bg-surface-2 px-3 text-left text-meta font-medium text-ink-muted';
 export const tdCls = 'h-10 border-b border-line px-3';
