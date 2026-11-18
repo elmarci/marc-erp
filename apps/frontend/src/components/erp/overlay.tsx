@@ -86,6 +86,45 @@ export function Sheet({ open, onOpenChange, title, description, children, footer
   );
 }
 
+/**
+ * Ventana sin marco propio, para pantallas táctiles (POS): la capa ocupa toda
+ * la pantalla y `panelClassName` decide la forma (hoja desde abajo en celular,
+ * centrada en PC, o pantalla completa). Mismo comportamiento que Modal: Esc y
+ * foco atrapado. Al abrir, el foco queda en la ventana (no en su primer botón)
+ * para que un Enter del lector de barras no active nada por accidente.
+ */
+export function BareDialog({
+  open, onOpenChange, title, children, panelClassName, dismissOnBackdrop, keepOpen, z = 'z-50', align = 'sheet',
+}: {
+  open: boolean; onOpenChange: (open: boolean) => void; title: string; children: React.ReactNode;
+  panelClassName?: string; dismissOnBackdrop?: boolean; keepOpen?: boolean; z?: 'z-50' | 'z-[60]' | 'z-[70]';
+  /** sheet: abajo en celular y centrada desde sm; center: siempre centrada; full: toda la pantalla. */
+  align?: 'sheet' | 'center' | 'full';
+}) {
+  const pos = align === 'full' ? '' : align === 'center' ? 'items-center p-4' : 'items-end sm:items-center';
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={cn('fixed inset-0 bg-ink/40 data-[state=open]:animate-in data-[state=open]:fade-in-0', z)} />
+        <Dialog.Content
+          aria-describedby={undefined}
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            const box = e.currentTarget as HTMLElement | null;
+            if (box && !box.contains(document.activeElement)) box.focus();
+          }}
+          onEscapeKeyDown={keepOpen ? (e) => e.preventDefault() : undefined}
+          onPointerDown={dismissOnBackdrop ? (e) => { if (e.target === e.currentTarget) onOpenChange(false); } : undefined}
+          className={cn('erp fixed inset-0 flex justify-center outline-none', z, pos)}
+        >
+          <Dialog.Title className="sr-only">{title}</Dialog.Title>
+          <div className={cn('flex flex-col bg-surface', shadowCls, panelClassName)}>{children}</div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 // ── Confirmación ───────────────────────────────────────────────────────────
 export interface ConfirmOptions {
   /** Debe nombrar el objeto: "Anular compra OC-000703". */

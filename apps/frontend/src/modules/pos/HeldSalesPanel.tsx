@@ -3,6 +3,7 @@ import { PauseCircle, PlayCircle, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { BareDialog, useConfirm } from '@/components/erp';
 import { cn, formatCurrency } from '@/lib/utils';
 import { usePosStore } from '@/stores/posStore';
 import { useHeldSalesStore } from '@/stores/heldSalesStore';
@@ -17,7 +18,7 @@ export function HeldSalesButton({ onClick }: { onClick: () => void }) {
       title="Ventas en espera"
       className={cn(
         'relative flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold transition-colors',
-        count > 0 ? 'border-amber-500/50 bg-amber-500/15 text-amber-700 dark:text-amber-400' : 'border-border text-muted-foreground hover:bg-muted',
+        count > 0 ? 'border-warn/50 bg-warn/15 text-warn-ink' : 'border-border text-muted-foreground hover:bg-muted',
       )}>
       <PauseCircle className="h-4 w-4" />
       <span className="hidden sm:inline">En espera</span>
@@ -39,6 +40,7 @@ export function HeldSalesPanel({ onClose, onResumed }: { onClose: () => void; on
   const cartTotal = usePosStore((s) => s.total);
   const customerName = usePosStore((s) => s.customerName);
   const [label, setLabel] = useState('');
+  const confirm = useConfirm();
 
   const hold = () => {
     const sale = holdCurrent(label);
@@ -50,11 +52,11 @@ export function HeldSalesPanel({ onClose, onResumed }: { onClose: () => void; on
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-t-2xl bg-card shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+    <BareDialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Ventas en espera" dismissOnBackdrop
+      panelClassName="max-h-[90dvh] w-full max-w-md rounded-t-2xl sm:rounded-2xl">
         <div className="flex items-center justify-between border-b p-4">
-          <h3 className="flex items-center gap-2 font-bold"><PauseCircle className="h-5 w-5 text-amber-500" />Ventas en espera</h3>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+          <h3 className="flex items-center gap-2 font-bold"><PauseCircle className="h-5 w-5 text-warn" />Ventas en espera</h3>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar"><X className="h-4 w-4" /></Button>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
@@ -73,7 +75,7 @@ export function HeldSalesPanel({ onClose, onResumed }: { onClose: () => void; on
                     className="h-12"
                     onKeyDown={(e) => { if (e.key === 'Enter') hold(); }}
                   />
-                  <Button className="h-12 shrink-0 gap-1.5 bg-amber-500 text-black hover:bg-amber-600" onClick={hold}>
+                  <Button className="h-12 shrink-0 gap-1.5 bg-warn text-white hover:bg-warn/90" onClick={hold}>
                     <PauseCircle className="h-4 w-4" />Poner en espera
                   </Button>
                 </div>
@@ -112,8 +114,9 @@ export function HeldSalesPanel({ onClose, onResumed }: { onClose: () => void; on
                   <Button
                     variant="ghost" size="icon" className="h-11 w-11 shrink-0 text-muted-foreground hover:text-destructive"
                     aria-label={`Descartar ${h.label}`}
-                    onClick={() => {
-                      if (window.confirm(`¿Descartar la venta en espera "${h.label}"? Los productos no se cobran.`)) remove(h.id);
+                    onClick={async () => {
+                      const r = await confirm({ title: `Descartar la venta en espera "${h.label}"`, description: 'Los productos no se cobran.', confirmLabel: 'Descartar' });
+                      if (r.ok) remove(h.id);
                     }}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -122,7 +125,6 @@ export function HeldSalesPanel({ onClose, onResumed }: { onClose: () => void; on
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </BareDialog>
   );
 }

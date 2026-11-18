@@ -3,6 +3,7 @@ import { Megaphone, Play, QrCode, Radio, RotateCcw, ShoppingBasket, Tag, Tv, X }
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { api, getErrorMessage } from '@/services/api';
+import { BareDialog } from '@/components/erp';
 import { cn } from '@/lib/utils';
 import { useTvLiveStore } from '@/stores/tvLiveStore';
 import { pushTvCart } from './tvCartSync';
@@ -71,16 +72,16 @@ export function TvLiveModal({ onClose }: { onClose: () => void }) {
     : 'Una promo fija en pantalla';
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl bg-card shadow-2xl">
+    <BareDialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Pantalla TV" align="center"
+      panelClassName="max-h-[90vh] w-full max-w-lg rounded-2xl">
         <div className="flex items-center justify-between border-b p-4">
           <div>
             <h3 className="flex items-center gap-2 font-bold"><Tv className="h-5 w-5 text-primary" />Pantalla TV</h3>
             <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Radio className={cn('h-3 w-3', live && live.mode !== 'AUTO' && 'animate-pulse text-red-500')} />Ahora: {status}
+              <Radio className={cn('h-3 w-3', live && live.mode !== 'AUTO' && 'animate-pulse text-bad')} />Ahora: {status}
             </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar"><X className="h-4 w-4" /></Button>
         </div>
 
         <div className="space-y-5 overflow-y-auto p-4">
@@ -94,7 +95,7 @@ export function TvLiveModal({ onClose }: { onClose: () => void }) {
                 </p>
               </div>
               <button type="button" role="switch" aria-checked={enabled} onClick={toggleSync}
-                className={cn('relative h-7 min-h-0 w-12 shrink-0 rounded-full transition-colors', enabled ? 'bg-emerald-500' : 'bg-muted-foreground/30')}>
+                className={cn('relative h-7 min-h-0 w-12 shrink-0 rounded-full transition-colors', enabled ? 'bg-primary' : 'bg-muted-foreground/30')}>
                 <span className={cn('absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all', enabled ? 'left-[22px]' : 'left-0.5')} />
               </button>
             </div>
@@ -133,7 +134,6 @@ export function TvLiveModal({ onClose }: { onClose: () => void }) {
           <Button variant="outline" onClick={backToAuto}><RotateCcw className="mr-1.5 h-4 w-4" />Volver al automático</Button>
           <Button onClick={onClose}>Listo</Button>
         </div>
-      </div>
-    </div>
+    </BareDialog>
   );
 }

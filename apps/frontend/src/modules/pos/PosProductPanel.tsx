@@ -1,9 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Package, AlertCircle, Scale, Tag, X, Mic, Star, ScanBarcode, Plus } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Search, AlertCircle, Tag, Mic, Star, ScanBarcode, Plus } from 'lucide-react';
 import { usePosStore } from '@/stores/posStore';
 import { api } from '@/services/api';
 import { formatCurrency, cn, debounce, looksLikeScannedCode } from '@/lib/utils';
@@ -11,26 +8,13 @@ import { toast } from 'sonner';
 import { useVoiceRecognition } from '@/hooks/useVoiceRecognition';
 import { parseVoiceCommand } from './voiceCommands';
 import { CameraScanner, isCameraScanSupported } from './CameraScanner';
-import { MiscItemSheet } from './PosCart';
-import { ProductThumb } from './ProductThumb';
+import { MiscItemSheet } from './CartModals';
 import { useAutoOffers } from './autoOffers';
 import { OffersBrowser } from './OffersBrowser';
 import { OfferSuggestions } from './OfferSuggestions';
-import { addPackToCart, hasPack, unitStockLeft, presentForOffer, packLineFields, wouldExceedStock, packExceedsStock, AUTO_ADJUST_HINT, type PackInfo } from './packSale';
-
-interface Product extends PackInfo {
-  id: string;
-  name: string;
-  barcode: string | null;
-  salePrice: number;
-  currentStock: number;
-  imageUrl: string | null;
-  isBulk: boolean;
-  bulkUnit: string | null;
-  isFavorite?: boolean;
-  bottleDeposit?: number;
-  category: { name: string };
-}
+import { addPackToCart, unitStockLeft, wouldExceedStock, packExceedsStock, AUTO_ADJUST_HINT } from './packSale';
+import { BulkModal, Chip, type Product } from './ProductParts';
+import { ProductResults } from './ProductResults';
 
 interface Category {
   id: string;
@@ -48,173 +32,6 @@ interface PosProductPanelProps {
   suggestOffers?: boolean;
 }
 
-
-/* ─── Bulk weight modal ───────────────────────────────────────────────────── */
-// Precisión de pesaje: 1 gramo (0.001 kg). Con pasos de 10g el peso
-// calculado podía desviar el cobro varios céntimos del monto pedido por el
-// cliente (ej. S/2 de un producto a S/24/kg terminaba en S/1.92) — a 1g el
-// desvío queda por debajo del céntimo para la enorme mayoría de precios.
-const BULK_WEIGHT_STEP = 0.001;
-
-function BulkModal({ product, onConfirm, onClose }: {
-  product: Product;
-  onConfirm: (qty: number) => void;
-  onClose: () => void;
-}) {
-  const isWeighable = product.bulkUnit === 'kg' || product.bulkUnit === 'g' || product.bulkUnit === 'L';
-  const [mode, setMode] = useState<'peso' | 'monto'>('peso');
-  const [qty, setQty] = useState('');
-  const [amount, setAmount] = useState('');
-  const unit = product.bulkUnit ?? 'unidad';
-  const price = Number(product.salePrice);
-
-  // Modo "por monto": el cliente pide "2 soles de X" — calculamos el peso
-  // exacto que hay que poner en la balanza para llegar a ese monto, en vez
-  // de que el cajero tenga que adivinar a ojo. El toFixed corta el error de
-  // punto flotante que deja Math.round con pasos decimales (ej. 0.267000000004).
-  const amountNum = parseFloat(amount);
-  const computedQty = amountNum > 0 && price > 0
-    ? Number((Math.round((amountNum / price) / BULK_WEIGHT_STEP) * BULK_WEIGHT_STEP).toFixed(3))
-    : 0;
-
-  const finalQty = mode === 'monto' ? computedQty : parseFloat(qty);
-  const total = (finalQty > 0 ? finalQty : 0) * price;
-
-  const weightPresets = [0.25, 0.5, 0.75, 1, 1.5, 2];
-  const countPresets = [1, 2, 3, 5, 10];
-  const amountPresets = [1, 2, 3, 5, 10];
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-4">
-          <div>
-            <h3 className="font-bold flex items-center gap-2">
-              <Scale className="h-4 w-4 text-primary" />
-              {product.name}
-            </h3>
-            <p className="text-xs text-muted-foreground">{formatCurrency(price)} / {unit}</p>
-          </div>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
-        </div>
-        <div className="p-5 space-y-4">
-          {isWeighable && (
-            <div className="flex rounded-lg bg-muted p-1 text-sm font-medium">
-              <button
-                onClick={() => setMode('peso')}
-                className={cn('flex-1 rounded-md py-1.5 transition-colors', mode === 'peso' ? 'bg-card shadow-sm' : 'text-muted-foreground')}
-              >
-                Por peso
-              </button>
-              <button
-                onClick={() => setMode('monto')}
-                className={cn('flex-1 rounded-md py-1.5 transition-colors', mode === 'monto' ? 'bg-card shadow-sm' : 'text-muted-foreground')}
-              >
-                Por monto (S/)
-              </button>
-            </div>
-          )}
-
-          {mode === 'peso' ? (
-            <>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Cantidad ({unit})</label>
-                <Input
-                  type="number" min={0.01} step={0.01}
-                  value={qty} onChange={e => setQty(e.target.value)}
-                  placeholder={`Ej: 0.5 ${unit}`}
-                  className="text-xl font-bold text-center" autoFocus
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {(isWeighable ? weightPresets : countPresets).map(p => (
-                  <button key={p} onClick={() => setQty(String(p))}
-                    className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full text-xs font-medium transition-colors">
-                    {p} {unit}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">El cliente quiere pagar (S/)</label>
-                <Input
-                  type="number" min={0.01} step={0.5}
-                  value={amount} onChange={e => setAmount(e.target.value)}
-                  placeholder="Ej: 2.00"
-                  className="text-xl font-bold text-center" autoFocus
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {amountPresets.map(p => (
-                  <button key={p} onClick={() => setAmount(String(p))}
-                    className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-full text-xs font-medium transition-colors">
-                    S/ {p}
-                  </button>
-                ))}
-              </div>
-              {computedQty > 0 && (
-                <div className="rounded-lg border-2 border-primary bg-primary/10 p-3 text-center">
-                  <p className="text-xs text-muted-foreground">Pon en la balanza</p>
-                  <p className="text-2xl font-black text-primary">{computedQty} {unit}</p>
-                </div>
-              )}
-            </>
-          )}
-
-          {finalQty > 0 && (
-            <div className="rounded-lg bg-primary/10 p-3 text-center">
-              <p className="text-xs text-muted-foreground">Total a cobrar</p>
-              <p className="text-2xl font-black text-primary">{formatCurrency(total)}</p>
-              <p className="text-xs text-muted-foreground">{finalQty} {unit} × {formatCurrency(price)}</p>
-            </div>
-          )}
-        </div>
-        <div className="border-t p-4 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1"
-            disabled={!(finalQty > 0)}
-            onClick={() => { onConfirm(finalQty); onClose(); }}>
-            Agregar al carrito
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Piezas de la lista de productos ─────────────────────────────────────── */
-function Chip({ active, onClick, icon, children }: { active?: boolean; onClick: () => void; icon?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <button onClick={onClick}
-      className={cn('flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors lg:h-8 lg:px-3',
-        active ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground/80 hover:bg-muted/70')}>
-      {icon}{children}
-    </button>
-  );
-}
-
-function OfferBadge({ children }: { children: React.ReactNode }) {
-  return <span className="rounded bg-primary/10 px-1.5 text-[11px] font-semibold leading-5 text-primary">{children}</span>;
-}
-
-function StockNote({ product, compact }: { product: Product; compact?: boolean }) {
-  if (product.currentStock <= 0) return <span className="text-xs font-medium text-destructive">{compact ? 'Sin stock' : 'Sin stock · 2 toques vende igual'}</span>;
-  if (product.currentStock <= 5) return <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{product.currentStock === 1 ? 'Última unidad' : `Quedan ${product.currentStock}`}</span>;
-  return null;
-}
-
-/** Botón "+" de la fila; con productos en el carrito muestra cuántos van. */
-function AddButton({ count, onClick }: { count: number; onClick: () => void }) {
-  return (
-    <button onClick={(e) => { e.currentTarget.blur(); onClick(); }} aria-label="Agregar"
-      className={cn('flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-2 text-sm font-semibold tabular-nums transition-colors active:scale-95',
-        count > 0 ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary')}>
-      {count > 0 ? Number(count.toFixed(2)) : <Plus className="h-5 w-5" />}
-    </button>
-  );
-}
 
 export function PosProductPanel({ onBarcodeSearch, onCheckout, className, suggestOffers }: PosProductPanelProps) {
   const [search, setSearch] = useState('');
@@ -551,103 +368,8 @@ export function PosProductPanel({ onBarcodeSearch, onCheckout, className, sugges
       {suggestOffers && <OfferSuggestions onSeeAll={() => setShowOffers(true)} className="px-4 pt-3" />}
 
       {/* Productos: lista en celular, grilla en PC/tablet */}
-      <div className="flex-1 overflow-y-auto pb-4 sm:pt-3 lg:p-4">
-        {isLoading ? (
-          <div className="space-y-px px-4 sm:grid sm:grid-cols-3 sm:gap-3 sm:space-y-0 md:grid-cols-4 lg:px-0 xl:grid-cols-5">
-            {[...Array(10)].map((_, i) => (
-              <div key={i} className="h-[72px] animate-pulse rounded-xl bg-muted/70 sm:h-36" />
-            ))}
-          </div>
-        ) : products.length === 0 ? (
-          <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
-            <Package className="h-10 w-10 opacity-25" />
-            <p className="text-sm">No se encontraron productos</p>
-          </div>
-        ) : (
-          <>
-            {/* Celular: filas */}
-            <ul className="divide-y divide-border/60 sm:hidden">
-              {products.map((product) => {
-                const hh = happyHourByProductId.get(product.id);
-                const inCart = qtyInCart.get(product.id) ?? 0;
-                const packOn = hasPack(product) && !product.isBulk;
-                return (
-                  <li key={product.id} className="flex items-center gap-3 px-4 py-3">
-                    <button className="flex min-w-0 flex-1 items-center gap-3 text-left active:opacity-70"
-                      onClick={(e) => { e.currentTarget.blur(); tapProduct(product); }}>
-                      <ProductThumb name={product.name} imageUrl={product.imageUrl} className="h-12 w-12" />
-                      <span className="min-w-0 flex-1">
-                        <span className="line-clamp-2 text-sm font-medium leading-snug">{product.name}</span>
-                        <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-sm">
-                          <span className="font-semibold tabular-nums">{formatCurrency(hh ? hh.effectivePrice : product.salePrice)}</span>
-                          {product.isBulk && <span className="text-muted-foreground">por {product.bulkUnit ?? 'kg'}</span>}
-                          {hh && <span className="text-xs text-muted-foreground line-through tabular-nums">{formatCurrency(product.salePrice)}</span>}
-                          {(hh || offerTags.has(product.id)) && <OfferBadge>{hh?.label ?? offerTags.get(product.id)}</OfferBadge>}
-                          <StockNote product={product} />
-                        </span>
-                      </span>
-                    </button>
-                    {packOn && (
-                      <button onClick={(e) => { e.currentTarget.blur(); tapPack(product); }}
-                        title={`Agregar ${(product.packLabel || 'paquete').toLowerCase()} de ${product.packSize} unidades`}
-                        className="shrink-0 rounded-lg bg-muted px-2 py-1.5 text-center text-[11px] font-medium leading-tight active:scale-95">
-                        {product.packLabel || 'Paq'} x{product.packSize}<br />
-                        <span className="font-semibold tabular-nums">{formatCurrency(Number(product.packPrice))}</span>
-                      </button>
-                    )}
-                    <AddButton count={inCart} onClick={() => tapProduct(product)} />
-                  </li>
-                );
-              })}
-            </ul>
-
-            {/* Tablet / PC: grilla compacta */}
-            <div className="hidden gap-3 px-4 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:px-0 xl:grid-cols-5 2xl:grid-cols-6">
-              {products.map((product) => {
-                const hh = happyHourByProductId.get(product.id);
-                const inCart = qtyInCart.get(product.id) ?? 0;
-                const packOn = hasPack(product) && !product.isBulk;
-                const packOk = packOn && product.currentStock >= (product.packSize ?? 0);
-                return (
-                  <div key={product.id} className={cn(
-                    'group flex flex-col rounded-xl bg-card p-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] transition-shadow hover:shadow-md dark:ring-white/5',
-                    inCart > 0 && 'ring-2 ring-primary/50',
-                  )}>
-                    <button className="flex flex-1 flex-col text-left focus-visible:outline-none"
-                      onClick={(e) => { e.currentTarget.blur(); tapProduct(product); }}>
-                      {product.imageUrl && <ProductThumb name={product.name} imageUrl={product.imageUrl} className="mb-2 h-20 w-full lg:h-16" />}
-                      <span className="line-clamp-2 min-h-[2.4em] text-sm font-medium leading-tight">{product.name}</span>
-                      <span className="mt-1.5 flex items-center justify-between gap-1">
-                        <span className="min-w-0 truncate text-sm font-semibold tabular-nums">
-                          {formatCurrency(hh ? hh.effectivePrice : product.salePrice)}
-                          {product.isBulk && <span className="ml-0.5 text-[11px] font-normal text-muted-foreground">/{product.bulkUnit ?? 'kg'}</span>}
-                        </span>
-                        {inCart > 0
-                          ? <span className="rounded-full bg-primary px-1.5 text-[11px] font-semibold leading-5 text-primary-foreground tabular-nums">{Number(inCart.toFixed(2))}</span>
-                          : <StockNote product={product} compact />}
-                      </span>
-                      {(hh || offerTags.has(product.id)) && (
-                        <span className="mt-1 flex items-center gap-1.5 text-[11px]">
-                          <OfferBadge>{hh?.label ?? offerTags.get(product.id)}</OfferBadge>
-                          {hh && <span className="text-muted-foreground line-through tabular-nums">{formatCurrency(product.salePrice)}</span>}
-                        </span>
-                      )}
-                    </button>
-                    {packOn && (
-                      <button onClick={(e) => { e.currentTarget.blur(); tapPack(product); }}
-                        title={`Agregar ${(product.packLabel || 'paquete').toLowerCase()} de ${product.packSize} unidades`}
-                        className={cn('mt-2 flex items-center justify-between rounded-lg bg-muted/70 px-2 py-1 text-[11px] font-medium hover:bg-muted', !packOk && 'opacity-50')}>
-                        <span className="truncate">{product.packLabel || 'Paq'} x{product.packSize}</span>
-                        <span className="font-semibold tabular-nums">{formatCurrency(Number(product.packPrice))}</span>
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
+      <ProductResults products={products} isLoading={isLoading} qtyInCart={qtyInCart}
+        happyHourByProductId={happyHourByProductId} offerTags={offerTags} tapProduct={tapProduct} tapPack={tapPack} />
 
       {/* Pie con atajos (solo PC) */}
       <div className="hidden items-center justify-between border-t border-border/60 bg-card px-4 py-2 text-xs text-muted-foreground lg:flex">

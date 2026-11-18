@@ -1,6 +1,7 @@
 import { Bluetooth, BluetoothOff, Printer, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { BareDialog } from '@/components/erp';
 import { cn } from '@/lib/utils';
 import { useBtPrinter, isBluetoothPrintSupported, type PaperWidth } from './bluetoothPrinter';
 import { buildTestTicket } from './ticketEscpos';
@@ -51,11 +52,11 @@ export function BtPrinterPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-t-2xl bg-card shadow-2xl sm:rounded-2xl pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()}>
+    <BareDialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Impresión" dismissOnBackdrop
+      panelClassName="w-full max-w-sm rounded-t-2xl sm:rounded-2xl pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-center justify-between border-b p-4">
           <h3 className="flex items-center gap-2 font-bold"><Printer className="h-4 w-4 text-primary" />Impresión</h3>
-          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar"><X className="h-4 w-4" /></Button>
         </div>
 
         <div className="max-h-[80dvh] space-y-5 overflow-y-auto p-4">
@@ -119,7 +120,6 @@ export function BtPrinterPanel({ onClose }: { onClose: () => void }) {
             <code className="mx-1 rounded bg-background px-1">--kiosk-printing</code>. Así "Imprimir" (y la impresión al cobrar) sale directo, en un toque.
           </div>
         </div>
-      </div>
-    </div>
+    </BareDialog>
   );
 }
