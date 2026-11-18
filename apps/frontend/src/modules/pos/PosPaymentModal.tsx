@@ -1,3 +1,4 @@
+import { BareDialog } from '@/components/erp';
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, DollarSign, CreditCard, Smartphone, Check, Mic, QrCode } from 'lucide-react';
@@ -108,11 +109,6 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
     if (willCompleteWithThisPayment) onConfirm();
   };
 
-  const handleQuickAmount = (multiplier: number) => {
-    const amt = Math.ceil(total * multiplier / 10) * 10;
-    setAmount(amt.toFixed(2));
-  };
-
   // Comando de voz solo pre-selecciona método y monto — el cajero igual debe
   // presionar el botón de cobro, para evitar que un error de reconocimiento
   // cierre una venta por accidente.
@@ -138,10 +134,8 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg bg-card shadow-2xl animate-fade-in
-        rounded-t-2xl sm:rounded-2xl
-        flex flex-col max-h-[95vh] sm:max-h-[90vh]">
+    <BareDialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Cobrar"
+      panelClassName="w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[95vh] sm:max-h-[90vh]">
         {/* Header */}
         <div className="flex items-start justify-between px-5 pb-1 pt-4 shrink-0">
           <div>
@@ -273,7 +267,7 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             <button
               type="button"
               onClick={() => setQrZoom(true)}
-              className="flex w-full items-center gap-3 rounded-xl border-2 border-[#742284]/40 bg-[#742284]/5 p-3 text-left">
+              className="flex w-full items-center gap-3 rounded-xl border-2 border-[hsl(var(--yape)/0.4)] bg-[hsl(var(--yape)/0.05)] p-3 text-left">
               <img src="/yape-qr.png" alt="QR de Yape" className="h-24 w-24 shrink-0 rounded-lg object-cover object-top" />
               <span className="min-w-0">
                 <span className="flex items-center gap-1.5 font-semibold"><QrCode className="h-4 w-4" />Muestra el QR al cliente</span>
@@ -324,12 +318,15 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
         </div>
 
         {qrZoom && (
-          <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-[#742284] p-6" onClick={() => setQrZoom(false)}>
-            <p className="text-center text-lg font-bold text-white">Escanea con Yape o Plin</p>
-            <p className="text-4xl font-black text-white">{formatCurrency(remaining)}</p>
-            <img src="/yape-qr.png" alt="QR de Yape" className="w-full max-w-sm rounded-2xl" />
-            <p className="text-sm text-white/80">Toca para volver</p>
-          </div>
+          <BareDialog open onOpenChange={(o) => { if (!o) setQrZoom(false); }} title="QR de Yape y Plin" align="full"
+            panelClassName="h-full w-full bg-[hsl(var(--yape))] shadow-none">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-6" onClick={() => setQrZoom(false)}>
+              <p className="text-center text-lg font-bold text-white">Escanea con Yape o Plin</p>
+              <p className="text-4xl font-black text-white">{formatCurrency(remaining)}</p>
+              <img src="/yape-qr.png" alt="QR de Yape" className="w-full max-w-sm rounded-2xl" />
+              <p className="text-sm text-white/80">Toca para volver</p>
+            </div>
+          </BareDialog>
         )}
 
         {/* Botón principal — siempre visible, fuera del scroll. Agrega el
@@ -361,7 +358,6 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             )}
           </Button>
         </div>
-      </div>
-    </div>
+    </BareDialog>
   );
 }

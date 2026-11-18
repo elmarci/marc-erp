@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Plus, ScanBarcode, Search, Tag, X } from 'lucide-react';
+import { BareDialog } from '@/components/erp';
 import { cn, formatCurrency } from '@/lib/utils';
 import { usePosStore } from '@/stores/posStore';
 import { ProductThumb } from './ProductThumb';
@@ -123,9 +124,8 @@ export function OffersBrowser({ onClose }: { onClose: () => void }) {
   const reset = () => setLimit(PAGE);
 
   return (
-    <div className="fixed inset-0 z-[60] flex justify-center bg-black/50 lg:items-center lg:p-6" onClick={onClose}>
-      <div className="flex h-full w-full flex-col bg-card pt-[env(safe-area-inset-top)] lg:h-[88vh] lg:max-w-3xl lg:rounded-2xl lg:pt-0 lg:shadow-2xl"
-        onClick={(e) => e.stopPropagation()}>
+    <BareDialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Ofertas" align="full" dismissOnBackdrop
+      panelClassName="h-full w-full pt-[env(safe-area-inset-top)] lg:my-auto lg:h-[88vh] lg:max-w-3xl lg:rounded-2xl lg:pt-0">
         {/* Encabezado + buscador */}
         <div className="space-y-3 border-b border-border/60 px-4 pb-3 pt-2 lg:pt-4">
           <div className="flex items-center gap-1">
@@ -238,15 +238,12 @@ export function OffersBrowser({ onClose }: { onClose: () => void }) {
             </>
           )}
         </div>
-      </div>
       {showCamera && (
-        <div onClick={(e) => e.stopPropagation()}>
-          <CameraScanner
-            onDetected={(code) => { setQ(code); setKind('all'); setCat(null); reset(); setShowCamera(false); return true; }}
-            onClose={() => setShowCamera(false)}
-          />
-        </div>
+        <CameraScanner
+          onDetected={(code) => { setQ(code); setKind('all'); setCat(null); reset(); setShowCamera(false); return true; }}
+          onClose={() => setShowCamera(false)}
+        />
       )}
-    </div>
+    </BareDialog>
   );
 }
