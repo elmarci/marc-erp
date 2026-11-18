@@ -74,7 +74,7 @@ export function CustomersPage() {
           quick={
             <button type="button" aria-pressed={onlineOnly} onClick={() => { setOnlineOnly((v) => !v); setPage(1); }}
               className={cn('tap inline-flex h-8 items-center gap-1.5 rounded-ctl px-2.5 text-table font-medium transition-colors [&_svg]:size-4',
-                onlineOnly ? 'bg-ink text-on-ink' : 'text-ink-muted shadow-[inset_0_0_0_1px_hsl(var(--line-strong))] hover:bg-surface-2 hover:text-ink')}>
+                onlineOnly ? 'bg-brand text-white' : 'text-ink-muted shadow-[inset_0_0_0_1px_hsl(var(--line-strong))] hover:bg-surface-2 hover:text-ink')}>
               <ShoppingCart />Solo tienda online
             </button>
           }

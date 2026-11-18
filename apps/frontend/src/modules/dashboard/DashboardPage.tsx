@@ -51,7 +51,7 @@ function KpiCard({ title, value, subtitle, icon: Icon, trend, trendValue, warn }
     <div className={cn('flex flex-col gap-1 p-4', surfaceCls)}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-table text-ink-muted">{title}</p>
-        <Icon className={cn('size-4', warn ? 'text-warn-ink' : 'text-ink-muted')} />
+        <span className={cn('grid size-8 shrink-0 place-items-center rounded-full', warn ? 'bg-warn/15 text-warn-ink' : 'bg-brand-soft text-brand')}><Icon className="size-4" /></span>
       </div>
       <p className="text-kpi font-semibold tabular-nums text-ink">{value}</p>
       <p className="text-meta text-ink-muted">{subtitle}</p>
@@ -194,8 +194,8 @@ function FullDashboard() {
               { to: '/reports', icon: TrendingUp, label: 'Reportes' },
             ].map((item) => (
               <Link key={item.to} to={item.to}
-                className="flex items-center gap-2.5 rounded-ctl p-3 text-table font-medium text-ink shadow-[inset_0_0_0_1px_hsl(var(--line))] transition-colors hover:bg-surface-2">
-                <item.icon className="size-4 text-ink-muted" />{item.label}
+                className="flex items-center gap-2.5 rounded-ctl p-3 text-table font-medium text-ink shadow-[inset_0_0_0_1px_hsl(var(--line))] transition-colors hover:bg-brand-soft hover:text-brand">
+                <span className="grid size-7 place-items-center rounded-full bg-brand-soft text-brand"><item.icon className="size-4" /></span>{item.label}
               </Link>
             ))}
           </div>

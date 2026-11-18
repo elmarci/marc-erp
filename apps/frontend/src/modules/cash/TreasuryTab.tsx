@@ -74,9 +74,9 @@ export function TreasuryTab({ onCount }: { onCount: (acc: TreasuryAccount) => vo
     <div className="flex flex-col gap-5">
       {/* Cada cuenta se cuadra por separado: nunca se mezclan aunque sumen al mismo total. */}
       <div className={cn('grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-4', surfaceCls)}>
-        <div className="flex flex-col gap-1 bg-ink px-4 py-3.5 text-on-ink">
+        <div className="flex flex-col gap-1 bg-brand px-4 py-3.5 text-white">
           <div className="text-meta opacity-70">Saldo de Caja General</div>
-          <div className={cn('text-kpi font-semibold tabular-nums', total < 0 && 'text-bad')}>{balances ? formatCurrency(total) : '…'}</div>
+          <div className="text-kpi font-semibold tabular-nums">{balances ? formatCurrency(total) : '…'}</div>
           <div className="text-meta opacity-70">Efectivo + Yape + Plin</div>
         </div>
         {(['CASH', 'YAPE', 'PLIN'] as const).map((acc) => {

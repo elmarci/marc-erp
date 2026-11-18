@@ -29,7 +29,7 @@ export function SummaryTab() {
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Panel title="Valor por categoría" meta="al costo" bodyClassName="p-3">
-          <ResponsiveContainer width="100%" height={Math.max(220, byCategory.length * 26)}>
+          <ResponsiveContainer width="100%" height={Math.max(220, byCategory.length * 34)}>
             <BarChart data={byCategory} layout="vertical" margin={{ left: 8, right: 16 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" horizontal={false} />
               <XAxis type="number" tickFormatter={(v: number) => `S/${v.toFixed(0)}`} tick={{ fontSize: 11, fill: 'hsl(var(--ink-muted))' }} stroke="hsl(var(--line))" />

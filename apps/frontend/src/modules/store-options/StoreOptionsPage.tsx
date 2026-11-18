@@ -121,7 +121,7 @@ function GroupEditor({ group, categories, names, onChange, onDelete }: {
                     <button key={c.id} type="button" aria-pressed={on} onClick={() => toggleCat(c.id)}
                       className={cn('h-7 rounded-ctl px-2.5 text-meta transition-colors',
                         i === 0 ? 'font-semibold' : '',
-                        on ? 'bg-ink text-on-ink' : 'text-ink shadow-[inset_0_0_0_1px_hsl(var(--line-strong))] hover:bg-surface-2')}>
+                        on ? 'bg-brand text-white' : 'text-ink shadow-[inset_0_0_0_1px_hsl(var(--line-strong))] hover:bg-surface-2')}>
                       {c.name}
                     </button>
                   );

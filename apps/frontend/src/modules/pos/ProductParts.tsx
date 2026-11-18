@@ -160,7 +160,7 @@ export function Chip({ active, onClick, icon, children }: { active?: boolean; on
   return (
     <button onClick={onClick}
       className={cn('flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors lg:h-8 lg:px-3',
-        active ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground/80 hover:bg-muted/70')}>
+        active ? 'bg-brand text-white shadow-sm' : 'bg-card text-foreground/80 ring-1 ring-border hover:bg-accent hover:text-accent-foreground')}>
       {icon}{children}
     </button>
   );
@@ -181,7 +181,7 @@ export function AddButton({ count, onClick }: { count: number; onClick: () => vo
   return (
     <button onClick={(e) => { e.currentTarget.blur(); onClick(); }} aria-label="Agregar"
       className={cn('flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-2 text-sm font-semibold tabular-nums transition-colors active:scale-95',
-        count > 0 ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary')}>
+        count > 0 ? 'bg-lime text-white' : 'bg-primary/10 text-primary')}>
       {count > 0 ? Number(count.toFixed(2)) : <Plus className="h-5 w-5" />}
     </button>
   );

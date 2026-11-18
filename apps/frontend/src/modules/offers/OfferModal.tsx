@@ -259,7 +259,7 @@ export function OfferModal({ offer, onClose }: { offer?: Offer; onClose: () => v
                     <button key={idx} type="button" aria-pressed={on}
                       onClick={() => setForm(v => ({ ...v, daysOfWeek: on ? v.daysOfWeek.filter(d => d !== idx) : [...v.daysOfWeek, idx] }))}
                       className={cn('tap h-8 rounded-ctl px-2.5 text-table font-medium transition-colors',
-                        on ? 'bg-ink text-on-ink' : 'text-ink-muted shadow-[inset_0_0_0_1px_hsl(var(--line-strong))] hover:bg-surface-2')}>
+                        on ? 'bg-brand text-white' : 'text-ink-muted shadow-[inset_0_0_0_1px_hsl(var(--line-strong))] hover:bg-surface-2')}>
                       {label}
                     </button>
                   )

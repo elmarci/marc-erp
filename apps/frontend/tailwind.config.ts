@@ -67,6 +67,7 @@ const config: Config = {
         ink: { DEFAULT: 'hsl(var(--ink))', muted: 'hsl(var(--ink-muted))' },
         'on-ink': 'hsl(var(--on-ink))',
         brand: { DEFAULT: 'hsl(var(--brand))', hover: 'hsl(var(--brand-hover))', soft: 'hsl(var(--brand-soft))' },
+        lime: { DEFAULT: 'hsl(var(--lime))', hover: 'hsl(var(--lime-hover))', soft: 'hsl(var(--lime-soft))' },
         ok: { DEFAULT: 'hsl(var(--ok))', ink: 'hsl(var(--ok-ink))' },
         warn: { DEFAULT: 'hsl(var(--warn))', ink: 'hsl(var(--warn-ink))' },
         bad: { DEFAULT: 'hsl(var(--bad))', ink: 'hsl(var(--bad-ink))' },

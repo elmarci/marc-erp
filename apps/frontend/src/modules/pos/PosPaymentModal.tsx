@@ -335,7 +335,8 @@ export function PosPaymentModal({ onClose, onConfirm, isProcessing }: PosPayment
             queda listo para el siguiente método. */}
         <div className="border-t border-border/60 px-5 py-4 shrink-0 safe-bottom">
           <Button
-            className="w-full min-h-[56px] rounded-xl text-base font-semibold"
+            className={cn('w-full min-h-[56px] rounded-xl text-base font-semibold',
+              (isComplete || willCompleteWithThisPayment) && 'bg-lime text-white hover:bg-lime-hover')}
             size="xl"
             disabled={(!isComplete && enteredAmount <= 0) || isProcessing}
             loading={isProcessing}

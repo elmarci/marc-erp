@@ -194,7 +194,7 @@ export function TvScreenPage() {
       <LivePanel live={live} options={options ?? []} minutes={minutes} setMinutes={setMinutes}
         onClear={() => clearMutation.mutate()} clearing={clearMutation.isPending} />
 
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,520px)]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(300px,420px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(360px,520px)]">
         {/* ── Lista que rota ── */}
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">

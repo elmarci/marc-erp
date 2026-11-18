@@ -31,7 +31,7 @@ function Item({ item, collapsed, badge }: { item: NavItem; collapsed: boolean; b
       title={collapsed ? item.label : undefined}
       className={({ isActive }) => cn(
         'tap group relative flex h-8 items-center gap-2.5 rounded-ctl px-2 text-table transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-on-dark/60',
-        isActive ? 'bg-white/[0.09] font-medium text-white' : 'text-nav-ink hover:bg-white/[0.05] hover:text-white',
+        isActive ? 'bg-white/[0.14] font-medium text-white' : 'text-nav-ink hover:bg-white/[0.08] hover:text-white',
         collapsed && 'lg:justify-center lg:px-0',
       )}
     >
@@ -86,11 +86,14 @@ export function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) {
   });
 
   return (
-    <div className={cn('erp flex h-full flex-col bg-nav', collapsed ? 'w-[260px] lg:w-[60px]' : 'w-[260px] lg:w-[232px]')}>
-      <div className={cn('flex h-12 shrink-0 items-center gap-2 px-4', collapsed && 'lg:justify-center lg:px-0')}>
-        <div className="grid size-6 shrink-0 place-items-center rounded-[5px] bg-brand text-[11px] font-bold text-white" aria-hidden>M</div>
-        <span className={cn('text-body font-semibold tracking-tight text-white', collapsed && 'lg:hidden')}>MARC</span>
-        <span className={cn('ml-auto text-meta text-nav-ink', collapsed && 'lg:hidden')}>Minimarket</span>
+    <div className={cn('erp on-brand flex h-full flex-col bg-nav', collapsed ? 'w-[260px] lg:w-[60px]' : 'w-[260px] lg:w-[232px]')}>
+      <div className={cn('flex h-14 shrink-0 items-center gap-2.5 px-4', collapsed && 'lg:justify-center lg:px-0')}>
+        <img src="/marc-mark.png" alt="" className="size-9 shrink-0" aria-hidden />
+        <span className={cn('flex flex-col leading-none', collapsed && 'lg:hidden')}>
+          <span className="text-[9px] font-bold tracking-[0.18em] text-brand-on-dark">MINIMARKET</span>
+          <span className="text-[22px] font-extrabold tracking-tight text-white">Marc</span>
+        </span>
+        <span className="flex-1" />
         {onClose && (
           <button type="button" className="tap ml-1 grid size-7 place-items-center rounded-ctl text-nav-ink hover:bg-white/10 lg:hidden" onClick={onClose} aria-label="Cerrar menú">
             <X className="size-4" />
@@ -98,7 +101,7 @@ export function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) {
         )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 pb-3 scroll-touch" aria-label="Menú principal">
+      <nav className="nav-scroll flex-1 overflow-y-auto px-3 pb-3 pt-1 scroll-touch" aria-label="Menú principal">
         <div className="mb-3"><Item item={homeItem} collapsed={collapsed} /></div>
         {groups.map((g) => {
           const hasActive = g.items.some((i) => pathname === i.path || pathname.startsWith(i.path + '/'));
@@ -126,11 +129,11 @@ export function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) {
         })}
       </nav>
 
-      <div className={cn('hidden px-3 pb-3 lg:block', collapsed && 'px-0')}>
+      <div className={cn('hidden border-t border-white/10 px-3 py-2 lg:block', collapsed && 'px-0')}>
         <button
           type="button"
           onClick={onToggle}
-          className={cn('flex h-8 items-center gap-2 rounded-ctl px-2 text-table text-nav-ink hover:bg-white/[0.05] hover:text-white', collapsed ? 'mx-auto w-8 justify-center px-0' : 'w-full')}
+          className={cn('flex h-8 items-center gap-2 rounded-ctl px-2 text-table text-nav-ink outline-none hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-brand-on-dark/60', collapsed ? 'mx-auto w-8 justify-center px-0' : 'w-full')}
           aria-label={collapsed ? 'Abrir menú' : 'Achicar menú'}
           title={collapsed ? 'Abrir menú' : undefined}
         >

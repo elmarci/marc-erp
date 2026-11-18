@@ -276,10 +276,10 @@ export function PosCart({ onCheckout, className, onBack }: PosCartProps) {
         )}
         <div className="flex items-baseline justify-between">
           <span className="text-sm text-muted-foreground">Total <span className="text-xs">(inc. impuestos)</span></span>
-          <span className="text-2xl font-bold leading-tight tabular-nums">{formatCurrency(total)}</span>
+          <span className="text-3xl font-extrabold leading-tight tracking-tight text-brand tabular-nums">{formatCurrency(total)}</span>
         </div>
         <Button
-          className="mt-3 h-14 w-full rounded-xl text-base font-semibold lg:h-12"
+          className="mt-3 h-14 w-full rounded-xl bg-lime text-lg font-bold text-white shadow-[0_6px_16px_-6px_hsl(var(--lime)/0.6)] hover:bg-lime-hover disabled:bg-lime/40 disabled:shadow-none lg:h-[52px]"
           onClick={onCheckout}
           disabled={items.length === 0}
         >

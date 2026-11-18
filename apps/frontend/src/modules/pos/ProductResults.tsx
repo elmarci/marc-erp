@@ -46,7 +46,7 @@ export function ProductResults({ products, isLoading, qtyInCart, happyHourByProd
                   <span className="min-w-0 flex-1">
                     <span className="line-clamp-2 text-sm font-medium leading-snug">{product.name}</span>
                     <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-sm">
-                      <span className="font-semibold tabular-nums">{formatCurrency(hh ? hh.effectivePrice : product.salePrice)}</span>
+                      <span className="font-bold text-brand tabular-nums">{formatCurrency(hh ? hh.effectivePrice : product.salePrice)}</span>
                       {product.isBulk && <span className="text-muted-foreground">por {product.bulkUnit ?? 'kg'}</span>}
                       {hh && <span className="text-xs text-muted-foreground line-through tabular-nums">{formatCurrency(product.salePrice)}</span>}
                       {(hh || offerTags.has(product.id)) && <OfferBadge>{hh?.label ?? offerTags.get(product.id)}</OfferBadge>}
@@ -77,20 +77,20 @@ export function ProductResults({ products, isLoading, qtyInCart, happyHourByProd
             const packOk = packOn && product.currentStock >= (product.packSize ?? 0);
             return (
               <div key={product.id} className={cn(
-                'group flex flex-col rounded-xl bg-card p-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] transition-shadow hover:shadow-md dark:ring-white/5',
-                inCart > 0 && 'ring-2 ring-primary/50',
+                'group flex flex-col rounded-xl bg-card p-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-border transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-md hover:ring-brand/40',
+                inCart > 0 && 'ring-2 ring-lime',
               )}>
                 <button className="flex flex-1 flex-col text-left focus-visible:outline-none"
                   onClick={(e) => { e.currentTarget.blur(); tapProduct(product); }}>
-                  {product.imageUrl && <ProductThumb name={product.name} imageUrl={product.imageUrl} className="mb-2 h-20 w-full lg:h-16" />}
+                  <ProductThumb name={product.name} imageUrl={product.imageUrl} className="mb-2 h-12 w-full" />
                   <span className="line-clamp-2 min-h-[2.4em] text-sm font-medium leading-tight">{product.name}</span>
                   <span className="mt-1.5 flex items-center justify-between gap-1">
-                    <span className="min-w-0 truncate text-sm font-semibold tabular-nums">
+                    <span className="min-w-0 truncate text-base font-bold text-brand tabular-nums">
                       {formatCurrency(hh ? hh.effectivePrice : product.salePrice)}
                       {product.isBulk && <span className="ml-0.5 text-[11px] font-normal text-muted-foreground">/{product.bulkUnit ?? 'kg'}</span>}
                     </span>
                     {inCart > 0
-                      ? <span className="rounded-full bg-primary px-1.5 text-[11px] font-semibold leading-5 text-primary-foreground tabular-nums">{Number(inCart.toFixed(2))}</span>
+                      ? <span className="rounded-full bg-lime px-2 text-[11px] font-bold leading-5 text-white tabular-nums">{Number(inCart.toFixed(2))}</span>
                       : <StockNote product={product} compact />}
                   </span>
                   {(hh || offerTags.has(product.id)) && (
