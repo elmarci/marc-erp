@@ -16,20 +16,94 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
+// Sesión cerrada desde el ERP (desactivado, celular quitado o "cerrar
+// sesiones"): cualquier 401 fuera del ingreso devuelve al login.
+apiClient.interceptors.response.use(undefined, (error) => {
+  const url: string = error?.config?.url ?? ''
+  if (error?.response?.status === 401 && !url.startsWith('/delivery/auth/login') && !url.startsWith('/delivery/auth/activate')) {
+    onSessionEnded?.()
+  }
+  return Promise.reject(error)
+})
+
+let onSessionEnded: (() => void) | null = null
+export function setSessionEndedHandler(fn: () => void) { onSessionEnded = fn }
+
 // Ubicación real de la tienda — punto de partida del mapa cuando el
 // navegador todavía no dio el GPS real del repartidor. Mismo punto que
 // STORE_ORIGIN en el backend (apps/backend/src/modules/delivery/economics.ts).
 export const RIDER_BASE = { lat: -12.102235, lng: -76.874449 }
 
-export async function verifyLogin(telefono: string, pin: string): Promise<{ nombre: string; iniciales: string; token: string; riderId: string } | null> {
+// Cada celular guarda un secreto aleatorio propio. El backend solo deja
+// entrar desde el celular que la tienda autorizó con un código de un solo uso.
+const DEVICE_KEY = 'marc-reparto-device'
+export function deviceSecret(): string {
   try {
-    const { data } = await apiClient.post('/delivery/auth/login', { telefono: telefono.replace(/\s/g, ''), pin })
-    const { rider, token } = data.data as { rider: { id: string; nombre: string }; token: string }
-    const iniciales = rider.nombre.split(/\s+/).map((p: string) => p[0]).slice(0, 2).join('').toUpperCase()
-    return { nombre: rider.nombre, iniciales, token, riderId: rider.id }
-  } catch {
-    return null
-  }
+    const saved = localStorage.getItem(DEVICE_KEY)
+    if (saved && saved.length >= 32) return saved
+  } catch { /* sin almacenamiento: se genera uno temporal */ }
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  try { localStorage.setItem(DEVICE_KEY, secret) } catch { /* ignore */ }
+  return secret
+}
+
+export function deviceLabel(): string {
+  const ua = navigator.userAgent
+  const android = ua.match(/Android [\d.]+;\s*([^;)]+?)(?: Build|\))/)
+  const model = android?.[1]?.trim()
+  const os = /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : 'Celular'
+  const browser = /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /CriOS|Chrome/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : /Firefox/.test(ua) ? 'Firefox' : ''
+  return [model && model !== 'K' ? model : os, browser].filter(Boolean).join(' · ')
+}
+
+export interface LoginResult {
+  nombre: string
+  iniciales: string
+  token: string
+  riderId: string
+  pinUpgradeRequired: boolean
+}
+
+export class LoginError extends Error {
+  constructor(message: string, public code: string) { super(message) }
+}
+
+function toLoginResult(data: { rider: { id: string; nombre: string }; token: string; pinUpgradeRequired: boolean }): LoginResult {
+  const iniciales = data.rider.nombre.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase()
+  return { nombre: data.rider.nombre, iniciales, token: data.token, riderId: data.rider.id, pinUpgradeRequired: data.pinUpgradeRequired }
+}
+
+function asLoginError(err: unknown): LoginError {
+  const e = err as { response?: { data?: { error?: { code?: string; message?: string } } } }
+  const apiErr = e.response?.data?.error
+  if (apiErr?.message) return new LoginError(apiErr.message, apiErr.code ?? 'ERROR')
+  return new LoginError('No hay conexión con la tienda. Revisa tu internet e intenta de nuevo.', 'NETWORK')
+}
+
+export async function login(telefono: string, pin: string): Promise<LoginResult> {
+  try {
+    const { data } = await apiClient.post('/delivery/auth/login', {
+      telefono: telefono.replace(/\s/g, ''), pin, deviceSecret: deviceSecret(), dispositivo: deviceLabel(),
+    })
+    return toLoginResult(data.data)
+  } catch (err) { throw asLoginError(err) }
+}
+
+export async function activateDevice(telefono: string, pin: string, code: string): Promise<LoginResult> {
+  try {
+    const { data } = await apiClient.post('/delivery/auth/activate', {
+      telefono: telefono.replace(/\s/g, ''), pin, code, deviceSecret: deviceSecret(), dispositivo: deviceLabel(),
+    })
+    return toLoginResult(data.data)
+  } catch (err) { throw asLoginError(err) }
+}
+
+export async function changePin(currentPin: string, newPin: string): Promise<void> {
+  try {
+    await apiClient.post('/delivery/auth/change-pin', { currentPin, newPin })
+  } catch (err) { throw asLoginError(err) }
 }
 
 export async function fetchAvailableOrders(): Promise<DeliveryOrder[]> {

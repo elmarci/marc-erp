@@ -1,19 +1,18 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { ClipboardList, Clock, HelpCircle, LogOut, User, Wallet } from 'lucide-react'
+import { Clock, HelpCircle, Home, KeyRound, LogOut, Package, User, Wallet } from 'lucide-react'
 import { useUiStore } from '../uiStore'
 import { useAuthStore } from '../authStore'
 import { cn } from '../lib/cn'
 
 const ITEMS = [
-  { to: '/pedidos', label: 'Pedidos', icon: ClipboardList },
-  { to: '/historial', label: 'Historial', icon: Clock },
-  { to: '/billetera', label: 'Billetera', icon: Wallet },
+  { to: '/estado', label: 'Inicio', icon: Home },
+  { to: '/pedidos', label: 'Pedidos', icon: Package },
+  { to: '/billetera', label: 'Ganancias', icon: Wallet },
+  { to: '/historial', label: 'Historial de entregas', icon: Clock },
   { to: '/perfil', label: 'Perfil', icon: User },
+  { to: '/nuevo-pin', label: 'Cambiar mi PIN', icon: KeyRound },
 ]
 
-// Complementa el nav inferior (4 pestañas siempre visibles) con acceso
-// rápido a todo desde un solo botón de menú — pedido explícito: "debe tener
-// algún nav sidebar... para navegación rápida".
 export function NavDrawer() {
   const open = useUiStore((s) => s.drawerOpen)
   const close = useUiStore((s) => s.closeDrawer)
@@ -23,66 +22,41 @@ export function NavDrawer() {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex" onClick={close}>
-      <div className="absolute inset-0 bg-black/55" />
-      <div
-        className="relative flex h-full w-[280px] animate-enter-up flex-col bg-paper-surface shadow-2xl"
-        style={{ animationDuration: '0.16s' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 pb-5 pt-7">
-          <div className="font-display flex h-12 w-12 items-center justify-center rounded-full bg-brand-green-700 text-lg font-extrabold text-white">
-            {iniciales}
-          </div>
-          <div className="font-display mt-3 text-lg font-extrabold text-paper-ink">{nombre.toUpperCase()}</div>
-          <div className={cn('mt-0.5 text-xs font-extrabold', enServicio ? 'text-accent-green' : 'text-paper-ink-faint')}>
-            {enServicio ? '● EN SERVICIO' : '○ DESCONECTADO'}
+    <div className="fixed inset-0 z-[800] flex justify-end" onClick={close}>
+      <div className="absolute inset-0 bg-night/40" />
+      <div className="relative flex h-full w-[290px] animate-enter-up flex-col bg-card shadow-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="lane bg-night px-5 pb-7 text-white" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 24px)' }}>
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-base font-semibold">{iniciales}</div>
+          <div className="num mt-3 text-lg font-semibold">{nombre}</div>
+          <div className="mt-0.5 flex items-center gap-2 text-[13px] text-white/75">
+            <i className={cn('h-2 w-2 rounded-full', enServicio ? 'bg-lime-on' : 'bg-white/40')} />
+            {enServicio ? 'En ruta' : 'Fuera de servicio'}
           </div>
         </div>
 
-        <div className="mx-5 h-px bg-paper-line" />
-
-        <div className="flex flex-col py-3">
+        <nav className="flex flex-col py-2">
           {ITEMS.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={close}
-              className={({ isActive }) =>
-                cn('flex items-center gap-3.5 px-5 py-3.5', isActive && 'bg-brand-green-900/40')
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon size={19} className={isActive ? 'text-accent-green' : 'text-paper-ink-soft'} />
-                  <span className={cn('font-display text-[15px] font-bold', isActive ? 'text-accent-green' : 'text-paper-ink-soft')}>
-                    {label.toUpperCase()}
-                  </span>
-                </>
-              )}
+            <NavLink key={to} to={to} onClick={close}
+              className={({ isActive }) => cn('flex items-center gap-3.5 px-5 py-3.5 text-[15px]', isActive ? 'font-semibold text-blue' : 'text-ink')}>
+              <Icon size={20} strokeWidth={1.8} />
+              {label}
             </NavLink>
           ))}
-
-          <div className="mx-5 my-2.5 h-px bg-paper-line" />
-
-          <a href="tel:016139900" className="flex items-center gap-3.5 px-5 py-3.5">
-            <HelpCircle size={19} className="text-paper-ink-faint" />
-            <span className="text-sm font-bold text-paper-ink-faint">Ayuda / Llamar a la tienda</span>
+          <div className="mx-5 my-2 h-px bg-line" />
+          <a href="tel:930555831" className="flex items-center gap-3.5 px-5 py-3.5 text-[15px] text-ink-soft">
+            <HelpCircle size={20} strokeWidth={1.8} />
+            Llamar a la tienda
           </a>
           <button
-            onClick={() => {
-              close()
-              logout()
-              navigate('/')
-            }}
-            className="flex items-center gap-3.5 px-5 py-3.5 text-left"
+            onClick={() => { close(); logout(); navigate('/') }}
+            className="flex items-center gap-3.5 px-5 py-3.5 text-left text-[15px] text-ink-soft"
           >
-            <LogOut size={19} className="text-brand-achiote-500" />
-            <span className="text-sm font-bold text-brand-achiote-500">Cerrar sesión</span>
+            <LogOut size={20} strokeWidth={1.8} />
+            Cerrar sesión
           </button>
-        </div>
+        </nav>
 
-        <div className="mt-auto px-5 py-5 text-[11px] font-bold text-paper-ink-ghost">Marc Reparto · v1.0</div>
+        <div className="mt-auto px-5 py-5 text-xs text-ink-faint">Marc Reparto · Tiendas Marc</div>
       </div>
     </div>
   )

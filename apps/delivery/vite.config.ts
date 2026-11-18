@@ -8,13 +8,13 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: { enabled: false },
-      includeAssets: ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'logo-icon.png'],
+      includeAssets: ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'logo-icon.png', 'marc-mark.png'],
       manifest: {
         name: 'Marc Reparto',
         short_name: 'Marc Reparto',
-        description: 'App de reparto para afiliados de Minimarket Marc',
-        theme_color: '#1c1b15',
-        background_color: '#1c1b15',
+        description: 'App de reparto de Tiendas Marc',
+        theme_color: '#0B2350',
+        background_color: '#F3F4F7',
         display: 'standalone',
         start_url: '/',
         icons: [
