@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, Lock, User, ShoppingCart } from 'lucide-react';
+import { Eye, EyeOff, Lock, User } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Btn, Field, fieldCls, invalidCls } from '@/components/erp';
+import { cn } from '@/lib/utils';
+import { AuthShell } from './AuthShell';
 import { api, getErrorMessage } from '@/services/api';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -65,68 +66,52 @@ export function LoginPage() {
     }
   };
 
+  const icon = 'pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-muted';
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-4">
-      <div className="w-full max-w-md">
-        {/* Logo y título */}
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-lg">
-            <ShoppingCart className="h-8 w-8 text-primary-foreground" />
-          </div>
-          <h1 className="text-2xl font-bold text-white">ERP Minimarket</h1>
-          <p className="mt-1 text-sm text-slate-400">Sistema de gestión para tu negocio</p>
-        </div>
+    <AuthShell title="Iniciar sesión" subtitle="Sistema de gestión para tu negocio">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <Field label="Usuario o correo" error={errors.login?.message}>
+          <span className="relative block">
+            <User className={icon} />
+            <input
+              {...register('login')}
+              placeholder="Tu usuario o correo"
+              autoComplete="username"
+              autoFocus
+              aria-invalid={!!errors.login}
+              className={cn(fieldCls, 'pl-8', errors.login && invalidCls)}
+            />
+          </span>
+        </Field>
 
-        {/* Formulario */}
-        <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-8 shadow-2xl backdrop-blur-sm">
-          <h2 className="mb-6 text-lg font-semibold text-white">Iniciar Sesión</h2>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-300">
-                Usuario o Correo
-              </label>
-              <Input
-                {...register('login')}
-                placeholder="Tu usuario o correo"
-                autoComplete="username"
-                autoFocus
-                error={errors.login?.message}
-                startIcon={<User className="h-4 w-4" />}
-                className="border-slate-600 bg-slate-700/50 text-white placeholder:text-slate-500 focus-visible:ring-primary"
-              />
-            </div>
+        <Field label="Contraseña" error={errors.password?.message}>
+          <span className="relative block">
+            <Lock className={icon} />
+            <input
+              {...register('password')}
+              type={showPassword ? 'text' : 'password'}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              aria-invalid={!!errors.password}
+              className={cn(fieldCls, 'px-8', errors.password && invalidCls)}
+            />
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); setShowPassword((v) => !v); }}
+              className="absolute right-1 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-ctl text-ink-muted hover:text-ink"
+              aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </span>
+        </Field>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-300">
-                Contraseña
-              </label>
-              <Input
-                {...register('password')}
-                type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                error={errors.password?.message}
-                startIcon={<Lock className="h-4 w-4" />}
-                endIcon={
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="text-slate-400 hover:text-slate-200"
-                    tabIndex={-1}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                }
-                className="border-slate-600 bg-slate-700/50 text-white placeholder:text-slate-500 focus-visible:ring-primary"
-              />
-            </div>
-
-            <Button type="submit" loading={loading} className="mt-2 w-full" size="lg">
-              Ingresar al Sistema
-            </Button>
-          </form>
-        </div>
-      </div>
-    </div>
+        <Btn type="submit" variant="primary" loading={loading} className="mt-2 w-full">
+          Ingresar al sistema
+        </Btn>
+      </form>
+    </AuthShell>
   );
 }
