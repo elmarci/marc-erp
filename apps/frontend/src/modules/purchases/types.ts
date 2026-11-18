@@ -54,6 +54,7 @@ export interface OrderDetail extends PurchaseOrder {
   payments: Array<{
     id: string; amount: number; method: string; paidAt: string; reference: string | null; notes: string | null;
     reversedAt: string | null; reversalReason: string | null; reversedBy: { firstName: string; lastName: string } | null;
+    cashSession?: { cashRegister: { name: string } } | null;
   }>;
 }
 
@@ -68,6 +69,14 @@ export const PAYMENT_STATUS_VARIANT: Record<string, 'default' | 'success' | 'des
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: 'Efectivo', YAPE: 'Yape', PLIN: 'Plin', TRANSFER: 'Transferencia', DEBIT_CARD: 'Tarjeta débito', CREDIT_CARD: 'Tarjeta crédito', OTHER: 'Otro',
 };
+
+/** Método de un pago ya hecho. En efectivo dice de qué caja salió:
+ *  con caja del día (cashRegisterName) o, si no, de Caja General. */
+export function paidMethodLabel(method: string, cashRegisterName?: string | null): string {
+  if (method === 'CASH_DAY') return 'Efectivo · Caja del día';
+  if (method !== 'CASH') return PAYMENT_METHOD_LABELS[method] ?? method;
+  return cashRegisterName ? `Efectivo · Caja del día (${cashRegisterName})` : 'Efectivo · Caja General';
+}
 
 export interface Product {
   id: string; name: string; barcode: string | null; costPrice: number;

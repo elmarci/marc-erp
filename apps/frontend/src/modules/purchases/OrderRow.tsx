@@ -10,7 +10,7 @@ import { CorrectItemModal, EditOrderItemModal } from './ItemModals';
 import { PayPurchaseModal } from './PayModals';
 import { ReceiveOrderModal } from './ReceiveOrderModal';
 import { printPurchaseReceipt } from './printing';
-import { ACCOUNTING_STATE_LABELS, ACCOUNTING_STATE_TONE, OrderDetail, PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_TONE, PurchaseOrder, STATUS_LABELS, STATUS_TONE } from './types';
+import { ACCOUNTING_STATE_LABELS, ACCOUNTING_STATE_TONE, OrderDetail, paidMethodLabel, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_TONE, PurchaseOrder, STATUS_LABELS, STATUS_TONE } from './types';
 
 export function OrderRow({ order }: { order: PurchaseOrder }) {
   const [expanded, setExpanded] = useState(false);
@@ -288,7 +288,7 @@ export function OrderRow({ order }: { order: PurchaseOrder }) {
                           <div key={p.id} className={cn('py-1.5 text-meta', p.reversedAt ? 'text-bad-ink' : 'text-ink-muted')}>
                             <div className="flex justify-between gap-3">
                               <span className={cn(p.reversedAt && 'line-through')}>
-                                {formatDateTime(p.paidAt)} · {PAYMENT_METHOD_LABELS[p.method] ?? p.method}{p.reference ? ` · ${p.reference}` : ''}
+                                {formatDateTime(p.paidAt)} · {paidMethodLabel(p.method, p.cashSession?.cashRegister.name)}{p.reference ? ` · ${p.reference}` : ''}
                               </span>
                               <span className={cn('font-medium tabular-nums', p.reversedAt ? 'line-through' : 'text-ink')}>{formatCurrency(p.amount)}</span>
                             </div>

@@ -986,8 +986,12 @@ model SupplierPayment {
   reversedAt      DateTime?     @map("reversed_at")
   reversedById    String?       @map("reversed_by_id")
   reversalReason  String?       @map("reversal_reason")
+  // Pago en efectivo: la caja del día de la que salió. Si es null y el método
+  // es CASH, el efectivo salió de Caja General.
+  cashSessionId   String?       @map("cash_session_id")
 
   purchaseOrder PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  cashSession   CashSession?          @relation("SupplierPaymentCashSession", fields: [cashSessionId], references: [id])
   user          User                  @relation("SupplierPaymentUser", fields: [userId], references: [id])
   batch         SupplierPaymentBatch? @relation(fields: [batchId], references: [id])
   reversedBy    User?                 @relation("SupplierPaymentReversedBy", fields: [reversedById], references: [id])
@@ -1043,8 +1047,11 @@ model PayerRepayment {
   reversedAt      DateTime?     @map("reversed_at")
   reversedById    String?       @map("reversed_by_id")
   reversalReason  String?       @map("reversal_reason")
+  // Igual que SupplierPayment: caja del día de la que salió el efectivo.
+  cashSessionId   String?       @map("cash_session_id")
 
   payer         Payer                @relation(fields: [payerId], references: [id])
+  cashSession   CashSession?         @relation("PayerRepaymentCashSession", fields: [cashSessionId], references: [id])
   purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
   batch         PayerRepaymentBatch? @relation(fields: [batchId], references: [id])
   user          User                 @relation("PayerRepaymentUser", fields: [userId], references: [id])
@@ -1184,6 +1191,8 @@ model CashSession {
   // efectivo porque cada método es su propia "cuenta" en Caja General.
   reconciliations        CashSessionReconciliation[]
   bottleDepositMovements BottleDepositMovement[]
+  supplierPayments       SupplierPayment[]           @relation("SupplierPaymentCashSession")
+  payerRepayments        PayerRepayment[]            @relation("PayerRepaymentCashSession")
 
   @@index([cashRegisterId])
   @@index([userId])
