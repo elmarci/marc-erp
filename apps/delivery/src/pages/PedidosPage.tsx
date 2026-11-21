@@ -2,14 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Banknote, Bell, CheckCircle2, Clock, CloudRain, List, MapIcon, Package, RefreshCw, Wallet } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, CloudRain, Package, RefreshCw, WifiOff } from 'lucide-react'
 import { fetchAvailableOrders, fetchMyOrders, claimOrder, claimOrders, releaseOrder } from '../api'
 import { fetchViaAlert } from '../lib/weather'
 import { resolveRoute, estimarSeparados, VELOCIDAD_MOTO_KMH } from '../lib/routing'
 import { useRiderLocation } from '../hooks/useRiderLocation'
 import { useAuthStore } from '../authStore'
 import { RouteMap } from '../components/RouteMap'
-import { TopBar } from '../components/TopBar'
+import { AppHeader, HeaderTabs } from '../components/AppHeader'
+import { RoadStrip } from '../components/RoadStrip'
 import { HoldClaimButton } from '../components/HoldClaimButton'
 import { PaqueteBadge } from '../components/PaqueteBadge'
 import type { DeliveryOrder } from '../types'
@@ -30,7 +31,7 @@ function useOnlineStatus() {
   return online
 }
 
-type Tab = 'disponibles' | 'mis'
+type Tab = 'disponibles' | 'mis' | 'mapa'
 type Orden = 'cercania' | 'pago' | 'urgencia'
 type Pago = 'todos' | 'efectivo' | 'online'
 
@@ -40,13 +41,10 @@ const ORDEN_OPTIONS: { key: Orden; label: string }[] = [
   { key: 'urgencia', label: 'Más urgente' },
 ]
 
-// Color de la pestaña triangular de cada ticket — una pista visual rápida,
-// no solo decorativa: naranja = nuevo, azul = ya pagado, verde = el resto.
-function tabColor(o: DeliveryOrder): string {
-  if (o.isNew) return '#c9552a'
-  if (!o.contraEntrega) return '#2460b4'
-  return '#2f6c12'
-}
+const ESTADO_EN_CURSO: Record<string, string> = { ASIGNADO: 'Por recoger', RECOGIDO: 'Recogido', EN_CAMINO: 'En camino' }
+
+const fmtDist = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`)
+const hace = (min: number) => (min < 1 ? 'recién' : `hace ${min} min`)
 
 export function PedidosPage() {
   const navigate = useNavigate()
@@ -55,7 +53,7 @@ export function PedidosPage() {
   const [tab, setTab] = useState<Tab>('disponibles')
   const [orden, setOrden] = useState<Orden>('cercania')
   const [pago, setPago] = useState<Pago>('todos')
-  const [vista, setVista] = useState<'lista' | 'mapa'>('lista')
+  const [abierto, setAbierto] = useState<string | null>(null)
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
   const [claiming, setClaiming] = useState(false)
   const [tomandoIds, setTomandoIds] = useState<Set<string>>(new Set())
@@ -77,8 +75,12 @@ export function PedidosPage() {
     refetchInterval: 15000,
   })
 
-  const orders = tab === 'disponibles' ? disponibles : misPedidos
-  const isLoading = tab === 'disponibles' ? loadingDisponibles : loadingMisPedidos
+  // El mapa trabaja sobre la última lista elegida (Disponibles o En curso).
+  const [base, setBase] = useState<'disponibles' | 'mis'>('disponibles')
+  const lista = tab === 'mapa' ? base : tab
+  const vista = tab === 'mapa' ? 'mapa' : 'lista'
+  const orders = lista === 'disponibles' ? disponibles : misPedidos
+  const isLoading = lista === 'disponibles' ? loadingDisponibles : loadingMisPedidos
 
   // Aviso de vía específico de moto — se apaga solo (null) si la API falla
   // o si no hay nada que avisar; nunca bloquea ni interrumpe al repartidor.
@@ -88,8 +90,6 @@ export function PedidosPage() {
     staleTime: 1000 * 60 * 15,
     retry: false,
   })
-
-  const newCount = tab === 'disponibles' ? (disponibles ?? []).filter((o) => o.isNew).length : 0
 
   const elegidos = useMemo(() => (orders ?? []).filter((o) => seleccionados.has(o.id)), [orders, seleccionados])
   // Ronda la posición para no disparar una llamada de ruteo por cada tick de
@@ -122,7 +122,7 @@ export function PedidosPage() {
     try {
       await claimOrder(o.id)
       invalidateOrderLists()
-      toast.success(`${o.numero} tomado — ya es tuyo.`, {
+      toast.success(`Tomaste ${o.numero}.`, {
         duration: 5000,
         action: {
           label: 'Deshacer',
@@ -193,106 +193,75 @@ export function PedidosPage() {
   }, [orders, pago, orden])
 
   const cambiarTab = (t: Tab) => {
+    if (t !== 'mapa') setBase(t)
     setTab(t)
     setSeleccionados(new Set())
+    setAbierto(null)
   }
+
+  const enCurso = (misPedidos ?? []).length
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar title="PEDIDOS" subtitle={`${disponibles?.length ?? 0} disponibles · Manchay`} />
-
-      <div className="flex gap-2 px-5 pb-2">
-        <button
-          onClick={() => cambiarTab('disponibles')}
-          className={cn(
-            'font-display flex-1 rounded-xl py-2.5 text-[13px] font-extrabold transition-colors',
-            tab === 'disponibles' ? 'bg-accent-green text-[#12250a]' : 'bg-paper-surface text-paper-ink-faint',
-          )}
-        >
-          DISPONIBLES{disponibles && disponibles.length > 0 ? ` (${disponibles.length})` : ''}
-        </button>
-        <button
-          onClick={() => cambiarTab('mis')}
-          className={cn(
-            'font-display flex-1 rounded-xl py-2.5 text-[13px] font-extrabold transition-colors',
-            tab === 'mis' ? 'bg-accent-green text-[#12250a]' : 'bg-paper-surface text-paper-ink-faint',
-          )}
-        >
-          MIS PEDIDOS{misPedidos && misPedidos.length > 0 ? ` (${misPedidos.length})` : ''}
-        </button>
-        <button
-          onClick={() => setVista(vista === 'lista' ? 'mapa' : 'lista')}
-          aria-label={vista === 'lista' ? 'Ver mapa' : 'Ver lista de pedidos'}
-          className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-xl bg-paper-surface"
-        >
-          {vista === 'lista' ? <MapIcon size={16} className="text-paper-ink-soft" /> : <List size={16} className="text-paper-ink-soft" />}
-        </button>
-      </div>
-
-      {vista === 'lista' && (
-        <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
-          {ORDEN_OPTIONS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setOrden(key)}
-              className={cn(
-                'font-display flex-shrink-0 rounded-full px-3.5 py-2 text-[12px] font-extrabold tracking-wide transition-colors',
-                orden === key ? 'bg-paper-ink text-paper-bg' : 'bg-paper-surface text-paper-ink-faint',
-              )}
-            >
-              {label.toUpperCase()}
-            </button>
-          ))}
-          <div className="mx-1 w-px flex-shrink-0 bg-paper-line" />
-          <button
-            onClick={() => setPago(pago === 'efectivo' ? 'todos' : 'efectivo')}
-            className={cn(
-              'font-display flex flex-shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-extrabold tracking-wide transition-colors',
-              pago === 'efectivo' ? 'bg-paper-ink text-paper-bg' : 'bg-paper-surface text-paper-ink-faint',
-            )}
-          >
-            <Banknote size={13} />
-            EFECTIVO
-          </button>
-          <button
-            onClick={() => setPago(pago === 'online' ? 'todos' : 'online')}
-            className={cn(
-              'font-display flex flex-shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-extrabold tracking-wide transition-colors',
-              pago === 'online' ? 'bg-paper-ink text-paper-bg' : 'bg-paper-surface text-paper-ink-faint',
-            )}
-          >
-            <CheckCircle2 size={13} />
-            YA PAGADO
-          </button>
-        </div>
-      )}
+      <AppHeader>
+        <HeaderTabs<Tab>
+          value={tab}
+          onChange={cambiarTab}
+          tabs={[
+            ['disponibles', `Disponibles${disponibles ? ` · ${disponibles.length}` : ''}`],
+            ['mis', `En curso${enCurso ? ` · ${enCurso}` : ''}`],
+            ['mapa', 'Mapa'],
+          ]}
+        />
+      </AppHeader>
 
       {!online && (
-        <div className="mx-5 mt-2 flex items-center gap-2.5 rounded-2xl border border-brand-achiote-700/40 bg-brand-achiote-900/30 px-3.5 py-3">
-          <RefreshCw size={18} className="flex-shrink-0 animate-spin text-accent-achiote" />
-          <div className="flex flex-col">
-            <span className="text-[13px] font-extrabold">Sin conexión. Reintentando…</span>
-            <span className="text-xs font-medium text-paper-ink-soft">
-              Mostrando datos de {dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : 'antes'}
-            </span>
+        <div className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 shadow-card">
+          <WifiOff size={18} className="flex-none text-ink-soft" />
+          <div className="text-sm">
+            <div className="font-semibold">Sin conexión. Reintentando…</div>
+            <div className="text-ink-soft">Datos de las {dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : '–'}</div>
           </div>
         </div>
       )}
 
       {viaAlert && (
-        <div
-          className={cn(
-            'mx-5 mt-2 flex items-center gap-2.5 rounded-2xl border px-3.5 py-3',
-            viaAlert.nivel === 'alerta' ? 'border-brand-magenta-700/40 bg-brand-magenta-900/30' : 'border-brand-achiote-700/40 bg-brand-achiote-900/30',
-          )}
-        >
-          <CloudRain size={18} className={cn('flex-shrink-0', viaAlert.nivel === 'alerta' ? 'text-brand-magenta-400' : 'text-accent-achiote')} />
-          <span className="text-[13px] font-extrabold leading-snug">{viaAlert.mensaje}</span>
+        <div className={cn('mx-4 mt-3 flex items-center gap-3 rounded-2xl px-4 py-3', viaAlert.nivel === 'alerta' ? 'bg-warn-soft text-warn' : 'bg-card shadow-card')}>
+          <CloudRain size={18} className="flex-none" />
+          <span className="text-sm font-medium leading-snug">{viaAlert.mensaje}</span>
+        </div>
+      )}
+
+      {vista === 'lista' && (
+        <div className="no-scrollbar flex flex-none gap-1 overflow-x-auto px-4 pt-3">
+          {ORDEN_OPTIONS.map(({ key, label }) => (
+            <button key={key} onClick={() => setOrden(key)}
+              className={cn('h-8 flex-none rounded-full px-3 text-[13px]', orden === key ? 'bg-ink font-semibold text-white' : 'font-medium text-ink-soft')}>
+              {label}
+            </button>
+          ))}
+          <span className="mx-1 my-2 w-px flex-none bg-line" />
+          <button onClick={() => setPago(pago === 'efectivo' ? 'todos' : 'efectivo')}
+            className={cn('h-8 flex-none rounded-full px-3 text-[13px]', pago === 'efectivo' ? 'bg-ink font-semibold text-white' : 'font-medium text-ink-soft')}>
+            Cobro en efectivo
+          </button>
+          <button onClick={() => setPago(pago === 'online' ? 'todos' : 'online')}
+            className={cn('h-8 flex-none rounded-full px-3 text-[13px]', pago === 'online' ? 'bg-ink font-semibold text-white' : 'font-medium text-ink-soft')}>
+            Ya pagado
+          </button>
         </div>
       )}
 
       {vista === 'mapa' && (
-        <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto px-5 pb-5 pt-3.5">
+        <div className="no-scrollbar flex flex-1 flex-col gap-3 overflow-y-auto px-4 pb-5 pt-3">
+          <div className="flex gap-1">
+            {(['disponibles', 'mis'] as const).map((b) => (
+              <button key={b} onClick={() => { setBase(b); setSeleccionados(new Set()) }}
+                className={cn('h-8 rounded-full px-3 text-[13px]', base === b ? 'bg-ink font-semibold text-white' : 'font-medium text-ink-soft')}>
+                {b === 'disponibles' ? 'Disponibles' : 'En curso'}
+              </button>
+            ))}
+          </div>
           <RouteMap
             riderPos={riderPos}
             riderIniciales={iniciales}
@@ -309,78 +278,59 @@ export function PedidosPage() {
               })
             }}
           />
-          <div className="text-xs leading-snug text-paper-ink-soft">
-            {tab === 'disponibles'
-              ? 'Toca los pedidos que te convenga captar juntos — te armamos la ruta real y el orden más rápido para visitarlos.'
-              : 'Toca los pedidos que quieras hacer juntos — te armamos la ruta real y el orden más rápido para visitarlos.'}
-          </div>
+          <p className="text-[13px] leading-snug text-ink-soft">
+            Toca los pedidos que quieras llevar juntos. Te armamos la ruta y el orden más rápido.
+          </p>
 
           {seleccionados.size > 0 && routeLoading && (
-            <div className="flex items-center justify-center gap-2 rounded-[20px] border-[1.5px] border-paper-line p-[18px] text-sm font-bold text-paper-ink-soft">
-              <RefreshCw size={16} className="animate-spin" />
-              Calculando ruta…
+            <div className="flex items-center justify-center gap-2 rounded-[20px] bg-card p-4 text-sm text-ink-soft shadow-card">
+              <RefreshCw size={16} className="animate-spin" /> Calculando ruta…
             </div>
           )}
 
           {seleccionados.size > 0 && routeInfo && routeInfo.ruta.length > 0 && (
-            <div className="flex flex-col gap-3 rounded-[20px] border-[1.5px] border-brand-green-700/50 bg-brand-green-900/25 p-[18px]">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-display text-xs font-extrabold uppercase tracking-wide text-accent-green">
-                  Ruta sugerida · {routeInfo.totalKm.toFixed(1)} km · ~{Math.round(routeInfo.totalMin)} min
+            <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4 shadow-card">
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="font-semibold">Ruta sugerida</div>
+                <div className="text-sm tabular-nums text-ink-soft">
+                  {routeInfo.totalKm.toFixed(1)} km · {Math.round(routeInfo.totalMin)} min{!routeInfo.esReal && ' · estimado'}
                 </div>
-                {!routeInfo.esReal && (
-                  <span className="flex-shrink-0 rounded-full bg-brand-achiote-900/40 px-2 py-0.5 text-[10px] font-extrabold text-accent-achiote">
-                    Estimado
-                  </span>
-                )}
               </div>
-
               {separados && (
-                <div className="text-[11px] font-semibold text-accent-green">
-                  Separados serían ~{separados.km.toFixed(1)} km / {Math.round(separados.min)} min — juntos ahorras ~
-                  {Math.max(0, separados.km - routeInfo.totalKm).toFixed(1)} km.
+                <div className="text-[13px] text-ink-soft">
+                  Por separado serían {separados.km.toFixed(1)} km. Juntos ahorras {Math.max(0, separados.km - routeInfo.totalKm).toFixed(1)} km.
                 </div>
               )}
-
-              <div className="flex flex-col gap-3">
+              <ol className="flex flex-col">
                 {routeInfo.ruta.map((o, i) => {
                   const leg = routeInfo.legs[i]
                   if (!leg) return null
-                  const etaMin = routeInfo.legs.slice(0, i + 1).reduce((s, l) => s + l.duracionMin, 0)
+                  const etaMin = routeInfo.legs.slice(0, i + 1).reduce((acc, l) => acc + l.duracionMin, 0)
                   const eta = new Date(Date.now() + etaMin * 60000)
                   return (
-                    <div key={o.id} className="flex items-center gap-2.5">
-                      <div className="font-display flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-accent-green text-xs font-extrabold text-[#12250a]">
-                        {i + 1}
-                      </div>
+                    <li key={o.id} className="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
+                      <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-ink text-xs font-semibold text-white">{i + 1}</span>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-bold">
-                          <span className="text-paper-ink-faint">{o.numero}</span> · {o.direccion}
-                        </div>
-                        <div className="text-[11px] font-semibold text-paper-ink-faint">
-                          {leg.distanciaKm.toFixed(1)} km · {Math.round(leg.duracionMin)} min · llegas ~
-                          {eta.toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit' })}
+                        <div className="truncate text-sm font-medium">{o.direccion}</div>
+                        <div className="text-[13px] tabular-nums text-ink-soft">
+                          {leg.distanciaKm.toFixed(1)} km · llegas {eta.toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit' })}
                         </div>
                       </div>
-                      <div className="font-display flex-shrink-0 text-xs font-extrabold text-accent-green">S/ {o.tarifaReparto.toFixed(2)}</div>
-                    </div>
+                      <span className="num flex-none text-[15px] font-semibold">S/ {o.tarifaReparto.toFixed(2)}</span>
+                    </li>
                   )
                 })}
-              </div>
-
-              {tab === 'disponibles' ? (
+              </ol>
+              {base === 'disponibles' ? (
                 <HoldClaimButton
-                  className="w-full text-center"
+                  className="h-[52px] w-full text-base"
                   disabled={claiming}
                   onConfirm={confirmClaimBatch}
-                  label={routeInfo.ruta.length === 1 ? 'TOMAR ESTE PEDIDO' : `TOMAR ESTOS ${routeInfo.ruta.length} PEDIDOS`}
+                  label={routeInfo.ruta.length === 1 ? 'Tomar este pedido' : `Tomar estos ${routeInfo.ruta.length} pedidos`}
                 />
               ) : (
-                <button
-                  onClick={() => navigate(`/pedidos/${routeInfo.ruta[0].id}`)}
-                  className="font-display w-full rounded-xl bg-brand-green-700 py-3.5 text-[15px] font-extrabold text-white"
-                >
-                  EMPEZAR POR AQUÍ
+                <button onClick={() => navigate(`/pedidos/${routeInfo.ruta[0].id}`)} className="h-[52px] w-full rounded-[14px] bg-blue text-base font-semibold text-white">
+                  Empezar por aquí
                 </button>
               )}
             </div>
@@ -389,113 +339,83 @@ export function PedidosPage() {
       )}
 
       {vista === 'lista' && (
-        <div className={cn('no-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5 pt-1', !online && 'opacity-70')}>
+        <div className={cn('no-scrollbar flex flex-1 flex-col gap-2.5 overflow-y-auto px-4 pb-5 pt-3', !online && 'opacity-70')}>
           {isLoading ? (
             Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex flex-col gap-3.5 rounded-[18px] bg-paper-surface p-[18px]">
-                <div className="flex justify-between">
-                  <div className="h-[18px] w-[180px] animate-shimmer rounded-lg bg-paper-raised" />
-                  <div className="h-[14px] w-11 animate-shimmer rounded-lg bg-paper-raised" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="h-6 w-[100px] animate-shimmer rounded-full bg-paper-raised" />
-                  <div className="h-[22px] w-[70px] animate-shimmer rounded-lg bg-paper-raised" />
-                </div>
+              <div key={i} className="flex flex-col gap-3 rounded-[20px] bg-card p-4 shadow-card">
+                <div className="h-3 w-28 animate-shimmer rounded bg-line" />
+                <div className="h-5 w-52 animate-shimmer rounded bg-line" />
+                <div className="h-3 w-full animate-shimmer rounded bg-line" />
               </div>
             ))
           ) : visibles.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-10 text-center">
-              <div className="flex h-24 w-24 items-center justify-center rounded-full bg-paper-surface">
-                <Package size={44} strokeWidth={1.8} className="text-paper-ink-ghost" />
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
+              <Package size={40} strokeWidth={1.5} className="text-ink-ghost" />
+              <div className="num text-lg font-semibold">
+                {orders && orders.length > 0 ? 'Ningún pedido con este filtro' : tab === 'disponibles' ? 'Sin pedidos por ahora' : 'No tienes pedidos en curso'}
               </div>
-              <div className="flex flex-col items-center gap-1.5">
-                <div className="font-display text-[19px] font-extrabold">
-                  {orders && orders.length > 0
-                    ? 'Ningún pedido calza con este filtro'
-                    : tab === 'disponibles' ? 'Sin pedidos en la bolsa por ahora' : 'No tienes pedidos en curso'}
-                </div>
-                <div className="text-sm leading-snug text-paper-ink-soft">
-                  {orders && orders.length > 0
-                    ? 'Prueba con "Todos" en el filtro de pago'
-                    : tab === 'disponibles' ? 'Te avisaremos apenas caiga uno nuevo a la zona' : 'Ve a "Disponibles" para captar uno'}
-                </div>
+              <div className="text-sm leading-snug text-ink-soft">
+                {orders && orders.length > 0 ? 'Quita el filtro de pago para ver todos.' : tab === 'disponibles' ? 'Te avisamos apenas caiga uno nuevo.' : 'Toma uno en Disponibles.'}
               </div>
             </div>
           ) : (
-            <>
-              {newCount > 0 && (
-                <div className="flex animate-enter-up items-center gap-2 self-start rounded-full bg-brand-magenta-500 px-4 py-2.5">
-                  <Bell size={16} className="text-white" />
-                  <span className="text-[13px] font-extrabold text-white">
-                    {newCount === 1 ? '1 pedido nuevo' : `${newCount} pedidos nuevos`}
-                  </span>
-                </div>
-              )}
-              {visibles.map((o) => {
-                const minEstimado = Math.round((o.distanciaKm / VELOCIDAD_MOTO_KMH) * 60)
-                const contenido = (
-                  <>
-                    <div className="text-[11px] font-extrabold uppercase tracking-wide text-paper-ink-faint">
-                      {o.numero}
-                      {o.isNew && ' · NUEVO'}
-                    </div>
-                    <div className="mt-0.5 text-[18px] font-extrabold leading-snug text-paper-ink">{o.direccion}</div>
-                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                      <PaqueteBadge paquete={o.paquete} compact />
-                      <div
-                        className={cn(
-                          'flex items-center gap-1 rounded-lg px-2.5 py-1',
-                          o.esperaMin >= 14 ? 'bg-brand-achiote-900/40' : 'bg-paper-raised',
-                        )}
-                      >
-                        <Clock size={11} className={o.esperaMin >= 14 ? 'text-accent-achiote' : 'text-paper-ink-soft'} />
-                        <span className={cn('text-[11px] font-extrabold', o.esperaMin >= 14 ? 'text-accent-achiote' : 'text-paper-ink-soft')}>
-                          {o.esperaMin} min
-                        </span>
+            visibles.map((o) => {
+              const min = Math.max(1, Math.round((o.distanciaKm / VELOCIDAD_MOTO_KMH) * 60))
+              const open = abierto === o.id
+              return (
+                <article key={o.id} className="animate-enter-up rounded-[20px] bg-card px-4 py-3.5 shadow-card">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] text-ink-faint">
+                        {tab === 'mis'
+                          ? <span className="font-semibold text-blue">{ESTADO_EN_CURSO[o.status] ?? o.status}</span>
+                          : o.isNew && <span className="font-semibold text-blue">Nuevo</span>}
+                        {(tab === 'mis' || o.isNew) && ' · '}{o.numero} · {hace(o.esperaMin)}
                       </div>
-                      {o.contraEntrega ? (
-                        <div className="flex items-center gap-1 rounded-lg bg-paper-raised px-2.5 py-1">
-                          <Wallet size={11} className="text-paper-ink-soft" />
-                          <span className="text-[11px] font-extrabold text-paper-ink-soft">COBRAR S/{o.monto.toFixed(0)}</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1 rounded-lg bg-paper-raised px-2.5 py-1">
-                          <CheckCircle2 size={11} className="text-accent-green" />
-                          <span className="text-[11px] font-extrabold text-accent-green">PAGADO ONLINE</span>
-                        </div>
-                      )}
+                      <h3 className="num mt-0.5 text-lg font-semibold leading-tight">{o.direccion}</h3>
                     </div>
-                    <div className="my-3.5 h-px bg-paper-line" />
-                    <div className="flex items-end justify-between gap-2">
-                      <div>
-                        <div className="text-[11px] font-extrabold uppercase tracking-wide text-paper-ink-faint">
-                          {o.distanciaKm} KM · ~{minEstimado} MIN
-                        </div>
-                        <div className="font-display text-[30px] font-extrabold leading-none text-accent-green">S/{o.tarifaReparto.toFixed(2)}</div>
-                      </div>
-                      {tab === 'disponibles' ? (
-                        <HoldClaimButton onConfirm={() => holdClaim(o)} disabled={tomandoIds.has(o.id)} label="TOMAR" />
-                      ) : (
-                        <div className="font-display rounded-xl bg-brand-blue-500 px-5 py-3.5 text-[14px] font-extrabold text-white">VER →</div>
-                      )}
+                    <div className="flex-none text-right">
+                      <div className="text-xs text-ink-faint">Ganas</div>
+                      <div className="num text-[22px] font-semibold leading-none">S/ {o.tarifaReparto.toFixed(2)}</div>
                     </div>
-                  </>
-                )
+                  </div>
 
-                return (
-                  <div key={o.id} className="relative animate-enter-up">
-                    <div className="ticket-tab" style={{ borderColor: `transparent ${tabColor(o)} transparent transparent` }} />
-                    {tab === 'mis' ? (
-                      <button onClick={() => navigate(`/pedidos/${o.id}`)} className="ticket-cut w-full bg-paper-surface p-[18px] text-left">
-                        {contenido}
+                  <div className="mt-3"><RoadStrip texto={`${fmtDist(o.distanciaKm)} · ${min} min`} /></div>
+
+                  {open && (
+                    <dl className="mt-3 border-t border-line text-sm">
+                      {o.referencia && <div className="flex justify-between gap-4 border-b border-line py-2.5"><dt className="text-ink-soft">Referencia</dt><dd className="text-right">{o.referencia}</dd></div>}
+                      <div className="flex justify-between gap-4 border-b border-line py-2.5"><dt className="text-ink-soft">Paquete</dt><dd className="text-right"><PaqueteBadge paquete={o.paquete} /></dd></div>
+                      <div className="flex justify-between gap-4 border-b border-line py-2.5">
+                        <dt className="flex-none text-ink-soft">Productos</dt>
+                        <dd className="text-right">{o.items.map((it) => `${it.nombre} ×${it.cantidad}`).join(', ')}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4 py-2.5">
+                        <dt className="text-ink-soft">{o.contraEntrega ? 'Cobrar al cliente' : 'Pago'}</dt>
+                        <dd className="text-right font-semibold tabular-nums">{o.contraEntrega ? `S/ ${o.monto.toFixed(2)} · ${o.metodoPago}` : `Ya pagado · ${o.metodoPago}`}</dd>
+                      </div>
+                      <button onClick={() => navigate(`/pedidos/${o.id}`)} className="flex w-full items-center gap-1 pb-1 text-sm font-medium text-blue">
+                        Ver pedido completo y mapa <ChevronRight size={16} />
                       </button>
+                    </dl>
+                  )}
+
+                  <div className="mt-2.5 flex items-center justify-between">
+                    <button onClick={() => setAbierto(open ? null : o.id)} aria-expanded={open}
+                      className="-ml-1 flex h-10 items-center gap-1 px-1 text-sm font-medium text-ink-soft">
+                      {open ? 'Ocultar' : 'Ver detalle'} {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                    {tab === 'disponibles' ? (
+                      <HoldClaimButton onConfirm={() => holdClaim(o)} disabled={tomandoIds.has(o.id)} label="Tomar" />
                     ) : (
-                      <div className="ticket-cut bg-paper-surface p-[18px]">{contenido}</div>
+                      <button onClick={() => navigate(`/pedidos/${o.id}`)} className="flex h-[42px] items-center rounded-xl bg-blue px-5 text-[15px] font-semibold text-white">
+                        Continuar
+                      </button>
                     )}
                   </div>
-                )
-              })}
-            </>
+                </article>
+              )
+            })
           )}
         </div>
       )}

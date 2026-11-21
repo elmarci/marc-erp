@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, Pencil } from 'lucide-react'
+import { ArrowLeft, Check, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchOrder } from '../api'
 import { PrimaryButton } from '../components/PrimaryButton'
@@ -18,54 +18,35 @@ export function ConfirmacionEntregaPage() {
 
   const { data: order } = useQuery({ queryKey: ['order', id], queryFn: () => fetchOrder(id!), enabled: !!id })
 
-  if (!order) return <div className="flex h-full items-center justify-center text-paper-ink-soft">Cargando…</div>
+  if (!order) return <div className="flex h-full items-center justify-center text-ink-soft">Cargando…</div>
+
+  const safeBottom = { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }
 
   if (showNota) {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex items-center gap-3 px-5 pt-5">
-          <button onClick={() => setShowNota(false)} aria-label="Volver" className="flex h-10 w-10 items-center justify-center rounded-full bg-paper-surface">
-            <ArrowLeft size={20} strokeWidth={2.3} />
+        <div className="flex items-center gap-3 px-4" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}>
+          <button onClick={() => setShowNota(false)} aria-label="Volver" className="flex h-10 w-10 items-center justify-center rounded-xl bg-card shadow-card">
+            <ArrowLeft size={20} />
           </button>
+          <h1 className="num text-xl font-semibold">Agregar nota</h1>
         </div>
-        <div className="mx-5 mt-3 flex items-center gap-2.5 rounded-2xl bg-brand-green-900/30 px-3.5 py-3">
-          <CheckCircle2 size={18} className="text-accent-green" />
-          <span className="text-[13px] font-bold">Entregado a {order.clienteNombre} · {order.direccion}</span>
-        </div>
-        <div className="flex flex-1 flex-col gap-4 px-5 py-4">
+        <p className="px-4 pt-3 text-sm text-ink-soft">{order.numero} · {order.direccion}</p>
+        <div className="flex flex-1 flex-col gap-4 px-4 py-4">
           <div className="flex flex-wrap gap-2">
             {MOTIVOS.map((m) => (
-              <button
-                key={m}
-                onClick={() => setMotivo(m)}
-                className={cn(
-                  'rounded-full border-[1.5px] px-3.5 py-2 text-[13px] font-bold transition-colors',
-                  motivo === m ? 'border-brand-green-500 bg-brand-green-500 text-white' : 'border-paper-line text-paper-ink-soft',
-                )}
-              >
+              <button key={m} onClick={() => setMotivo(m)}
+                className={cn('h-9 rounded-full border px-3.5 text-sm', motivo === m ? 'border-ink bg-ink font-semibold text-white' : 'border-line bg-card text-ink-soft')}>
                 {m}
               </button>
             ))}
           </div>
-          <textarea
-            value={detalle}
-            onChange={(e) => setDetalle(e.target.value)}
-            placeholder="Detalle (opcional)"
-            rows={4}
-            className="resize-none rounded-2xl border-[1.5px] border-paper-line bg-paper-surface p-4 text-sm outline-none"
-          />
+          <textarea value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Detalle (opcional)" rows={4}
+            className="resize-none rounded-2xl border border-line bg-card p-4 text-base outline-none focus:border-blue" />
         </div>
-        <div className="flex flex-col gap-3 px-5" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 28px)' }}>
-          <PrimaryButton
-            className="w-full"
-            onClick={() => {
-              toast.success('Nota guardada.')
-              navigate('/pedidos')
-            }}
-          >
-            Guardar y volver a pedidos
-          </PrimaryButton>
-          <button onClick={() => setShowNota(false)} className="h-12 text-sm font-bold text-paper-ink-soft">Cancelar</button>
+        <div className="flex flex-col gap-2 px-4" style={safeBottom}>
+          <PrimaryButton className="w-full" onClick={() => { toast.success('Nota guardada.'); navigate('/pedidos') }}>Guardar y volver a pedidos</PrimaryButton>
+          <button onClick={() => setShowNota(false)} className="h-11 text-sm font-medium text-ink-soft">Cancelar</button>
         </div>
       </div>
     )
@@ -73,39 +54,34 @@ export function ConfirmacionEntregaPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-1 flex-col items-center justify-center gap-7 px-6">
-        <div className="flex h-44 w-44 -rotate-[7deg] animate-stamp-in flex-col items-center justify-center gap-1.5 rounded-full border-[5px] border-accent-green">
-          <CheckCircle2 size={52} strokeWidth={2.6} className="text-accent-green" />
-          <div className="font-display text-xl font-extrabold tracking-wide text-accent-green">ENTREGADO</div>
+      <div className="flex flex-1 flex-col overflow-y-auto px-5" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}>
+        <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-ink">
+          <Check size={28} strokeWidth={2.4} />
         </div>
+        <h1 className="num mt-5 text-[28px] font-semibold leading-tight">Entregado</h1>
+        <p className="text-sm text-ink-soft">{order.numero} · {order.direccion.split(',')[0]}{order.duracionMin ? ` · ${order.duracionMin} min` : ''}</p>
 
-        <div className="flex flex-col items-center gap-1 text-center">
-          <div className="font-display text-xl font-extrabold">¡Buen trabajo!</div>
-          <div className="text-sm text-paper-ink-soft">Confirmado hace unos segundos</div>
-        </div>
+        <div className="mt-8 text-xs font-medium uppercase tracking-[0.06em] text-ink-faint">Ganaste</div>
+        <div className="num text-[52px] font-semibold leading-none">S/ {order.tarifaReparto.toFixed(2)}</div>
+        <p className="mt-1 text-sm text-ink-soft">Se suma a lo que la tienda te debe.</p>
 
-        <div className="flex w-full flex-col gap-2.5 rounded-[20px] bg-paper-surface p-[18px]">
-          <div className="flex justify-between text-[13px]">
-            <span className="font-semibold text-paper-ink-soft">Cliente</span>
-            <span className="font-extrabold">{order.clienteNombre}</span>
-          </div>
-          <div className="flex justify-between text-[13px]">
-            <span className="font-semibold text-paper-ink-soft">Dirección</span>
-            <span className="max-w-[220px] text-right font-extrabold">{order.direccion.split(',')[0]}</span>
-          </div>
-          <div className="h-px bg-paper-line" />
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-paper-ink-soft">Cobrado</span>
-            <span className="font-display text-xl font-extrabold">S/ {order.monto.toFixed(2)}</span>
-          </div>
+        <div className="mt-6 rounded-[20px] bg-card px-4 shadow-card">
+          <div className="flex justify-between gap-4 border-b border-line py-3 text-[15px]"><span className="text-ink-soft">Cliente</span><span>{order.clienteNombre}</span></div>
+          {order.contraEntrega ? (
+            <>
+              <div className="flex justify-between gap-4 border-b border-line py-3 text-[15px]"><span className="text-ink-soft">Cobraste · {order.metodoPago}</span><span className="tabular-nums">S/ {order.monto.toFixed(2)}</span></div>
+              <div className="flex justify-between gap-4 py-3 text-[15px]"><span className="text-ink-soft">Entrégalo en</span><span>Caja de la tienda</span></div>
+            </>
+          ) : (
+            <div className="flex justify-between gap-4 py-3 text-[15px]"><span className="text-ink-soft">Pago</span><span>Ya pagado · {order.metodoPago}</span></div>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-col gap-3.5 px-6" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 30px)' }}>
+      <div className="flex flex-col gap-2 px-5 pt-3" style={safeBottom}>
         <PrimaryButton className="w-full" onClick={() => navigate('/pedidos')}>Volver a pedidos</PrimaryButton>
-        <button onClick={() => setShowNota(true)} className="flex items-center justify-center gap-2 text-sm font-bold text-paper-ink-soft">
-          <Pencil size={16} />
-          ¿Algo salió diferente? Agregar nota
+        <button onClick={() => setShowNota(true)} className="flex h-11 items-center justify-center gap-2 text-sm font-medium text-blue">
+          <Pencil size={15} /> ¿Algo salió diferente? Agregar nota
         </button>
       </div>
     </div>

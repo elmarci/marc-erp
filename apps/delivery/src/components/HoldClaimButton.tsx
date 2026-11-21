@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+import { toast } from 'sonner'
 import { useHoldToConfirm } from '../hooks/useHoldToConfirm'
 import { cn } from '../lib/cn'
 
@@ -8,34 +10,41 @@ interface HoldClaimButtonProps {
   className?: string
 }
 
-export function HoldClaimButton({ onConfirm, disabled, label = 'TOMAR', className }: HoldClaimButtonProps) {
+// Tomar un pedido = mantener presionado ~0.65 s (un bache o un guante no lo
+// captura sin querer). Un toque corto explica cómo hacerlo.
+export function HoldClaimButton({ onConfirm, disabled, label = 'Tomar', className }: HoldClaimButtonProps) {
   const { holding, duration, handlers } = useHoldToConfirm(onConfirm)
+  const pressedAt = useRef(0)
 
   return (
     <div
-      {...(disabled ? {} : handlers)}
+      {...(disabled ? {} : {
+        ...handlers,
+        onPointerDown: (e: React.PointerEvent) => { pressedAt.current = Date.now(); handlers.onPointerDown(e) },
+        onPointerUp: () => {
+          handlers.onPointerUp()
+          if (pressedAt.current && Date.now() - pressedAt.current < 300) toast('Mantén presionado para tomar el pedido', { id: 'hold-hint', duration: 2000 })
+          pressedAt.current = 0
+        },
+      })}
       role="button"
+      tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
+      aria-label={`${label}: mantén presionado`}
       className={cn(
-        'font-display relative select-none overflow-hidden rounded-xl px-5 py-3.5 text-[14px] font-extrabold text-white transition-transform active:scale-[0.97]',
-        disabled ? 'bg-paper-line text-paper-ink-faint' : 'bg-brand-green-700',
+        'relative flex h-[42px] select-none items-center justify-center overflow-hidden rounded-xl px-5 text-[15px] font-semibold',
+        disabled ? 'bg-line text-ink-faint' : 'bg-blue text-white',
         className,
       )}
       style={{ touchAction: 'none' }}
     >
       {!disabled && (
-        // Barra de progreso en CSS puro (transition, no JS por cuadro) — el
-        // disparo real vive en useHoldToConfirm vía setTimeout, esto es solo
-        // la señal visual de que se está sosteniendo.
         <div
-          className="absolute inset-0 origin-left bg-white/25"
-          style={{
-            transform: holding ? 'scaleX(1)' : 'scaleX(0)',
-            transition: holding ? `transform ${duration}ms linear` : 'none',
-          }}
+          className="absolute inset-0 origin-left bg-night/40"
+          style={{ transform: holding ? 'scaleX(1)' : 'scaleX(0)', transition: holding ? `transform ${duration}ms linear` : 'none' }}
         />
       )}
-      <span className="relative">{disabled ? label : holding ? 'SOSTÉN…' : `MANTÉN · ${label}`}</span>
+      <span className="relative">{holding ? 'Sostén…' : label}</span>
     </div>
   )
 }

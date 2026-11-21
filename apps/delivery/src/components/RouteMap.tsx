@@ -5,7 +5,6 @@ import 'leaflet/dist/leaflet.css'
 import type { DeliveryOrder } from '../types'
 import type { LatLng } from '../lib/geo'
 
-const H = 320
 
 interface RouteMapProps {
   riderPos: LatLng
@@ -17,6 +16,8 @@ interface RouteMapProps {
   // línea recta) — numera los pines seleccionados; null mientras no hay ruta.
   ordenVisita: string[]
   routeGeometry: LatLng[]
+  height?: number
+  className?: string
 }
 
 // Avatar con las iniciales del repartidor (mismo patrón que Estado/Perfil —
@@ -27,8 +28,8 @@ function riderIcon(iniciales: string) {
   return L.divIcon({
     className: '',
     html: `<div style="position:relative;width:38px;height:38px;">
-      <div style="width:38px;height:38px;border-radius:9999px;background:#2460b4;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-family:'Public Sans',sans-serif;font-weight:800;font-size:13px;color:white;box-shadow:0 2px 6px rgba(0,0,0,0.35)">${label}</div>
-      <div style="position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:9999px;background:#c9552a;border:2px solid white;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.3)">
+      <div style="width:38px;height:38px;border-radius:9999px;background:#235AB7;border:2.5px solid white;display:flex;align-items:center;justify-content:center;font-family:Onest,sans-serif;font-weight:600;font-size:13px;color:white;box-shadow:0 2px 6px rgba(0,0,0,0.35)">${label}</div>
+      <div style="position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:9999px;background:#0B2350;border:2px solid white;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.3)">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="5" cy="17" r="3"/>
           <circle cx="19" cy="17" r="3"/>
@@ -83,13 +84,13 @@ function AnimatedRiderMarker({ position, icon }: { position: LatLng; icon: L.Div
 }
 
 function orderIcon(numero: number | null, seleccionado: boolean) {
-  const bg = seleccionado ? '#7ED957' : '#26241c'
-  const border = seleccionado ? '#7ED957' : '#6b6656'
-  const color = seleccionado ? '#12250a' : '#f5f1e6'
-  const dot = !seleccionado ? '<div style="position:absolute;top:13px;left:13px;width:8px;height:8px;border-radius:9999px;background:#c9552a"></div>' : ''
+  const bg = seleccionado ? '#235AB7' : '#FFFFFF'
+  const border = seleccionado ? '#FFFFFF' : '#16203A'
+  const color = seleccionado ? '#FFFFFF' : '#16203A'
+  const dot = !seleccionado ? '<div style="position:absolute;top:13px;left:13px;width:8px;height:8px;border-radius:9999px;background:#16203A"></div>' : ''
   return L.divIcon({
     className: '',
-    html: `<div style="position:relative;width:34px;height:34px;"><div style="width:34px;height:34px;border-radius:9999px;background:${bg};border:2px solid ${border};display:flex;align-items:center;justify-content:center;font-family:'Public Sans',sans-serif;font-weight:800;font-size:13px;color:${color};box-shadow:0 1px 5px rgba(0,0,0,0.25)">${numero ?? ''}</div>${dot}</div>`,
+    html: `<div style="position:relative;width:34px;height:34px;"><div style="width:34px;height:34px;border-radius:9999px;background:${bg};border:2px solid ${border};display:flex;align-items:center;justify-content:center;font-family:Onest,sans-serif;font-weight:600;font-size:13px;color:${color};box-shadow:0 1px 5px rgba(0,0,0,0.25)">${numero ?? ''}</div>${dot}</div>`,
     iconSize: [34, 34],
     iconAnchor: [17, 17],
   })
@@ -120,11 +121,11 @@ function FitBounds({ points }: { points: LatLng[] }) {
 // Mapa real (tiles de OpenStreetMap) en vez del SVG de cuadrícula anterior —
 // nunca Google Maps embebido (guía de marca), pero sí calles, geografía y
 // una ruta real de por medio en vez de líneas rectas.
-export function RouteMap({ riderPos, riderIniciales, orders, selected, onToggle, ordenVisita, routeGeometry }: RouteMapProps) {
+export function RouteMap({ riderPos, riderIniciales, orders, selected, onToggle, ordenVisita, routeGeometry, height = 320, className }: RouteMapProps) {
   const allPoints = useMemo(() => [riderPos, ...orders.map((o) => ({ lat: o.lat, lng: o.lng }))], [riderPos, orders])
 
   return (
-    <div className="marc-map overflow-hidden rounded-[20px] border-[1.5px] border-paper-line" style={{ height: H }}>
+    <div className={(className ?? 'marc-map overflow-hidden rounded-[20px] bg-card shadow-card') + ' isolate'} style={{ height }}>
       <MapContainer center={[riderPos.lat, riderPos.lng]} zoom={14} style={{ height: '100%', width: '100%' }} zoomControl={false}>
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -133,7 +134,7 @@ export function RouteMap({ riderPos, riderIniciales, orders, selected, onToggle,
         <FitBounds points={allPoints} />
 
         {routeGeometry.length > 1 && (
-          <Polyline positions={routeGeometry.map((p) => [p.lat, p.lng])} pathOptions={{ color: '#4ca324', weight: 4.5, opacity: 0.9 }} />
+          <Polyline positions={routeGeometry.map((p) => [p.lat, p.lng])} pathOptions={{ color: '#235AB7', weight: 5, opacity: 0.95 }} />
         )}
 
         {orders.map((o) => {

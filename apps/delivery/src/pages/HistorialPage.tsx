@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Clock, Navigation, Wallet } from 'lucide-react'
+import { Clock } from 'lucide-react'
 import { fetchHistory } from '../api'
-import { TopBar } from '../components/TopBar'
+import { AppHeader } from '../components/AppHeader'
 import { cn } from '../lib/cn'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'todo'
@@ -55,81 +55,54 @@ export function HistorialPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar title="HISTORIAL" />
+      <AppHeader back="/billetera" title="Historial de entregas" />
 
-      <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
+      <div className="no-scrollbar flex flex-none gap-1 overflow-x-auto px-4 pt-3">
         {PERIODO_OPTIONS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setPeriodo(key)}
-            className={cn(
-              'font-display flex-shrink-0 rounded-full px-3.5 py-2 text-[12px] font-extrabold uppercase tracking-wide transition-colors',
-              periodo === key ? 'bg-accent-green text-[#12250a]' : 'bg-paper-surface text-paper-ink-faint',
-            )}
-          >
+          <button key={key} onClick={() => setPeriodo(key)}
+            className={cn('h-8 flex-none rounded-full px-3 text-[13px]', periodo === key ? 'bg-ink font-semibold text-white' : 'font-medium text-ink-soft')}>
             {label}
           </button>
         ))}
       </div>
 
       {!isLoading && filas.length > 0 && (
-        <div className="mx-5 mb-1 grid grid-cols-3 gap-2.5">
-          <div className="flex flex-col gap-1 rounded-2xl bg-paper-surface p-3">
-            <CheckCircle2 size={16} className="text-accent-green" />
-            <div className="font-display text-lg font-extrabold leading-none">{resumen.entregas}</div>
-            <div className="text-[11px] font-bold text-paper-ink-faint">ENTREGAS</div>
-          </div>
-          <div className="flex flex-col gap-1 rounded-2xl bg-paper-surface p-3">
-            <Wallet size={16} className="text-accent-green" />
-            <div className="font-display text-lg font-extrabold leading-none">S/ {resumen.ganado.toFixed(0)}</div>
-            <div className="text-[11px] font-bold text-paper-ink-faint">GANADO</div>
-          </div>
-          <div className="flex flex-col gap-1 rounded-2xl bg-paper-surface p-3">
-            <Navigation size={16} className="text-accent-blue" />
-            <div className="font-display text-lg font-extrabold leading-none">{resumen.km.toFixed(1)}</div>
-            <div className="text-[11px] font-bold text-paper-ink-faint">KM</div>
-          </div>
+        <div className="mx-4 mt-3 grid grid-cols-3 rounded-[20px] bg-card py-3.5 text-center shadow-card">
+          <div><div className="num text-[20px] font-semibold">{resumen.entregas}</div><div className="text-[13px] text-ink-soft">entregas</div></div>
+          <div className="border-x border-line"><div className="num text-[20px] font-semibold">{resumen.ganado.toFixed(2)}</div><div className="text-[13px] text-ink-soft">ganado S/</div></div>
+          <div><div className="num text-[20px] font-semibold">{resumen.km.toFixed(1)}</div><div className="text-[13px] text-ink-soft">km</div></div>
         </div>
       )}
 
-      <div className="no-scrollbar flex flex-1 flex-col overflow-y-auto px-5 pb-5 pt-2">
+      <div className="no-scrollbar flex flex-1 flex-col overflow-y-auto px-4 pb-5 pt-1">
         {isLoading ? (
-          <div className="flex flex-1 items-center justify-center text-paper-ink-soft">Cargando…</div>
+          <div className="flex flex-1 items-center justify-center text-ink-soft">Cargando…</div>
         ) : filas.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-paper-surface">
-              <Clock size={36} strokeWidth={1.8} className="text-paper-ink-ghost" />
-            </div>
-            <div className="font-display text-lg font-bold">Sin entregas en este período</div>
-            <div className="text-sm text-paper-ink-soft">Prueba con un rango más amplio</div>
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
+            <Clock size={36} strokeWidth={1.5} className="text-ink-ghost" />
+            <div className="num text-lg font-semibold">Sin entregas en este período</div>
+            <div className="text-sm text-ink-soft">Prueba con un rango más amplio.</div>
           </div>
         ) : (
           filas.map((f, idx) => {
             const dia = agruparPorDia(f.entregadoAt!)
             const diaAnterior = idx > 0 ? agruparPorDia(filas[idx - 1].entregadoAt!) : null
+            const primeroDelDia = dia !== diaAnterior
+            const ultimoDelDia = idx === filas.length - 1 || agruparPorDia(filas[idx + 1].entregadoAt!) !== dia
             return (
               <div key={f.id}>
-                {dia !== diaAnterior && (
-                  <div className="px-1 pb-2 pt-4 text-[13px] font-extrabold uppercase tracking-wide text-paper-ink-soft first:pt-0">
-                    {dia}
-                  </div>
-                )}
+                {primeroDelDia && <h2 className="px-1 pb-2 pt-4 text-xs font-medium uppercase tracking-[0.06em] text-ink-faint">{dia}</h2>}
                 <button
                   onClick={() => navigate(`/pedidos/${f.id}`)}
-                  className="flex w-full items-center gap-3 border-b border-paper-line py-3.5 text-left last:border-b-0"
+                  className={cn('flex w-full items-center gap-3 bg-card px-4 py-3 text-left', primeroDelDia && 'rounded-t-[20px]', ultimoDelDia ? 'rounded-b-[20px] shadow-card' : 'border-b border-line')}
                 >
-                  <div className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-full bg-brand-green-900/40">
-                    <CheckCircle2 size={18} className="text-accent-green" />
-                  </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-extrabold">{f.direccion}</div>
-                    <div className="text-xs font-semibold text-paper-ink-soft">
-                      {new Date(f.entregadoAt!).toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit' })} · S/ {f.tarifaReparto.toFixed(2)}
+                    <div className="truncate text-[15px] font-medium">{f.direccion}</div>
+                    <div className="text-[13px] text-ink-soft">
+                      {new Date(f.entregadoAt!).toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit' })}{f.duracionMin ? ` · ${f.duracionMin} min` : ''}
                     </div>
                   </div>
-                  <div className="flex-shrink-0 rounded-full bg-paper-surface px-2.5 py-1 text-xs font-extrabold">
-                    {f.duracionMin} min
-                  </div>
+                  <span className="flex-none tabular-nums">{f.tarifaReparto.toFixed(2)}</span>
                 </button>
               </div>
             )

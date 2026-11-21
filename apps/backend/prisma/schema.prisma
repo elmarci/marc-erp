@@ -1969,6 +1969,12 @@ model Rider {
   motoIntervaloMantenimientoKm Float?    @map("moto_intervalo_mantenimiento_km")
   zonas                        String[]  @default([])
   zonasActivas                 String[]  @default([]) @map("zonas_activas")
+  // Seguridad del ingreso: subir tokenVersion invalida todas las sesiones;
+  // 5 PIN errados seguidos bloquean hasta lockedUntil.
+  tokenVersion                 Int       @default(0) @map("token_version")
+  pinLength                    Int       @default(4) @map("pin_length")
+  failedPinAttempts            Int       @default(0) @map("failed_pin_attempts")
+  lockedUntil                  DateTime? @map("locked_until")
   createdAt                    DateTime  @default(now()) @map("created_at")
   updatedAt                    DateTime  @updatedAt @map("updated_at")
 
@@ -1977,6 +1983,9 @@ model Rider {
   pushSubscriptions PushSubscription[]
   liquidaciones     Liquidacion[]
   fuelExpenses      FuelExpense[]
+  devices           RiderDevice[]
+  activationCodes   RiderActivationCode[]
+  loginAttempts     RiderLoginAttempt[]
 
   @@index([telefono])
   @@map("riders")
@@ -2024,6 +2033,55 @@ model Liquidacion {
 
 // Gasto de combustible que el biker registra desde Perfil — informativo,
 // no se liquida junto con las tarifas de reparto.
+// Celular autorizado de un repartidor. La app guarda un secreto aleatorio;
+// aquí solo su hash. Un repartidor tiene un solo celular activo.
+model RiderDevice {
+  id          String    @id @default(uuid())
+  riderId     String    @map("rider_id")
+  secretHash  String    @unique @map("secret_hash")
+  label       String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  lastLoginAt DateTime? @map("last_login_at")
+  revokedAt   DateTime? @map("revoked_at")
+
+  rider Rider @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId])
+  @@map("rider_devices")
+}
+
+// Código de un solo uso que el ERP genera para autorizar un celular nuevo.
+model RiderActivationCode {
+  id          String    @id @default(uuid())
+  riderId     String    @map("rider_id")
+  codeHash    String    @map("code_hash")
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  attempts    Int       @default(0)
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  rider Rider @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId])
+  @@map("rider_activation_codes")
+}
+
+// Registro de ingresos fallidos y bloqueos, para verlos en el ERP.
+model RiderLoginAttempt {
+  id          String   @id @default(uuid())
+  riderId     String   @map("rider_id")
+  motivo      String
+  dispositivo String
+  ip          String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rider Rider @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, createdAt])
+  @@map("rider_login_attempts")
+}
+
 model FuelExpense {
   id        String   @id @default(uuid())
   riderId   String   @map("rider_id")

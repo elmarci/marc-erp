@@ -22,9 +22,9 @@ export function VoiceCommandButton({ comandos }: VoiceCommandButtonProps) {
   }
 
   return (
-    <div className="fixed bottom-28 right-5 z-40 flex flex-col items-end gap-2">
+    <div className="fixed bottom-28 right-5 z-[700] flex flex-col items-end gap-2">
       {status === 'no-entendi' && !listening && (
-        <div className="animate-enter-up rounded-2xl bg-paper-raised px-3.5 py-2 text-xs font-bold text-paper-ink shadow-lg">
+        <div className="animate-enter-up rounded-xl bg-ink px-3.5 py-2 text-[13px] font-medium text-white shadow-sheet">
           No te entendí, intenta de nuevo
         </div>
       )}
@@ -32,8 +32,8 @@ export function VoiceCommandButton({ comandos }: VoiceCommandButtonProps) {
         onClick={handleClick}
         aria-label="Activar comando de voz"
         className={cn(
-          'flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95',
-          listening ? 'animate-ring-pulse bg-brand-magenta-500' : 'bg-brand-blue-500',
+          'flex h-14 w-14 items-center justify-center rounded-full shadow-sheet transition-transform active:scale-95',
+          listening ? 'animate-ring-pulse bg-blue' : 'bg-night',
         )}
       >
         <Mic size={24} className="text-white" />
