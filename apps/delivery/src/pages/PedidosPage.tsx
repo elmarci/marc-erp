@@ -324,17 +324,17 @@ export function PedidosPage() {
                 const varios = g.key !== 'ahora' && g.key !== 'todo' && g.items.length > 1
                 return (
                   <section key={g.key} className="flex flex-col gap-2.5">
-                    {g.titulo && (
-                      <div className="flex items-center justify-between gap-2 px-1 pt-1">
-                        <h2 className="text-[13px] font-semibold uppercase tracking-wide text-ink-soft">{g.titulo} · {g.items.length}</h2>
-                        {varios && (
-                          <HoldClaimButton className="h-9 rounded-full px-3.5 text-[13px]" disabled={claiming}
-                            onConfirm={() => claimBatch(g.items.map((o) => o.id))}
-                            label={`Tomar los ${g.items.length} · ${soles(g.items.reduce((s, o) => s + o.tarifaReparto, 0))}`} />
-                        )}
+                    {g.titulo && <h2 className="px-1 pt-1 text-[13px] font-semibold uppercase tracking-wide text-ink-soft">{g.titulo} · {g.items.length}</h2>}
+                    {varios && (
+                      <div className="flex items-center gap-3 rounded-[18px] border border-dashed border-blue/40 bg-blue-soft px-3.5 py-2.5">
+                        <Layers size={20} className="flex-none text-blue" />
+                        <span className="min-w-0 flex-1 text-[14px] leading-snug text-ink">
+                          Misma franja: llévalos en una salida y ganas <b>{soles(g.items.reduce((s, o) => s + o.tarifaReparto, 0))}</b>
+                        </span>
+                        <HoldClaimButton className="h-11 flex-none rounded-xl px-4 text-[15px]" disabled={claiming}
+                          onConfirm={() => claimBatch(g.items.map((o) => o.id))} label={`Tomar ${g.items.length}`} />
                       </div>
                     )}
-                    {varios && <p className="-mt-1 flex items-center gap-1.5 px-1 text-[13px] text-ink-faint"><Layers size={14} />Misma franja: llévalos en una sola salida.</p>}
                     {g.items.map(card)}
                   </section>
                 )
