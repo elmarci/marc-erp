@@ -828,6 +828,25 @@ export class SalesService {
         });
       }
 
+      // Venta de un pedido web: el pedido no se anula (puede ser un error de
+      // caja), pero se suelta de esta venta y vuelve a Confirmado para poder
+      // "Generar venta" otra vez. Los puntos de ese pedido se revierten para
+      // que al regenerarla no se sumen ni descuenten dos veces.
+      const pedido = await tx.storeOrder.findFirst({ where: { saleId: id } });
+      if (pedido) {
+        await tx.storeOrder.update({
+          where: { id: pedido.id },
+          data: { saleId: null, ...(['PREPARING', 'READY'].includes(pedido.status) ? { status: 'CONFIRMED' } : {}) },
+        });
+        if (sale.customerId) {
+          const cliente = await tx.customer.findUnique({ where: { id: sale.customerId }, select: { loyaltyPoints: true } });
+          if (cliente) {
+            const puntos = Math.max(0, cliente.loyaltyPoints - (sale.pointsEarned ?? 0) + (pedido.pointsRedeemed ?? 0));
+            await tx.customer.update({ where: { id: sale.customerId }, data: { loyaltyPoints: puntos } });
+          }
+        }
+      }
+
       // Revertir crédito si aplica
       if (sale.isCredit && sale.customerId) {
         await tx.customer.update({

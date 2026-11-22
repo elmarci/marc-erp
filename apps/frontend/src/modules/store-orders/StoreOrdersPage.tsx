@@ -197,6 +197,10 @@ export function StoreOrdersPage() {
                         {isPending && (
                           <Btn size="sm" variant="primary" onClick={() => setConfirmingOrder(order)}><CheckCircle />Confirmar y generar venta</Btn>
                         )}
+                        {/* Su venta se anuló en Ventas: el pedido sigue vivo y se puede volver a generar. */}
+                        {!isPending && !order.saleId && !['CANCELLED'].includes(order.status) && (
+                          <Btn size="sm" variant="primary" onClick={() => setConfirmingOrder(order)}><CheckCircle />Generar venta</Btn>
+                        )}
                         {/* El paso a DELIVERED lo cierra el biker desde su app una vez que hay un
                             repartidor asignado; el admin ya no lo puede pisar a mano. */}
                         {nextCfg && nextStatus && !isPending && !(nextStatus === 'DELIVERED' && order.riderId && order.deliveryStatus !== 'ENTREGADO') && (

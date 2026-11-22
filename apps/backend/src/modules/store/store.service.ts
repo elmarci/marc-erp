@@ -590,8 +590,11 @@ export class StoreService {
       where: { id }, include: { items: true },
     });
     if (!order) throw new NotFoundError('Pedido');
-    if (order.status !== 'PENDING') throw new Error('Solo se pueden confirmar pedidos pendientes.');
-    if (order.saleId) throw new Error('Este pedido ya tiene una venta asociada.');
+    // Pendiente (primera vez) o Confirmado sin venta (su venta se anuló y se
+    // vuelve a generar).
+    const reintento = ['CONFIRMED', 'PREPARING', 'READY', 'DELIVERED'].includes(order.status) && !order.saleId;
+    if (order.status !== 'PENDING' && !reintento) throw new BusinessError('Solo se puede generar la venta de pedidos pendientes o confirmados sin venta.');
+    if (order.saleId) throw new BusinessError('Este pedido ya tiene una venta asociada.');
 
     // Verify cash session
     const session = await prisma.cashSession.findFirst({
@@ -639,10 +642,10 @@ export class StoreService {
       // Tomar el pedido de forma atómica: si dos personas pulsan "Confirmar" a
       // la vez (o hay doble clic), solo una crea la venta.
       const claimed = await tx.storeOrder.updateMany({
-        where: { id, status: 'PENDING', saleId: null },
-        data: { status: 'CONFIRMED' },
+        where: { id, status: reintento ? order.status : 'PENDING', saleId: null },
+        data: { status: reintento ? order.status : 'CONFIRMED' },
       });
-      if (claimed.count === 0) throw new BusinessError('Este pedido ya fue confirmado o ya no está pendiente.');
+      if (claimed.count === 0) throw new BusinessError('Este pedido ya tiene venta o ya no está pendiente.');
 
       // Fetch products and validate stock
       const productIds = order.items.map(i => i.productId);
@@ -703,7 +706,8 @@ export class StoreService {
           cashierId: userId,
           createdById: userId,
           customerId,
-          documentType: 'NOTA_VENTA',
+          // Ticket, igual que una venta del POS (dueño, 2026-11-21).
+          documentType: 'TICKET',
           subtotal: netAmount,
           taxAmount,
           totalAmount: discountedSubtotal,
