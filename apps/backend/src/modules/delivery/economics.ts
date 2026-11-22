@@ -1,3 +1,5 @@
+import { storeDeliveryFee } from '../store/deliveryFee';
+
 // Tarifa del repartidor = exactamente lo que el cliente pagó de envío en la
 // tienda online (S/ 1, S/ 1.50, S/ 2… más el extra express si lo pidió).
 // Pedido del dueño (2026-11-21): "el motorizado ve el precio real que le
@@ -19,9 +21,15 @@ export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; l
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-export function tarifaParaPedido(order: { deliveryCost: unknown }): number {
+// Si el envío salió en S/ 0 (p. ej. una promoción de envío gratis), al
+// repartidor igual se le paga lo que habría costado ese envío: el viaje lo
+// hace igual.
+export function tarifaParaPedido(order: {
+  deliveryCost: unknown; latitude: number | null; longitude: number | null; district?: string | null;
+}): number {
   const n = Number(order.deliveryCost);
-  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+  if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100;
+  return storeDeliveryFee({ latitude: order.latitude, longitude: order.longitude, district: order.district });
 }
 
 /* ── Solicitudes de compra (mandados) ─────────────────────────────────── */

@@ -60,7 +60,7 @@ export function MandadosPage() {
           onChange={setTab}
           tabs={[
             ['disponibles', `Mandados${disponibles ? ` · ${disponibles.length}` : ''}`],
-            ['mios', `Míos${mios?.length ? ` · ${mios.length}` : ''}`],
+            ['mios', `En curso${mios?.length ? ` · ${mios.length}` : ''}`],
           ]}
         />
       </AppHeader>
