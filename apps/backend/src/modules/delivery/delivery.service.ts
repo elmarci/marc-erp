@@ -17,8 +17,11 @@ function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quanti
   const hasGps = order.latitude != null && order.longitude != null;
   const coords = hasGps ? { lat: order.latitude as number, lng: order.longitude as number } : STORE_ORIGIN;
   const distanciaKm = hasGps ? haversineKm(STORE_ORIGIN, coords) : 0;
-  const contraEntrega = order.paymentMethod === 'CASH' || order.paymentMethod === 'YAPE_CONTRAENTREGA';
-  const metodoPago = !contraEntrega ? 'Pagado online' : order.paymentMethod === 'CASH' ? 'Efectivo' : 'Yape';
+  // Lo que el repartidor cobra al entregar: efectivo, Yape o tarjeta con el
+  // POS (antes la tarjeta al recibir salía como "Pagado online" por error).
+  const COBRO: Record<string, string> = { CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape', CARD_CONTRAENTREGA: 'Tarjeta (POS)' };
+  const contraEntrega = order.paymentMethod in COBRO;
+  const metodoPago = COBRO[order.paymentMethod] ?? 'Pagado online';
 
   let status: 'DISPONIBLE' | 'ASIGNADO' | 'RECOGIDO' | 'EN_CAMINO' | 'ENTREGADO' = 'DISPONIBLE';
   if (order.deliveryStatus === 'ASIGNADO') status = 'ASIGNADO';

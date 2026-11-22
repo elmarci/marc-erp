@@ -1,13 +1,13 @@
-// Misma fórmula y mismos valores que apps/delivery/src/lib/economics.ts —
-// acá se recalcula server-side (nunca se confía en un monto que mande el
-// cliente) para congelar la tarifa real en el momento del claim.
-export const TARIFA_MINIMA_SOLES = 5.0;
-export const TARIFA_POR_KM_SOLES = 2.0;
+import { storeDeliveryFee } from '../store/deliveryFee';
 
-// Ubicación real de la tienda (Mz F10 Lt2 A - C.27 Av Manchay) — antes acá
-// había una coordenada de placeholder usada en los mockups de diseño, nunca
-// se había configurado con la dirección real. Es el punto desde el que se
-// mide la distancia para calcular la tarifa de reparto.
+// Lo que gana el repartidor por un pedido de la tienda online es exactamente
+// el envío que pagó el cliente (StoreOrder.deliveryCost, calculado en el
+// servidor en store/deliveryFee.ts): S/ 1.00, 1.50, 2.00, más S/ 2.00 si es
+// express. Regla del dueño (2026-11-21): el repartidor ve el precio real que
+// le pagarán y decide si lo toma.
+
+// Ubicación real de la tienda (Mz F10 Lt2 A - C.27 Av Manchay). Es el punto
+// desde el que se mide la distancia del envío y del reparto.
 export const STORE_ORIGIN = { lat: -12.102235, lng: -76.874449 };
 
 export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -20,15 +20,12 @@ export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; l
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-export function calcularTarifa(distanciaKm: number): number {
-  return Math.max(TARIFA_MINIMA_SOLES, distanciaKm * TARIFA_POR_KM_SOLES);
-}
-
-// Si el pedido no tiene lat/lng (el cliente no compartió ubicación al hacer
-// el pedido), no hay forma real de medir distancia — se cobra/paga la
-// tarifa mínima como piso seguro en vez de asumir un valor inventado.
-export function tarifaParaPedido(order: { latitude: number | null; longitude: number | null }): number {
-  if (order.latitude == null || order.longitude == null) return TARIFA_MINIMA_SOLES;
-  const distanciaKm = haversineKm(STORE_ORIGIN, { lat: order.latitude, lng: order.longitude });
-  return calcularTarifa(distanciaKm);
+// Si el envío salió en S/ 0 (p. ej. una promoción de envío gratis), al
+// repartidor igual se le paga lo que habría costado ese envío.
+export function tarifaParaPedido(order: {
+  deliveryCost: unknown; latitude: number | null; longitude: number | null; district?: string | null; express?: boolean | null;
+}): number {
+  const cobrado = Math.round(Number(order.deliveryCost ?? 0) * 100) / 100;
+  if (cobrado > 0) return cobrado;
+  return storeDeliveryFee({ latitude: order.latitude, longitude: order.longitude, district: order.district, express: !!order.express });
 }
