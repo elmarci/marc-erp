@@ -5,6 +5,7 @@ import { emitEvent, emitToRoom } from '../../config/socket';
 import { env } from '../../config/env';
 import { pushService } from '../push/push.service';
 import { haversineKm, STORE_ORIGIN, tarifaParaPedido } from './economics';
+import { entregaProgramada } from './programado';
 import type { StoreOrder } from '@prisma/client';
 
 // Bolsa de disponibles: solo pedidos DELIVERY (un PICKUP nunca lo reparte un
@@ -57,6 +58,7 @@ function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quanti
     monto: Number(order.total),
     metodoPago,
     tarifaReparto,
+    programado: entregaProgramada(order.notes, order.createdAt),
     isNew,
     asignadoAt,
     entregadoAt: order.deliveredAt?.toISOString(),

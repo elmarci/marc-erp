@@ -14,6 +14,7 @@ import { resolveRoute } from '../lib/routing'
 import { useRiderLocation } from '../hooks/useRiderLocation'
 import { VoiceCommandButton } from '../components/VoiceCommandButton'
 import { useAuthStore } from '../authStore'
+import { EntregaChip } from '../components/EntregaChip'
 import { cn } from '../lib/cn'
 
 const STEP_INDEX: Record<OrderStatus, number> = { DISPONIBLE: 0, ASIGNADO: 0, RECOGIDO: 1, EN_CAMINO: 2, ENTREGADO: 3 }
@@ -195,6 +196,7 @@ export function PedidoDetallePage() {
           <div>
             <h1 className="num text-[21px] font-semibold leading-tight">{order.direccion}</h1>
             {order.referencia && <p className="text-sm text-ink-soft">{order.referencia}</p>}
+            {order.programado && <EntregaChip p={order.programado} />}
           </div>
         </div>
 

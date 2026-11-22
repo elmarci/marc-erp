@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -14,6 +14,7 @@ import { RoadStrip } from '../components/RoadStrip'
 import { HoldClaimButton } from '../components/HoldClaimButton'
 import { PaqueteBadge } from '../components/PaqueteBadge'
 import type { DeliveryOrder } from '../types'
+import { EntregaChip, grupoEntrega } from '../components/EntregaChip'
 import { cn } from '../lib/cn'
 
 function useOnlineStatus() {
@@ -38,7 +39,7 @@ type Pago = 'todos' | 'efectivo' | 'online'
 const ORDEN_OPTIONS: { key: Orden; label: string }[] = [
   { key: 'cercania', label: 'Más cerca' },
   { key: 'pago', label: 'Mejor pago' },
-  { key: 'urgencia', label: 'Más urgente' },
+  { key: 'urgencia', label: 'Por hora' },
 ]
 
 const ESTADO_EN_CURSO: Record<string, string> = { ASIGNADO: 'Por recoger', RECOGIDO: 'Recogido', EN_CAMINO: 'En camino' }
@@ -187,7 +188,10 @@ export function PedidosPage() {
     ordenados.sort((a, b) => {
       if (orden === 'cercania') return a.distanciaKm - b.distanciaKm
       if (orden === 'pago') return b.tarifaReparto - a.tarifaReparto
-      return b.esperaMin - a.esperaMin
+      // Por hora de entrega: express primero, luego lo programado más
+      // pronto; así el repartidor junta los del mismo turno.
+      const t = (o: DeliveryOrder) => o.programado?.express ? 0 : o.programado?.cuando ? new Date(o.programado.cuando).getTime() : Number.MAX_SAFE_INTEGER
+      return t(a) - t(b) || b.esperaMin - a.esperaMin
     })
     return ordenados
   }, [orders, pago, orden])
@@ -359,11 +363,15 @@ export function PedidosPage() {
               </div>
             </div>
           ) : (
-            visibles.map((o) => {
+            visibles.map((o, i) => {
               const min = Math.max(1, Math.round((o.distanciaKm / VELOCIDAD_MOTO_KMH) * 60))
               const open = abierto === o.id
+              const grupo = orden === 'urgencia' ? grupoEntrega(o) : null
+              const nuevoGrupo = grupo !== null && (i === 0 || grupoEntrega(visibles[i - 1]) !== grupo)
               return (
-                <article key={o.id} className="animate-enter-up rounded-[20px] bg-card px-4 py-3.5 shadow-card">
+                <Fragment key={o.id}>
+                {nuevoGrupo && <h2 className="px-1 pt-1 text-xs font-medium uppercase tracking-[0.06em] text-ink-faint">{grupo}</h2>}
+                <article className="animate-enter-up rounded-[20px] bg-card px-4 py-3.5 shadow-card">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-[13px] text-ink-faint">
@@ -373,6 +381,7 @@ export function PedidosPage() {
                         {(tab === 'mis' || o.isNew) && ' · '}{o.numero} · {hace(o.esperaMin)}
                       </div>
                       <h3 className="num mt-0.5 text-lg font-semibold leading-tight">{o.direccion}</h3>
+                      {o.programado && <EntregaChip p={o.programado} />}
                     </div>
                     <div className="flex-none text-right">
                       <div className="text-xs text-ink-faint">Ganas</div>
@@ -414,6 +423,7 @@ export function PedidosPage() {
                     )}
                   </div>
                 </article>
+                </Fragment>
               )
             })
           )}

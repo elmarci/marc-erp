@@ -18,6 +18,14 @@ export interface PaqueteInfo {
   fragil: boolean
 }
 
+export interface EntregaProgramada {
+  express: boolean
+  cuando: string | null
+  dia: string | null
+  turno: string | null
+  hora: string | null
+}
+
 export interface DeliveryOrder {
   id: string
   numero: string
@@ -40,6 +48,8 @@ export interface DeliveryOrder {
   // sus manos camino a la tienda. Nunca mostrar estos dos juntos como si
   // fueran lo mismo.
   tarifaReparto: number
+  // Cuándo pidió el cliente que se entregue (null = sin fecha elegida).
+  programado: EntregaProgramada | null
   isNew: boolean
   asignadoAt: string
   entregadoAt?: string
