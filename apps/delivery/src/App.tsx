@@ -15,6 +15,8 @@ import { ConfirmacionEntregaPage } from './pages/ConfirmacionEntregaPage'
 import { HistorialPage } from './pages/HistorialPage'
 import { BilleteraPage } from './pages/BilleteraPage'
 import { PerfilPage } from './pages/PerfilPage'
+import { MandadosPage } from './pages/MandadosPage'
+import { MandadoDetallePage } from './pages/MandadoDetallePage'
 
 function WithTabs({ children }: { children: React.ReactNode }) {
   return (
@@ -55,6 +57,8 @@ export default function App() {
             <Route path="/pedidos" element={<WithTabs><PedidosPage /></WithTabs>} />
             <Route path="/pedidos/:id" element={<PedidoDetallePage />} />
             <Route path="/pedidos/:id/entregado" element={<ConfirmacionEntregaPage />} />
+            <Route path="/mandados" element={<WithTabs><MandadosPage /></WithTabs>} />
+            <Route path="/mandados/:id" element={<MandadoDetallePage />} />
             <Route path="/historial" element={<WithTabs><HistorialPage /></WithTabs>} />
             <Route path="/billetera" element={<WithTabs><BilleteraPage /></WithTabs>} />
             <Route path="/perfil" element={<WithTabs><PerfilPage /></WithTabs>} />

@@ -1,12 +1,12 @@
 import { NavLink } from 'react-router-dom'
-import { Home, Package, User, Wallet } from 'lucide-react'
+import { Home, Package, ShoppingBag, Wallet } from 'lucide-react'
 import { cn } from '../lib/cn'
 
 const TABS = [
   { to: '/estado', label: 'Inicio', icon: Home },
   { to: '/pedidos', label: 'Pedidos', icon: Package },
+  { to: '/mandados', label: 'Mandados', icon: ShoppingBag },
   { to: '/billetera', label: 'Ganancias', icon: Wallet },
-  { to: '/perfil', label: 'Perfil', icon: User },
 ]
 
 export function BottomNav() {

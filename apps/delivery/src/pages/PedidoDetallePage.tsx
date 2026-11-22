@@ -15,6 +15,8 @@ import { useRiderLocation } from '../hooks/useRiderLocation'
 import { VoiceCommandButton } from '../components/VoiceCommandButton'
 import { useAuthStore } from '../authStore'
 import { cn } from '../lib/cn'
+import { EntregaChip } from '../components/TripCard'
+import { entregaInfo } from '../lib/formato'
 
 const STEP_INDEX: Record<OrderStatus, number> = { DISPONIBLE: 0, ASIGNADO: 0, RECOGIDO: 1, EN_CAMINO: 2, ENTREGADO: 3 }
 const PILL_LABEL: Record<OrderStatus, string> = {
@@ -148,6 +150,7 @@ export function PedidoDetallePage() {
   }
 
   const STEPS = ['Tomado', 'Recogido', 'En camino', 'Entregado']
+  const ent = entregaInfo(order.entrega)
   const minutos = ruta ? Math.round(ruta.totalMin) : null
 
   return (
@@ -181,9 +184,21 @@ export function PedidoDetallePage() {
           </div>
         </div>
 
-        <div className="flex justify-between text-[13px] text-ink-faint">
-          <span>{order.numero} · {PILL_LABEL[order.status].toLowerCase()}</span>
-          <span className="tabular-nums">{order.distanciaKm.toFixed(1)} km{minutos !== null ? ` · ${minutos} min` : ''}</span>
+        <div className="flex items-center justify-between gap-2">
+          <EntregaChip texto={ent.texto} urgencia={ent.urgencia} />
+          <span className="text-[13px] tabular-nums text-ink-faint">{order.numero} · {order.distanciaKm.toFixed(1)} km{minutos !== null ? ` · ${minutos} min` : ''}</span>
+        </div>
+
+        {/* Lo que decide el viaje, de un vistazo: lo que ganas y lo que cobras. */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <div className="rounded-[20px] bg-card px-4 py-3 shadow-card">
+            <div className="text-[13px] text-ink-soft">Ganas</div>
+            <div className="num text-[28px] font-semibold leading-tight">S/ {order.tarifaReparto.toFixed(2)}</div>
+          </div>
+          <div className={cn('rounded-[20px] px-4 py-3', order.contraEntrega ? 'bg-night text-white' : 'bg-card shadow-card')}>
+            <div className={cn('text-[13px]', order.contraEntrega ? 'text-white/70' : 'text-ink-soft')}>{order.contraEntrega ? `Cobras · ${order.metodoPago}` : 'Pago'}</div>
+            <div className="num text-[28px] font-semibold leading-tight">{order.contraEntrega ? `S/ ${order.monto.toFixed(2)}` : 'Ya pagado'}</div>
+          </div>
         </div>
 
         <div className="grid grid-cols-[14px_1fr] gap-x-3">
@@ -223,18 +238,13 @@ export function PedidoDetallePage() {
               ))}
             </ul>
           </div>
-          <div className="flex items-baseline justify-between gap-4 border-t border-line py-3">
-            <span className="text-sm text-ink-soft">{order.contraEntrega ? `Cobrar al cliente · ${order.metodoPago}` : `Ya pagado · ${order.metodoPago}`}</span>
-            <span className="num text-[22px] font-semibold">S/ {order.monto.toFixed(2)}</span>
-          </div>
+          {order.recibe && order.recibe !== 'el mismo cliente' && (
+            <div className="flex justify-between gap-4 border-t border-line py-3 text-sm"><span className="text-ink-soft">Recibe</span><span className="text-right font-medium">{order.recibe}</span></div>
+          )}
+          {order.nota && (
+            <div className="border-t border-line py-3 text-sm"><span className="text-ink-soft">Nota del cliente</span><p className="mt-0.5 font-medium">{order.nota}</p></div>
+          )}
         </section>
-
-        {/* Lo que la tienda le paga por el viaje: distinto del monto del
-            cliente, que solo pasa por sus manos camino a la tienda. */}
-        <div className="flex items-baseline justify-between px-1">
-          <span className="text-sm text-ink-soft">Ganas por este viaje</span>
-          <span className="num text-[22px] font-semibold">S/ {order.tarifaReparto.toFixed(2)}</span>
-        </div>
       </div>
 
       {transition && (
