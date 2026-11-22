@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Clock, HelpCircle, Home, KeyRound, LogOut, Package, User, Wallet } from 'lucide-react'
+import { Clock, HelpCircle, Home, KeyRound, LogOut, Package, ShoppingBag, User, Wallet } from 'lucide-react'
 import { useUiStore } from '../uiStore'
 import { useAuthStore } from '../authStore'
 import { cn } from '../lib/cn'
@@ -7,6 +7,7 @@ import { cn } from '../lib/cn'
 const ITEMS = [
   { to: '/estado', label: 'Inicio', icon: Home },
   { to: '/pedidos', label: 'Pedidos', icon: Package },
+  { to: '/mandados', label: 'Mandados', icon: ShoppingBag },
   { to: '/billetera', label: 'Ganancias', icon: Wallet },
   { to: '/historial', label: 'Historial de entregas', icon: Clock },
   { to: '/perfil', label: 'Perfil', icon: User },

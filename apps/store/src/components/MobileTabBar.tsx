@@ -20,6 +20,7 @@ export function MobileTabBar() {
 
   const isHome = path === '/' && !cartOpen
   const isCategories = !cartOpen && (path.startsWith('/categorias') || path.startsWith('/catalogo') || path.startsWith('/producto'))
+  const isEncargos = !cartOpen && (path.startsWith('/te-lo-traemos') || path.startsWith('/mandados'))
   const isAccount = !cartOpen && (path.startsWith('/mis-pedidos') || path.startsWith('/ingresar'))
 
   return (
@@ -31,6 +32,12 @@ export function MobileTabBar() {
         </Link>
         <Link to="/categorias" className={tab(isCategories)} aria-current={isCategories ? 'page' : undefined}>
           <Ico name={isCategories ? "nav-categorias-relleno" : "nav-categorias-contorno"} className="h-7 w-7" />Categorías
+        </Link>
+        {/* Te lo traemos (encargos): opción B del dueño, 2026-11-21. */}
+        <Link to="/te-lo-traemos" className={tab(isEncargos)} aria-current={isEncargos ? 'page' : undefined}>
+          <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth={isEncargos ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="5.5" cy="17.5" r="2.5" /><circle cx="18.5" cy="17.5" r="2.5" /><path d="M8 17.5h7l2-6h-4l-2-4H8" /><path d="M15 6h3l1.5 5.5" />
+          </svg>Encargos
         </Link>
         <button onClick={openCart} className={tab(cartOpen)}>
           <span className="relative">

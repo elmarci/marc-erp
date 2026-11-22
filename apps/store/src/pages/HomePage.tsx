@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActiveOrderBanner } from '../components/ActiveOrderBanner'
 import { Link } from 'react-router-dom'
-import { BookOpen, ChevronRight, LayoutGrid } from 'lucide-react'
+import { Bike, BookOpen, ChevronRight, LayoutGrid } from 'lucide-react'
 import { Ico, Ilu } from '../components/Ico'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
@@ -69,6 +69,19 @@ export function HomePage() {
             </p>
           </div>
         </div>
+      </section>
+
+      {/* Te lo traemos: mandados de cualquier negocio de la zona. */}
+      <section className={`${WRAP} pt-3.5`} aria-label="Te lo traemos">
+        <Link to="/te-lo-traemos" className="relative overflow-hidden flex items-center gap-3.5 rounded-2xl bg-brand-blue-700 text-white px-4 py-3.5 shadow-card">
+          <span aria-hidden="true" className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-brand-blue-500/50" />
+          <span className="relative h-11 w-11 rounded-xl bg-white/15 flex items-center justify-center shrink-0"><Bike className="h-6 w-6" aria-hidden="true" /></span>
+          <span className="relative min-w-0 flex-1">
+            <span className="block text-[16px] font-extrabold leading-tight">Te lo traemos</span>
+            <span className="block text-[13px] text-brand-blue-100 leading-snug">Comida, farmacia, licores o un recojo. Tú pones la oferta.</span>
+          </span>
+          <ChevronRight className="relative h-5 w-5 shrink-0" aria-hidden="true" />
+        </Link>
       </section>
 
       {topCategories.length > 0 && (

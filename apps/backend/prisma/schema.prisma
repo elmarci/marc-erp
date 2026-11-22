@@ -1801,6 +1801,7 @@ model StoreCustomer {
   orders            StoreOrder[]
   addresses         StoreAddress[]
   pushSubscriptions PushSubscription[]
+  mandados          Mandado[]
 
   @@index([phone])
   @@index([email])
@@ -1986,6 +1987,8 @@ model Rider {
   devices           RiderDevice[]
   activationCodes   RiderActivationCode[]
   loginAttempts     RiderLoginAttempt[]
+  mandados          Mandado[]
+  mandadoOfertas    MandadoOferta[]
 
   @@index([telefono])
   @@map("riders")
@@ -2350,4 +2353,98 @@ model PayrollPayment {
 
   @@index([employeeId, periodStart])
   @@map("payroll_payments")
+}
+
+// ── Solicitudes de compra ("mandados") ─────────────────────────────────
+// El cliente pide que le compren/lleven algo (comida, medicinas, licores,
+// abarrotes, documentos…) y lanza una oferta por el servicio. Los
+// repartidores la aceptan tal cual o contraofertan; el cliente elige. El
+// repartidor adelanta la compra y cobra al entregar: mercadería + servicio.
+model Mandado {
+  id                String         @id @default(uuid())
+  codigo            String         @unique // M-00012
+  storeCustomerId   String?        @map("store_customer_id")
+  storeCustomer     StoreCustomer? @relation(fields: [storeCustomerId], references: [id])
+  clienteNombre     String         @map("cliente_nombre")
+  clienteTelefono   String         @map("cliente_telefono")
+  categoria         String // COMIDA | MEDICAMENTOS | LICORES | ABARROTES | DOCUMENTOS | OTROS
+  conCompra         Boolean        @default(true) @map("con_compra") // false = solo recoger y llevar
+  // Dónde comprar / recoger (opcional en compras: "donde encuentres").
+  recojoNombre      String?        @map("recojo_nombre")
+  recojoDireccion   String?        @map("recojo_direccion")
+  recojoLat         Float?         @map("recojo_lat")
+  recojoLng         Float?         @map("recojo_lng")
+  // Dónde entregar: GPS compartido, o dirección escrita / link de Maps.
+  entregaDireccion  String         @map("entrega_direccion")
+  entregaReferencia String?        @map("entrega_referencia")
+  entregaLat        Float?         @map("entrega_lat")
+  entregaLng        Float?         @map("entrega_lng")
+  entregaMapsLink   String?        @map("entrega_maps_link")
+  programadoPara    DateTime?      @map("programado_para") // null = lo antes posible
+  nota              String?
+  // Plata: oferta del cliente por el servicio, sugerida por distancia, la
+  // acordada al cerrar, y el tope de compra que el cliente autoriza sin
+  // volver a preguntarle.
+  ofertaCliente     Decimal        @map("oferta_cliente") @db.Decimal(10, 2)
+  ofertaSugerida    Decimal        @map("oferta_sugerida") @db.Decimal(10, 2)
+  tarifaAcordada    Decimal?       @map("tarifa_acordada") @db.Decimal(10, 2)
+  presupuestoMax    Decimal?       @map("presupuesto_max") @db.Decimal(10, 2)
+  totalCompra       Decimal?       @map("total_compra") @db.Decimal(10, 2)
+  boletaFoto        String?        @map("boleta_foto")
+  metodoPago        String         @default("EFECTIVO") @map("metodo_pago") // EFECTIVO | YAPE
+  // ABIERTO → ACORDADO → (COTIZADO → COMPRA_APROBADA) → COMPRADO → EN_CAMINO → ENTREGADO
+  // o CANCELADO en cualquier punto antes de comprar.
+  estado            String         @default("ABIERTO")
+  riderId           String?        @map("rider_id")
+  rider             Rider?         @relation(fields: [riderId], references: [id])
+  acordadoAt        DateTime?      @map("acordado_at")
+  cotizadoAt        DateTime?      @map("cotizado_at")
+  compradoAt        DateTime?      @map("comprado_at")
+  entregadoAt       DateTime?      @map("entregado_at")
+  canceladoAt       DateTime?      @map("cancelado_at")
+  motivoCancelacion String?        @map("motivo_cancelacion")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  items   MandadoItem[]
+  ofertas MandadoOferta[]
+
+  @@index([estado])
+  @@index([riderId])
+  @@index([clienteTelefono])
+  @@index([storeCustomerId])
+  @@map("mandados")
+}
+
+model MandadoItem {
+  id             String   @id @default(uuid())
+  mandadoId      String   @map("mandado_id")
+  mandado        Mandado  @relation(fields: [mandadoId], references: [id], onDelete: Cascade)
+  orden          Int      @default(0)
+  descripcion    String
+  cantidad       Decimal  @db.Decimal(10, 2)
+  unidad         String   @default("und")
+  precioEstimado Decimal? @map("precio_estimado") @db.Decimal(10, 2) // por unidad, lo que cree el cliente
+  precioReal     Decimal? @map("precio_real") @db.Decimal(10, 2) // por unidad, lo que cuesta de verdad
+  noHabia        Boolean  @default(false) @map("no_habia")
+
+  @@index([mandadoId])
+  @@map("mandado_items")
+}
+
+model MandadoOferta {
+  id        String   @id @default(uuid())
+  mandadoId String   @map("mandado_id")
+  mandado   Mandado  @relation(fields: [mandadoId], references: [id], onDelete: Cascade)
+  riderId   String   @map("rider_id")
+  rider     Rider    @relation(fields: [riderId], references: [id])
+  monto     Decimal  @db.Decimal(10, 2)
+  etaMin    Int      @map("eta_min")
+  mensaje   String?
+  estado    String   @default("PENDIENTE") // PENDIENTE | ACEPTADA | RECHAZADA | RETIRADA
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([mandadoId, riderId])
+  @@index([mandadoId])
+  @@map("mandado_ofertas")
 }

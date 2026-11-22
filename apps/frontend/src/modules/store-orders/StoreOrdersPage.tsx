@@ -76,6 +76,12 @@ export function StoreOrdersPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   })
 
+  const acceptMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/store/admin/orders/${id}/accept`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['store-orders'] }); toast.success('Pedido aceptado. Ahora genera la venta.') },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  })
+
   const cancelOrder = async (order: StoreOrder) => {
     const r = await confirm({ title: `¿Cancelar el pedido ${order.orderNumber}?`, confirmLabel: 'Cancelar pedido' })
     if (r.ok) updateMutation.mutate({ id: order.id, status: 'CANCELLED' })
@@ -91,7 +97,7 @@ export function StoreOrdersPage() {
       </span>} actions={notifEnabled
         ? <span className="inline-flex items-center gap-1.5 text-table text-ok-ink"><Bell className="size-4" />Notificaciones activas</span>
         : <Btn onClick={handleActivateNotifications}><BellOff />Activar notificaciones</Btn>}>
-        <p className="text-table text-ink-muted">Pedidos de la tienda online · Confirmar genera venta y descuenta stock</p>
+        <p className="text-table text-ink-muted">Pedidos de la tienda online · Acepta el pedido y luego genera la venta (ticket)</p>
       </PageHeader>
 
       {!notifEnabled && (
@@ -130,6 +136,7 @@ export function StoreOrdersPage() {
                         <span className="font-mono text-table font-semibold text-ink">{order.orderNumber}</span>
                         <StatusBadge tone={cfg.tone}>{cfg.label}</StatusBadge>
                         {order.saleId && <StatusBadge tone="ok"><Receipt className="size-3" />Venta generada</StatusBadge>}
+                        {!order.saleId && !isPending && order.status !== 'CANCELLED' && <StatusBadge tone="warn"><Receipt className="size-3" />Sin venta</StatusBadge>}
                         {order.paymentStatus === 'PENDING' && !PAYS_ON_DELIVERY.has(order.paymentMethod) && <StatusBadge tone="bad">Pago pendiente</StatusBadge>}
                         {order.rider && (
                           <StatusBadge tone="neutral"><Bike className="size-3" />{order.rider.nombre} · {DELIVERY_STATUS_LABELS[order.deliveryStatus ?? ''] ?? order.deliveryStatus}</StatusBadge>
@@ -194,8 +201,14 @@ export function StoreOrdersPage() {
                       {order.deliveryType === 'DELIVERY' && !['DELIVERED', 'CANCELLED'].includes(order.status) && <PackageEditor order={order} />}
 
                       <div className="flex flex-wrap gap-2">
+                        {/* Paso 1: aceptar. Paso 2: generar venta (ticket). Si la
+                            venta se anula en Ventas, el pedido vuelve aquí sin
+                            venta y se puede generar otra vez. */}
                         {isPending && (
-                          <Btn size="sm" variant="primary" onClick={() => setConfirmingOrder(order)}><CheckCircle />Confirmar y generar venta</Btn>
+                          <Btn size="sm" variant="primary" loading={acceptMutation.isPending} onClick={() => acceptMutation.mutate(order.id)}><CheckCircle />Aceptar pedido</Btn>
+                        )}
+                        {!isPending && !order.saleId && order.status !== 'CANCELLED' && (
+                          <Btn size="sm" variant="primary" onClick={() => setConfirmingOrder(order)}><Receipt />Generar venta</Btn>
                         )}
                         {/* El paso a DELIVERED lo cierra el biker desde su app una vez que hay un
                             repartidor asignado; el admin ya no lo puede pisar a mano. */}

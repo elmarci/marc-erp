@@ -169,6 +169,13 @@ router.get('/admin/orders', authenticate, authorizeMinRole('CASHIER'), async (re
   } catch (err) { next(err); }
 });
 
+router.post('/admin/orders/:id/accept', authenticate, authorizeMinRole('CASHIER'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = await storeService.acceptOrder(req.params.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 router.post('/admin/orders/:id/confirm', authenticate, authorizeMinRole('CASHIER'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { cashSessionId } = z.object({ cashSessionId: z.string().uuid() }).parse(req.body);

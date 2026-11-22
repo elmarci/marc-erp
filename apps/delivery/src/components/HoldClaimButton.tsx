@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { toast } from 'sonner'
 import { useHoldToConfirm } from '../hooks/useHoldToConfirm'
-import { cn } from '../lib/cn'
+import { cn, withDefaults } from '../lib/cn'
 
 interface HoldClaimButtonProps {
   onConfirm: () => void
@@ -31,11 +31,10 @@ export function HoldClaimButton({ onConfirm, disabled, label = 'Tomar', classNam
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
       aria-label={`${label}: mantén presionado`}
-      className={cn(
+      className={withDefaults(cn(
         'relative flex h-[42px] select-none items-center justify-center overflow-hidden rounded-xl px-5 text-[15px] font-semibold',
         disabled ? 'bg-line text-ink-faint' : 'bg-blue text-white',
-        className,
-      )}
+      ), className)}
       style={{ touchAction: 'none' }}
     >
       {!disabled && (

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { DeliveryOrder, FuelExpense, Liquidacion, MetodoLiquidacion, OrderStatus, RiderProfile } from './types'
+import type { DeliveryOrder, FuelExpense, Liquidacion, Mandado, MetodoLiquidacion, OrderStatus, RiderProfile } from './types'
 
 const BASE_URL = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3001/api/v1'
 
@@ -197,4 +197,39 @@ export async function subscribePush(subscription: PushSubscriptionJSON): Promise
 
 export async function unsubscribePush(endpoint: string): Promise<void> {
   await apiClient.post('/delivery/push/unsubscribe', { endpoint })
+}
+
+/* ── Mandados ─────────────────────────────────────────────────────────── */
+export const API_ORIGIN = BASE_URL.replace(/\/api\/v1\/?$/, '')
+const md = async (p: Promise<{ data: { data: Mandado } }>) => (await p).data.data
+const M = (id: string, rest = '') => `/delivery/mandados/${id}${rest}`
+
+export async function fetchMandadosDisponibles(): Promise<Mandado[]> {
+  return (await apiClient.get('/delivery/mandados/disponibles')).data.data
+}
+export async function fetchMisMandados(): Promise<Mandado[]> {
+  return (await apiClient.get('/delivery/mandados/mios')).data.data
+}
+export async function fetchHistorialMandados(): Promise<Mandado[]> {
+  return (await apiClient.get('/delivery/mandados/historial')).data.data
+}
+export const fetchMandado = (id: string) => md(apiClient.get(M(id)))
+export const aceptarMandado = (id: string) => md(apiClient.post(M(id, '/aceptar')))
+export const contraofertarMandado = (id: string, monto: number, etaMin: number, mensaje?: string) =>
+  md(apiClient.post(M(id, '/contraoferta'), { monto, etaMin, mensaje }))
+export const retirarContraoferta = (id: string) => md(apiClient.delete(M(id, '/contraoferta')))
+export const liberarMandado = (id: string) => md(apiClient.post(M(id, '/liberar')))
+export const enviarPrecios = (id: string, items: { id: string; precioReal?: number; noHabia?: boolean }[]) =>
+  md(apiClient.post(M(id, '/precios'), { items }))
+export function marcarComprado(id: string, boleta?: File) {
+  const fd = new FormData()
+  if (boleta) fd.append('boleta', boleta)
+  return md(apiClient.post(M(id, '/comprado'), fd, { timeout: 60000 }))
+}
+export const mandadoEnCamino = (id: string) => md(apiClient.post(M(id, '/en-camino')))
+export const mandadoEntregado = (id: string) => md(apiClient.post(M(id, '/entregado')))
+
+export function apiErrorMessage(err: unknown, fallback = 'No se pudo. Revisa tu conexión.'): string {
+  const e = err as { response?: { data?: { error?: { message?: string } } } }
+  return e.response?.data?.error?.message ?? fallback
 }

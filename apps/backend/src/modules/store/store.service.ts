@@ -584,14 +584,31 @@ export class StoreService {
     return { data, pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) } };
   }
 
-  /* ── Confirmar pedido → crear Venta en ERP ────────────────────────────── */
+  /* ── Aceptar pedido (sin venta todavía) ───────────────────────────────── */
+  // Paso 1 del flujo (dueño, 2026-11-21): aceptar el pedido y luego, como
+  // paso aparte, "Generar venta". Aceptado ya entra a la bolsa de reparto.
+  async acceptOrder(id: string) {
+    const claimed = await prisma.storeOrder.updateMany({
+      where: { id, status: 'PENDING' },
+      data: { status: 'CONFIRMED' },
+    });
+    if (claimed.count === 0) throw new BusinessError('Este pedido ya fue aceptado o ya no está pendiente.');
+    const order = await prisma.storeOrder.findUniqueOrThrow({ where: { id }, include: { items: true } });
+    emitEvent(`store:order-updated:${order.orderNumber}`, { status: order.status, paymentStatus: order.paymentStatus });
+    emitEvent('delivery:pool-updated');
+    return order;
+  }
+
+  /* ── Generar venta del pedido (ticket del POS) ────────────────────────── */
+  // Sirve para un pedido pendiente (lo acepta y vende de una vez) o ya
+  // aceptado sin venta — incluso cuando la venta anterior se anuló en Ventas.
   async confirmOrder(id: string, cashSessionId: string, userId: string) {
     const order = await prisma.storeOrder.findUnique({
       where: { id }, include: { items: true },
     });
     if (!order) throw new NotFoundError('Pedido');
-    if (order.status !== 'PENDING') throw new Error('Solo se pueden confirmar pedidos pendientes.');
-    if (order.saleId) throw new Error('Este pedido ya tiene una venta asociada.');
+    if (order.status === 'CANCELLED') throw new BusinessError('Este pedido está cancelado.');
+    if (order.saleId) throw new BusinessError('Este pedido ya tiene una venta asociada.');
 
     // Verify cash session
     const session = await prisma.cashSession.findFirst({
@@ -638,11 +655,16 @@ export class StoreService {
       const stockWarnings: string[] = [];
       // Tomar el pedido de forma atómica: si dos personas pulsan "Confirmar" a
       // la vez (o hay doble clic), solo una crea la venta.
-      const claimed = await tx.storeOrder.updateMany({
-        where: { id, status: 'PENDING', saleId: null },
-        data: { status: 'CONFIRMED' },
-      });
-      if (claimed.count === 0) throw new BusinessError('Este pedido ya fue confirmado o ya no está pendiente.');
+      // Se bloquea la fila del pedido hasta terminar: así dos clics (o dos
+      // cajeros) nunca generan dos ventas para el mismo pedido.
+      await tx.$queryRaw`SELECT id FROM store_orders WHERE id = ${id} FOR UPDATE`;
+      const locked = await tx.storeOrder.findUnique({ where: { id }, select: { status: true, saleId: true } });
+      if (!locked || locked.saleId || locked.status === 'CANCELLED') {
+        throw new BusinessError('Este pedido ya tiene una venta o fue cancelado.');
+      }
+      if (locked.status === 'PENDING') {
+        await tx.storeOrder.update({ where: { id }, data: { status: 'CONFIRMED' } });
+      }
 
       // Fetch products and validate stock
       const productIds = order.items.map(i => i.productId);
@@ -703,7 +725,9 @@ export class StoreService {
           cashierId: userId,
           createdById: userId,
           customerId,
-          documentType: 'NOTA_VENTA',
+          // Ticket igual que una venta del POS (dueño, 2026-11-21); que vino
+          // de la web se ve en las notas ("Pedido web …").
+          documentType: 'TICKET',
           subtotal: netAmount,
           taxAmount,
           totalAmount: discountedSubtotal,
@@ -818,7 +842,8 @@ export class StoreService {
       });
 
       // Notify customer
-      emitEvent(`store:order-updated:${order.orderNumber}`, { status: 'CONFIRMED', paymentStatus: order.paymentStatus });
+      emitEvent(`store:order-updated:${order.orderNumber}`, { status: updated.status, paymentStatus: order.paymentStatus });
+      if (order.status === 'PENDING') emitEvent('delivery:pool-updated');
 
       const result = { order: updated, saleId: sale.id, saleNumber: sale.saleNumber, stockWarnings };
       // Invalidate dashboard cache so it reflects the new web sale
