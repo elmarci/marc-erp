@@ -45,6 +45,7 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
     { to: '/catalogo', icon: 'cat-todo', label: 'Catálogo completo' },
     { to: '/categorias', icon: 'nav-categorias-relleno', label: 'Categorías' },
     { to: '/ofertas', icon: 'menu-ofertas', label: 'Ofertas', badge: offersCount },
+    { to: '/te-lo-traemos', icon: 'chk-express', label: 'Te lo traemos (mandados)' },
     { to: '/como-comprar', icon: 'menu-ayuda', label: 'Cómo comprar' },
   ]
 
