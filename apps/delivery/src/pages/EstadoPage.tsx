@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { useAuthStore } from '../authStore'
-import { fetchAvailableOrders, fetchHistory, fetchProfile, updateEstado } from '../api'
+import { fetchAvailableOrders, fetchHistorialMandados, fetchHistory, fetchMandadosDisponibles, fetchProfile, updateEstado } from '../api'
 import { subscribeRiderToPush } from '../lib/push'
 import { AppHeader } from '../components/AppHeader'
 import { PrimaryButton } from '../components/PrimaryButton'
@@ -34,12 +34,15 @@ export function EstadoPage() {
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: fetchProfile })
   const { data: history } = useQuery({ queryKey: ['history'], queryFn: fetchHistory })
   const { data: disponibles } = useQuery({ queryKey: ['orders-disponibles'], queryFn: fetchAvailableOrders, enabled: enServicio, refetchInterval: 15000 })
+  const { data: mandados } = useQuery({ queryKey: ['mandados-disponibles'], queryFn: fetchMandadosDisponibles, enabled: enServicio, refetchInterval: 15000 })
+  const { data: mandadosHechos } = useQuery({ queryKey: ['mandados-historial'], queryFn: fetchHistorialMandados })
 
   const hoy = useMemo(() => {
     const d = new Date().toDateString()
     const list = (history ?? []).filter((o) => o.entregadoAt && new Date(o.entregadoAt).toDateString() === d)
-    return { entregas: list.length, ganado: list.reduce((s, o) => s + o.tarifaReparto, 0) }
-  }, [history])
+    const md = (mandadosHechos ?? []).filter((m) => m.entregadoAt && new Date(m.entregadoAt).toDateString() === d)
+    return { entregas: list.length + md.length, ganado: list.reduce((s, o) => s + o.tarifaReparto, 0) + md.reduce((s, m) => s + (m.tarifaAcordada ?? 0), 0) }
+  }, [history, mandadosHechos])
   const masCerca = useMemo(() => (disponibles ?? []).reduce<number | null>((m, o) => (m === null || o.distanciaKm < m ? o.distanciaKm : m), null), [disponibles])
 
   const toggle = () => {
@@ -83,6 +86,16 @@ export function EstadoPage() {
           <div className="border-x border-line"><div className="num text-[22px] font-semibold">{profile ? profile.tiempoPromedioMin : '–'}</div><div className="text-[13px] text-ink-soft">min promedio</div></div>
           <div><div className="num text-[22px] font-semibold">{profile ? profile.entregasSemana : '–'}</div><div className="text-[13px] text-ink-soft">esta semana</div></div>
         </div>
+
+        {enServicio && (mandados?.length ?? 0) > 0 && (
+          <button onClick={() => navigate('/mandados')} className="flex items-center justify-between rounded-[20px] bg-card px-4 py-3.5 text-left shadow-card">
+            <div>
+              <div className="font-semibold">{mandados!.length} {mandados!.length === 1 ? 'mandado esperando' : 'mandados esperando'}</div>
+              <div className="text-sm text-ink-soft">Mejor oferta S/ {Math.max(...mandados!.map((m) => m.ofertaCliente)).toFixed(2)}</div>
+            </div>
+            <ChevronRight size={20} className="text-blue" />
+          </button>
+        )}
 
         {enServicio && (
           <button onClick={() => navigate('/pedidos')} className="flex items-center justify-between rounded-[20px] bg-card px-4 py-3.5 text-left shadow-card">

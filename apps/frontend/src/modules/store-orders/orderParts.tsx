@@ -144,7 +144,7 @@ export function ConfirmOrderModal({ order, onClose, onConfirmed }: {
       queryClient.invalidateQueries({ queryKey: ['store-orders'] })
       queryClient.invalidateQueries({ queryKey: ['sales'] })
       const { saleNumber, stockWarnings } = res.data.data as { saleNumber: string; stockWarnings?: string[] }
-      toast.success(order.status === 'PENDING' ? `Pedido confirmado. Venta ${saleNumber} generada.` : `Venta ${saleNumber} generada.`)
+      toast.success(`Ticket ${saleNumber} generado para el pedido ${order.orderNumber}.`)
       // El sistema no tenía stock suficiente: se ajustó solo, pero hay que
       // revisar el físico (p. ej. dos clientes pidieron la última unidad).
       for (const w of stockWarnings ?? []) toast.warning(`Stock: ${w}`, { duration: 15000 })
@@ -154,12 +154,12 @@ export function ConfirmOrderModal({ order, onClose, onConfirmed }: {
   })
 
   return (
-    <Modal open onOpenChange={(o) => !o && onClose()} title={order.status === 'PENDING' ? `Confirmar pedido ${order.orderNumber}` : `Generar venta del pedido ${order.orderNumber}`}
-      description="Esto creará un ticket de venta en el ERP, descontará stock y sumará a la caja."
+    <Modal open onOpenChange={(o) => !o && onClose()} title={`Generar venta del pedido ${order.orderNumber}`}
+      description="Se crea un ticket de venta igual que en el POS, se descuenta stock y suma a la caja."
       footer={<>
         <Btn onClick={onClose}>Cancelar</Btn>
         <Btn variant="primary" loading={mutation.isPending} disabled={!selectedSession || openSessions.length === 0} onClick={() => mutation.mutate()}>
-          <CheckCircle />{order.status === 'PENDING' ? 'Confirmar y generar venta' : 'Generar venta'}
+          <CheckCircle />Generar venta
         </Btn>
       </>}>
       <div className="flex flex-col gap-4">

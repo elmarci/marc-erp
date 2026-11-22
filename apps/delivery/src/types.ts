@@ -18,14 +18,6 @@ export interface PaqueteInfo {
   fragil: boolean
 }
 
-export interface EntregaProgramada {
-  express: boolean
-  cuando: string | null
-  dia: string | null
-  turno: string | null
-  hora: string | null
-}
-
 export interface DeliveryOrder {
   id: string
   numero: string
@@ -48,8 +40,10 @@ export interface DeliveryOrder {
   // sus manos camino a la tienda. Nunca mostrar estos dos juntos como si
   // fueran lo mismo.
   tarifaReparto: number
-  // Cuándo pidió el cliente que se entregue (null = sin fecha elegida).
-  programado: EntregaProgramada | null
+  // Cuándo entregarlo: EXPRESS (ya), PROGRAMADO (fecha y hora) o SIN_HORA.
+  entrega: { tipo: 'EXPRESS' | 'PROGRAMADO' | 'SIN_HORA'; at: string | null; turno: string | null }
+  recibe: string | null
+  nota: string | null
   isNew: boolean
   asignadoAt: string
   entregadoAt?: string
@@ -97,4 +91,49 @@ export interface Liquidacion {
   monto: number
   metodo: MetodoLiquidacion
   pedidoIds: string[]
+}
+
+// ── Mandados (solicitudes de compra del cliente) ──────────────────────────
+export type EstadoMandado = 'ABIERTO' | 'ACORDADO' | 'COTIZADO' | 'COMPRA_APROBADA' | 'COMPRADO' | 'EN_CAMINO' | 'ENTREGADO' | 'CANCELADO'
+export type CategoriaMandado = 'COMIDA' | 'MEDICAMENTOS' | 'LICORES' | 'ABARROTES' | 'DOCUMENTOS' | 'OTROS'
+
+export interface MandadoItem {
+  id: string
+  descripcion: string
+  cantidad: number
+  unidad: string
+  precioEstimado: number | null
+  precioReal: number | null
+  noHabia: boolean
+}
+
+export interface Mandado {
+  id: string
+  codigo: string
+  estado: EstadoMandado
+  categoria: CategoriaMandado
+  conCompra: boolean
+  recojo: { nombre: string | null; direccion: string | null; lat: number | null; lng: number | null } | null
+  entrega: { direccion: string; referencia: string | null; lat: number | null; lng: number | null; mapsLink: string | null }
+  programadoPara: string | null
+  nota: string | null
+  distanciaKm: number | null
+  items: MandadoItem[]
+  totalEstimado: number
+  totalEstimadoCompleto: boolean
+  totalCompra: number | null
+  presupuestoMax: number | null
+  ofertaCliente: number
+  ofertaSugerida: number
+  tarifaAcordada: number | null
+  totalACobrar: number | null
+  boletaFoto: string | null
+  metodoPago: 'EFECTIVO' | 'YAPE'
+  createdAt: string
+  entregadoAt: string | null
+  mio: boolean
+  clienteNombre: string
+  clienteTelefono: string | null
+  miOferta: { id: string; monto: number; etaMin: number } | null
+  otrasOfertas: number
 }

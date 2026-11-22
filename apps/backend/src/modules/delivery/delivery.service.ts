@@ -5,7 +5,7 @@ import { emitEvent, emitToRoom } from '../../config/socket';
 import { env } from '../../config/env';
 import { pushService } from '../push/push.service';
 import { haversineKm, STORE_ORIGIN, tarifaParaPedido } from './economics';
-import { entregaProgramada } from './programado';
+import { noteField, parseEntrega } from '../store/entrega';
 import type { StoreOrder } from '@prisma/client';
 
 // Bolsa de disponibles: solo pedidos DELIVERY (un PICKUP nunca lo reparte un
@@ -18,11 +18,8 @@ function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quanti
   const hasGps = order.latitude != null && order.longitude != null;
   const coords = hasGps ? { lat: order.latitude as number, lng: order.longitude as number } : STORE_ORIGIN;
   const distanciaKm = hasGps ? haversineKm(STORE_ORIGIN, coords) : 0;
-  // Lo que el repartidor cobra al entregar: efectivo, Yape o tarjeta con el
-  // POS (antes la tarjeta al recibir salía como "Pagado online" por error).
-  const COBRO: Record<string, string> = { CASH: 'Efectivo', YAPE_CONTRAENTREGA: 'Yape', CARD_CONTRAENTREGA: 'Tarjeta (POS)' };
-  const contraEntrega = order.paymentMethod in COBRO;
-  const metodoPago = COBRO[order.paymentMethod] ?? 'Pagado online';
+  const contraEntrega = order.paymentMethod === 'CASH' || order.paymentMethod === 'YAPE_CONTRAENTREGA';
+  const metodoPago = !contraEntrega ? 'Pagado online' : order.paymentMethod === 'CASH' ? 'Efectivo' : 'Yape';
 
   let status: 'DISPONIBLE' | 'ASIGNADO' | 'RECOGIDO' | 'EN_CAMINO' | 'ENTREGADO' = 'DISPONIBLE';
   if (order.deliveryStatus === 'ASIGNADO') status = 'ASIGNADO';
@@ -34,6 +31,9 @@ function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quanti
   const asignadoAt = (order.claimedAt ?? order.createdAt).toISOString();
   const esperaMin = Math.max(0, Math.round((Date.now() - order.createdAt.getTime()) / 60000));
   const isNew = order.riderId == null && Date.now() - order.updatedAt.getTime() < 10 * 60 * 1000;
+  // Cuándo hay que entregarlo: express, programado (fecha y hora) o sin
+  // hora. Así el repartidor puede juntar los programados del mismo turno.
+  const entrega = parseEntrega(order.notes, order.createdAt);
 
   return {
     id: order.id,
@@ -58,7 +58,9 @@ function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quanti
     monto: Number(order.total),
     metodoPago,
     tarifaReparto,
-    programado: entregaProgramada(order.notes, order.createdAt),
+    entrega,
+    recibe: noteField(order.notes, 'RECIBE'),
+    nota: noteField(order.notes, 'NOTA'),
     isNew,
     asignadoAt,
     entregadoAt: order.deliveredAt?.toISOString(),
@@ -66,6 +68,10 @@ function toDeliveryOrderJSON(order: StoreOrder & { items: { name: string; quanti
       ? Math.max(1, Math.round((order.deliveredAt.getTime() - order.claimedAt.getTime()) / 60000))
       : undefined,
   };
+}
+
+function entregaKey(o: { entrega: { at: string | null }; asignadoAt: string }): number {
+  return new Date(o.entrega.at ?? o.asignadoAt).getTime();
 }
 
 export class DeliveryService {
@@ -77,7 +83,8 @@ export class DeliveryService {
       include: orderWithItems,
       orderBy: { createdAt: 'asc' },
     });
-    return orders.map(toDeliveryOrderJSON);
+    // Primero lo que hay que entregar antes (express y sin hora = ya).
+    return orders.map(toDeliveryOrderJSON).sort((a, b) => entregaKey(a) - entregaKey(b));
   }
 
   async getMyOrders(riderId: string) {

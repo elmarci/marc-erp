@@ -31,6 +31,8 @@ const TrackOrderPage = page(() => import('./pages/TrackOrderPage'), 'TrackOrderP
 const OffersPage = page(() => import('./pages/OffersPage'), 'OffersPage')
 const ComplaintsPage = page(() => import('./pages/ComplaintsPage'), 'ComplaintsPage')
 const HowToBuyPage = page(() => import('./pages/HowToBuyPage'), 'HowToBuyPage')
+const MandadoNuevoPage = page(() => import('./pages/MandadoNuevoPage'), 'MandadoNuevoPage')
+const MandadoPage = page(() => import('./pages/MandadoPage'), 'MandadoPage')
 const TvPage = page(() => import('./pages/TvPage'), 'TvPage')
 const PrivacyPage = page(() => import('./pages/LegalPage'), 'PrivacyPage')
 const TermsPage = page(() => import('./pages/LegalPage'), 'TermsPage')
@@ -110,12 +112,15 @@ export default function App() {
             <Route path="/ofertas" element={<OffersPage />} />
             <Route path="/libro-de-reclamaciones" element={<ComplaintsPage />} />
             <Route path="/como-comprar" element={<HowToBuyPage />} />
+            <Route path="/te-lo-traemos" element={<MandadoNuevoPage />} />
+            <Route path="/mandados" element={<Navigate to="/te-lo-traemos" replace />} />
+            <Route path="/mandados/:codigo" element={<MandadoPage />} />
           </Routes>
           </Suspense>
         </motion.div>
       </AnimatePresence>
       {/* En pago, confirmación y cuenta no va: esas pantallas ya traen su propio botón principal y su WhatsApp. */}
-      {!['/checkout', '/pedido', '/mis-pedidos', '/libro-de-reclamaciones'].some(p => location.pathname.startsWith(p)) && <CartBar />}
+      {!['/checkout', '/pedido', '/mis-pedidos', '/libro-de-reclamaciones', '/te-lo-traemos', '/mandados'].some(p => location.pathname.startsWith(p)) && <CartBar />}
       <MobileTabBar />
       {/* Lista por voz: solo donde se elige qué comprar, para no tapar botones en ficha, cuenta o pago. */}
       {VOICE_LIST_ROUTES.includes(location.pathname) && <VoiceShoppingListButton />}

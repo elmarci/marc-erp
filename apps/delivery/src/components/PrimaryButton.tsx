@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import { cn } from '../lib/cn'
+import { cn, withDefaults } from '../lib/cn'
 
 interface PrimaryButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
@@ -11,13 +11,12 @@ export function PrimaryButton({ children, className, disabled, variant = 'primar
   return (
     <button
       disabled={disabled}
-      className={cn(
+      className={withDefaults(cn(
         'flex h-[52px] items-center justify-center gap-2 rounded-[14px] text-base font-semibold transition-colors',
         variant === 'primary'
           ? disabled ? 'bg-line text-ink-faint' : 'bg-blue text-white active:bg-blue-press'
           : 'border border-line bg-card text-ink active:bg-bg',
-        className,
-      )}
+      ) as string, className)}
       {...props}
     >
       {children}
