@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
 import { Search, X, ChevronDown, LayoutGrid, Loader2 } from 'lucide-react'
@@ -79,10 +79,13 @@ export function CatalogPage() {
   // categorías en vez de quedarse pegado a una sola. Buscar por texto sigue
   // siendo una lista plana simple — no tiene un "orden de categorías" al
   // que encadenarse.
-  const isChained = Boolean(categoryId) && !debouncedSearch
+  // 2026-11-25: sin categoría ("Ver todo el catálogo") también se encadena,
+  // desde la primera categoría y en orden.
+  const isChained = !debouncedSearch
   const sequence = useMemo(() => buildSequence(categories), [categories])
   const startIndex = useMemo(() => {
     if (!isChained) return -1
+    if (!categoryId) return 0
     const exact = sequence.findIndex(u => u.id === categoryId)
     if (exact >= 0) return exact
     // El id elegido es una categoría padre (no está en la secuencia porque
@@ -96,6 +99,12 @@ export function CatalogPage() {
 
   const [sections, setSections] = useState<FeedSection[]>([])
   const [chainPos, setChainPos] = useState(0)
+  // Primera unidad cargada: al entrar a una categoría del medio, al subir se
+  // van cargando las anteriores (antes solo se podía avanzar hacia abajo).
+  const [headPos, setHeadPos] = useState(0)
+  const [prepending, setPrepending] = useState(false)
+  const topSentinelRef = useRef<HTMLDivElement>(null)
+  const anchorRef = useRef<{ el: HTMLElement; top: number } | null>(null)
   const [chainLoading, setChainLoading] = useState(false)
   const [fetchingMore, setFetchingMore] = useState(false)
   const generationRef = useRef(0)
@@ -128,6 +137,7 @@ export function CatalogPage() {
     }
     const gen = ++generationRef.current
     setChainPos(startIndex)
+    setHeadPos(startIndex)
     setVisibleUnit(null)
     fetchUnitPage(sequence[startIndex], 1, gen, 'reset')
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,6 +159,53 @@ export function CatalogPage() {
     }
   }
 
+  // Carga la unidad anterior a la primera que hay en pantalla (todas sus
+  // páginas, hasta 300 productos) y la pone arriba sin mover lo que la
+  // persona está viendo: se guarda la posición de la primera sección y,
+  // apenas se dibuja la nueva, se compensa el scroll con la diferencia.
+  const handleLoadPrevious = async () => {
+    if (prepending || chainLoading || headPos <= 0 || sections.length === 0) return
+    const gen = generationRef.current
+    const unit = sequence[headPos - 1]
+    setPrepending(true)
+    try {
+      let page = 1, totalPages = 1, total = 0
+      let products: Product[] = []
+      do {
+        const res = await storeApi.getProducts({ categoryId: unit.id, page, limit: 100 })
+        products = [...products, ...res.data.data]
+        totalPages = res.data.pagination.totalPages
+        total = res.data.pagination.total
+        page++
+      } while (page <= totalPages && page <= 3)
+      if (generationRef.current !== gen) return
+      const first = document.querySelector<HTMLElement>('[data-unit-id]')
+      anchorRef.current = first ? { el: first, top: first.getBoundingClientRect().top } : null
+      setSections(prev => [{ unit, products, page: totalPages, totalPages, total }, ...prev])
+      setHeadPos(headPos - 1)
+    } finally {
+      if (generationRef.current === gen) setPrepending(false)
+    }
+  }
+  useLayoutEffect(() => {
+    const a = anchorRef.current
+    if (!a) return
+    anchorRef.current = null
+    const diff = a.el.getBoundingClientRect().top - a.top
+    if (diff) window.scrollBy(0, diff)
+  }, [sections])
+
+  useEffect(() => {
+    const el = topSentinelRef.current
+    if (!el || !isChained || headPos <= 0) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) handleLoadPrevious()
+    }, { rootMargin: '200px 0px 0px 0px' })
+    observer.observe(el)
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChained, headPos, prepending, chainLoading, sections.length])
+
   // "Scrollspy": qué sección está actualmente a la vista, para que el
   // banner fijo muestre la categoría/subcategoría correcta a medida que se
   // sigue bajando, no sólo la que se eligió al entrar.
@@ -161,7 +218,7 @@ export function CatalogPage() {
       const id = visible[0].target.getAttribute('data-unit-id')
       const unit = sequence.find(u => u.id === id)
       if (unit) setVisibleUnit(unit)
-    }, { rootMargin: '-120px 0px -75% 0px', threshold: 0 })
+    }, { rootMargin: '-170px 0px -70% 0px', threshold: 0 })
     sectionRefs.current.forEach(el => observer.observe(el))
     return () => observer.disconnect()
   }, [isChained, sections.length, sequence])
@@ -212,6 +269,21 @@ export function CatalogPage() {
     ? (currentUnit?.name ?? 'Catálogo de productos')
     : (activeCategory ? activeCategory.name : debouncedSearch ? `"${debouncedSearch}"` : 'Catálogo de productos')
   const bannerParentLabel = isChained ? currentUnit?.parentName : undefined
+  // Chips de subcategorías hermanas de la que se está viendo: se marca sola
+  // al hacer scroll, para que se note el cambio de subcategoría.
+  const chipParent = isChained && currentUnit?.parentId ? categories.find(c => c.id === currentUnit.parentId) : undefined
+  const chipRowRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const row = chipRowRef.current
+    const chip = row?.querySelector<HTMLElement>('[data-active="true"]')
+    if (row && chip) row.scrollTo({ left: chip.offsetLeft - 16, behavior: 'smooth' })
+  }, [currentUnit?.id])
+  const goToUnit = (id: string) => {
+    const el = sectionRefs.current.get(id)
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 170, behavior: 'smooth' })
+    else handleCategory(id)
+  }
+  const categoryImage = (id?: string) => categories.find(c => c.id === id)?.imageUrl ?? null
 
   useEffect(() => {
     const el = loadMoreRef.current
@@ -273,6 +345,19 @@ export function CatalogPage() {
           <span className="flex-1 text-base font-extrabold text-paper-ink truncate">{bannerLabel}</span>
           <ChevronDown className={`h-5 w-5 text-brand-blue-600 shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
         </button>
+        {chipParent && chipParent.children.length > 1 && !dropdownOpen && (
+          <div ref={chipRowRef} className="bg-white border-b border-paper-line flex gap-2 overflow-x-auto no-scrollbar px-4 py-2">
+            {chipParent.children.map(ch => {
+              const active = ch.id === currentUnit?.id
+              return (
+                <button key={ch.id} data-active={active} onClick={() => goToUnit(ch.id)}
+                  className={`shrink-0 h-9 px-3.5 rounded-full text-sm font-bold border transition-colors ${active ? 'bg-brand-blue-600 border-brand-blue-600 text-white' : 'bg-white border-paper-line text-paper-ink'}`}>
+                  {ch.name}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {dropdownOpen && (
           <div className="bg-white border-b border-paper-line shadow-lg max-h-[65vh] overflow-y-auto">
@@ -393,22 +478,49 @@ export function CatalogPage() {
               </div>
             ) : (
               <>
-                {sections.map((sec, i) => (
-                  <div key={`${sec.unit.id}-${i}`}
+                {headPos > 0 && (
+                  <div ref={topSentinelRef} className="flex justify-center pb-6">
+                    <Loader2 className={`h-6 w-6 text-brand-blue-600 ${prepending ? 'animate-spin' : 'opacity-0'}`} />
+                  </div>
+                )}
+                {sections.map((sec, i) => {
+                  const parentKey = sec.unit.parentId ?? sec.unit.id
+                  const prev = sections[i - 1]
+                  const newParent = !prev || (prev.unit.parentId ?? prev.unit.id) !== parentKey
+                  const parentCat = categories.find(c => c.id === parentKey)
+                  const img = categoryImage(parentKey)
+                  return (
+                  <div key={sec.unit.id}
                     ref={el => { if (el) sectionRefs.current.set(sec.unit.id, el); else sectionRefs.current.delete(sec.unit.id) }}
                     data-unit-id={sec.unit.id}
-                    className="mb-8 scroll-mt-32">
-                    <div className="flex items-baseline gap-2 mb-3">
-                      <h2 className="text-lg font-extrabold text-paper-ink">{sec.unit.name}</h2>
-                      <span className="text-xs text-paper-ink-ghost font-semibold">{sec.total} producto{sec.total === 1 ? '' : 's'}</span>
-                    </div>
+                    className="mb-7 scroll-mt-44">
+                    {/* Cabecera de categoría padre: se nota cuándo empieza
+                        otra categoría al ir bajando (o subiendo). */}
+                    {newParent && (
+                      <div className={`flex items-center gap-3 rounded-2xl bg-brand-blue-50 px-3 py-2.5 mb-4 ${i > 0 ? 'mt-3' : ''}`}>
+                        <span className="h-12 w-12 rounded-xl bg-white overflow-hidden shrink-0 flex items-center justify-center">
+                          {img ? <img src={img} alt="" loading="lazy" decoding="async" width={48} height={48} className="h-full w-full object-cover" /> : <LayoutGrid className="h-6 w-6 text-brand-blue-600" aria-hidden="true" />}
+                        </span>
+                        <span className="min-w-0">
+                          <h2 className="text-xl font-extrabold text-brand-blue-800 leading-tight truncate">{sec.unit.parentName ?? sec.unit.name}</h2>
+                          <span className="text-[13px] font-semibold text-paper-ink-soft">{parentCat?._count.products ?? sec.total} productos</span>
+                        </span>
+                      </div>
+                    )}
+                    {sec.unit.parentId && (
+                      <div className="flex items-center gap-2 mb-3 border-l-4 border-brand-blue-600 pl-2.5">
+                        <h3 className="text-[17px] font-extrabold text-paper-ink">{sec.unit.name}</h3>
+                        <span className="text-xs font-bold text-brand-blue-700 bg-brand-blue-50 rounded-full px-2 py-0.5 tabular-nums">{sec.total}</span>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
                       {sec.products.map(product => (
                         <ProductCard key={product.id} product={product} />
                       ))}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
 
                 {/* Sentinel de scroll infinito — al llegar al final de una
                     categoría, sigue con la siguiente sola, sin que el

@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActiveOrderBanner } from '../components/ActiveOrderBanner'
 import { Link } from 'react-router-dom'
-import { Bike, BookOpen, ChevronRight, LayoutGrid } from 'lucide-react'
+import { Bike, BookOpen, ChevronRight, Clock, LayoutGrid } from 'lucide-react'
+import { VoiceShoppingListButton } from '../components/VoiceShoppingListModal'
 import { Ico, Ilu } from '../components/Ico'
 import { storeApi } from '../api'
 import { ProductCard } from '../components/ProductCard'
@@ -9,6 +10,7 @@ import { PromoCarousel } from '../components/PromoCarousel'
 import { HomeForNow, HomeForYou } from '../components/HomeForYou'
 import { HomeBanners } from '../components/HomeBanners'
 import { WhatsAppIcon } from '../components/CartBar'
+import { thumb } from '../lib/thumb'
 import { getCategoryIcon, getCategoryTile } from '../categoryIcons'
 import { BRAND_NAME, DELIVERY, deliveryStatus, money, whatsappLink } from '../lib/storeInfo'
 
@@ -55,38 +57,24 @@ export function HomePage() {
       {/* Pedido en curso hecho desde este celular: lo más importante si existe. */}
       <ActiveOrderBanner className={`${WRAP} pt-3.5`} />
 
-      {/* Reparto: lo primero que un vecino nuevo necesita saber antes de
-          llenar el carrito — si llegamos a su zona, cuándo y cuánto cuesta. */}
-      <section className={`${WRAP} pt-3.5`} aria-label="Reparto">
-        <div className="bg-white rounded-2xl shadow-card px-3.5 py-3 flex items-center gap-3">
-          {status.now
-            ? <Ico name="aviso-reparto" className="h-10 w-10" />
-            : <Ilu name="ilu-fuera-de-horario" eager className="h-11 w-[58px] !rounded-xl shrink-0" />}
-          <div className="min-w-0">
-            <p className="text-[15px] font-bold text-paper-ink leading-snug">{status.title}</p>
-            <p className="text-[13px] text-paper-ink-soft leading-snug">
-              Envío desde {money(DELIVERY.costFrom)} · Express desde {money(DELIVERY.expressFrom)}
-            </p>
+      {/* 2026-11-25 (dueño): ofertas primero, luego categorías; el aviso
+          de reparto y "Te lo traemos" bajan más abajo. */}
+      {offers.length > 0 && (
+        <>
+          <div className={`${WRAP} pt-3 flex items-center justify-between`}>
+            <h2 className={H2}>Ofertas de la semana</h2>
+            <Link to="/ofertas" className="text-sm font-bold text-brand-blue-600 h-11 flex items-center">Ver todas</Link>
           </div>
-        </div>
-      </section>
-
-      {/* Te lo traemos: mandados de cualquier negocio de la zona. */}
-      <section className={`${WRAP} pt-3.5`} aria-label="Te lo traemos">
-        <Link to="/te-lo-traemos" className="relative overflow-hidden flex items-center gap-3.5 rounded-2xl bg-brand-blue-700 text-white px-4 py-3.5 shadow-card">
-          <span aria-hidden="true" className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-brand-blue-500/50" />
-          <span className="relative h-11 w-11 rounded-xl bg-white/15 flex items-center justify-center shrink-0"><Bike className="h-6 w-6" aria-hidden="true" /></span>
-          <span className="relative min-w-0 flex-1">
-            <span className="block text-[16px] font-extrabold leading-tight">Te lo traemos</span>
-            <span className="block text-[13px] text-brand-blue-100 leading-snug">Comida, farmacia, licores o un recojo. Tú pones la oferta.</span>
-          </span>
-          <ChevronRight className="relative h-5 w-5 shrink-0" aria-hidden="true" />
-        </Link>
-      </section>
+          <PromoCarousel offers={offers} />
+        </>
+      )}
 
       {topCategories.length > 0 && (
         <section className={`${WRAP} pt-5`}>
-          <h2 className={`${H2} mb-3`}>Categorías</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className={H2}>Categorías</h2>
+            <VoiceShoppingListButton inline />
+          </div>
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-x-2.5 gap-y-3.5">
             {topCategories.map(cat => {
               const Icon = getCategoryIcon(cat.name)
@@ -94,10 +82,13 @@ export function HomePage() {
               return (
                 <Link key={cat.id} to={`/catalogo?categoryId=${cat.id}`} className="flex flex-col items-center gap-1.5 text-center">
                   <span className="h-16 w-16 rounded-[18px] bg-white shadow-card overflow-hidden flex items-center justify-center">
-                    {tileSrc
+                    {/* 2026-11-25: foto real de un producto de la categoría
+                        (las ilustraciones 3D se veían "muy animadas"); la
+                        ilustración queda solo si no hay foto. */}
+                    {cat.imageUrl
+                      ? <img src={thumb(cat.imageUrl, 160)} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-contain p-1.5" />
+                      : tileSrc
                       ? <img src={tileSrc} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-cover" />
-                      : cat.imageUrl
-                      ? <img src={cat.imageUrl} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-cover" />
                       : <Icon className="h-10 w-10" />}
                   </span>
                   <span className="text-[13px] font-semibold text-paper-ink leading-tight line-clamp-2">{cat.name}</span>
@@ -105,29 +96,13 @@ export function HomePage() {
               )
             })}
             <Link to="/categorias" className="flex flex-col items-center gap-1.5 text-center">
-              <span className="h-16 w-16 rounded-[18px] bg-brand-blue-600 flex items-center justify-center">
-                <LayoutGrid className="h-7 w-7 text-white" aria-hidden="true" />
+              <span className="h-16 w-16 rounded-[18px] bg-brand-blue-50 flex items-center justify-center">
+                <LayoutGrid className="h-7 w-7 text-brand-blue-600" aria-hidden="true" />
               </span>
               <span className="text-[13px] font-semibold text-paper-ink leading-tight">Ver todo</span>
             </Link>
           </div>
         </section>
-      )}
-
-      {/* Mensaje según quién entra (invitado / con cuenta) y productos
-          según la hora del día. */}
-      <HomeForYou className={`${WRAP} pt-5`} />
-      <HomeForNow categories={categories} wrap={WRAP} />
-      <HomeBanners wrap={WRAP} />
-
-      {offers.length > 0 && (
-        <>
-          <div className={`${WRAP} pt-4 flex items-center justify-between`}>
-            <h2 className={H2}>Ofertas de la semana</h2>
-            <Link to="/ofertas" className="text-sm font-bold text-brand-blue-600 h-11 flex items-center">Ver todas</Link>
-          </div>
-          <PromoCarousel offers={offers} />
-        </>
       )}
 
       <section className={`${WRAP} pt-4`}>
@@ -165,6 +140,50 @@ export function HomePage() {
             <Link to="/categorias" className="mt-4 h-12 rounded-xl bg-brand-blue-600 text-white font-bold flex items-center justify-center">Ver categorías</Link>
           </div>
         )}
+      </section>
+
+      {/* Mensaje según quién entra (invitado / con cuenta) y productos
+          según la hora del día. */}
+      <HomeForYou className={`${WRAP} pt-5`} />
+      <HomeForNow categories={categories} wrap={WRAP} />
+      <HomeBanners wrap={WRAP} />
+
+      {/* Reparto, encargos y WhatsApp: una sola tarjeta blanca, más abajo. */}
+      <section className={`${WRAP} pt-6`} aria-label="Reparto">
+        <div className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <span className="h-10 w-10 rounded-xl bg-brand-blue-50 flex items-center justify-center shrink-0">
+              <Clock className="h-5 w-5 text-brand-blue-600" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[15px] font-bold text-paper-ink leading-snug">{status.title}</p>
+              <p className="text-[13px] text-paper-ink-soft leading-snug">
+                Envío desde {money(DELIVERY.costFrom)} · Express desde {money(DELIVERY.expressFrom)}
+              </p>
+            </div>
+          </div>
+          <Link to="/te-lo-traemos" className="flex items-center gap-3 px-4 py-3">
+            <span className="h-10 w-10 rounded-xl bg-brand-blue-50 flex items-center justify-center shrink-0">
+              <Bike className="h-5 w-5 text-brand-blue-600" aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-bold text-paper-ink leading-snug">Te lo traemos</span>
+              <span className="block text-[13px] text-paper-ink-soft leading-snug">Comida, farmacia, licores o un recojo. Tú pones la oferta.</span>
+            </span>
+            <ChevronRight className="h-5 w-5 text-paper-ink-soft shrink-0" aria-hidden="true" />
+          </Link>
+          <a href={whatsappLink(`Hola ${BRAND_NAME}, quiero hacer un pedido.`)} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-3 px-4 py-3">
+            <span className="h-10 w-10 rounded-xl bg-[#25D366]/15 flex items-center justify-center shrink-0">
+              <WhatsAppIcon className="h-5 w-5 text-[#128C4B]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-bold text-paper-ink leading-snug">Pide por WhatsApp</span>
+              <span className="block text-[13px] text-paper-ink-soft leading-snug">Escríbenos tu lista y te la llevamos.</span>
+            </span>
+            <ChevronRight className="h-5 w-5 text-paper-ink-soft shrink-0" aria-hidden="true" />
+          </a>
+        </div>
       </section>
 
       <section className={`${WRAP} pt-6`}>
