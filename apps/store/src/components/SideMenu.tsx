@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, LogOut, User, ChevronRight, BookOpen } from 'lucide-react'
+import { X, LogOut, User, ChevronRight, BookOpen, Volume2, VolumeX } from 'lucide-react'
+import { useSoundsEnabled } from '../lib/sounds'
 import { Ico } from './Ico'
 import { useQuery } from '@tanstack/react-query'
 import { storeApi } from '../api'
@@ -23,6 +24,7 @@ interface SideMenuProps {
 export function SideMenu({ open, onClose }: SideMenuProps) {
   const { customer, isLoggedIn, logout } = useAuthStore()
   const navigate = useNavigate()
+  const [soundsOn, setSoundsOn] = useSoundsEnabled()
 
   const { data: profileData } = useQuery({
     queryKey: ['store-profile'],
@@ -69,31 +71,31 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
             className="fixed inset-y-0 left-0 z-[61] w-[82%] max-w-[320px] bg-white shadow-2xl flex flex-col overflow-y-auto">
 
             {/* Cabecera — identidad del cliente o CTA de ingreso */}
-            <div className="bg-brand-blue-600 text-white p-5 pt-6 shrink-0">
+            <div className="bg-brand-blue-50 text-paper-ink p-5 pt-6 border-b border-paper-line shrink-0">
               <button onClick={onClose} aria-label="Cerrar menú"
-                className="absolute top-4 right-4 h-8 w-8 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-colors">
+                className="absolute top-4 right-4 h-8 w-8 flex items-center justify-center rounded-full bg-white hover:bg-white transition-colors">
                 <X className="h-4 w-4" />
               </button>
               {isLoggedIn && customer ? (
                 <>
-                  <div className="h-12 w-12 rounded-full border-2 border-white/70 -rotate-3 bg-white/10 flex items-center justify-center text-lg font-display font-semibold mb-2">
+                  <div className="h-12 w-12 rounded-full border-2 border-brand-blue-300 -rotate-3 bg-white text-brand-blue-700 flex items-center justify-center text-lg font-display font-semibold mb-2">
                     {customer.name[0].toUpperCase()}
                   </div>
                   <p className="font-display font-semibold leading-tight">{customer.name}</p>
-                  <p className="text-xs text-white/75">{customer.phone}</p>
+                  <p className="text-xs text-paper-ink-soft">{customer.phone}</p>
                   <button onClick={() => go('/mis-pedidos#canje')}
-                    className="mt-3 flex items-center gap-1.5 bg-white/15 hover:bg-white/25 rounded-full pl-2.5 pr-3 py-1.5 text-xs font-semibold transition-colors">
-                    <Ico name="ico-puntos" className="h-4 w-4" />{points} pts disponibles
+                    className="mt-3 flex items-center gap-1.5 bg-white hover:bg-white rounded-full pl-2.5 pr-3 py-1.5 text-xs font-semibold transition-colors">
+                    <Ico name="ico-puntos" className="h-4 w-4 text-brand-blue-600" />{points} pts disponibles
                   </button>
                 </>
               ) : (
                 <>
-                  <div className="h-12 w-12 rounded-full border-2 border-white/70 flex items-center justify-center mb-2">
+                  <div className="h-12 w-12 rounded-full border-2 border-brand-blue-300 flex items-center justify-center mb-2">
                     <User className="h-5 w-5" />
                   </div>
                   <p className="font-display font-semibold">Bienvenido a Tiendas Marc</p>
                   <button onClick={() => go('/ingresar')}
-                    className="mt-3 flex items-center gap-1 bg-white text-brand-blue-600 rounded-full px-4 h-11 text-sm font-bold transition-colors">
+                    className="mt-3 flex items-center gap-1 bg-brand-blue-600 text-white rounded-full px-4 h-11 text-sm font-bold transition-colors">
                     Ingresar / Crear cuenta <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 </>
@@ -137,6 +139,14 @@ export function SideMenu({ open, onClose }: SideMenuProps) {
                 <BookOpen className="h-6 w-6 text-[#5F6B7E]" aria-hidden="true" />
                 <span className="flex-1">Libro de Reclamaciones</span>
               </Link>
+              <button onClick={() => setSoundsOn(!soundsOn)} role="switch" aria-checked={soundsOn}
+                className="w-full flex items-center gap-3 px-5 py-3 text-sm text-paper-ink hover:bg-paper-surface transition-colors">
+                {soundsOn ? <Volume2 className="h-6 w-6 text-brand-blue-600" aria-hidden="true" /> : <VolumeX className="h-6 w-6 text-paper-ink-soft" aria-hidden="true" />}
+                <span className="flex-1 text-left">Sonidos del pedido</span>
+                <span className={`relative h-6 w-10 rounded-full transition-colors ${soundsOn ? 'bg-brand-blue-600' : 'bg-paper-line'}`}>
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${soundsOn ? 'left-[18px]' : 'left-0.5'}`} />
+                </span>
+              </button>
 
               {isLoggedIn && (
                 <button onClick={() => { onClose(); logout() }}

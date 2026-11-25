@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { LayoutGrid, Tag } from 'lucide-react'
 import { storeApi } from '../api'
 import { getCategoryIcon, getCategoryTile } from '../categoryIcons'
+import { thumb } from '../lib/thumb'
 
 // Todas las categorías en cuadrícula de 2. Un toque entra directo a la
 // categoría: antes, si tenía subcategorías, el toque solo las desplegaba y
@@ -41,10 +42,10 @@ export function CategoriesPage() {
             <Link key={cat.id} to={`/catalogo?categoryId=${cat.id}`}
               className="bg-white rounded-2xl shadow-card p-2.5 flex flex-col gap-2 active:bg-paper-surface">
               <div className={`aspect-[4/3] rounded-xl overflow-hidden flex items-center justify-center ${tileSrc || cat.imageUrl ? 'bg-white' : 'bg-brand-blue-50'}`}>
-                {tileSrc
+                {cat.imageUrl
+                  ? <img src={thumb(cat.imageUrl, 320)} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain p-1" />
+                  : tileSrc
                   ? <img src={tileSrc} alt="" loading="lazy" decoding="async" className="h-full aspect-square object-cover rounded-xl" />
-                  : cat.imageUrl
-                  ? <img src={cat.imageUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   : <Icon className="h-14 w-14" />}
               </div>
               <div className="min-w-0">
