@@ -82,13 +82,12 @@ export function HomePage() {
               return (
                 <Link key={cat.id} to={`/catalogo?categoryId=${cat.id}`} className="flex flex-col items-center gap-1.5 text-center">
                   <span className="h-16 w-16 rounded-[18px] bg-white shadow-card overflow-hidden flex items-center justify-center">
-                    {/* 2026-11-25: foto real de un producto de la categoría
-                        (las ilustraciones 3D se veían "muy animadas"); la
-                        ilustración queda solo si no hay foto. */}
-                    {cat.imageUrl
+                    {/* 2026-11-25: ícono realista del set del dueño; si la
+                        categoría no tiene, la foto de uno de sus productos. */}
+                    {tileSrc
+                      ? <img src={tileSrc} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-contain p-1" />
+                      : cat.imageUrl
                       ? <img src={thumb(cat.imageUrl, 160)} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-contain p-1.5" />
-                      : tileSrc
-                      ? <img src={tileSrc} alt="" loading="lazy" decoding="async" width={64} height={64} className="h-full w-full object-cover" />
                       : <Icon className="h-10 w-10" />}
                   </span>
                   <span className="text-[13px] font-semibold text-paper-ink leading-tight line-clamp-2">{cat.name}</span>
@@ -113,7 +112,7 @@ export function HomePage() {
 
         {featuredQuery.isError ? (
           <div className="bg-white rounded-2xl shadow-card p-6 text-center">
-            <Ilu name="ilu-sin-conexion" className="mx-auto h-32 w-[171px] mb-2" />
+            <Ilu name="vacio-sin-conexion" className="mx-auto h-32 w-[171px] mb-2" />
             <p className="font-bold text-paper-ink">No pudimos cargar los productos</p>
             <p className="text-sm text-paper-ink-soft mt-1 mb-4">Revisa tu conexión y vuelve a intentar. También puedes pedir por WhatsApp.</p>
             <div className="flex flex-col gap-2.5">
@@ -189,7 +188,7 @@ export function HomePage() {
       <section className={`${WRAP} pt-6`}>
         <Link to="/como-comprar" className="bg-white rounded-2xl shadow-card p-4 flex items-center gap-3.5">
           <span className="h-12 w-12 rounded-xl bg-brand-blue-50 flex items-center justify-center shrink-0">
-            <Ico name="menu-ayuda" className="h-7 w-7" />
+            <Ico name="menu-ayuda" real className="h-9 w-9" />
           </span>
           <span className="flex-1 min-w-0">
             <span className="block font-bold text-paper-ink">¿Primera vez? Así se compra</span>
@@ -205,28 +204,28 @@ export function HomePage() {
         <h2 className={`${H2} mb-3`}>Cómo te llega tu pedido</h2>
         <div className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
           <div className="flex gap-3 p-4">
-            <Ico name="chk-ubicacion" className="h-7 w-7" />
+            <Ico name="chk-ubicacion" real className="h-9 w-9" />
             <div>
               <p className="font-bold text-paper-ink">Te lo llevamos a tu puerta</p>
               <p className="text-sm text-paper-ink-soft leading-relaxed">Comparte tu ubicación al pedir y te mostramos el costo exacto del envío. Compra mínima {money(DELIVERY.minOrder)}.</p>
             </div>
           </div>
           <div className="flex gap-3 p-4">
-            <Ico name="aviso-horario" className="h-7 w-7" />
+            <Ico name="aviso-horario" real className="h-9 w-9" />
             <div>
               <p className="font-bold text-paper-ink">Tres repartos al día</p>
               <p className="text-sm text-paper-ink-soft leading-relaxed">Mañana de 6 a 9 am, tarde de 2 a 5 pm y noche de 6 a 9 pm. Viernes y sábado, hasta la 1 am.</p>
             </div>
           </div>
           <div className="flex gap-3 p-4">
-            <Ico name="chk-delivery" className="h-7 w-7" />
+            <Ico name="chk-delivery" real className="h-9 w-9" />
             <div>
               <p className="font-bold text-paper-ink">Envío desde {money(DELIVERY.costFrom)}</p>
               <p className="text-sm text-paper-ink-soft leading-relaxed">Express desde {money(DELIVERY.expressFrom)}. Recoger en tienda no cuesta.</p>
             </div>
           </div>
           <div className="flex gap-3 p-4">
-            <Ico name="chk-efectivo" className="h-7 w-7" />
+            <Ico name="chk-efectivo" real className="h-9 w-9" />
             <div>
               <p className="font-bold text-paper-ink">Pagas como prefieras</p>
               <div className="flex flex-wrap gap-2 mt-1.5">

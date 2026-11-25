@@ -46,8 +46,8 @@ type Hero = { Icon: typeof Clock; title: string; sub: string; tone: 'blue' | 'gr
 
 // Íconos propios de Tiendas Marc por etapa (public/icons, hechos por el dueño).
 const STAGE_ICON: Partial<Record<TrackingStage, string>> = {
-  RECIBIDO: '/icons/seg-recibido.svg', CONFIRMADO: '/icons/seg-confirmado.svg', PREPARANDO: '/icons/seg-preparando.svg',
-  LISTO: '/icons/seg-listo.svg', EN_CAMINO: '/icons/seg-moto.svg', ENTREGADO: '/icons/seg-entregado.svg',
+  RECIBIDO: '/icons/real/seg-recibido.webp', CONFIRMADO: '/icons/real/seg-confirmado.webp', PREPARANDO: '/icons/real/seg-preparando.webp',
+  LISTO: '/icons/real/seg-listo.webp', EN_CAMINO: '/icons/real/seg-en-camino.webp', ENTREGADO: '/icons/real/seg-entregado.webp',
 }
 
 function heroFor(t: OrderTracking, o: StoreOrder, isDelivery: boolean, needsPayment: boolean): Hero {
@@ -244,17 +244,17 @@ export function OrderConfirmPage() {
               </>
             ) : t.express ? (
               <>
-                <Ico name="chk-express" className="h-8 w-8" />
+                <Ico name="chk-express" real className="h-9 w-9" />
                 <span className="text-sm text-paper-ink-soft leading-snug"><b className="text-paper-ink">Express:</b> sale apenas esté listo. Llega aprox. en 20 a 30 min.</span>
               </>
             ) : t.schedule ? (
               <>
-                <Ico name="aviso-horario" className="h-8 w-8" />
+                <Ico name="aviso-horario" real className="h-9 w-9" />
                 <span className="text-sm text-paper-ink-soft leading-snug"><b className="text-paper-ink">Entrega programada:</b> {t.schedule}</span>
               </>
             ) : (
               <>
-                <Ico name="aviso-horario" className="h-8 w-8" />
+                <Ico name="aviso-horario" real className="h-9 w-9" />
                 <span className="text-sm text-paper-ink-soft leading-snug">Te mostramos el tiempo de llegada cuando salga de la tienda.</span>
               </>
             )}
@@ -273,7 +273,7 @@ export function OrderConfirmPage() {
                     <span className={`relative h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
                       isCur ? 'bg-white ring-2 ring-brand-blue-600' : done ? 'bg-brand-blue-50 ring-1 ring-brand-blue-200' : 'bg-paper-surface'}`}>
                       {isCur && <span className="absolute inset-0 rounded-full ring-4 ring-brand-blue-200 animate-pulse" />}
-                      <Ico name={st.icon} className={`h-7 w-7 ${done || isCur ? '' : 'opacity-35 grayscale'}`} />
+                      <Ico name={st.icon} real className={`h-8 w-8 ${done || isCur ? '' : 'opacity-35 grayscale'}`} />
                     </span>
                   </li>
                 )

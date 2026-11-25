@@ -29,11 +29,11 @@ function forgetActiveOrder() {
 }
 
 const LABEL: Partial<Record<TrackingStage, { text: string; img: string }>> = {
-  RECIBIDO: { text: 'Recibido, por confirmar', img: '/icons/seg-recibido.svg' },
-  CONFIRMADO: { text: 'Confirmado', img: '/icons/seg-confirmado.svg' },
-  PREPARANDO: { text: 'Lo estamos preparando', img: '/icons/seg-preparando.svg' },
-  LISTO: { text: 'Listo para salir', img: '/icons/seg-listo.svg' },
-  EN_CAMINO: { text: 'En camino', img: '/icons/seg-moto.svg' },
+  RECIBIDO: { text: 'Recibido, por confirmar', img: '/icons/real/seg-recibido.webp' },
+  CONFIRMADO: { text: 'Confirmado', img: '/icons/real/seg-confirmado.webp' },
+  PREPARANDO: { text: 'Lo estamos preparando', img: '/icons/real/seg-preparando.webp' },
+  LISTO: { text: 'Listo para salir', img: '/icons/real/seg-listo.webp' },
+  EN_CAMINO: { text: 'En camino', img: '/icons/real/seg-en-camino.webp' },
 }
 
 export function ActiveOrderBanner({ className = '' }: { className?: string }) {

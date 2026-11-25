@@ -31,10 +31,11 @@ const CATEGORY_ICONS: Record<string, CategoryIcon> = {
   'otros / varios': IconOtros, 'otros/varios': IconOtros, 'otros': IconOtros,
 }
 
-// Íconos de las categorías padre (fotos realistas sobre azul, del dueño, 2026-11-13,
-// public/icons/cat3d/*.webp). Cada uno ya trae su propio fondo azul redondeado
-// así que se muestran llenando el recuadro. Se reconocen por
-// palabra clave para no depender del nombre exacto que tenga en el ERP.
+// Íconos de las categorías padre: set realista del dueño (2026-11-25,
+// public/icons/cat/*.webp, fondo transparente, sobrio). Reemplaza a los cat3d
+// sobre azul que se veían "muy animados". Se muestran enteros (object-contain)
+// sobre blanco. Se reconocen por palabra clave para no depender del nombre
+// exacto que tenga en el ERP.
 const TILE_KEYWORDS: Array<[RegExp, string]> = [
   [/farmac|botic|salud|medic/, 'farmacia'],
   [/juguet/, 'juguetes'],
@@ -49,20 +50,21 @@ const TILE_KEYWORDS: Array<[RegExp, string]> = [
   [/snack|golosin|dulce|galleta|piqueo/, 'snacks'],
   [/limpie|aseo|hogar/, 'limpieza'],
   [/mascot/, 'mascotas'],
+  [/otros|varios/, 'otros'],
 ]
 
 const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
-/** Ruta del ícono 3D de la categoría, o null si no tiene. */
+/** Ruta del ícono realista de la categoría, o null si no tiene. */
 export function getCategoryTile(name: string): string | null {
   const n = normalize(name)
   const hit = TILE_KEYWORDS.find(([re]) => re.test(n))
-  return hit ? `/icons/cat3d/${hit[1]}.webp` : null
+  return hit ? `/icons/cat/${hit[1]}.webp` : null
 }
 
 const tile = (src: string): CategoryIcon =>
   function CategoryTile({ className }: IconProps) {
-    return <img src={src} alt="" aria-hidden="true" loading="lazy" decoding="async" className={`object-cover rounded-[22%] ${className ?? ''}`} />
+    return <img src={src} alt="" aria-hidden="true" loading="lazy" decoding="async" className={`object-contain ${className ?? ''}`} />
   }
 const tileCache = new Map<string, CategoryIcon>()
 

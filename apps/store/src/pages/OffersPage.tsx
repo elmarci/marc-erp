@@ -199,7 +199,7 @@ export function OffersPage() {
 
       {isError && (
         <div className="bg-white rounded-2xl shadow-card p-6 text-center mt-4">
-          <Ilu name="ilu-sin-conexion" className="mx-auto h-32 w-[171px] mb-2" />
+          <Ilu name="vacio-sin-conexion" className="mx-auto h-32 w-[171px] mb-2" />
           <p className="font-bold text-paper-ink">No pudimos cargar las ofertas</p>
           <p className="text-sm text-paper-ink-soft mt-1 mb-4">Revisa tu conexión y vuelve a intentar.</p>
           <button onClick={() => refetch()} className="w-full h-12 rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold">Reintentar</button>

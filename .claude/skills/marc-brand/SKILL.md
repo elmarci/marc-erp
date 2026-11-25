@@ -86,7 +86,7 @@ rediseñadas; no usarlos en código nuevo.
 ### Componentes base (apps/store/src/components)
 
 - `Header`: blanca con logo y nombre en azul, buscador gris claro; en celular la fila del buscador queda fija (64 px).
-- Íconos: de línea, un solo color (lucide vía `Ico`), nada de dibujos a color ni 3D. Las categorías usan foto real de un producto.
+- Íconos: dos niveles. (1) Realistas sobrios del dueño (`public/icons/real/*.webp`, `public/icons/cat/*.webp`, fondo transparente) para categorías, avisos, opciones de entrega/pago, puntos, seguimiento (`seg-*`) y pantallas vacías (`vacio-*` vía `Ilu`): `<Ico name=… real />`, a 28 px o más. (2) De línea, un solo color (lucide vía `Ico`) para la barra inferior, botones pequeños y campos. Nada de ilustraciones caricatura ni íconos sobre baldosa azul. Si una categoría no tiene ícono, foto real de un producto.
 - Inicio (orden pedido por el dueño, 2026-11-25): pedido en curso → ofertas → categorías (ordenadas por ventas de 30 días, "Otros" al final) → lo más vendido → sugerencias → reparto / Te lo traemos / WhatsApp → cómo te llega.
 - `MobileTabBar`: Inicio, Categorías, Carrito, Cuenta. 64 px.
 - `CartBar`: píldora de 48 px "Ver carrito · total" con el número en el ícono; se esconde al bajar y vuelve al subir o detenerse. Nada más flota en celular (ni WhatsApp ni lista por voz).

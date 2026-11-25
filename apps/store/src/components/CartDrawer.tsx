@@ -1,4 +1,4 @@
-import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck, Star, ChevronRight } from 'lucide-react'
+import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck, ChevronRight } from 'lucide-react'
 import { useBackClose, overlayNav } from '../lib/useBackClose'
 import { useQuery } from '@tanstack/react-query'
 import { useCartStore, cartTotal, type CartItem } from '../cartStore'
@@ -10,7 +10,7 @@ import { storeApi } from '../api'
 import { WhatsAppIcon } from './CartBar'
 import { BRAND_NAME, money, whatsappLink } from '../lib/storeInfo'
 import { thumb } from '../lib/thumb'
-import { Ilu } from './Ico'
+import { Ico, Ilu } from './Ico'
 
 export function CartDrawer() {
   const items = useCartStore(s => s.items)
@@ -122,7 +122,7 @@ export function CartDrawer() {
         <div className="flex-1 overflow-y-auto p-4">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-6">
-              <Ilu name="ilu-carrito-vacio" className="h-36 w-48 mb-3" />
+              <Ilu name="vacio-carrito" className="h-36 w-48 mb-3" />
               <p className="text-lg font-bold text-paper-ink">Aún no tienes productos</p>
               <p className="text-sm text-paper-ink-soft mt-1 mb-5">Busca lo que necesitas o mira las ofertas de la semana.</p>
               <button onClick={() => { closeCart(); navigate('/catalogo', overlayNav()) }}
@@ -213,7 +213,7 @@ export function CartDrawer() {
             {points > 0 && (
               <button onClick={customer ? undefined : () => { closeCart(); navigate('/ingresar', overlayNav()) }}
                 className={`mb-2.5 w-full flex items-center gap-2 rounded-xl bg-brand-blue-50 px-3 py-2 text-left text-[13px] leading-snug text-paper-ink ${customer ? 'cursor-default' : ''}`}>
-                <Star className="h-[18px] w-[18px] text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <Ico name="ico-puntos" real className="h-7 w-7" />
                 <span className="flex-1">
                   {customer ? <>Con este pedido sumas <b className="tabular-nums">{points} puntos</b></> : <>Crea tu cuenta y suma <b className="tabular-nums">{points} puntos</b> con este pedido</>}
                   {showGoal && <span className="text-paper-ink-soft"> · Agrega {money(toGoal)} y llegas a {nextGoal}</span>}

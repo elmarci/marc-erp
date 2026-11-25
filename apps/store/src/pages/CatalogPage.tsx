@@ -473,7 +473,7 @@ export function CatalogPage() {
               </div>
             ) : sections.length === 0 ? (
               <div className="text-center py-12">
-                <Ilu name="ilu-sin-resultados" className="mx-auto h-36 w-48 mb-3" />
+                <Ilu name="vacio-busqueda" className="mx-auto h-36 w-48 mb-3" />
                 <p className="text-lg font-bold text-paper-ink">No encontramos productos</p>
               </div>
             ) : (
@@ -543,7 +543,7 @@ export function CatalogPage() {
             </div>
           ) : flatProducts.length === 0 ? (
             <div className="text-center py-12">
-              <Ilu name="ilu-sin-resultados" className="mx-auto h-36 w-48 mb-3" />
+              <Ilu name="vacio-busqueda" className="mx-auto h-36 w-48 mb-3" />
               <p className="text-lg font-bold text-paper-ink">No encontramos productos</p>
               <p className="text-sm text-paper-ink-soft mt-1">Prueba con otra palabra, por ejemplo la marca o el tipo de producto.</p>
             </div>
