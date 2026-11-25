@@ -220,6 +220,9 @@ export const storeApi = {
   getFeaturedProducts: (limit = 8) =>
     api.get<{ data: Product[] }>('/store/products/featured', { params: { limit } }),
 
+  getCartSuggestions: (ids: string[]) =>
+    api.get<{ data: Product[] }>('/store/products/suggest', { params: { ids: [...ids].sort().join(',') } }),
+
   getProduct: (id: string) =>
     api.get<{ data: Product }>(`/store/products/${id}`),
 

@@ -214,6 +214,18 @@ export class StoreService {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
 
+    // Orden por lo que la gente compra (2026-11, pedido del dueño): tickets
+    // de los últimos 30 días (caja + web, porque los pedidos web confirmados
+    // también son ventas) por categoría. Así Abarrotes, Bebidas o Frutas
+    // salen primero sin depender del número de orden cargado a mano en el
+    // ERP. "Otros / Varios" va siempre al final. Empates: sortOrder, nombre.
+    const rank = await this.categorySalesRank();
+    const isMisc = (name: string) => /otros|varios/i.test(name);
+    categories.sort((a, b) =>
+      (Number(isMisc(a.name)) - Number(isMisc(b.name)))
+      || ((rank.get(b.id) ?? 0) - (rank.get(a.id) ?? 0))
+      || (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name, 'es'));
+
     const byParent = new Map<string, typeof categories>();
     for (const c of categories) {
       const key = c.parentId ?? '';
@@ -232,7 +244,11 @@ export class StoreService {
       return { ...rest, _count: { products: totalCount }, children, childIds: children.map(c => c.id) };
     });
 
-    const visible = topLevel.filter(c => c._count.products > 0);
+    // La categoría padre suma los tickets de sus hijas para ordenarse.
+    const parentScore = (cat: { id: string; childIds: string[] }) =>
+      (rank.get(cat.id) ?? 0) + cat.childIds.reduce((s, id) => s + (rank.get(id) ?? 0), 0);
+    const visible = topLevel.filter(c => c._count.products > 0)
+      .sort((a, b) => (Number(isMisc(a.name)) - Number(isMisc(b.name))) || (parentScore(b) - parentScore(a)));
 
     // La categoría casi nunca tiene su propia foto cargada — se usa la de un
     // producto representativo (con imagen) dentro de ella para que la grilla
@@ -251,6 +267,79 @@ export class StoreService {
     }));
 
     return withImages;
+  }
+
+  // Tickets (ventas completadas) de los últimos 30 días que llevan al menos
+  // un producto de cada categoría. Se cuenta el ticket, no la cantidad, para
+  // que lo vendido a granel (kilos) no infle su categoría.
+  private async categorySalesRank(): Promise<Map<string, number>> {
+    try {
+      const rows = await prisma.$queryRaw<Array<{ category_id: string; tickets: bigint }>>`
+        SELECT p.category_id, COUNT(DISTINCT s.id) AS tickets
+        FROM sale_items si
+        JOIN sales s ON s.id = si.sale_id
+        JOIN products p ON p.id = si.product_id
+        WHERE s.status = 'COMPLETED' AND s.created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY p.category_id`;
+      return new Map(rows.map(r => [r.category_id, Number(r.tickets)]));
+    } catch {
+      return new Map(); // sin ranking, queda el orden manual del ERP
+    }
+  }
+
+  // "¿Se te olvidó algo?": lo que más se compra en el MISMO ticket que los
+  // productos del carrito (caja + web, 90 días). Si no alcanza, completa con
+  // lo más vendido de las mismas categorías. Nunca repite lo del carrito.
+  async getCartSuggestions(cartIds: string[], limit = 6) {
+    const ids = [...new Set(cartIds)].slice(0, 30);
+    if (ids.length === 0) return [];
+    const baseWhere = { deletedAt: null, status: 'ACTIVE', currentStock: { gt: 0 }, isMiscItem: false } as const;
+    const productSelect = {
+      id: true, name: true, barcode: true, salePrice: true,
+      currentStock: true, imageUrl: true, description: true, isBulk: true, bulkUnit: true,
+      categoryId: true, packSize: true, packPrice: true, packLabel: true,
+      category: { select: { id: true, name: true, parentId: true } },
+    } as const;
+
+    const together = await prisma.$queryRaw<Array<{ product_id: string; n: bigint }>>`
+      SELECT si2.product_id, COUNT(DISTINCT si2.sale_id) AS n
+      FROM sale_items si1
+      JOIN sales s ON s.id = si1.sale_id
+      JOIN sale_items si2 ON si2.sale_id = si1.sale_id
+      WHERE si1.product_id = ANY(${ids}::text[])
+        AND NOT (si2.product_id = ANY(${ids}::text[]))
+        AND s.status = 'COMPLETED' AND s.created_at >= NOW() - INTERVAL '90 days'
+      GROUP BY si2.product_id
+      ORDER BY n DESC
+      LIMIT 40`;
+    const togetherIds = together.map(r => r.product_id);
+    const found = togetherIds.length > 0
+      ? await prisma.product.findMany({ where: { id: { in: togetherIds }, ...baseWhere }, select: productSelect })
+      : [];
+    let result = togetherIds
+      .map(id => found.find(p => p.id === id))
+      .filter((p): p is NonNullable<typeof p> => !!p)
+      .slice(0, limit);
+
+    if (result.length < limit) {
+      const cart = await prisma.product.findMany({ where: { id: { in: ids } }, select: { categoryId: true } });
+      const categoryIds = [...new Set(cart.map(c => c.categoryId))];
+      const exclude = [...ids, ...result.map(p => p.id)];
+      const since = new Date(); since.setDate(since.getDate() - 30);
+      const top = await prisma.saleItem.groupBy({
+        by: ['productId'],
+        where: { sale: { status: 'COMPLETED', createdAt: { gte: since } }, product: { categoryId: { in: categoryIds } }, productId: { notIn: exclude } },
+        _count: { saleId: true },
+        orderBy: { _count: { saleId: 'desc' } },
+        take: 30,
+      });
+      const fill = await prisma.product.findMany({ where: { id: { in: top.map(t => t.productId) }, ...baseWhere }, select: productSelect });
+      const ordered = top.map(t => fill.find(p => p.id === t.productId)).filter((p): p is NonNullable<typeof p> => !!p);
+      result = [...result, ...ordered].slice(0, limit);
+    }
+
+    const groups = await loadOptionGroups();
+    return result.map(p => toStoreProduct(p, groups));
   }
 
   async getActiveOffers() {
