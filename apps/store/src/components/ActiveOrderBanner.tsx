@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { storeApi, type TrackingStage } from '../api'
+import { useStageSound } from '../lib/sounds'
 
 // Último pedido hecho desde este celular — lo guarda el checkout. Sirve para
 // mostrar "tu pedido va en camino" en el inicio sin pedir cuenta.
@@ -46,6 +47,7 @@ export function ActiveOrderBanner({ className = '' }: { className?: string }) {
   })
   const order = data?.data.data
   const t = order?.tracking
+  useStageSound(order?.orderNumber, t?.stage)
   if (!order || !t) return null
   // Entregado o cancelado: el aviso ya no tiene sentido.
   if (t.stage === 'ENTREGADO' || t.stage === 'CANCELADO') { forgetActiveOrder(); return null }

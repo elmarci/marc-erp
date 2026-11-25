@@ -6,6 +6,9 @@ import { GoogleOAuthProvider } from '@react-oauth/google'
 import { Toaster } from 'sonner'
 import App from './App'
 import './index.css'
+import { unlockSoundsOnFirstTouch } from './lib/sounds'
+
+unlockSoundsOnFirstTouch()
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 1000 * 60 * 5, retry: 1 } },

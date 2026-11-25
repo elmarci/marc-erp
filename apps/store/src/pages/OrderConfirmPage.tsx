@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, CheckCircle2, Package, PackageCheck, Bike, Home, XCircle, ChevronRight, ChevronDown, MessageCircle, Star } from 'lucide-react'
+import { Volume2, VolumeX, Clock, CheckCircle2, Package, PackageCheck, Bike, Home, XCircle, ChevronRight, ChevronDown, MessageCircle, Star } from 'lucide-react'
 import { Ico, Ilu } from '../components/Ico'
 import { storeApi, type OrderTracking, type StoreOrder, type TrackingStage } from '../api'
 import { io } from 'socket.io-client'
 import { whatsappLink } from '../lib/storeInfo'
 import { thumb } from '../lib/thumb'
+import { useStageSound, useSoundsEnabled } from '../lib/sounds'
 
 // El mapa (Leaflet) pesa ~45 KB: solo se descarga cuando el pedido ya va en
 // camino, nunca en el resto de la tienda.
@@ -114,6 +115,8 @@ export function OrderConfirmPage() {
   }, [orderNumber, queryClient])
 
   const order = data?.data.data
+  useStageSound(order?.orderNumber, order?.tracking?.stage)
+  const [soundsOn, setSoundsOn] = useSoundsEnabled()
 
   if (isLoading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
@@ -285,6 +288,16 @@ export function OrderConfirmPage() {
               {nextStep && t.stage !== 'ENTREGADO' && <span className="text-paper-ink-soft truncate">Sigue: {nextStep.label.toLowerCase()}</span>}
             </p>
           </div>
+        )}
+        {!isCancelled && t.stage !== 'ENTREGADO' && (
+          <button onClick={() => setSoundsOn(!soundsOn)} role="switch" aria-checked={soundsOn}
+            className="mt-2 -mb-1 h-11 w-full flex items-center gap-2 text-[13px] font-semibold text-paper-ink-soft">
+            {soundsOn ? <Volume2 className="h-4 w-4 text-brand-blue-600" aria-hidden="true" /> : <VolumeX className="h-4 w-4" aria-hidden="true" />}
+            <span className="flex-1 text-left">Sonido cuando avanza tu pedido</span>
+            <span className={`relative h-6 w-10 rounded-full transition-colors ${soundsOn ? 'bg-brand-blue-600' : 'bg-paper-line'}`}>
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${soundsOn ? 'left-[18px]' : 'left-0.5'}`} />
+            </span>
+          </button>
         )}
       </section>
 
