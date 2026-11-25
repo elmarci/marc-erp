@@ -1,4 +1,4 @@
-import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck } from 'lucide-react'
+import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck, Star, ChevronRight } from 'lucide-react'
 import { useBackClose, overlayNav } from '../lib/useBackClose'
 import { useQuery } from '@tanstack/react-query'
 import { useCartStore, cartTotal, type CartItem } from '../cartStore'
@@ -37,6 +37,21 @@ export function CartDrawer() {
     placeholderData: prev => prev,
   })
   const cartProductIds = new Set(cartIds)
+
+  // Puntos que suma este carrito (mismo cálculo que el servidor: puntos por
+  // sol, sin decimales). Se muestra para animar a completar el pedido; al
+  // invitado se le muestra lo que ganaría creando su cuenta. 2026-11-25.
+  const { data: displaySettings } = useQuery({
+    queryKey: ['store-display-settings'],
+    queryFn: () => storeApi.getDisplaySettings(),
+    enabled: isOpen,
+  })
+  const pointsPerSol = displaySettings?.data.data.loyaltyPointsPerSol ?? 1
+  const points = Math.floor(total * pointsPerSol)
+  // Siguiente "meta" redonda (múltiplo de 10 puntos) si está cerca.
+  const nextGoal = (Math.floor(points / 10) + 1) * 10
+  const toGoal = Math.ceil((nextGoal / pointsPerSol - total) * 10) / 10
+  const showGoal = pointsPerSol > 0 && toGoal > 0 && toGoal <= 5
   const upsellProducts = (suggestData?.data.data ?? []).filter(p => !cartProductIds.has(p.id) && p.currentStock > 0).slice(0, 6)
 
   // Agrupa las líneas de un mismo paquete (bundle/combo) en una sola tarjeta
@@ -195,6 +210,17 @@ export function CartDrawer() {
 
         {items.length > 0 && (
           <div className="bg-white border-t border-paper-line px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shrink-0">
+            {points > 0 && (
+              <button onClick={customer ? undefined : () => { closeCart(); navigate('/ingresar', overlayNav()) }}
+                className={`mb-2.5 w-full flex items-center gap-2 rounded-xl bg-brand-blue-50 px-3 py-2 text-left text-[13px] leading-snug text-paper-ink ${customer ? 'cursor-default' : ''}`}>
+                <Star className="h-[18px] w-[18px] text-brand-blue-600 shrink-0" aria-hidden="true" />
+                <span className="flex-1">
+                  {customer ? <>Con este pedido sumas <b className="tabular-nums">{points} puntos</b></> : <>Crea tu cuenta y suma <b className="tabular-nums">{points} puntos</b> con este pedido</>}
+                  {showGoal && <span className="text-paper-ink-soft"> · Agrega {money(toGoal)} y llegas a {nextGoal}</span>}
+                </span>
+                {!customer && <ChevronRight className="h-4 w-4 text-brand-blue-600 shrink-0" aria-hidden="true" />}
+              </button>
+            )}
             <div className="flex items-center gap-2.5">
               <div className="shrink-0 pr-1">
                 <p className="text-[12px] font-semibold text-paper-ink-soft leading-none">Total</p>
