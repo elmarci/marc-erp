@@ -62,7 +62,7 @@ export function ProductPage() {
   if (!baseProduct) {
     return (
       <main className="max-w-md mx-auto px-4 py-16 text-center">
-        <Ilu name="ilu-sin-resultados" className="mx-auto h-36 w-48 mb-3" />
+        <Ilu name="vacio-busqueda" className="mx-auto h-36 w-48 mb-3" />
         <p className="text-lg font-bold text-paper-ink">Ya no tenemos este producto</p>
         <p className="text-sm text-paper-ink-soft mt-1 mb-5">Puede que se haya retirado del catálogo. Busca otro parecido.</p>
         <Link to="/catalogo" className="h-12 rounded-xl bg-brand-blue-600 text-white font-bold flex items-center justify-center">

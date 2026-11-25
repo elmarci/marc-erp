@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { storeApi, type TrackingStage } from '../api'
+import { useStageSound } from '../lib/sounds'
 
 // Último pedido hecho desde este celular — lo guarda el checkout. Sirve para
 // mostrar "tu pedido va en camino" en el inicio sin pedir cuenta.
@@ -28,11 +29,11 @@ function forgetActiveOrder() {
 }
 
 const LABEL: Partial<Record<TrackingStage, { text: string; img: string }>> = {
-  RECIBIDO: { text: 'Recibido, por confirmar', img: '/icons/seg-recibido.svg' },
-  CONFIRMADO: { text: 'Confirmado', img: '/icons/seg-confirmado.svg' },
-  PREPARANDO: { text: 'Lo estamos preparando', img: '/icons/seg-preparando.svg' },
-  LISTO: { text: 'Listo para salir', img: '/icons/seg-listo.svg' },
-  EN_CAMINO: { text: 'En camino', img: '/icons/seg-moto.svg' },
+  RECIBIDO: { text: 'Recibido, por confirmar', img: '/icons/real/seg-recibido.webp' },
+  CONFIRMADO: { text: 'Confirmado', img: '/icons/real/seg-confirmado.webp' },
+  PREPARANDO: { text: 'Lo estamos preparando', img: '/icons/real/seg-preparando.webp' },
+  LISTO: { text: 'Listo para salir', img: '/icons/real/seg-listo.webp' },
+  EN_CAMINO: { text: 'En camino', img: '/icons/real/seg-en-camino.webp' },
 }
 
 export function ActiveOrderBanner({ className = '' }: { className?: string }) {
@@ -46,6 +47,7 @@ export function ActiveOrderBanner({ className = '' }: { className?: string }) {
   })
   const order = data?.data.data
   const t = order?.tracking
+  useStageSound(order?.orderNumber, t?.stage)
   if (!order || !t) return null
   // Entregado o cancelado: el aviso ya no tiene sentido.
   if (t.stage === 'ENTREGADO' || t.stage === 'CANCELADO') { forgetActiveOrder(); return null }

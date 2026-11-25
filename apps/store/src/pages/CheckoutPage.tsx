@@ -9,6 +9,7 @@ import { useAuthStore } from '../authStore'
 import { storeApi } from '../api'
 import { toast } from 'sonner'
 import { DELIVERY, FEES, cardFee, deliveryDays, deliveryFee, deliveryStatus, money } from '../lib/storeInfo'
+import { playSound } from '../lib/sounds'
 import { orderLink, rememberActiveOrder } from '../components/ActiveOrderBanner'
 
 // Quien compra sin cuenta no vuelve a escribir su nombre y WhatsApp en cada
@@ -178,6 +179,7 @@ export function CheckoutPage() {
       try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ name: form.customerName, phone: form.customerPhone })) } catch { /* sin almacenamiento */ }
       const { orderNumber, accessKey } = res.data.data
       rememberActiveOrder(orderNumber, accessKey)
+      playSound('confirm')
       clearCart()
       navigate(orderLink(orderNumber, accessKey), { replace: true })
     },
@@ -189,7 +191,7 @@ export function CheckoutPage() {
   if (items.length === 0) {
     return (
       <main className="max-w-md mx-auto px-4 py-16 text-center">
-        <Ilu name="ilu-carrito-vacio" className="mx-auto h-36 w-48 mb-3" />
+        <Ilu name="vacio-carrito" className="mx-auto h-36 w-48 mb-3" />
         <p className="text-lg font-bold text-paper-ink">Aún no tienes productos</p>
         <p className="text-sm text-paper-ink-soft mt-1 mb-5">Agrega lo que necesitas y vuelve para hacer tu pedido.</p>
         <Link to="/" className="h-12 rounded-xl bg-brand-blue-600 text-white font-bold flex items-center justify-center">Ver productos</Link>
@@ -250,8 +252,8 @@ export function CheckoutPage() {
   const payments = [
     { val: 'YAPE', icon: '/yape.png', title: 'Yape ahora', desc: 'Escaneas el QR y nos mandas la captura' },
     { val: 'YAPE_CONTRAENTREGA', icon: '/yape.png', title: isPickup ? 'Yape al recoger' : 'Yape al recibir', desc: 'Pagas cuando tengas tu pedido' },
-    { val: 'CASH', icon: '/icons/chk-efectivo.svg', title: isPickup ? 'Efectivo en tienda' : 'Efectivo al recibir', desc: 'Pagas cuando tengas tu pedido' },
-    { val: 'CARD_CONTRAENTREGA', icon: '/icons/chk-tarjeta.svg', title: isPickup ? 'Tarjeta en tienda' : 'Tarjeta al recibir', desc: `${isPickup ? 'Débito o crédito, en caja' : 'Débito o crédito. El repartidor lleva el POS'}. Comisión de ${FEES.cardPercent} %` },
+    { val: 'CASH', icon: '/icons/real/ico-efectivo.webp', title: isPickup ? 'Efectivo en tienda' : 'Efectivo al recibir', desc: 'Pagas cuando tengas tu pedido' },
+    { val: 'CARD_CONTRAENTREGA', icon: '/icons/real/ico-tarjeta.webp', title: isPickup ? 'Tarjeta en tienda' : 'Tarjeta al recibir', desc: `${isPickup ? 'Débito o crédito, en caja' : 'Débito o crédito. El repartidor lleva el POS'}. Comisión de ${FEES.cardPercent} %` },
   ] as const
 
   return (
@@ -275,7 +277,7 @@ export function CheckoutPage() {
                 <button key={o.val} type="button" role="radio" aria-checked={active}
                   onClick={() => setForm(v => ({ ...v, deliveryType: o.val }))}
                   className={`rounded-xl border-2 p-3 flex flex-col items-center gap-1 text-center ${active ? 'border-brand-blue-600 bg-brand-blue-50' : 'border-paper-line bg-white'}`}>
-                  <Ico name={o.icon} className="h-9 w-9" />
+                  <Ico name={o.icon} real className="h-10 w-10" />
                   <span className="font-bold text-paper-ink text-[15px] leading-tight">{o.title}</span>
                   <span className="text-[13px] text-paper-ink-soft">{o.desc}</span>
                 </button>
@@ -298,7 +300,7 @@ export function CheckoutPage() {
                 <div className="space-y-2.5">
                   {savedAddresses.map(a => (
                     <button key={a.id} type="button" onClick={() => pickSavedAddress(a.id)} className={option(selectedAddressId === a.id)}>
-                      <Ico name="ico-direccion" className="h-6 w-6" />
+                      <Ico name="ico-direccion" real className="h-8 w-8" />
                       <span className="flex-1 min-w-0">
                         <span className="block font-bold text-paper-ink">{a.label}</span>
                         <span className="block text-sm text-paper-ink-soft">{a.address}, {a.district}</span>
@@ -539,12 +541,12 @@ export function CheckoutPage() {
           {pointsToEarn > 0 && (
             isLoggedIn ? (
               <p className="mt-3 flex items-center gap-2.5 rounded-xl bg-brand-blue-50 px-3.5 py-3 text-[15px] text-paper-ink">
-                <Ico name="ico-puntos" className="h-6 w-6" />
+                <Ico name="ico-puntos" real className="h-7 w-7" />
                 <span>Con este pedido sumas <b className="tabular-nums">{pointsToEarn} puntos</b></span>
               </p>
             ) : (
               <Link to="/ingresar" className="mt-3 flex items-center gap-2.5 rounded-xl bg-brand-blue-50 px-3.5 py-3 text-[15px] text-paper-ink">
-                <Ico name="ico-puntos" className="h-6 w-6" />
+                <Ico name="ico-puntos" real className="h-7 w-7" />
                 <span className="flex-1">Crea tu cuenta y suma <b className="tabular-nums">{pointsToEarn} puntos</b> con este pedido</span>
                 <ChevronRight className="h-5 w-5 text-brand-blue-600 shrink-0" aria-hidden="true" />
               </Link>

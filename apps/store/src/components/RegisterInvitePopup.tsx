@@ -34,13 +34,14 @@ function readNum(key: string) {
 export function RegisterInvitePopup() {
   const isLoggedIn = useAuthStore(s => !!s.isLoggedIn)
   const itemCount = useCartStore(s => s.items.length)
+  const cartOpen = useCartStore(s => s.isOpen)
   const location = useLocation()
   const navigate = useNavigate()
   const [ready, setReady] = useState(false) // pasaron los 40 s
   const [open, setOpen] = useState(false)
 
   const allowed = () => {
-    if (isLoggedIn) return false
+    if (isLoggedIn || cartOpen) return false
     if (Date.now() - readNum(DISMISS_KEY) < COOLDOWN_MS) return false
     const seen = welcomeSeenAt()
     if (!seen || Date.now() - seen < AFTER_GUIDE_MS) return false // primero la bienvenida
@@ -56,7 +57,7 @@ export function RegisterInvitePopup() {
     if (open) return
     if ((ready || itemCount > 0) && allowed()) setOpen(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, itemCount, location.pathname, isLoggedIn])
+  }, [ready, itemCount, location.pathname, isLoggedIn, cartOpen])
 
   // Si cerró la bienvenida hace poco, vuelve a revisar cuando se cumplan
   // los 2 minutos (sin esto esperaría a otra navegación).
@@ -79,12 +80,12 @@ export function RegisterInvitePopup() {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-[60] flex items-center justify-center bg-paper-ink/50 p-4"
+        <motion.div className="fixed inset-0 z-[60] flex items-center justify-center bg-paper-ink/65 backdrop-blur-md p-4"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={dismiss}
           role="dialog" aria-modal="true" aria-labelledby="wo-title">
-          <motion.div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
-            initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 340, damping: 30 }} onClick={e => e.stopPropagation()}>
+          <motion.div className="w-full max-w-sm bg-white rounded-3xl shadow-[0_24px_60px_rgba(7,31,74,.45)] ring-1 ring-white/60 overflow-hidden"
+            initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }} onClick={e => e.stopPropagation()}>
             <div className="relative">
               <Ilu name="ilu-registro" eager className="w-full h-44 !rounded-none" />
               <button onClick={dismiss} aria-label="Cerrar" className="absolute top-3 right-3 h-9 w-9 rounded-full bg-white/90 shadow-card flex items-center justify-center text-paper-ink">

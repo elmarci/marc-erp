@@ -50,7 +50,7 @@ export function HomeForYou({ className = '' }: { className?: string }) {
     <section className={className} aria-label="Para ti">
       <div className="bg-white rounded-2xl shadow-card divide-y divide-paper-line">
         <Link to="/mis-pedidos#canje" className="px-4 py-3 flex items-center gap-3">
-          <Ico name="ico-puntos" className="h-9 w-9" />
+          <Ico name="ico-puntos" real className="h-10 w-10" />
           <span className="flex-1 min-w-0">
             <span className="block text-[15px] font-bold text-paper-ink leading-snug">Hola, {firstName}</span>
             <span className="block text-[13px] text-paper-ink-soft leading-snug">

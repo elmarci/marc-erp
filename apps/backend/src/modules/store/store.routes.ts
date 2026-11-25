@@ -46,6 +46,16 @@ router.get('/products/featured', async (req: Request, res: Response, next: NextF
   } catch (err) { next(err); }
 });
 
+// "¿Se te olvidó algo?" del carrito: ?ids=a,b,c (productos en el carrito).
+router.get('/products/suggest', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { ids } = z.object({ ids: z.string().max(2000).default('') }).parse(req.query);
+    const list = ids.split(',').map(s => s.trim()).filter(Boolean).sort();
+    const data = await cachedCatalog(`suggest:${list.join(',')}`, 600, () => storeService.getCartSuggestions(list));
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 router.get('/products/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await cachedCatalog(`product:${req.params.id}`, 300, () => storeService.getProductById(req.params.id));

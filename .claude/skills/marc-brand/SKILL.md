@@ -46,7 +46,7 @@ pulgar. **Mobile-first, 375 px**: el 95 % del uso es en celular.
 
 | Token | Valor | Uso |
 |---|---|---|
-| `brand-blue-600` | `#1450B4` (pulsado `700` `#0C3A8A`) | **El color de la marca en pantalla**: cabecera, barra de carrito, botón principal ("Hacer pedido"), enlaces, pestaña activa, íconos. |
+| `brand-blue-600` | `#1450B4` (pulsado `700` `#0C3A8A`) | **El color de lo que se toca**: barra de carrito, botón principal ("Hacer pedido"), enlaces, pestaña activa, íconos. La cabecera es **blanca** desde 2026-11-25 (el bloque azul se sentía pesado). |
 | `brand-green-600` | `#2B7A12` (pulsado `700`) | **Solo el botón "Agregar"** y su contador −/+. No usarlo como relleno decorativo ni en otros botones. |
 | `brand-sun-400` | `#FFD84D` con texto `brand-sun-900` `#3D2F00` | Ofertas, "Últimas N", insignias. |
 | WhatsApp | `#25D366` con texto `#0B3B1E` | Botones de WhatsApp. **Nunca texto blanco** sobre este verde (2:1). |
@@ -57,7 +57,9 @@ pulgar. **Mobile-first, 375 px**: el 95 % del uso es en celular.
 | `paper-ink-soft` | `#4A5568` | Texto secundario (7:1). `ink-faint`/`ink-ghost` existen por compatibilidad y también pasan AA; en código nuevo usar `ink-soft`. |
 
 Reglas: contraste **AA mínimo** en todo texto (4.5:1), sin degradados, sin
-desenfoques de fondo. Magenta y achiote quedan solo para pantallas aún no
+desenfoques de fondo (excepción, 2026-11-25: las ventanas emergentes como el
+popup de registro llevan fondo oscuro con desenfoque para que el anuncio sea
+lo único nítido). Magenta y achiote quedan solo para pantallas aún no
 rediseñadas; no usarlos en código nuevo.
 
 ### Tipografía
@@ -83,9 +85,11 @@ rediseñadas; no usarlos en código nuevo.
 
 ### Componentes base (apps/store/src/components)
 
-- `Header`: bloque azul; en celular la fila del buscador queda fija (64 px).
+- `Header`: blanca con logo y nombre en azul, buscador gris claro; en celular la fila del buscador queda fija (64 px).
+- Íconos: dos niveles. (1) Realistas sobrios del dueño (`public/icons/real/*.webp`, `public/icons/cat/*.webp`, fondo transparente) para categorías, avisos, opciones de entrega/pago, puntos, seguimiento (`seg-*`) y pantallas vacías (`vacio-*` vía `Ilu`): `<Ico name=… real />`, a 28 px o más. (2) De línea, un solo color (lucide vía `Ico`) para la barra inferior, botones pequeños y campos. Nada de ilustraciones caricatura ni íconos sobre baldosa azul. Si una categoría no tiene ícono, foto real de un producto.
+- Inicio (orden pedido por el dueño, 2026-11-25): pedido en curso → ofertas → categorías (ordenadas por ventas de 30 días, "Otros" al final) → lo más vendido → sugerencias → reparto / Te lo traemos / WhatsApp → cómo te llega.
 - `MobileTabBar`: Inicio, Categorías, Carrito, Cuenta. 64 px.
-- `CartBar`: barra fija "Ver carrito · N · total" + botón de WhatsApp.
+- `CartBar`: píldora de 48 px "Ver carrito · total" con el número en el ícono; se esconde al bajar y vuelve al subir o detenerse. Nada más flota en celular (ni WhatsApp ni lista por voz).
 - `ProductCard`: foto, nombre (2 líneas), precio, "Agregar" / contador.
   Imágenes con `loading="lazy"` y ancho/alto declarados.
 - Estados diseñados siempre: esqueleto al cargar, vacío con siguiente paso,

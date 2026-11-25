@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { ShoppingCart, Package, User, LogOut, ChevronDown, Menu } from 'lucide-react'
+import { ShoppingCart, Package, User, LogOut, ChevronDown, Menu, Search, Tag } from 'lucide-react'
 import { useCartStore, cartCount } from '../cartStore'
 import { useAuthStore } from '../authStore'
 import { useState } from 'react'
@@ -9,9 +9,9 @@ import { CategoryMegaMenu } from './CategoryMegaMenu'
 import { VoiceSearchButton } from './VoiceSearchButton'
 import { SideMenu } from './SideMenu'
 import { BRAND_NAME, DELIVERY } from '../lib/storeInfo'
-import { Ico } from './Ico'
 
-// Cabecera azul de marca. En celular son dos piezas: la fila del logo, que
+// Cabecera blanca (2026-11-25: el bloque azul se sentía pesado; el azul
+// queda para lo que se toca: botones, carrito, pestaña activa). En celular son dos piezas: la fila del logo, que
 // se va con el scroll, y la fila del menú + buscador, que queda fija arriba (mide
 // 64 px, lo mismo que la cabecera de escritorio, para que las barras fijas
 // de cada página — p. ej. "estás acá" del catálogo — sigan usando top-16).
@@ -37,23 +37,23 @@ export function Header() {
 
   const searchField = (placeholder: string) => (
     <div className="relative">
-      <Ico name="ico-buscar" className="absolute left-3 top-1/2 -translate-y-1/2 h-6 w-6" />
+      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-paper-ink-soft" aria-hidden="true" />
       <input type="search" enterKeyHint="search" value={search} onChange={e => setSearch(e.target.value)}
         placeholder={placeholder} aria-label="Buscar productos"
-        className="w-full h-12 bg-white rounded-2xl pl-11 pr-12 text-base text-paper-ink placeholder:text-paper-ink-ghost focus:outline-none focus:ring-2 focus:ring-brand-sun-400" />
+        className="w-full h-12 bg-paper-surface rounded-2xl pl-11 pr-12 text-base text-paper-ink placeholder:text-paper-ink-soft focus:outline-none focus:ring-2 focus:ring-brand-blue-300 focus:bg-white" />
       <VoiceSearchButton onResult={goSearch} className="absolute right-0.5 top-1/2 -translate-y-1/2" />
     </div>
   )
 
   return (
     <>
-      <header className="md:sticky md:top-0 z-50 bg-brand-blue-600 text-white">
+      <header className="md:sticky md:top-0 z-50 bg-white text-paper-ink md:border-b md:border-paper-line">
         <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-3">
           <Link to="/" className="flex items-center gap-2.5 shrink-0 min-w-0">
-            <img src="/logo-icon.png" alt="" width={40} height={40} className="h-10 w-10 rounded-full bg-white object-cover" />
+            <img src="/logo-icon.png" alt="" width={40} height={40} className="h-10 w-10 rounded-full bg-white object-cover ring-1 ring-paper-line" />
             <span className="leading-tight min-w-0">
-              <span className="block text-lg font-extrabold truncate">{BRAND_NAME}</span>
-              <span className="block text-xs font-semibold text-brand-blue-100 truncate">Delivery a tu puerta</span>
+              <span className="block text-lg font-extrabold text-brand-blue-700 truncate">{BRAND_NAME}</span>
+              <span className="block text-xs font-semibold text-paper-ink-soft truncate">Delivery a tu puerta</span>
             </span>
           </Link>
 
@@ -66,15 +66,15 @@ export function Header() {
           <div className="flex-1 md:hidden" />
 
           <div className="flex items-center gap-1 shrink-0">
-            <Link to="/ofertas" className="relative hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-full px-3 h-11 transition-colors">
-              <Ico name="ico-ofertas" className="h-5 w-5" />Ofertas
+            <Link to="/ofertas" className="relative hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-paper-surface rounded-full px-3 h-11 transition-colors">
+              <Tag className="h-5 w-5 text-brand-blue-600" aria-hidden="true" />Ofertas
               {offersCount > 0 && <span className="h-5 min-w-5 px-1 bg-brand-sun-400 text-brand-sun-900 text-xs font-extrabold rounded-full flex items-center justify-center">{offersCount}</span>}
             </Link>
 
             {customer ? (
               <div className="relative hidden md:block">
                 <button onClick={() => setShowMenu(!showMenu)}
-                  className="flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-full px-3 h-11 transition-colors">
+                  className="flex items-center gap-1.5 text-sm font-semibold hover:bg-paper-surface rounded-full px-3 h-11 transition-colors">
                   <span className="h-7 w-7 bg-white text-brand-blue-600 rounded-full flex items-center justify-center text-xs font-extrabold">
                     {customer.name[0].toUpperCase()}
                   </span>
@@ -99,7 +99,7 @@ export function Header() {
                 )}
               </div>
             ) : (
-              <Link to="/ingresar" className="hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-brand-blue-700 rounded-full px-3 h-11 transition-colors">
+              <Link to="/ingresar" className="hidden md:flex items-center gap-1.5 text-sm font-semibold hover:bg-paper-surface rounded-full px-3 h-11 transition-colors">
                 <User className="h-4 w-4" />Ingresar
               </Link>
             )}
@@ -107,14 +107,14 @@ export function Header() {
             {/* En celular el carrito vive en la barra fija de abajo; acá va
                 el acceso a la cuenta. */}
             <Link to={customer ? '/mis-pedidos' : '/ingresar'} aria-label={customer ? 'Mi cuenta' : 'Ingresar'}
-              className="md:hidden flex items-center justify-center h-11 w-11 rounded-full bg-brand-blue-700">
+              className="md:hidden flex items-center justify-center h-11 w-11 rounded-full bg-paper-surface text-brand-blue-700">
               {customer
                 ? <span className="text-sm font-extrabold">{customer.name[0].toUpperCase()}</span>
                 : <User className="h-5 w-5" />}
             </Link>
 
             <button data-cart-target onClick={openCart}
-              className="hidden md:flex relative items-center gap-2 bg-white text-brand-blue-600 font-bold rounded-full px-4 h-11 text-sm">
+              className="hidden md:flex relative items-center gap-2 bg-brand-blue-600 text-white font-bold rounded-full px-4 h-11 text-sm">
               <ShoppingCart className="h-4 w-4" />Carrito
               {count > 0 && (
                 <span className="h-5 min-w-5 px-1 bg-brand-green-600 text-white text-xs font-extrabold rounded-full flex items-center justify-center">{count}</span>
@@ -126,9 +126,9 @@ export function Header() {
 
       {/* El menú va en la fila fija, junto al buscador, para tenerlo a mano
           en cualquier punto de la página y no solo arriba del todo. */}
-      <div className="md:hidden sticky top-0 z-40 h-16 bg-brand-blue-600 pl-2 pr-4 pt-1 pb-3 flex items-center gap-1 text-white">
+      <div className="md:hidden sticky top-0 z-40 h-16 bg-white border-b border-paper-line pl-2 pr-4 pt-1 pb-3 flex items-center gap-1 text-paper-ink">
         <button type="button" onClick={() => setShowSideMenu(true)} aria-label="Abrir menú"
-          className="flex items-center justify-center h-12 w-11 shrink-0 rounded-xl active:bg-brand-blue-700 transition-colors">
+          className="flex items-center justify-center h-12 w-11 shrink-0 rounded-xl active:bg-paper-surface transition-colors">
           <Menu className="h-6 w-6" />
         </button>
         <form onSubmit={handleSearch} className="flex-1 min-w-0">

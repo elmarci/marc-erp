@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useBackClose } from '../lib/useBackClose'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Mic, X, Check, ShoppingBag, Loader2, ListChecks } from 'lucide-react'
-import { Ico } from './Ico'
 import { useVoiceListDictation } from '../hooks/useVoiceListDictation'
 import { parseVoiceList } from '../lib/parseVoiceList'
 import { storeApi, type Product } from '../api'
@@ -19,7 +18,9 @@ interface ResultRow {
 // seguidos ("cebolla, tomate, zanahoria, arveja, tallarín...") — busca cada
 // uno en el catálogo real y agrega al carrito los que encuentra, mostrando
 // al final qué entró y qué no se encontró para que el cliente lo revise.
-export function VoiceShoppingListButton() {
+// Flotante solo en PC. En celular ya no flota (tapaba productos, 2026-11-25):
+// va como botón dentro del Inicio (`inline`).
+export function VoiceShoppingListButton({ inline = false, className = '' }: { inline?: boolean; className?: string } = {}) {
   const [open, setOpen] = useState(false)
   useBackClose(open, () => setOpen(false))
   const cartOpen = useCartStore(s => s.isOpen)
@@ -73,17 +74,18 @@ export function VoiceShoppingListButton() {
 
   return (
     <>
-      <AnimatePresence>
-        {!cartOpen && (
-          <motion.button
-            initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
-            onClick={handleOpen}
-            className="fixed right-[calc(1rem+52px+0.625rem)] bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] md:right-4 md:bottom-6 z-30 h-[52px] w-[52px] rounded-2xl bg-white text-brand-blue-600 shadow-lg shadow-black/15 flex items-center justify-center"
-            title="Arma tu pedido dictando la lista" aria-label="Dictar mi lista de compras">
-            <Ico name="aviso-voz" className="h-8 w-8" />
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {inline ? (
+        <button onClick={handleOpen} aria-label="Dictar mi lista de compras"
+          className={`h-11 px-4 rounded-full bg-white border border-paper-line text-sm font-bold text-paper-ink flex items-center gap-2 ${className}`}>
+          <Mic className="h-4 w-4 text-brand-blue-600" aria-hidden="true" />Dicta tu lista
+        </button>
+      ) : !cartOpen && (
+        <button onClick={handleOpen}
+          className="hidden md:flex fixed right-4 bottom-6 z-30 h-[52px] w-[52px] rounded-2xl bg-white text-brand-blue-600 shadow-lg shadow-black/15 items-center justify-center"
+          title="Arma tu pedido dictando la lista" aria-label="Dictar mi lista de compras">
+          <Mic className="h-6 w-6" aria-hidden="true" />
+        </button>
+      )}
 
       <AnimatePresence>
         {open && (

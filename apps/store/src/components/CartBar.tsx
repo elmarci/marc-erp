@@ -1,5 +1,7 @@
 import { useCartStore, cartCount, cartTotal } from '../cartStore'
-import { money, whatsappLink, BRAND_NAME } from '../lib/storeInfo'
+import { useEffect, useState } from 'react'
+import { ShoppingCart } from 'lucide-react'
+import { money } from '../lib/storeInfo'
 
 export function WhatsAppIcon({ className = '' }: { className?: string }) {
   return (
@@ -9,12 +11,30 @@ export function WhatsAppIcon({ className = '' }: { className?: string }) {
   )
 }
 
-// Barra fija sobre la navegación inferior (solo celular): el carrito con su
-// total siempre a la vista y WhatsApp al lado como segunda vía para pedir.
-// Con el carrito vacío queda solo el botón de WhatsApp.
-// Pantallas donde aparece el botón de lista por voz. En celular va en esta
-// misma fila, entre "Ver carrito" y WhatsApp, para no tapar la lista.
+// Barra del carrito (solo celular), sobre la navegación inferior. 2026-11-25:
+// más delgada, sin WhatsApp ni lista por voz al lado (tapaban productos) y
+// se esconde mientras la persona baja por la lista; vuelve al subir o al
+// detenerse. Con el carrito vacío no se muestra nada.
 export const VOICE_LIST_ROUTES = ['/', '/catalogo', '/categorias']
+
+function useHideOnScrollDown() {
+  const [hidden, setHidden] = useState(false)
+  useEffect(() => {
+    let last = window.scrollY
+    let idle: number | undefined
+    const onScroll = () => {
+      const y = window.scrollY
+      if (y > last + 6 && y > 120) setHidden(true)
+      else if (y < last - 6) setHidden(false)
+      last = y
+      window.clearTimeout(idle)
+      idle = window.setTimeout(() => setHidden(false), 700)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => { window.removeEventListener('scroll', onScroll); window.clearTimeout(idle) }
+  }, [])
+  return hidden
+}
 
 export function CartBar() {
   const items = useCartStore(s => s.items)
@@ -22,26 +42,20 @@ export function CartBar() {
   const count = cartCount(items)
   const total = cartTotal(items)
   const units = Math.round(count * 100) / 100
+  const hidden = useHideOnScrollDown()
 
-  // En la ficha y en ofertas, con el carrito vacío, el WhatsApp suelto
-  // taparía los botones de agregar; vuelve junto a "Ver carrito" apenas
-  // se agrega algo.
-  if (count === 0 && ['/producto', '/ofertas'].some(p => window.location.pathname.startsWith(p))) return null
+  if (count === 0) return null
   return (
-    <div className="md:hidden fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 px-4 pb-3 flex justify-end gap-2.5 pointer-events-none">
-      {count > 0 && (
-        <button data-cart-target onClick={openCart}
-          className="pointer-events-auto flex-1 h-[52px] rounded-2xl bg-brand-blue-600 active:bg-brand-blue-700 text-white shadow-float flex items-center justify-between px-4 text-base font-bold">
-          <span>Ver carrito · {units}</span>
-          <span className="tabular-nums">{money(total)}</span>
-        </button>
-      )}
-      {VOICE_LIST_ROUTES.includes(window.location.pathname) && <span className="w-[52px] shrink-0" aria-hidden="true" />}
-      <a href={whatsappLink(`Hola ${BRAND_NAME}, quiero hacer un pedido.`)} target="_blank" rel="noopener noreferrer"
-        aria-label="Pedir por WhatsApp"
-        className="pointer-events-auto h-[52px] w-[52px] shrink-0 rounded-2xl bg-[#25D366] text-[#0B3B1E] shadow-lg shadow-black/15 flex items-center justify-center">
-        <WhatsAppIcon className="h-7 w-7" />
-      </a>
+    <div className={`md:hidden fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 px-4 pb-2.5 pointer-events-none transition-transform duration-200 ${hidden ? 'translate-y-[calc(100%+4rem)]' : ''}`}>
+      <button data-cart-target onClick={openCart} aria-label={`Ver carrito, ${units} productos, ${money(total)}`}
+        className="pointer-events-auto w-full h-12 rounded-full bg-brand-blue-600 active:bg-brand-blue-700 text-white shadow-float flex items-center gap-3 pl-2 pr-5 text-[15px] font-bold">
+        <span className="relative h-9 w-9 rounded-full bg-white/15 flex items-center justify-center shrink-0">
+          <ShoppingCart className="h-[18px] w-[18px]" aria-hidden="true" />
+          <span className="absolute -top-1 -right-1 h-5 min-w-5 px-1 rounded-full bg-brand-green-600 text-white text-[11px] font-extrabold flex items-center justify-center tabular-nums">{units}</span>
+        </span>
+        <span className="flex-1 text-left">Ver carrito</span>
+        <span className="tabular-nums">{money(total)}</span>
+      </button>
     </div>
   )
 }

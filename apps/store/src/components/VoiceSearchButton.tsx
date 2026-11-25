@@ -1,6 +1,5 @@
 import { Mic } from 'lucide-react'
 import { useVoiceSearch } from '../hooks/useVoiceSearch'
-import { Ico } from './Ico'
 
 interface Props {
   onResult: (transcript: string) => void
@@ -21,10 +20,10 @@ export function VoiceSearchButton({ onResult, className = '' }: Props) {
       aria-label="Buscar por voz"
       className={`flex items-center justify-center h-11 w-11 rounded-full transition-colors ${
         isListening
-          ? 'bg-brand-magenta-500 text-white animate-pulse'
+          ? 'bg-brand-blue-600 text-white'
           : 'text-paper-ink-soft hover:text-brand-blue-600 hover:bg-brand-blue-50'
       } ${className}`}>
-      {isListening ? <Mic className="h-5 w-5" /> : <Ico name="ico-microfono" className="h-6 w-6" />}
+      <Mic className="h-5 w-5" />
     </button>
   )
 }

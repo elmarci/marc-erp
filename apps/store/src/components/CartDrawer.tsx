@@ -1,4 +1,4 @@
-import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck } from 'lucide-react'
+import { X, Plus, Minus, ShoppingBag, Trash2, PackageCheck, ChevronRight } from 'lucide-react'
 import { useBackClose, overlayNav } from '../lib/useBackClose'
 import { useQuery } from '@tanstack/react-query'
 import { useCartStore, cartTotal, type CartItem } from '../cartStore'
@@ -8,9 +8,9 @@ import { useNavigate } from 'react-router-dom'
 import { storeApi } from '../api'
 
 import { WhatsAppIcon } from './CartBar'
-import { BRAND_NAME, DELIVERY, money, whatsappLink } from '../lib/storeInfo'
+import { BRAND_NAME, money, whatsappLink } from '../lib/storeInfo'
 import { thumb } from '../lib/thumb'
-import { Ilu } from './Ico'
+import { Ico, Ilu } from './Ico'
 
 export function CartDrawer() {
   const items = useCartStore(s => s.items)
@@ -25,18 +25,34 @@ export function CartDrawer() {
   const total = cartTotal(items)
   const navigate = useNavigate()
 
-  // "¿Se te olvidó algo?" — v1 simple: productos destacados que todavía no
-  // están en el carrito. No es una recomendación inteligente por combinación
-  // de compra (eso necesita datos de qué se vende junto con qué, que hoy no
-  // se registra) — ver la propuesta de analítica para esa versión más fina.
-  const { data: featuredData } = useQuery({
-    queryKey: ['store-featured-upsell'],
-    queryFn: () => storeApi.getFeaturedProducts(8),
-    enabled: items.length > 0,
+  // "¿Se te olvidó algo?" (2026-11-25): lo que más se compra en el mismo
+  // ticket que los productos del carrito (caja + web, 90 días); si no hay
+  // datos, lo más vendido de esas categorías. Ya no es la misma lista fija.
+  const cartIds = [...new Set(items.map(i => i.product.id))].sort()
+  const { data: suggestData } = useQuery({
+    queryKey: ['store-cart-suggest', cartIds.join(',')],
+    queryFn: () => storeApi.getCartSuggestions(cartIds),
+    enabled: isOpen && cartIds.length > 0,
     staleTime: 300000,
+    placeholderData: prev => prev,
   })
-  const cartProductIds = new Set(items.map(i => i.product.id))
-  const upsellProducts = (featuredData?.data.data ?? []).filter(p => !cartProductIds.has(p.id)).slice(0, 3)
+  const cartProductIds = new Set(cartIds)
+
+  // Puntos que suma este carrito (mismo cálculo que el servidor: puntos por
+  // sol, sin decimales). Se muestra para animar a completar el pedido; al
+  // invitado se le muestra lo que ganaría creando su cuenta. 2026-11-25.
+  const { data: displaySettings } = useQuery({
+    queryKey: ['store-display-settings'],
+    queryFn: () => storeApi.getDisplaySettings(),
+    enabled: isOpen,
+  })
+  const pointsPerSol = displaySettings?.data.data.loyaltyPointsPerSol ?? 1
+  const points = Math.floor(total * pointsPerSol)
+  // Siguiente "meta" redonda (múltiplo de 10 puntos) si está cerca.
+  const nextGoal = (Math.floor(points / 10) + 1) * 10
+  const toGoal = Math.ceil((nextGoal / pointsPerSol - total) * 10) / 10
+  const showGoal = pointsPerSol > 0 && toGoal > 0 && toGoal <= 5
+  const upsellProducts = (suggestData?.data.data ?? []).filter(p => !cartProductIds.has(p.id) && p.currentStock > 0).slice(0, 6)
 
   // Agrupa las líneas de un mismo paquete (bundle/combo) en una sola tarjeta
   // — antes cada sabor/variante salía como una fila estirada aparte, lo que
@@ -106,7 +122,7 @@ export function CartDrawer() {
         <div className="flex-1 overflow-y-auto p-4">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-6">
-              <Ilu name="ilu-carrito-vacio" className="h-36 w-48 mb-3" />
+              <Ilu name="vacio-carrito" className="h-36 w-48 mb-3" />
               <p className="text-lg font-bold text-paper-ink">Aún no tienes productos</p>
               <p className="text-sm text-paper-ink-soft mt-1 mb-5">Busca lo que necesitas o mira las ofertas de la semana.</p>
               <button onClick={() => { closeCart(); navigate('/catalogo', overlayNav()) }}
@@ -119,59 +135,58 @@ export function CartDrawer() {
               {rows.map(row => row.el === 'bundle' && row.group ? (
                 <BundleRow key={row.key} group={row.group} onRemove={() => removeBundle(row.key)} />
               ) : row.item ? (
-                <div key={row.key} className="flex gap-3 p-3">
+                <div key={row.key} className="flex items-center gap-2.5 px-3 py-2.5">
                   {row.item.product.imageUrl ? (
-                    <img src={thumb(row.item.product.imageUrl, 160)} alt="" loading="lazy" decoding="async" width={64} height={64}
-                      className="h-16 w-16 rounded-xl object-cover shrink-0" />
+                    <img src={thumb(row.item.product.imageUrl, 160)} alt="" loading="lazy" decoding="async" width={48} height={48}
+                      className="h-12 w-12 rounded-lg object-cover shrink-0 bg-paper-surface" />
                   ) : (
-                    <div className="h-16 w-16 rounded-xl bg-paper-surface shrink-0 flex items-center justify-center">
-                      <ShoppingBag className="h-6 w-6 text-paper-ink-ghost" aria-hidden="true" />
+                    <div className="h-12 w-12 rounded-lg bg-paper-surface shrink-0 flex items-center justify-center">
+                      <ShoppingBag className="h-5 w-5 text-paper-ink-ghost" aria-hidden="true" />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-semibold text-[15px] text-paper-ink line-clamp-2 leading-tight">{row.item.product.name}</p>
-                      <span className="text-paper-ink font-extrabold text-base tabular-nums shrink-0">
-                        S/ {(Number(row.item.product.salePrice) * row.item.quantity).toFixed(2)}
-                      </span>
-                    </div>
+                    <p className="font-semibold text-[14px] text-paper-ink line-clamp-2 leading-tight">{row.item.product.name}</p>
                     {row.item.product.line?.optionsText && (
-                      <span className="mt-1 inline-block rounded-md bg-brand-blue-50 px-2 py-0.5 text-[13px] font-semibold text-brand-blue-700">
+                      <span className="mt-0.5 inline-block rounded-md bg-brand-blue-50 px-1.5 py-px text-[12px] font-semibold text-brand-blue-700">
                         {row.item.product.line.optionsText}
                       </span>
                     )}
+                    <p className="mt-0.5 text-[13px] leading-tight">
+                      <span className="font-extrabold text-paper-ink tabular-nums">S/ {(Number(row.item.product.salePrice) * row.item.quantity).toFixed(2)}</span>
+                      {row.item.quantity !== 1 && <span className="text-paper-ink-soft"> · S/ {Number(row.item.product.salePrice).toFixed(2)} {row.item.product.isBulk ? `/${row.item.product.bulkUnit ?? 'kg'}` : 'c/u'}</span>}
+                    </p>
                     <MissingOptions item={row.item} />
-                    <p className="text-paper-ink-soft text-sm mt-0.5">S/ {Number(row.item.product.salePrice).toFixed(2)} {row.item.product.isBulk ? `por ${row.item.product.bulkUnit ?? 'kg'}` : 'c/u'}</p>
-                    <div className="flex items-center justify-between mt-1.5">
-                      {row.item.product.isBulk ? (
-                        <span className="text-sm font-bold text-paper-ink">{row.item.quantity} {row.item.product.bulkUnit ?? 'kg'}</span>
-                      ) : (
-                        <div className="flex items-center bg-paper-surface rounded-xl h-11">
-                          <button onClick={() => updateQuantity(row.item!.product.id, row.item!.quantity - 1)} aria-label={`Quitar uno de ${row.item.product.name}`}
-                            className="h-11 w-11 flex items-center justify-center">
-                            <Minus className="h-4 w-4 text-paper-ink" />
-                          </button>
-                          <span className="w-7 text-center text-base font-extrabold text-paper-ink tabular-nums">{row.item.quantity}</span>
-                          <button onClick={() => updateQuantity(row.item!.product.id, row.item!.quantity + 1)} aria-label={`Agregar uno más de ${row.item.product.name}`}
-                            className="h-11 w-11 flex items-center justify-center">
-                            <Plus className="h-4 w-4 text-paper-ink" />
-                          </button>
-                        </div>
-                      )}
+                  </div>
+                  {row.item.product.isBulk ? (
+                    <div className="flex items-center shrink-0">
+                      <span className="text-sm font-bold text-paper-ink tabular-nums">{row.item.quantity} {row.item.product.bulkUnit ?? 'kg'}</span>
                       <button onClick={() => removeItem(row.item!.product.id)} aria-label={`Quitar ${row.item.product.name} del carrito`}
-                        className="h-11 w-11 flex items-center justify-center text-paper-ink-soft">
-                        <Trash2 className="h-5 w-5" />
+                        className="h-11 w-10 flex items-center justify-center text-paper-ink-soft">
+                        <Trash2 className="h-[18px] w-[18px]" />
                       </button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex items-center bg-paper-surface rounded-full h-11 shrink-0">
+                      <button onClick={() => row.item!.quantity <= 1 ? removeItem(row.item!.product.id) : updateQuantity(row.item!.product.id, row.item!.quantity - 1)}
+                        aria-label={row.item.quantity <= 1 ? `Quitar ${row.item.product.name} del carrito` : `Quitar uno de ${row.item.product.name}`}
+                        className="h-11 w-10 flex items-center justify-center">
+                        {row.item.quantity <= 1 ? <Trash2 className="h-4 w-4 text-paper-ink-soft" /> : <Minus className="h-4 w-4 text-paper-ink" />}
+                      </button>
+                      <span className="w-6 text-center text-[15px] font-extrabold text-paper-ink tabular-nums">{row.item.quantity}</span>
+                      <button onClick={() => updateQuantity(row.item!.product.id, row.item!.quantity + 1)} aria-label={`Agregar uno más de ${row.item.product.name}`}
+                        className="h-11 w-10 flex items-center justify-center">
+                        <Plus className="h-4 w-4 text-paper-ink" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : null)}
             </div>
           )}
 
           {upsellProducts.length > 0 && (
-            <div className="mt-5">
-              <p className="font-extrabold text-base text-paper-ink mb-2.5">¿Se te olvidó algo?</p>
+            <div className="mt-4">
+              <p className="font-extrabold text-[15px] text-paper-ink mb-2">¿Se te olvidó algo?</p>
               <div className="flex gap-2.5 overflow-x-auto no-scrollbar -mx-4 px-4">
                 {upsellProducts.map(p => (
                   <button key={p.id} onClick={() => addItem(p)} aria-label={`Agregar ${p.name}`}
@@ -194,21 +209,32 @@ export function CartDrawer() {
         </div>
 
         {items.length > 0 && (
-          <div className="bg-white border-t border-paper-line p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2.5 shrink-0">
-            <div className="flex justify-between items-baseline">
-              <span className="text-base font-bold text-paper-ink">Total de productos</span>
-              <span className="text-2xl font-extrabold text-paper-ink tabular-nums">{money(total)}</span>
+          <div className="bg-white border-t border-paper-line px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shrink-0">
+            {points > 0 && (
+              <button onClick={customer ? undefined : () => { closeCart(); navigate('/ingresar', overlayNav()) }}
+                className={`mb-2.5 w-full flex items-center gap-2 rounded-xl bg-brand-blue-50 px-3 py-2 text-left text-[13px] leading-snug text-paper-ink ${customer ? 'cursor-default' : ''}`}>
+                <Ico name="ico-puntos" real className="h-7 w-7" />
+                <span className="flex-1">
+                  {customer ? <>Con este pedido sumas <b className="tabular-nums">{points} puntos</b></> : <>Crea tu cuenta y suma <b className="tabular-nums">{points} puntos</b> con este pedido</>}
+                  {showGoal && <span className="text-paper-ink-soft"> · Agrega {money(toGoal)} y llegas a {nextGoal}</span>}
+                </span>
+                {!customer && <ChevronRight className="h-4 w-4 text-brand-blue-600 shrink-0" aria-hidden="true" />}
+              </button>
+            )}
+            <div className="flex items-center gap-2.5">
+              <div className="shrink-0 pr-1">
+                <p className="text-[12px] font-semibold text-paper-ink-soft leading-none">Total</p>
+                <p className="text-xl font-extrabold text-paper-ink tabular-nums leading-tight">{money(total)}</p>
+              </div>
+              <button onClick={handleCheckout}
+                className="flex-1 h-12 rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold text-base">
+                Hacer pedido
+              </button>
+              <button onClick={handleWhatsApp} aria-label="Pedir por WhatsApp"
+                className="h-12 w-12 shrink-0 rounded-xl bg-[#25D366] text-[#0B3B1E] flex items-center justify-center">
+                <WhatsAppIcon className="h-6 w-6" />
+              </button>
             </div>
-            <p className="text-sm text-paper-ink-soft">Delivery desde {money(DELIVERY.costFrom)} (compra mínima {money(DELIVERY.minOrder)}). Recoger en tienda no cuesta.</p>
-            <p className="text-sm text-paper-ink-soft -mt-1">Pagas con Yape, efectivo o tarjeta débito/crédito.</p>
-            <button onClick={handleCheckout}
-              className="w-full h-[52px] rounded-xl bg-brand-blue-600 active:bg-brand-blue-700 text-white font-bold text-base">
-              Hacer pedido
-            </button>
-            <button onClick={handleWhatsApp}
-              className="w-full h-12 rounded-xl bg-[#25D366] text-[#0B3B1E] font-bold text-base flex items-center justify-center gap-2">
-              <WhatsAppIcon className="h-5 w-5" />Pedir por WhatsApp
-            </button>
           </div>
         )}
       </div>
@@ -224,8 +250,8 @@ function BundleRow({ group, onRemove }: { group: CartItem[]; onRemove: () => voi
   const totalQty = group.reduce((s, i) => s + i.quantity, 0)
   const breakdown = group.map(i => `${i.quantity}× ${i.product.name}`).join(' · ')
   return (
-    <div className="flex gap-3 p-3">
-      <div className="h-16 w-16 rounded-xl bg-brand-sun-100 shrink-0 flex items-center justify-center">
+    <div className="flex items-center gap-2.5 px-3 py-2.5">
+      <div className="h-12 w-12 rounded-lg bg-brand-sun-100 shrink-0 flex items-center justify-center">
         <PackageCheck className="h-6 w-6 text-brand-sun-900" aria-hidden="true" />
       </div>
       <div className="flex-1 min-w-0">
